@@ -17,16 +17,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extraer notas del tag
+      - name: Extraer la última versión del CHANGELOG
         shell: bash
         run: |
+          changelog_file="KullThranUI/CHANGELOG.md"
+          changelog_tmp="$RUNNER_TEMP/kullthranui-latest-changelog.md"
+          awk '
+            /^## [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)/ {
+              if (found) exit
+              found=1
+            }
+            found { print }
+          ' "$changelog_file" > "$changelog_tmp"
+
+          if [[ ! -s "$changelog_tmp" ]]; then
+            echo "No se encontró una sección de versión en $changelog_file." >&2
+            exit 1
+          fi
+
           delimiter="CHANGELOG_$(uuidgen)"
           {
             echo "CHANGELOG<<$delimiter"
-            git tag -l --format='%(contents)' "$GITHUB_REF_NAME"
+            cat "$changelog_tmp"
             echo "$delimiter"
           } >> "$GITHUB_ENV"
-
       - name: Normalizar tag de version
         shell: bash
         run: |
