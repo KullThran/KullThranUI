@@ -1,0 +1,13 @@
+package-as: KullThranUI
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup: markdown
+
+enable-nolib-creation: no
+
+tools:
+  curseforge:
+    project-id: 1448826
+  wago:
+    project-slug: rNkye4Ka
