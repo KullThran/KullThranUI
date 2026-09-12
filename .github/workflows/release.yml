@@ -65,4 +65,5 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
+            @everyone
             ${{ env.CHANGELOG }}
