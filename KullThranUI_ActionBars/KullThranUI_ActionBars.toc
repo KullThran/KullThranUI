@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Action Bars
 ## Notes: KullThranUI module: Action Bars
 ## Author: KullThran
-## Version: 5.0.6
+## Version: @project-version@
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 

@@ -1,0 +1,36 @@
+name: Package and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize version tag
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$version" == "$GITHUB_REF_NAME" ]]; then
+            echo "Release tags must use the v<version> format." >&2
+            exit 1
+          fi
+          git tag --delete "$GITHUB_REF_NAME"
+          git tag "$version" "$GITHUB_SHA"
+
+      - name: Package and publish
+        uses: BigWigsMods/packager@v2
