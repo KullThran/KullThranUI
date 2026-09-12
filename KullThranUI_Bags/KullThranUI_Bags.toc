@@ -1,0 +1,11 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Bags
+## Notes: KullThranUI module: Bags
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Bags\Bags.lua
+Modules\Bags\Bags_Options.lua

@@ -1,0 +1,808 @@
+Created At: 2026-08-27T19:55:26+02:00
+Completed At: 2026-08-27T19:55:26+02:00
+File Path: `file:///c:/Program%20Files%20%28x86%29/World%20of%20Warcraft/_retail_/Interface/AddOns/KullThranUI_Skins/Modules/Skins/Popups.lua`
+Total Lines: 1435
+Total Bytes: 54146
+Showing lines 1 to 800
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
+2: local S = KT and KT:GetModule("Skins", true)
+3: if not S then return end
+4: 
+5: local _G = _G
+6: local CreateFrame = CreateFrame
+7: local C_Timer = C_Timer
+8: local hooksecurefunc = hooksecurefunc
+9: local ipairs = ipairs
+10: local math_max = math.max
+11: local select = select
+12: local unpack = unpack or table.unpack
+13: local issecretvalue = _G.issecretvalue
+14: local UnitGroupRolesAssigned = _G.UnitGroupRolesAssigned
+15: 
+16: local BLANK_TEX = "Interface\\Buttons\\WHITE8x8"
+17: local FONT = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
+18: local RefreshSurface
+19: 
+20: local function GetAccent(alpha)
+21:     local color = S:GetAccentColor()
+22:     return color[1], color[2], color[3], alpha or color[4] or 1
+23: end
+24: 
+25: local function AlphaStripTextures(frame, deep, preserveNativeArt)
+26:     if not frame then return end
+27:     if frame.IsForbidden and frame:IsForbidden() then return end
+28:     if frame.GetRegions then
+29:         for i = 1, select("#", frame:GetRegions()) do
+30:             local region = select(i, frame:GetRegions())
+31:             if region and region.IsObjectType and region:IsObjectType("Texture") and region.SetAlpha and not region._ktKuiPopupArt then
+32:                 local owner = region.GetParent and region:GetParent()
+33:                 local ownerName = owner and owner.GetName and owner:GetName() or ""
+34:                 local isItemIcon = owner and (owner.Icon == region or owner.icon == region or owner.ItemIcon == region)
+35:                 if isItemIcon or ownerName:find("Item", 1, true) or ownerName:find("Catalyst", 1, true) then
+36:                     region:SetAlpha(1)
+37:                     region:SetDrawLayer("ARTWORK", 2)
+38:                 else
+39:                     region:SetAlpha(0)
+40:                 end
+41:             end
+42:         end
+43:     end
+44: 
+45:     local named = { "NineSlice", "Border", "BorderFrame", "Background", "TopBorder", "BottomBorder", "LeftBorder", "RightBorder" }
+46:     for _, key in ipairs(named) do
+47:         local obj = frame[key]
+48:         if obj and not obj._ktKuiPopupArt then
+49:             if preserveNativeArt then
+50:                 AlphaStripTextures(obj, true, true)
+51:             else
+52:                 if obj.SetAlpha then obj:SetAlpha(0) end
+53:                 AlphaStripTextures(obj, true, false)
+54:             end
+55:         end
+56:     end
+57: 
+58:     if deep and frame.GetChildren then
+59:         for _, child in ipairs({ frame:GetChildren() }) do
+60:             AlphaStripTextures(child, true, preserveNativeArt)
+61:         end
+62:     end
+63: end
+64: 
+65: local function IsQueueReadyDialog(frame)
+66:     return frame == _G.LFGDungeonReadyPopup
+67:         or frame == _G.PVPReadyDialog
+68:         or frame == _G.LFGDungeonReadyDialog
+69: end
+70: 
+71: local function PreserveQueueReadyArtwork(frame, depth)
+72:     if not frame or (frame.IsForbidden and frame:IsForbidden()) then return end
+73:     if frame.GetRegions then
+74:         for i = 1, select('#', frame:GetRegions()) do
+75:             local region = select(i, frame:GetRegions())
+76:             if region and region.IsObjectType and region:IsObjectType('Texture')
+77:                 and region ~= frame._ktPopupBg then
+78:                 local width, height = region:GetSize()
+79:                 local hasArtwork = (region.GetTexture and region:GetTexture())
+80:                     or (region.GetAtlas and region:GetAtlas())
+81:                 local nativeVisible = not region.IsShown or region:IsShown()
+82:                 -- Ready-dialog artwork is assembled from several adjacent pieces;
+83:                 -- retain every visible panel, but not thin NineSlice borders.
+84:                 if hasArtwork and nativeVisible and (width or 0) >= 44 and (height or 0) >= 44 then
+85:                     region._ktKuiPopupArt = true
+86:                     region:SetDesaturated(false)
+87:                     region:SetVertexColor(0.68, 0.68, 0.70, 1)
+88:                     region:SetAlpha(1)
+89:                 end
+90:             end
+91:         end
+92:     end
+93:     if (depth or 0) <= 0 or not frame.GetChildren then return end
+94:     for _, child in ipairs({ frame:GetChildren() }) do
+95:         PreserveQueueReadyArtwork(child, depth - 1)
+96:     end
+97: end
+98: 
+99: local function RefreshQueueReadyArtwork(frame)
+100:     if not IsQueueReadyDialog(frame) then return end
+101:     PreserveQueueReadyArtwork(frame, 4)
+102:     RefreshSurface(frame)
+103: end
+104: 
+105: local function StyleText(frame)
+106:     if not (frame and frame.GetRegions) then return end
+107:     if frame.IsForbidden and frame:IsForbidden() then return end
+108:     for i = 1, select("#", frame:GetRegions()) do
+109:         local region = select(i, frame:GetRegions())
+110:         if region and region.IsObjectType and region:IsObjectType("FontString") then
+111:             local _, size = region:GetFont()
+112:             size = (size and size > 0) and size or 12
+113:             region:SetDrawLayer("OVERLAY", 7)
+114:             region:SetFont(KT.FONT_PATH or FONT, size, "OUTLINE")
+115:             region:SetTextColor(0.94, 0.94, 0.96, 1)
+116:         end
+117:     end
+118: end
+119: 
+120: local function EnsureSurface(frame, opts)
+121:     if not frame then return end
+122:     opts = opts or {}
+123: 
+124:     if frame.SetBackdrop then
+125:         frame:SetBackdrop({
+126:             bgFile = BLANK_TEX,
+127:             edgeFile = BLANK_TEX,
+128:             edgeSize = S.mult or 1,
+129:             insets = { left = 0, right = 0, top = 0, bottom = 0 },
+130:         })
+131:     end
+132:     if not frame._ktPopupBg then
+133:         local bg = frame:CreateTexture(nil, "BACKGROUND", nil, 0)
+134:         bg:SetPoint("TOPLEFT", frame, "TOPLEFT", opts.insetLeft or 0, opts.insetTop or 0)
+135:         bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", opts.insetRight or 0, opts.insetBottom or 0)
+136:         bg:SetTexture(BLANK_TEX)
+137:         bg._ktKuiPopupArt = true
+138:         frame._ktPopupBg = bg
+139:     end
+140: 
+141:     if not frame._ktPopupBorder then
+142:         local border = {}
+143:         border.top = frame:CreateTexture(nil, "BORDER", nil, 7); border.top._ktKuiPopupArt = true
+144:         border.bottom = frame:CreateTexture(nil, "BORDER", nil, 7); border.bottom._ktKuiPopupArt = true
+145:         border.left = frame:CreateTexture(nil, "BORDER", nil, 7); border.left._ktKuiPopupArt = true
+146:         border.right = frame:CreateTexture(nil, "BORDER", nil, 7); border.right._ktKuiPopupArt = true
+147:         frame._ktPopupBorder = border
+148:     end
+149: 
+150:     frame._ktPopupInsets = opts
+151:     RefreshSurface(frame)
+152:     if not frame._ktWindowBackgroundRegistered then
+153:         S:RegisterBlizzardWindowBackground(frame, function(surface)
+154:             RefreshSurface(surface)
+155:         end)
+156:         frame._ktWindowBackgroundRegistered = true
+157:     end
+158:     return frame._ktPopupBg
+159: end
+160: 
+161: RefreshSurface = function(frame)
+162:     if not frame then return end
+163:     local bg = frame._ktPopupBg
+164:     local border = frame._ktPopupBorder
+165:     if not (bg and border) then return end
+166: 
+167:     local opts = frame._ktPopupInsets or {}
+168:     local left = opts.insetLeft or 0
+169:     local top = opts.insetTop or 0
+170:     local right = opts.insetRight or 0
+171:     local bottom = opts.insetBottom or 0
+172:     local ar, ag, ab = GetAccent()
+173:     local mult = math_max(2, (S.mult or 1) * 2)
+174: 
+175:     bg:ClearAllPoints()
+176:     bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, top)
+177:     bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", right, bottom)
+178:     local windowColor = S:GetWindowBackgroundColor(false)
+179:     local backgroundAlpha = math.min(windowColor[4] or 0.98, opts.alpha or 1)
+180:     local bgR, bgG, bgB = windowColor[1], windowColor[2], windowColor[3]
+181:     if opts.artworkShade then
+182:         bgR, bgG, bgB = 0, 0, 0
+183:     end
+184:     -- Queue-ready artwork does not always cover the complete dialog. Keep an
+185:     -- opaque neutral surface behind it so uncovered areas never show the
+186:     -- 3D world or inherit the user's translucent window setting.
+187:     if opts.solidBackground then
+188:         backgroundAlpha = 1
+189:     end
+190:     bg:SetColorTexture(bgR, bgG, bgB, backgroundAlpha)
+191:     if frame.SetBackdropColor then
+192:         frame:SetBackdropColor(bgR, bgG, bgB, backgroundAlpha)
+193:     end
+194:     if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(ar, ag, ab, opts.borderAlpha or 0.90) end
+195: 
+196:     border.top:ClearAllPoints()
+197:     border.top:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+198:     border.top:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+199:     border.top:SetHeight(mult)
+200: 
+201:     border.bottom:ClearAllPoints()
+202:     border.bottom:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+203:     border.bottom:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+204:     border.bottom:SetHeight(mult)
+205: 
+206:     border.left:ClearAllPoints()
+207:     border.left:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+208:     border.left:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+209:     border.left:SetWidth(mult)
+210: 
+211:     border.right:ClearAllPoints()
+212:     border.right:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+213:     border.right:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+214:     border.right:SetWidth(mult)
+215: 
+216:     for _, tex in pairs(border) do
+217:         tex:SetTexture(BLANK_TEX)
+218:         tex:SetColorTexture(ar, ag, ab, opts.borderAlpha or 0.90)
+219:     end
+220: end
+221: local function GetButtonRole(button, fallback)
+222:     local text = button and button.GetText and button:GetText()
+223:     text = text and text:lower() or ""
+224:     if text:find("accept", 1, true) or text:find("reload", 1, true) or text:find("release", 1, true)
+225:         or text:find("resurrect", 1, true) or text:find("yes", 1, true) or text:find("okay", 1, true)
+226:         or text:find("ok", 1, true) then
+227:         return "accept"
+228:     end
+229:     if text:find("decline", 1, true) or text:find("cancel", 1, true) or text:find("no", 1, true)
+230:         or text:find("delete", 1, true) or text:find("abandon", 1, true) then
+231:         return "decline"
+232:     end
+233:     return fallback or "neutral"
+234: end
+235: 
+236: local function GetButtonColors(role, hover)
+237:     local ar, ag, ab = GetAccent()
+238:     local bgR, bgG, bgB = hover and 0.115 or 0.075, hover and 0.120 or 0.080, hover and 0.140 or 0.095
+239:     local borderR, borderG, borderB = ar, ag, ab
+240:     local textR, textG, textB = 1, 1, 1
+241: 
+242:     if role == "accept" then
+243:         bgR, bgG, bgB = hover and 0.120 or 0.080, hover and 0.130 or 0.090, hover and 0.145 or 0.105
+244:     elseif role == "decline" then
+245:         bgR, bgG, bgB = hover and 0.125 or 0.085, hover and 0.090 or 0.065, hover and 0.095 or 0.070
+246:     end
+247: 
+248:     return bgR, bgG, bgB, borderR, borderG, borderB, textR, textG, textB
+249: end
+250: local function EnsureButtonArt(button)
+251:     if not button or button._ktPopupButtonBg then return end
+252: 
+253:     local bg = button:CreateTexture(nil, "ARTWORK", nil, -2)
+254:     bg:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+255:     bg:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+256:     bg:SetTexture(BLANK_TEX)
+257:     bg._ktKuiPopupArt = true
+258:     button._ktPopupButtonBg = bg
+259: 
+260:     local border = {}
+261:     border.top = button:CreateTexture(nil, "OVERLAY", nil, 2); border.top._ktKuiPopupArt = true
+262:     border.bottom = button:CreateTexture(nil, "OVERLAY", nil, 2); border.bottom._ktKuiPopupArt = true
+263:     border.left = button:CreateTexture(nil, "OVERLAY", nil, 2); border.left._ktKuiPopupArt = true
+264:     border.right = button:CreateTexture(nil, "OVERLAY", nil, 2); border.right._ktKuiPopupArt = true
+265:     button._ktPopupButtonBorder = border
+266: end
+267: 
+268: local function RefreshButtonArt(button, hover)
+269:     local bg = button and button._ktPopupButtonBg
+270:     local border = button and button._ktPopupButtonBorder
+271:     if not (bg and border) then return end
+272: 
+273:     local role = button._ktPopupRole or GetButtonRole(button)
+274:     local bgR, bgG, bgB, borderR, borderG, borderB, textR, textG, textB = GetButtonColors(role, hover)
+275:     local enabled = not button.IsEnabled or button:IsEnabled()
+276:     if not enabled then
+277:         -- Blizzard disables Release Spirit while the encounter still owns the
+278:         -- player corpse. Keep the KUI skin visibly disabled as well.
+279:         bgR, bgG, bgB = 0.035, 0.038, 0.045
+280:         borderR, borderG, borderB = 0.28, 0.29, 0.32
+281:         textR, textG, textB = 0.48, 0.49, 0.53
+282:     end
+283:     local mult = math_max(2, (S.mult or 1) * 2)
+284: 
+285:     bg:SetAlpha(1)
+286:     bg:SetDrawLayer("ARTWORK", -2)
+287:     bg:SetColorTexture(bgR, bgG, bgB, enabled and 0.98 or 0.82)
+288: 
+289:     border.top:ClearAllPoints()
+290:     border.top:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+291:     border.top:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+292:     border.top:SetHeight(mult)
+293: 
+294:     border.bottom:ClearAllPoints()
+295:     border.bottom:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+296:     border.bottom:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+297:     border.bottom:SetHeight(mult)
+298: 
+299:     border.left:ClearAllPoints()
+300:     border.left:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+301:     border.left:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+302:     border.left:SetWidth(mult)
+303: 
+304:     border.right:ClearAllPoints()
+305:     border.right:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+306:     border.right:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+307:     border.right:SetWidth(mult)
+308: 
+309:     for _, tex in pairs(border) do
+310:         tex:SetAlpha(1)
+311:         tex:SetDrawLayer("OVERLAY", 7)
+312:         tex:SetTexture(BLANK_TEX)
+313:         tex:SetColorTexture(borderR, borderG, borderB, hover and 1 or 0.95)
+314:     end
+315: 
+316:     local fs = button.GetFontString and button:GetFontString()
+317:     if fs then fs:SetTextColor(textR, textG, textB, enabled and 1 or 0.72) end
+318: end
+319: 
+320: local function StyleButton(button, role)
+321:     if not button then return end
+322:     if button.IsForbidden and button:IsForbidden() then return end
+323: 
+324:     button._ktPopupRole = role or GetButtonRole(button)
+325:     AlphaStripTextures(button)
+326:     EnsureButtonArt(button)
+327: 
+328:     if button.SetNormalTexture then button:SetNormalTexture(BLANK_TEX) end
+329:     if button.SetPushedTexture then button:SetPushedTexture(BLANK_TEX) end
+330:     if button.SetDisabledTexture then button:SetDisabledTexture(BLANK_TEX) end
+331:     if button.SetHighlightTexture then button:SetHighlightTexture(BLANK_TEX) end
+332:     if button.GetNormalTexture and button:GetNormalTexture() then button:GetNormalTexture():SetVertexColor(0.075, 0.080, 0.095, 0.98) end
+333:     if button.GetPushedTexture and button:GetPushedTexture() then button:GetPushedTexture():SetVertexColor(0.055, 0.060, 0.070, 1) end
+334:     if button.GetDisabledTexture and button:GetDisabledTexture() then button:GetDisabledTexture():SetVertexColor(0.040, 0.040, 0.045, 0.70) end
+335:     if button.GetHighlightTexture and button:GetHighlightTexture() then local ar, ag, ab = GetAccent(); button:GetHighlightTexture():SetVertexColor(ar, ag, ab, 0.22) end
+336: 
+337:     local fs = button.GetFontString and button:GetFontString()
+338:     if fs then
+339:         fs:SetDrawLayer("OVERLAY", 7)
+340:         fs:SetFont(KT.FONT_PATH or FONT, 12, "OUTLINE")
+341:     end
+342: 
+343:     RefreshButtonArt(button, false)
+344: 
+345:     if not button._ktPopupEnabledHooks then
+346:         if button.Enable then
+347:             hooksecurefunc(button, "Enable", function()
+348:                 RefreshButtonArt(button, false)
+349:             end)
+350:         end
+351:         if button.Disable then
+352:             hooksecurefunc(button, "Disable", function()
+353:                 RefreshButtonArt(button, false)
+354:             end)
+355:         end
+356:         if button.SetEnabled then
+357:             hooksecurefunc(button, "SetEnabled", function()
+358:                 RefreshButtonArt(button, false)
+359:             end)
+360:         end
+361:         -- StaticPopup can receive its final enabled state a frame after OnShow.
+362:         -- Recheck while visible so the death button never relies on mouse-over
+363:         -- to repaint after a boss encounter changes the release restriction.
+364:         button:HookScript("OnUpdate", function(self)
+365:             local enabled = not self.IsEnabled or self:IsEnabled()
+366:             if enabled ~= self._ktPopupLastEnabled then
+367:                 self._ktPopupLastEnabled = enabled
+368:                 RefreshButtonArt(self, false)
+369:             end
+370:         end)
+371:         button._ktPopupLastEnabled = nil
+372:         button._ktPopupEnabledHooks = true
+373:     end
+374: 
+375:     if not button._ktPopupSkinned then
+376:         button:HookScript("OnEnter", function(self) RefreshButtonArt(self, true) end)
+377:         button:HookScript("OnLeave", function(self) RefreshButtonArt(self, false) end)
+378:         button._ktPopupSkinned = true
+379:     end
+380: end
+381: local function StylePopupButtons(root)
+382:     local seen = {}
+383:     local function GetButtonText(button)
+384:         local text = button and button.GetText and button:GetText()
+385:         if type(text) == "string" and text ~= "" then
+386:             return text
+387:         end
+388: 
+389:         local fs = button and button.GetFontString and button:GetFontString()
+390:         text = fs and fs.GetText and fs:GetText()
+391:         if type(text) == "string" and text ~= "" then
+392:             return text
+393:         end
+394: 
+395:         local namedText = button and button.Text
+396:         text = namedText and namedText.GetText and namedText:GetText()
+397:         if type(text) == "string" and text ~= "" then
+398:             return text
+399:         end
+400:     end
+401: 
+402:     local function visit(frame)
+403:         if not frame or seen[frame] then return end
+404:         if frame.IsForbidden and frame:IsForbidden() then return end
+405:         seen[frame] = true
+406: 
+407:         if frame.IsObjectType and frame:IsObjectType("Button") then
+408:             if GetButtonText(frame) then
+409:                 StyleButton(frame, GetButtonRole(frame))
+410:             end
+411:         end
+412: 
+413:         if frame.GetChildren then
+414:             for _, child in ipairs({ frame:GetChildren() }) do
+415:                 visit(child)
+416:             end
+417:         end
+418:     end
+419: 
+420:     for i = 1, 4 do
+421:         local button = root and root["button" .. i]
+422:         if button then StyleButton(button, GetButtonRole(button, i == 1 and "accept" or "decline")) end
+423:     end
+424:     visit(root)
+425: end
+426: 
+427: local function IsReadableCheckedValue(value)
+428:     return value ~= nil and not (issecretvalue and issecretvalue(value))
+429: end
+430: 
+431: local function IsPopupRoleChecked(button)
+432:     if not button then return false end
+433:     local check = button.checkButton or button.CheckButton or button
+434: 
+435:     for _, candidate in ipairs({ check, button }) do
+436:         if candidate and candidate.GetChecked then
+437:             local ok, checked = pcall(candidate.GetChecked, candidate)
+438:             if ok and IsReadableCheckedValue(checked) and checked == true then
+439:                 return true
+440:             end
+441:         end
+442:     end
+443: 
+444:     for _, candidate in ipairs({ check, button }) do
+445:         if candidate then
+446:             for _, key in ipairs({ 'checked', 'isChecked', 'selected', 'isSelected', 'active' }) do
+447:                 local value = candidate[key]
+448:                 if IsReadableCheckedValue(value) and value == true then
+449:                     return true
+450:                 end
+451:             end
+452:         end
+453:     end
+454: 
+455:     for _, texture in ipairs({
+456:         button.SelectedTexture,
+457:         button.selectedTexture,
+458:         button.CheckedTexture,
+459:         button.Check,
+460:         check and check.GetCheckedTexture and check:GetCheckedTexture(),
+461:     }) do
+462:         if texture and texture.IsShown then
+463:             local ok, shown = pcall(texture.IsShown, texture)
+464:             if ok and IsReadableCheckedValue(shown) and shown == true then
+465:                 return true
+466:             end
+467:         end
+468:     end
+469: 
+470:     return false
+471: end
+472: 
+473: local function IsPopupRoleButton(button)
+474:     if not (button and button.IsObjectType and button:IsObjectType('Button')) then
+475:         return false
+476:     end
+477: 
+478:     local name = button.GetName and button:GetName() or ''
+479:     local parent = button.GetParent and button:GetParent()
+480:     local parentName = parent and parent.GetName and parent:GetName() or ''
+481:     local token = (tostring(name) .. ' ' .. tostring(parentName)):lower()
+482:     local hasRole = token:find('rolebutton', 1, true) or token:find('role button', 1, true)
+483:     local hasType = token:find('tank', 1, true)
+484:         or token:find('heal', 1, true)
+485:         or token:find('damage', 1, true)
+486:         or token:find('dps', 1, true)
+487: 
+488:     return hasRole and hasType and true or false
+489: end
+490: 
+491: local RefreshPopupRoleFeedback
+492: 
+493: local function EnsurePopupRoleFeedback(button, dialog)
+494:     if not (button and dialog) then return end
+495: 
+496:     if not button._ktRoleSelectedGlow then
+497:         local glow = button:CreateTexture(nil, 'OVERLAY', nil, 7)
+498:         glow:SetTexture('Interface\\Buttons\\UI-ActionButton-Border')
+499:         glow:SetBlendMode('ADD')
+500:         glow:SetPoint('TOPLEFT', button, 'TOPLEFT', -10, 10)
+501:         glow:SetPoint('BOTTOMRIGHT', button, 'BOTTOMRIGHT', 10, -10)
+502:         glow._ktKuiPopupArt = true
+503:         button._ktRoleSelectedGlow = glow
+504: 
+505:         local tint = button:CreateTexture(nil, 'OVERLAY', nil, 6)
+506:         tint:SetTexture(BLANK_TEX)
+507:         tint:SetAllPoints(button)
+508:         tint:SetBlendMode('ADD')
+509:         tint._ktKuiPopupArt = true
+510:         button._ktRoleSelectedTint = tint
+511:     end
+512: 
+513:     local function Refresh()
+514:         local selected = IsPopupRoleChecked(button)
+515:         local ar, ag, ab = GetAccent()
+516:         button._ktRoleSelectedGlow:SetVertexColor(ar, ag, ab, 1)
+517:         button._ktRoleSelectedTint:SetVertexColor(ar, ag, ab, 0.18)
+518:         button._ktRoleSelectedGlow:SetShown(selected)
+519:         button._ktRoleSelectedTint:SetShown(selected)
+520:     end
+521: 
+522:     button._ktRefreshPopupRoleFeedback = Refresh
+523: 
+524:     if not button._ktPopupRoleFeedbackHooked then
+525:         button._ktPopupRoleFeedbackHooked = true
+526:         local check = button.checkButton or button.CheckButton or button
+527:         if check and check.SetChecked then
+528:             hooksecurefunc(check, 'SetChecked', function()
+529:                 C_Timer.After(0, function() RefreshPopupRoleFeedback(dialog) end)
+530:             end)
+531:         end
+532:         if check and check.HookScript then
+533:             check:HookScript('OnClick', function()
+534:                 C_Timer.After(0, function() RefreshPopupRoleFeedback(dialog) end)
+535:             end)
+536:         end
+537:         button:HookScript('OnClick', function()
+538:             C_Timer.After(0, function() RefreshPopupRoleFeedback(dialog) end)
+539:         end)
+540:         button:HookScript('OnShow', function()
+541:             C_Timer.After(0, function() RefreshPopupRoleFeedback(dialog) end)
+542:         end)
+543:     end
+544: 
+545:     Refresh()
+546: end
+547: 
+548: RefreshPopupRoleFeedback = function(dialog)
+549:     if not (dialog and dialog.GetChildren) then return end
+550:     local seen = {}
+551:     local explicitButtons = {
+552:         _G.LFDRoleCheckPopupRoleButtonTank,
+553:         _G.LFDRoleCheckPopupRoleButtonHealer,
+554:         _G.LFDRoleCheckPopupRoleButtonDPS,
+555:         _G.RolePollPopupRoleButtonTank,
+556:         _G.RolePollPopupRoleButtonHealer,
+557:         _G.RolePollPopupRoleButtonDPS,
+558:         dialog.RoleButtonTank,
+559:         dialog.RoleButtonHealer,
+560:         dialog.RoleButtonDPS,
+561:         dialog.TankButton,
+562:         dialog.HealerButton,
+563:         dialog.DPSButton,
+564:         dialog.DamagerButton,
+565:     }
+566: 
+567:     if dialog.RoleButtons then
+568:         EnsurePopupRoleFeedback(dialog.RoleButtons.Tank, dialog)
+569:         EnsurePopupRoleFeedback(dialog.RoleButtons.Healer, dialog)
+570:         EnsurePopupRoleFeedback(dialog.RoleButtons.DPS, dialog)
+571:         EnsurePopupRoleFeedback(dialog.RoleButtons.Damager, dialog)
+572:     end
+573: 
+574:     -- The globals vary by client and may leave holes in this list.
+575:     for _, button in pairs(explicitButtons) do
+576:         if button then
+577:             EnsurePopupRoleFeedback(button, dialog)
+578:             seen[button] = true
+579:         end
+580:     end
+581: 
+582:     local function Visit(frame, depth)
+583:         if not frame or seen[frame] or depth > 6 then return end
+584:         seen[frame] = true
+585:         if IsPopupRoleButton(frame) then
+586:             EnsurePopupRoleFeedback(frame, dialog)
+587:         end
+588:         if frame.GetChildren then
+589:             for _, child in ipairs({ frame:GetChildren() }) do
+590:                 Visit(child, depth + 1)
+591:             end
+592:         end
+593:     end
+594: 
+595:     Visit(dialog, 0)
+596: end
+597: 
+598: local LFG_PROPOSAL_ROLE_ICONS = {
+599:     TANK = "Interface\\AddOns\\KullThranUI\\Modules\\Tooltip\\Icons\\Tank.png",
+600:     HEALER = "Interface\\AddOns\\KullThranUI\\Modules\\Tooltip\\Icons\\Healer.png",
+601:     DAMAGER = "Interface\\AddOns\\KullThranUI\\Modules\\Tooltip\\Icons\\DPS.png",
+602: }
+603: 
+604: local cachedLFGProposalRole
+605: 
+606: local function IsReadableLFGRole(role)
+607:     return type(role) == "string"
+608:         and not (issecretvalue and issecretvalue(role))
+609:         and LFG_PROPOSAL_ROLE_ICONS[role] ~= nil
+610: end
+611: 
+612: local function GetCurrentLFGProposalRole()
+613:     if not GetLFGProposal then return nil end
+614: 
+615:     local ok, proposalExists, proposalID, typeID, subtypeID, name, texture, role = pcall(GetLFGProposal)
+616:     if not ok or not proposalExists or type(role) ~= "string" then return nil end
+617:     if issecretvalue and issecretvalue(role) then return nil end
+618:     if role == "NONE" then role = "DAMAGER" end
+619:     return IsReadableLFGRole(role) and role or nil
+620: end
+621: 
+622: local function GetRoleFromReadyFrame(frame)
+623:     if not frame then return nil end
+624: 
+625:     for _, key in ipairs({ "role", "Role", "assignedRole", "AssignedRole" }) do
+626:         local value = frame[key]
+627:         if IsReadableLFGRole(value) then
+628:             return value
+629:         end
+630:     end
+631: 
+632:     if UnitGroupRolesAssigned then
+633:         local ok, value = pcall(UnitGroupRolesAssigned, "player")
+634:         if ok and IsReadableLFGRole(value) then
+635:             return value
+636:         end
+637:     end
+638: 
+639:     return nil
+640: end
+641: 
+642: local function FindReadyRoleIconObject(root, depth, seen)
+643:     if not root or (root.IsForbidden and root:IsForbidden()) then return nil end
+644:     seen = seen or {}
+645:     if seen[root] then return nil end
+646:     seen[root] = true
+647: 
+648:     for _, key in ipairs({ "RoleIcon", "roleIcon", "AssignedRoleIcon", "RoleIconFrame", "RoleIconTexture" }) do
+649:         local object = root[key]
+650:         if object then
+651:             return object
+652:         end
+653:     end
+654: 
+655:     local name = root.GetName and root:GetName()
+656:     if type(name) == "string" and name:lower():find("roleicon", 1, true) then
+657:         return root
+658:     end
+659: 
+660:     if (depth or 0) >= 4 or not root.GetChildren then return nil end
+661:     for _, child in ipairs({ root:GetChildren() }) do
+662:         local object = FindReadyRoleIconObject(child, (depth or 0) + 1, seen)
+663:         if object then
+664:             return object
+665:         end
+666:     end
+667: 
+668:     return nil
+669: end
+670: 
+671: local function GetReadyRoleIconObject(frame)
+672:     if not frame then return nil end
+673: 
+674:     local object = FindReadyRoleIconObject(frame, 0)
+675:     if object then return object end
+676: 
+677:     for _, name in ipairs({
+678:         "LFGDungeonReadyDialogRoleIcon",
+679:         "LFGDungeonReadyDialogRoleIconTexture",
+680:         "LFGDungeonReadyPopupRoleIcon",
+681:         "LFGDungeonReadyPopupRoleIconTexture",
+682:     }) do
+683:         object = _G[name]
+684:         if object then return object end
+685:     end
+686: 
+687:     return nil
+688: end
+689: 
+690: local function SetReadyRoleIconObject(object, role)
+691:     if not (object and IsReadableLFGRole(role)) then return false end
+692:     if object.IsForbidden and object:IsForbidden() then return false end
+693: 
+694:     local texture = object
+695:     if not texture.SetTexture then
+696:         texture = object.Icon or object.Texture or object.texture
+697:     end
+698: 
+699:     if texture and texture.SetTexture then
+700:         texture._ktKuiPopupArt = true
+701:         texture:SetTexture(LFG_PROPOSAL_ROLE_ICONS[role])
+702:         texture:SetTexCoord(0, 1, 0, 1)
+703:         if texture.SetDrawLayer then texture:SetDrawLayer("ARTWORK", 7) end
+704:         if texture.SetAlpha then texture:SetAlpha(1) end
+705:         if texture.Show then texture:Show() end
+706:         if object.SetAlpha then object:SetAlpha(1) end
+707:         if object.Show then object:Show() end
+708:         return true
+709:     end
+710: 
+711:     if not object.CreateTexture then return false end
+712:     local icon = object._ktAssignedRoleIcon
+713:     if not icon then
+714:         icon = object:CreateTexture(nil, "ARTWORK", nil, 7)
+715:         local width, height = object.GetSize and object:GetSize()
+716:         width = tonumber(width) or 48
+717:         height = tonumber(height) or width
+718:         width = math.max(24, math.min(width, 64))
+719:         height = math.max(24, math.min(height, 64))
+720:         icon:SetSize(width, height)
+721:         icon:SetPoint("CENTER")
+722:         icon._ktKuiPopupArt = true
+723:         object._ktAssignedRoleIcon = icon
+724:     end
+725:     icon:SetTexture(LFG_PROPOSAL_ROLE_ICONS[role])
+726:     icon:SetTexCoord(0, 1, 0, 1)
+727:     icon:SetAlpha(1)
+728:     icon:Show()
+729:     if object.SetAlpha then object:SetAlpha(1) end
+730:     if object.Show then object:Show() end
+731:     return true
+732: end
+733: 
+734: local function RestoreLFGProposalRoleIcon(frame)
+735:     if not frame then return end
+736: 
+737:     local role = GetCurrentLFGProposalRole() or GetRoleFromReadyFrame(frame) or cachedLFGProposalRole
+738:     if role then
+739:         cachedLFGProposalRole = role
+740:     end
+741: 
+742:     local roleObject = GetReadyRoleIconObject(frame)
+743:     if roleObject and role then
+744:         SetReadyRoleIconObject(roleObject, role)
+745:     end
+746: end
+747: 
+748: local function RestoreAllLFGProposalRoleIcons()
+749:     RestoreLFGProposalRoleIcon(_G.LFGDungeonReadyDialog)
+750:     RestoreLFGProposalRoleIcon(_G.LFGDungeonReadyPopup)
+751: end
+752: 
+753: local function SkinStaticPopup(frame)
+754:     if not (S.db and S.db.enable and S.db.popups) then return end
+755:     if not frame or (frame.IsForbidden and frame:IsForbidden()) then return end
+756: 
+757:     AlphaStripTextures(frame, true)
+758:     EnsureSurface(frame, { insetLeft = 1, insetTop = -1, insetRight = -1, insetBottom = 1 })
+759:     RefreshSurface(frame)
+760:     StyleText(frame)
+761: 
+762:     if frame.text then
+763:         frame.text:SetDrawLayer("OVERLAY", 7)
+764:         frame.text:SetFont(KT.FONT_PATH or FONT, 13, "OUTLINE")
+765:         frame.text:SetTextColor(0.98, 0.98, 1, 1)
+766:     end
+767:     if frame.SubText then
+768:         frame.SubText:SetDrawLayer("OVERLAY", 7)
+769:         frame.SubText:SetFont(KT.FONT_PATH or FONT, 11, "OUTLINE")
+770:         frame.SubText:SetTextColor(0.72, 0.74, 0.78, 1)
+771:     end
+772: 
+773:     StylePopupButtons(frame)
+774: 
+775:     if frame.EditBox then
+776:         S:StripTextures(frame.EditBox)
+777:         S:CreateBackdrop(frame.EditBox)
+778:         if frame.EditBox.backdrop then
+779:             frame.EditBox.backdrop:SetBackdropColor(0.14, 0.145, 0.16, 0.98)
+780:             frame.EditBox.backdrop:SetBackdropBorderColor(GetAccent(0.72))
+781:         end
+782:     end
+783: end
+784: 
+785: local function NormalizePopupRole(role)
+786:     if role == "DPS" then return "DAMAGER" end
+787:     if role == "TANK" or role == "HEALER" or role == "DAMAGER" then return role end
+788: end
+789: 
+790: local function GetRoleCheckPopupRole(frame)
+791:     if not frame then return nil end
+792: 
+793:     local buttons = {
+794:         { frame.RoleButtonTank, "TANK" },
+795:         { frame.TankButton, "TANK" },
+796:         { frame.RoleButtonHealer, "HEALER" },
+797:         { frame.HealerButton, "HEALER" },
+798:         { frame.RoleButtonDPS, "DAMAGER" },
+799:         { frame.DPSButton, "DAMAGER" },
+800:         { frame.DamagerButton, "DAMAGER" },
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

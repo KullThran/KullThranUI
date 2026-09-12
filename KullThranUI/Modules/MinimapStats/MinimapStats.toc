@@ -1,0 +1,23 @@
+## Title: |cFF8080FFMinimap|rStats
+## Interface: 120007, 120000, 120001
+## Version: 5.0.6
+## Author: UnhaltedGB
+## SavedVariables: MinimapStatsDB
+## IconTexture: Interface\AddOns\MinimapStats\Media\MinimapStats.png
+## Category-enUS: |cFF8080FFUnhalted|r Development
+## X-Curse-Project-ID: 695388
+## X-Wago-ID: qGYM7vGg
+
+# Load Libraries
+Libs/Init.xml
+
+# Load Essentials
+Core/Global.lua
+
+# Load Modules
+Modules/Init.xml
+
+# Load AddOn
+Core/Share.lua
+Core/GUI.lua
+Core/Core.lua

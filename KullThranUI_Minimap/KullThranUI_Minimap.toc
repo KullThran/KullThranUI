@@ -1,0 +1,15 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Minimap
+## Notes: KullThranUI module: Minimap
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Minimap\Minimap.lua
+..\KullThranUI\Modules\MinimapButton\MinimapButton.lua
+..\KullThranUI\Modules\MinimapButton\MinimapButton_Options.lua
+..\KullThranUI\Modules\MinimapStats\MinimapStats_Options.lua
+Modules\Minimap\Minimap_Options.lua
+Modules\Minimap\SquareMinimap\SquareMinimap.lua

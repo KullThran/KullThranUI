@@ -1,0 +1,3 @@
+-- =============================================================================
+local _, ns = ...
+-- [REMOVED] Interrupt Tracker module removed due to Blizzard API restrictions.

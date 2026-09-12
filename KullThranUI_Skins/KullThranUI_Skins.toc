@@ -1,0 +1,41 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Skins
+## Notes: KullThranUI module: Skins
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Skins\Skins.lua
+Modules\Skins\Skins_Options.lua
+Modules\Skins\AchievementUI.lua
+Modules\Skins\AddonManager.lua
+Modules\Skins\Alerts.lua
+Modules\Skins\Armory.lua
+Modules\Skins\Bank.lua
+Modules\Skins\AuctionHouse.lua
+Modules\Skins\BattleNet.lua
+Modules\Skins\Collections.lua
+Modules\Skins\CooldownManager.lua
+Modules\Skins\EncounterJournal.lua
+Modules\Skins\Friends.lua
+Modules\Skins\GameMenu.lua
+Modules\Skins\Settings.lua
+Modules\Skins\Gossip.lua
+Modules\Skins\Guild.lua
+Modules\Skins\Housing.lua
+Modules\Skins\Inspect.lua
+Modules\Skins\LFG.lua
+Modules\Skins\Macro.lua
+Modules\Skins\Mail.lua
+Modules\Skins\Merchant.lua
+Modules\Skins\PlayerSpells.lua
+Modules\Skins\Transmog.lua
+Modules\Skins\Popups.lua
+Modules\Skins\Timers.lua
+Modules\Skins\Trade.lua
+Modules\Skins\Professions.lua
+Modules\Skins\Quest.lua
+Modules\Skins\WorldMap.lua
+Modules\Skins\WeeklyRewards.lua

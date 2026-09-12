@@ -1,0 +1,15 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Cooldown Manager
+## Notes: KullThranUI module: Cooldown Manager
+## Author: KullThran
+## Version: 5.0.5
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\KUICooldownManager\KUICooldownManager.lua
+Modules\KUICooldownManager\KUICdmHooks.lua
+Modules\KUICooldownManager\KUICooldownManager_Keybinds.lua
+Modules\KUICooldownManager\KUICdmBuffBars.lua
+Modules\KUICooldownManager\KUICdmBarGlows.lua
+Modules\KUICooldownManager\KUI_CooldownManager_Options.lua

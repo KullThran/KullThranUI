@@ -1,0 +1,12 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Cast Bar
+## Notes: KullThranUI module: Cast Bar
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+## OptionalDeps: KullThranUI_ResourceBars, KullThranUI_CooldownManager
+
+Init.lua
+Modules\CastBar\CastBar.lua
+Modules\CastBar\CastBar_Options.lua

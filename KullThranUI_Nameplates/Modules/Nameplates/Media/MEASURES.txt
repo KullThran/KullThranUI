@@ -1,0 +1,21 @@
+Medidas de referencia (para recrear tus propias texturas)
+
+IMPORTANTE:
+- No copies estas texturas desde otros addons con licencia restrictiva.
+- La idea es que reemplaces los PNG/TGA por tus propios archivos manteniendo nombre y tamaño.
+
+Ruta:
+  Interface\\AddOns\\KullThranUI\\Modules\\Nameplates\\Media\\
+
+Tamaños:
+- absorb-default.png      144 x 25
+- arrow_left.png           43 x 66
+- arrow_right.png          36 x 66
+- background.png           60 x 60
+- border.png               60 x 60
+- border-colorless.png     60 x 60
+- border-simple.png        60 x 60
+- cast_spark.tga           32 x 32
+- shield.png               29 x 35
+- striped-v2.png          144 x 48
+- striped-wide-v2.png     144 x 48

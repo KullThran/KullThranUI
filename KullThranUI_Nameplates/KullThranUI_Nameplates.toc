@@ -1,0 +1,13 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Nameplates
+## Notes: KullThranUI module: Nameplates
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Nameplates\Nameplates.lua
+Modules\Nameplates\Nameplates_AuraContainers.lua
+Modules\Nameplates\Nameplates_Friendly.lua
+Modules\Nameplates\Nameplates_Options.lua

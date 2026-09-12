@@ -1,0 +1,11 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Buffs & Debuffs
+## Notes: KullThranUI module: Buffs & Debuffs
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\BuffsAndDebuffs\BuffsAndDebuffs.lua
+Modules\BuffsAndDebuffs\BuffsAndDebuffs_Options.lua

@@ -1,0 +1,122 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI
+## Notes: UI Replacement Logic
+## Author: KullThran
+## Version: 5.0.6
+## SavedVariables: KullThranDB, KullThranUINameplatesDB, KUIAuraRemindersDB, KUISpellDurationDB
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## OptionalDeps: Blizzard_DamageMeter, Masque, Grid2, Grid2Options, UnhaltedUnitFrames, Chattynator, Baganator
+
+# =============================================================================
+# 1. LIBRARIES (Foundation)
+# =============================================================================
+Libraries\LibStub\LibStub.lua
+Libraries\CallbackHandler-1.0\CallbackHandler-1.0.xml
+
+# --- ACE3 (Embedded) ---
+Libraries\Ace3\AceAddon-3.0\AceAddon-3.0.xml
+Libraries\Ace3\AceSerializer-3.0\AceSerializer-3.0.xml
+Libraries\Ace3\AceLocale-3.0\AceLocale-3.0.xml
+Libraries\Ace3\AceEvent-3.0\AceEvent-3.0.xml
+Libraries\Ace3\AceDB-3.0\AceDB-3.0.xml
+Libraries\Ace3\AceDBOptions-3.0\AceDBOptions-3.0.xml
+Libraries\Ace3\AceConsole-3.0\AceConsole-3.0.xml
+Libraries\Ace3\AceHook-3.0\AceHook-3.0.xml
+Libraries\Ace3\AceTimer-3.0\AceTimer-3.0.xml
+Libraries\Ace3\AceGUI-3.0\AceGUI-3.0.xml
+Libraries\Ace3\AceConfig-3.0\AceConfig-3.0.xml
+
+# --- OTHER LIBS ---
+Libraries\LibSharedMedia-3.0\lib.xml
+Libraries\LibRangeCheck-3.0\LibRangeCheck-3.0.lua
+Libraries\LibDeflate\lib.xml
+Libraries\LibDualSpec-1.0\LibDualSpec-1.0.lua
+Libraries\LibActionButton-1.0\LibActionButton-1.0.lua
+Libraries\LibWindow-1.1\LibWindow-1.1.lua
+Libraries\LibKeyBound-1.0\lib.xml
+Libraries\LibButtonGlow-1.0\LibButtonGlow-1.0.lua
+
+# --- FRAMEWORK oUF ---
+Libraries\oUF\oUF.xml
+Libraries\AuraKit.lua
+
+
+# =============================================================================
+# 2. THE CORE (Brain, Widgets & Options)
+# =============================================================================
+# El orden aquí es vital para la nueva arquitectura
+KullThranUI.lua
+Config.lua
+Widgets.lua
+Options.lua
+Core.lua                        
+Locales\Core.lua
+Locales\Languages\enUS.lua
+Locales\Languages\esES.lua
+Locales\Languages\frFR.lua
+Locales\Languages\deDE.lua
+Locales\Languages\itIT.lua
+Locales\Languages\ptBR.lua
+Locales\Languages\ruRU.lua
+Locales\Languages\koKR.lua
+Locales\Languages\zhTW.lua
+Locales\Languages\zhCN.lua
+Locales\Modules\DamageMeter.lua
+Locales\Modules\InstallerModules.lua
+Locales\Modules\InstallerCoverage.lua
+Locales\Overrides.lua
+Locales\Version_5_0.lua
+Locales\Modules\ObjectiveTracker.lua
+Locales\Modules\MythicPlusHistory.lua
+Locales\Modules\BlizzMove.lua
+Locales\Modules\OptionsCoverage.lua
+Locales\Modules\FontsColors.lua
+Locales\Modules\OptionsGaps.lua
+Locales\Modules\CooldownManager.lua
+Locales\Modules\AuraReminders.lua
+Locales\Generated.lua
+Modules\Defaults\Defaults.lua               
+
+## Callbacks
+Modules\RefreshCallbacks.lua
+Modules\TexturedSurface.lua
+Modules\ArmoryProgressBridge.lua
+
+# --- CLASSES ---
+Classes\Bar.lua
+Classes\Editors.lua
+
+
+# =============================================================================
+# 3. MODULES (Arms and Legs)
+# =============================================================================
+
+# --- MAIN MODULES ---
+Modules\GlobalFont.lua
+Modules\FontsColors.lua
+Modules\KT_UnlockMode.lua        
+Modules\Profiles.lua
+Modules\AddonConflictDetector.lua
+
+# --- MODULE ADDONS ---
+# Los modulos que exponen paginas de configuracion se cargan ahora como addons separados (carpetas KullThranUI_*).
+# Esto permite activarlos/desactivarlos desde la lista de AddOns de WoW sin tocar este TOC.
+
+# --- KUI COOLDOWN MANAGER (Orden de carga crítico) ---
+
+# --- KUI AURA REMINDERS ---
+
+# --- KUI Custom Progress Bars (detached) ---
+
+# --- KUI RESOURCE BARS ---
+
+# --- SKINS ---
+
+# --- OTHER MODULES ---
+Modules\Profilehandlers\Profilehandlers.lua
+Modules\Profilehandlers\Profiledata.lua
+Modules\Profiler.lua
+Modules\CombatCPUProfiler.lua
+
+# --- EXTERNAL INTEGRATION ---
+# Modules\Grid2Integration.lua

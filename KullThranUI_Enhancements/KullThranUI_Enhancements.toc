@@ -1,0 +1,33 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Enhancements
+## Notes: KullThranUI module: Enhancements
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+
+# Runtime ownership lives in this addon. The source remains centralized in the
+# core folder so releases cannot ship two divergent copies.
+..\KullThranUI\Modules\BlizzMove\BlizzMove.lua
+..\KullThranUI\Modules\BlizzMove\BlizzMoveAPI.lua
+..\KullThranUI\Modules\BlizzMove\BlizzMoveConfig.lua
+..\KullThranUI\Modules\BlizzMove\Frames.lua
+..\KullThranUI\Modules\BlizzardFrames.lua
+..\KullThranUI\Modules\DurabilityMovable.lua
+..\KullThranUI\Modules\EscapeMenu.lua
+..\KullThranUI\Modules\StackCountFix.lua
+..\KullThranUI\Modules\Interrupts\Interrupts.lua
+..\KullThranUI\Modules\Interrupts\InterruptsGlow.lua
+
+..\KullThranUI\Modules\Enhancements\Enhancements.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_DamageMeter.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_QOL.lua
+..\KullThranUI\Modules\Enhancements\EnhancedFriendList.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusCombatTimer.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistory.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistoryUI.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_CombatTimer.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_Options.lua
+

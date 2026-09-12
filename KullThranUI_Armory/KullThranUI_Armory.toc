@@ -1,0 +1,11 @@
+## Interface: 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Armory
+## Notes: KullThranUI module: Armory
+## Author: KullThran
+## Version: 5.0.6
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Armory\Armory.lua
+Modules\Armory\Armory_Options.lua
