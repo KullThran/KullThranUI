@@ -1,15 +1,49 @@
 package-as: KullThranUI
 
-package-dir: KullThranUI
+move-folders:
+  KullThranUI/KullThranUI: KullThranUI
+  KullThranUI/KullThranUI_ActionBars: KullThranUI_ActionBars
+  KullThranUI/KullThranUI_Armory: KullThranUI_Armory
+  KullThranUI/KullThranUI_AuraReminders: KullThranUI_AuraReminders
+  KullThranUI/KullThranUI_Bags: KullThranUI_Bags
+  KullThranUI/KullThranUI_BuffsAndDebuffs: KullThranUI_BuffsAndDebuffs
+  KullThranUI/KullThranUI_CastBar: KullThranUI_CastBar
+  KullThranUI/KullThranUI_Chat: KullThranUI_Chat
+  KullThranUI/KullThranUI_CooldownManager: KullThranUI_CooldownManager
+  KullThranUI/KullThranUI_Cursor: KullThranUI_Cursor
+  KullThranUI/KullThranUI_DragonRiding: KullThranUI_DragonRiding
+  KullThranUI/KullThranUI_Enhancements: KullThranUI_Enhancements
+  KullThranUI/KullThranUI_ExperienceBar: KullThranUI_ExperienceBar
+  KullThranUI/KullThranUI_ExternalAddons: KullThranUI_ExternalAddons
+  KullThranUI/KullThranUI_InspectArmory: KullThranUI_InspectArmory
+  KullThranUI/KullThranUI_Installer: KullThranUI_Installer
+  KullThranUI/KullThranUI_Minimap: KullThranUI_Minimap
+  KullThranUI/KullThranUI_Nameplates: KullThranUI_Nameplates
+  KullThranUI/KullThranUI_ObjectiveTracker: KullThranUI_ObjectiveTracker
+  KullThranUI/KullThranUI_PartyFrames: KullThranUI_PartyFrames
+  KullThranUI/KullThranUI_ResourceBars: KullThranUI_ResourceBars
+  KullThranUI/KullThranUI_Skins: KullThranUI_Skins
+  KullThranUI/KullThranUI_TeleportMenu: KullThranUI_TeleportMenu
+  KullThranUI/KullThranUI_Tooltip: KullThranUI_Tooltip
+  KullThranUI/KullThranUI_UnitFrames: KullThranUI_UnitFrames
 
 manual-changelog:
-  filename: CHANGELOG.md
-  markup: markdown
+  filename: KullThranUI/CHANGELOG.md
+  markup-type: markdown
 
 enable-nolib-creation: no
 
-tools:
-  curseforge:
-    project-id: 1448826
-  wago:
-    project-slug: rNkye4Ka
+ignore:
+  - .github
+  - .agents
+  - .codex
+  - .codex-backups
+  - .vscode
+  - Backups
+  - node_modules
+  - "*.cmd"
+  - "*.js"
+  - "*.json"
+  - "*.out"
+  - "*.ps1"
+  - "*.py"
