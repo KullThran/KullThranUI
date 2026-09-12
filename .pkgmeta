@@ -27,10 +27,6 @@ move-folders:
   KullThranUI/KullThranUI_Tooltip: KullThranUI_Tooltip
   KullThranUI/KullThranUI_UnitFrames: KullThranUI_UnitFrames
 
-manual-changelog:
-  filename: KullThranUI/CHANGELOG.md
-  markup-type: markdown
-
 enable-nolib-creation: no
 
 ignore:
