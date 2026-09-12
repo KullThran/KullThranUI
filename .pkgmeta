@@ -6,6 +6,9 @@ manual-changelog:
 
 enable-nolib-creation: no
 
+# Forzamos la ruta exacta donde está el TOC principal
+toc-file: KullThranUI/KullThranUI.toc
+
 tools:
   curseforge:
     project-id: 1448826
