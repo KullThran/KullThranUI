@@ -1,36 +1,33 @@
-name: Package and release
+name: Publicar Addon y Notificar
 
 on:
   push:
     tags:
-      - "v*"
-
-permissions:
-  contents: write
+      - 'v*' # Se activará solo al crear tags como "v5.0.7"
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Normalize version tag
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$version" == "$GITHUB_REF_NAME" ]]; then
-            echo "Release tags must use the v<version> format." >&2
-            exit 1
-          fi
-          git tag --delete "$GITHUB_REF_NAME"
-          git tag "$version" "$GITHUB_SHA"
-
-      - name: Package and publish
+      - name: Empaquetar y subir a Curse y Wago
         uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notificar a Discord
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: |
+            🚨 **KullThranUI Updated!** 🚨
+            
+            Version **${{ github.ref_name }}** has just been released.
+            The addon is now available to download on CurseForge and Wago.
