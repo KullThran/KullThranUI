@@ -41,16 +41,7 @@ jobs:
             cat "$changelog_tmp"
             echo "$delimiter"
           } >> "$GITHUB_ENV"
-      - name: Normalizar tag de version
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$version" == "$GITHUB_REF_NAME" ]]; then
-            echo "Los tags de release deben usar el formato v<version>." >&2
-            exit 1
-          fi
-          git tag --delete "$GITHUB_REF_NAME"
-          git tag "$version" "$GITHUB_SHA"
+
       - name: Empaquetar y subir a Curse y Wago
         uses: BigWigsMods/packager@v2
         with:
@@ -59,6 +50,7 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Notificar a Discord
         uses: Ilshidur/action-discord@master
         env:
