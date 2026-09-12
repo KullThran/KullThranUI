@@ -37,6 +37,10 @@ ignore:
   - .vscode
   - Backups
   - node_modules
+  - "KullThranUI_*/.github"
+  - "KullThranUI_*/.codex-backups"
+  - "KullThranUI_*/Backups"
+  - "KullThranUI_*/.vscode"
   - "*.cmd"
   - "*.js"
   - "*.json"
