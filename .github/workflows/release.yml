@@ -3,14 +3,14 @@ name: Publicar Addon y Notificar
 on:
   push:
     tags:
-      - 'v*' # Se activará solo al crear tags como "v5.0.7"
+      - 'v*'
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Clonar repositorio
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -21,13 +21,21 @@ jobs:
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extraer notas del parche
+        run: |
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          git tag -l --format='%(contents)' ${{ github.ref_name }} >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Notificar a Discord
         uses: Ilshidur/action-discord@master
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
-            🚨 **KullThranUI Updated!** 🚨
+            🚨 **@everyone KullThranUI Updated! (Version ${{ github.ref_name }})** 🚨
             
-            Version **${{ github.ref_name }}** has just been released.
-            The addon is now available to download on CurseForge and Wago.
+            **Changelog:**
+            ${{ env.CHANGELOG }}
+            
+            📥 *The addon is now available to download on CurseForge and Wago.*
