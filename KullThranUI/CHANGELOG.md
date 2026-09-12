@@ -5,6 +5,16 @@ Current addon version: **5.0.6**
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
 
+## 5.0.6 (2026-09-12)
+- New Feature: Mythic+ History. A detailed Mythic+ history has been added to the Enhancements module, allowing you to track completed keys and view a keystone summary breakdown, including a damage meter to see who did the most DPS during the run. NOTE: The Mythic+ History will only display all party members after activating the submodule, as KullThranUI needs to start saving the runs internally from that point forward.
+- Localization updates: Translations have been applied across all KullThranUI modules. Localization and compatibility have been expanded to cover 97% of the addon and its features. Added country flags to easily     distinguish languages. Fixed translation errors across several Widget elements and the Enhancements submodule.
+- Skins module update: New visual style applied. Improved the visibility and overall readability of the reskinned default Blizzard frames.
+- Added a scrollbar to the Widget system. It will now appear automatically in all modules that have enough options to require scrolling.
+- Added a Minimap button to open KUI options directly.
+- Fixed an issue in the Objective Tracker where the 'Scenario' header would display even when not inside an instance.
+- Fixed KUI Tracker behavior in the CooldownManager. Potion and Warlock Healthstone cooldowns will now properly reset after a raid boss wipe/reset (when the appropriate conditions are met).
+- KullThranUI is now officially available on GitHub! Future updates for CurseForge and Wago will be deployed from there, and Pull Requests will soon be enabled so the community can help improve translations.
+
 ## 5.0.5 (2026-09-05)
 - Added a configurable Combat Timer to Enhancements, with an idle display, a short final-duration hold, styling controls, Unlock Mode support, and a frame width that follows the rendered timer text.
 - Promoted Melli Reforged to the default status-bar texture across KUI, including a one-time Resource Bars migration from Melli and synchronized texture selection for health, primary, and secondary resources.
