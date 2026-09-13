@@ -26,7 +26,13 @@ jobs:
             /^## [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)/ {
               if (found) exit
               found=1
+              next
             }
+            /^- [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)/ {
+              if (found) exit
+            }
+            found && /^- (KullThranUI Changelog|Current addon version|Primary source|Secondary source)/ { next }
+            found && /^- [0-9]+\.[0-9]+\.[0-9]+ \([0-9]+-[0-9]+-[0-9]+\)/ { next }
             found { print }
           ' "$changelog_file" > "$changelog_tmp"
 
@@ -35,10 +41,20 @@ jobs:
             exit 1
           fi
 
+          # Discord allows 2000 characters per message.  Truncate if needed.
+          max_chars=1900
+          content=$(cat "$changelog_tmp")
+          if [[ ${#content} -gt $max_chars ]]; then
+            content="${content:0:$max_chars}"
+            content="${content%$'\n'*}"
+            content="$content
+            …(truncated)"
+          fi
+
           delimiter="CHANGELOG_$(uuidgen)"
           {
             echo "CHANGELOG<<$delimiter"
-            cat "$changelog_tmp"
+            echo "$content"
             echo "$delimiter"
           } >> "$GITHUB_ENV"
 

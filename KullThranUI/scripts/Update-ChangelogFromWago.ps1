@@ -69,6 +69,17 @@ function Convert-WagoChangelogToNotes {
             continue
         }
 
+        # Descarta encabezados de version con fecha: "5.0.6 (2026-09-12)"
+        if ($line -match '^v?\d+\.\d+\.\d+\s*\(\d{4}-\d{2}-\d{2}\)$') {
+            continue
+        }
+
+        # Descarta metadata que Wago incluye en el changelog
+        if ($line -match '^KullThranUI Changelog$') { continue }
+        if ($line -match '^Current addon version:') { continue }
+        if ($line -match '^Primary source:') { continue }
+        if ($line -match '^Secondary source:') { continue }
+
         $line = $line -replace '^\-\s*', ''
         $line = $line.Trim()
         if ([string]::IsNullOrWhiteSpace($line)) {
