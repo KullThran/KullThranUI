@@ -27,7 +27,7 @@ local BlizzMoveAPI = KT.BlizzMoveAPI;
 local Config = {};
 BlizzMove.Config = Config;
 
-Config.version = GetAddOnMetadata("KullThranUI", "Version") or KT.VERSION or "unknown";
+Config.version = KT.VERSION or "unknown";
 
 function Config:GetOptions()
     local leftClick = CreateAtlasMarkup('NPE_LeftClick', 18, 18);

@@ -406,13 +406,25 @@ end
 
 local teleportButtons = {}
 
+local issecretvalue = issecretvalue or function() return false end
+
 local function UpdateTeleportCooldowns()
     if InCombatLockdown() then return end -- teleports cannot be used in combat
     for _, button in pairs(teleportButtons) do
         if button:IsShown() then
             local start, duration = C_Spell.GetSpellCooldown(button.spellID)
             if duration and duration > 0 then
-                button.cd:SetCooldown(start, duration)
+                -- On WoW 12.x (Midnight) cooldown values are secret and can
+                -- only be consumed inside Blizzard's own secure execution path.
+                -- Passing them through addon-tainted code to SetCooldown on a
+                -- CooldownFrameTemplate triggers "bad argument #1 to
+                -- 'SetCooldown'" / ADDON_ACTION_BLOCKED.  Guard against that.
+                if issecretvalue(start) or issecretvalue(duration) then
+                    button.cd:SetCooldown(0, 0)
+                    button.cd:Show()
+                else
+                    button.cd:SetCooldown(start, duration)
+                end
             else
                 button.cd:Hide()
             end

@@ -1730,7 +1730,7 @@ end
 -- 1. ON INITIALIZE
 -- ============================================================================
 function KT:PrintStartupMessages()
-    local version = C_AddOns.GetAddOnMetadata(addonName, 'Version') or KT.VERSION
+    local version = KT.VERSION or "5.0.6"
     local updateAvailable = false
     local latestVersion = KT.GetLatestArchivedChangelogVersion and KT:GetLatestArchivedChangelogVersion()
     if latestVersion and KT.CompareVersions then
@@ -2021,7 +2021,7 @@ function KT:InitializeCore()
         self._installerReopenWatcher = watcher
     end
 
-    local version = C_AddOns.GetAddOnMetadata(addonName, "Version") or KT.VERSION
+    local version = KT.VERSION or "5.0.6"
     local accentR, accentG, accentB = self:GetStyleAccentRGB()
     self:Print("Welcome to |cff" .. string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r " .. version)
 end
@@ -2100,9 +2100,7 @@ function KT:MaybeAutoOpenInstaller()
         installerDb.isOpen = false
     end
 
-    local currentVersion = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
-        or (GetAddOnMetadata and GetAddOnMetadata(addonName, "Version"))
-        or KT.VERSION
+    local currentVersion = KT.VERSION or "5.0.6"
     local characterKey = self:GetInstallerCharacterKey()
     local legacyCharacterGUID = UnitGUID and UnitGUID("player")
 
@@ -2203,7 +2201,7 @@ function KT:MaybeAutoOpenInstaller()
                 self.db.global = self.db.global or {}
                 self.db.global.changelog = self.db.global.changelog or {}
                 local changelogDb = self.db.global.changelog
-                local currentVer = C_AddOns.GetAddOnMetadata("KullThranUI", "Version") or "0"
+                local currentVer = KT.VERSION or "0"
                 local suppressed = self.IsChangelogPatchSuppressed
                     and self:IsChangelogPatchSuppressed(currentVer)
                 if not suppressed then

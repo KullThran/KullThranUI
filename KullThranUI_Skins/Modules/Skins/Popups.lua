@@ -2092,7 +2092,13 @@ local NAMED_DIALOGS = {
 
 local function ReskinStaticPopup(frame)
     if not frame then return end
-    SkinStaticPopup(frame)
+    -- Do NOT call SkinStaticPopup synchronously here.  When this runs inside
+    -- HookScript("OnShow") it shares Blizzard's protected execution context.
+    -- Any cosmetic write (SetAlpha, SetFont, HookScript) in that context
+    -- dirties UIParent's layout and taints a later ActionButton update,
+    -- causing 91 000+ "SetCooldown secret values" / ADDON_ACTION_BLOCKED
+    -- errors on MultiBar buttons.  The deferred timers already re-skin the
+    -- frame safely on the next frame in a clean context.
     C_Timer.After(0, function() SkinStaticPopup(frame) end)
     C_Timer.After(0.03, function() SkinStaticPopup(frame) end)
     C_Timer.After(0.10, function() SkinStaticPopup(frame) end)
