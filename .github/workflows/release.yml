@@ -26,6 +26,7 @@ jobs:
             /^## [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)/ {
               if (found) exit
               found=1
+              print
               next
             }
             /^- [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)/ {
@@ -58,10 +59,15 @@ jobs:
             echo "$delimiter"
           } >> "$GITHUB_ENV"
 
+      - name: Obtener versión sin la v del tag
+        id: version
+        shell: bash
+        run: echo "KUI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Empaquetar y subir a Curse y Wago
         uses: BigWigsMods/packager@v2
         with:
-          args: '-n "{package-name} {project-version}:{package-name} {project-version}"'
+          args: '-n "KullThranUI ${{ steps.version.outputs.KUI_VERSION }}:KullThranUI ${{ steps.version.outputs.KUI_VERSION }}"'
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
