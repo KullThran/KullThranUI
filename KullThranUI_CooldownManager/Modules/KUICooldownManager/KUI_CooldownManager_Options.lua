@@ -341,7 +341,7 @@ local function DB()
         if not p.customTracker[key].spells then p.customTracker[key].spells = {} end
         if key == "potion" then
             local quality = tostring(p.customTracker[key].potionQuality or "highest")
-            if quality ~= "highest" and quality ~= "1" and quality ~= "2" and quality ~= "3" then
+            if quality ~= "highest" and quality ~= 'most' and quality ~= "1" and quality ~= "2" and quality ~= "3" then
                 quality = "highest"
             end
             p.customTracker[key].potionQuality = quality
@@ -2342,6 +2342,7 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
             _, h = W:Dropdown(sc, LText("Potion Quality"), -y,
                 {
                     highest = LText("Highest Available"),
+                    most = LText('Most Available'),
                     ["1"] = LText("Quality 1"),
                     ["2"] = LText("Quality 2"),
                     ["3"] = LText("Quality 3 (Legacy)"),
@@ -2349,14 +2350,14 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
                 function() return tostring(ct[tk].potionQuality or "highest") end,
                 function(v)
                     v = tostring(v or "highest")
-                    if v ~= "1" and v ~= "2" and v ~= "3" then v = "highest" end
+                    if v ~= "most" and v ~= "1" and v ~= "2" and v ~= "3" then v = "highest" end
                     ct[tk].potionQuality = v
                     if ns.ScheduleKUITrackerSync then
                         ns.ScheduleKUITrackerSync(0.05, "potion_quality")
                     end
                     Refresh()
                 end,
-                { "highest", "1", "2", "3" }
+                { "highest", "most", "1", "2", "3" }
             ); y = y + h
 
             _, h = W:Toggle(sc, LText("Track Mana Potions"), -y,

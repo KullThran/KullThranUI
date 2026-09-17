@@ -605,9 +605,15 @@ local AURAS = {
     -- so either buff satisfies the "in Shadowform" requirement.
     { key="shadowform", class="PRIEST",  name="Shadowform",        castSpell=232698, buffIDs={232698, 194249},
       check="player", specs={258}, combatOk=false },
-    -- Devotion Aura: simple player buff check, OOC only
+    -- Paladin Auras: only one aura can be active at a time. Keep each spell as
+    -- its own option, while CollectAuras collapses the active reminder to one
+    -- icon so enabling all three does not create duplicate warnings.
     { key="devo_aura",  class="PALADIN", name="Devotion Aura", castSpell=465,
-      buffIDs={465,32223,317920}, instanceBuffIDs={465}, check="player", combatOk=false, noPvP=true },
+      buffIDs={465}, instanceBuffIDs={465}, check="player", combatOk=false, noPvP=true, paladinAura=true },
+    { key="crusader_aura", class="PALADIN", name="Crusader Aura", castSpell=32223,
+      buffIDs={32223}, check="player", combatOk=false, noPvP=true, paladinAura=true },
+    { key="concentration_aura", class="PALADIN", name="Concentration Aura", castSpell=317920,
+      buffIDs={317920}, check="player", combatOk=false, noPvP=true, paladinAura=true },
     -- Beacon of Light: standalone IsSpellOverlayed system (not checked by CollectAuras)
     { key="bol",        class="PALADIN", name="Beacon of Light",   castSpell=53563,  buffIDs={53563},
       standalone=true, notIfKnown=200025 },
@@ -1082,7 +1088,8 @@ local defaults = {
             scale = 1.0,
             enabled = {
                 symbiotic=true, battle_stance=true, def_stance=true, berserk_stance=true, shadowform=true,
-                devo_aura=true, bol=true, bof=true, som=true, blistering_scales=true,
+                devo_aura=true, crusader_aura=true, concentration_aura=true,
+                bol=true, bof=true, som=true, blistering_scales=true,
                 bestow_weyrnstone=true, timelessness=true,
             },
         },
@@ -1791,9 +1798,34 @@ end
 local function CollectAuras(missing, playerClass, specID, inInstance, inCombat)
 local au = db.profile.auras
 if inInstance or au.showNonInstanced then
+    -- Paladin auras are mutually exclusive. The individual entries remain
+    -- configurable, but when several are enabled we only need one reminder:
+    -- no icon while any enabled aura is active, otherwise the first enabled
+    -- aura is used as the actionable reminder.
+    local paladinAuraActive = false
+    local paladinAuraReminderAdded = false
+    if playerClass == "PALADIN" and not inCombat then
+        for _, paladinAura in ipairs(AURAS) do
+            if paladinAura.paladinAura
+                and au.enabled[paladinAura.key]
+                and Known(paladinAura.castSpell)
+                and not (paladinAura.noPvP and AR.InPvPInstance()) then
+                local paladinCheckIDs = (inInstance and paladinAura.instanceBuffIDs) or paladinAura.buffIDs
+                if PlayerHasAuraByID(paladinCheckIDs) then
+                    paladinAuraActive = true
+                    break
+                end
+            end
+        end
+    end
+
     for _, aura in ipairs(AURAS) do
         if aura.standalone then
             -- Handled by standalone system, skip
+        elseif aura.paladinAura and paladinAuraActive then
+            -- One of the enabled paladin auras is already active.
+        elseif aura.paladinAura and paladinAuraReminderAdded then
+            -- The mutually-exclusive aura group gets a single actionable icon.
         elseif au.enabled[aura.key] and (aura.class == playerClass) and Known(aura.castSpell)
            and not (aura.notIfKnown and Known(aura.notIfKnown))
            and not (aura.noPvP and AR.InPvPInstance()) then
@@ -1851,6 +1883,9 @@ if inInstance or au.showNonInstanced then
                         isMissing = not PlayerHasAuraByID(checkIDs)
                     end
                     if isMissing then
+                        if aura.paladinAura then
+                            paladinAuraReminderAdded = true
+                        end
                         missing[#missing+1] = {
                             cat = "aura", data = aura, scale = au.scale or 1.0,
                             setup = function(btn)

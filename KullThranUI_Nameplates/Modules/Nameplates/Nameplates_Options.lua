@@ -2637,6 +2637,9 @@ initFrame:SetScript("OnEvent", function(self)
             local fontPath = (KT and KT.GetNPFontPath and KT.GetNPFontPath("nameplates")) or DBVal("font") or KT.FONT_PATH
             local outline = GetNPOptOutline()
             fs:SetFont(fontPath, size or 11, outline)
+            if KT and KT.EnableTextFontFallback then
+                KT:EnableTextFontFallback(fs, fontPath)
+            end
             if outline == "" and KT.GetNPFontUseShadow and KT.GetNPFontUseShadow() then
                 fs:SetShadowOffset(1, -1)
                 fs:SetShadowColor(0, 0, 0, 1)

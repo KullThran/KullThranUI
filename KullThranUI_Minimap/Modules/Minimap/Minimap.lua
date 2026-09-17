@@ -638,6 +638,42 @@ local function HookMinimapShowRefresh(frame)
     end)
 end
 
+local function QueueCinematicMinimapRestore()
+    if not Mod then
+        return
+    end
+
+    Mod._ktCinematicRestoreToken = (Mod._ktCinematicRestoreToken or 0) + 1
+    local token = Mod._ktCinematicRestoreToken
+    for _, delay in ipairs({ 0, 0.10, 0.35, 0.75 }) do
+        C_Timer.After(delay, function()
+            if not Mod or token ~= Mod._ktCinematicRestoreToken then
+                return
+            end
+
+            -- The cinematic frame can still be visible for one frame after the
+            -- stop event. Let its OnHide hook queue the actual restore instead.
+            if (_G.CinematicFrame and _G.CinematicFrame:IsShown())
+                or (_G.MovieFrame and _G.MovieFrame:IsShown()) then
+                return
+            end
+
+            if Mod.RestoreEditModeMinimapPosition then
+                Mod:RestoreEditModeMinimapPosition(true)
+            end
+        end)
+    end
+end
+
+local function HookCinematicMinimapRestore(frame)
+    if not (frame and frame.HookScript) or frame._ktMinimapRestoreHooked then
+        return
+    end
+
+    frame._ktMinimapRestoreHooked = true
+    frame:HookScript("OnHide", QueueCinematicMinimapRestore)
+end
+
 local function FetchClockText()
     local hour, minute = GetGameTime()
     if not hour or not minute then
@@ -769,6 +805,54 @@ local function DumpFrameInfo(frame, label)
     ))
 end
 
+local function DumpDifficultyObject(frame, label, depth)
+    if not frame or (depth or 0) > 2 then
+        return
+    end
+
+    DumpFrameInfo(frame, label)
+
+    if frame.IsObjectType and frame:IsObjectType("Texture") then
+        local texture = frame.GetTexture and frame:GetTexture() or "nil"
+        local atlas = frame.GetAtlas and frame:GetAtlas() or "nil"
+        local red, green, blue, alpha = frame.GetVertexColor and frame:GetVertexColor()
+        local left, right, top, bottom = frame.GetTexCoord and frame:GetTexCoord()
+        EmitDebug(string.format(
+            "%s texture=%s atlas=%s vertex=%.2f/%.2f/%.2f/%.2f uv=%.3f/%.3f/%.3f/%.3f",
+            tostring(label),
+            tostring(texture),
+            tostring(atlas),
+            tonumber(red) or -1,
+            tonumber(green) or -1,
+            tonumber(blue) or -1,
+            tonumber(alpha) or -1,
+            tonumber(left) or -1,
+            tonumber(right) or -1,
+            tonumber(top) or -1,
+            tonumber(bottom) or -1
+        ))
+        return
+    end
+
+    if frame.GetRegions then
+        for index = 1, select("#", frame:GetRegions()) do
+            local region = select(index, frame:GetRegions())
+            if region and region.IsObjectType and region:IsObjectType("Texture") then
+                DumpDifficultyObject(region, label .. ".region" .. index, (depth or 0) + 1)
+            end
+        end
+    end
+
+    if frame.GetChildren then
+        for index = 1, select("#", frame:GetChildren()) do
+            local child = select(index, frame:GetChildren())
+            if child then
+                DumpDifficultyObject(child, label .. ".child" .. index, (depth or 0) + 1)
+            end
+        end
+    end
+end
+
 function Mod:OnInitialize()
     KT.db.profile.minimap = KT.db.profile.minimap or {
         enable = true,
@@ -848,6 +932,8 @@ function Mod:OnEnable()
     self:RegisterEvent("ZONE_CHANGED", "UpdateZone")
     self:RegisterEvent("ZONE_CHANGED_INDOORS", "UpdateZone")
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "UpdateZone")
+    self:RegisterEvent("PLAYER_DIFFICULTY_CHANGED", "Refresh")
+    self:RegisterEvent("UPDATE_INSTANCE_INFO", "Refresh")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")
     self:RegisterEvent("FRIENDLIST_UPDATE", "UpdateSocialStats")
     self:RegisterEvent("BN_FRIEND_INFO_CHANGED", "UpdateSocialStats")
@@ -855,11 +941,17 @@ function Mod:OnEnable()
     self:RegisterEvent("GUILD_ROSTER_UPDATE", "UpdateSocialStats")
     self:RegisterEvent("UPDATE_PENDING_MAIL", "UpdateOverlayVisibility")
     self:RegisterEvent("CVAR_UPDATE", "OnCVarUpdate")
+    self:RegisterEvent("CINEMATIC_STOP", "OnCinematicStop")
+    self:RegisterEvent("STOP_MOVIE", "OnCinematicStop")
+
+    HookCinematicMinimapRestore(_G.CinematicFrame)
+    HookCinematicMinimapRestore(_G.MovieFrame)
 
     local function runMinimapDebug()
         EmitDebug("|cFF00FFFF[KT Minimap Debug]|r dump")
         DumpFrameInfo(Minimap, "Minimap")
         DumpFrameInfo(_G.MinimapCluster, "MinimapCluster")
+        DumpDifficultyObject(_G.MinimapCluster and _G.MinimapCluster.InstanceDifficulty, "MinimapCluster.InstanceDifficulty", 0)
         DumpFrameInfo(_G.KT_MinimapHolder_Main, "KT_MinimapHolder_Main")
         DumpFrameInfo(_G.KT_MinimapZoneText, "KT_MinimapZoneText")
         DumpFrameInfo(_G.KT_MinimapLocation, "KT_MinimapLocation")
@@ -875,9 +967,9 @@ function Mod:OnEnable()
         DumpFrameInfo(_G.GameTimeFrame, "GameTimeFrame")
         DumpFrameInfo(_G.TimeManagerClockButton, "TimeManagerClockButton")
         DumpFrameInfo(_G.MiniMapMailFrame, "MiniMapMailFrame")
-        DumpFrameInfo(_G.MiniMapInstanceDifficulty, "MiniMapInstanceDifficulty")
-        DumpFrameInfo(_G.GuildInstanceDifficulty, "GuildInstanceDifficulty")
-        DumpFrameInfo(_G.InstanceDifficultyHeadBanner, "InstanceDifficultyHeadBanner")
+        DumpDifficultyObject(_G.MiniMapInstanceDifficulty, "MiniMapInstanceDifficulty", 0)
+        DumpDifficultyObject(_G.GuildInstanceDifficulty, "GuildInstanceDifficulty", 0)
+        DumpDifficultyObject(_G.InstanceDifficultyHeadBanner, "InstanceDifficultyHeadBanner", 0)
 
         for _, child in ipairs({ Minimap:GetChildren() }) do
             if child and child.IsShown and child:IsShown() then
@@ -1283,6 +1375,131 @@ function Mod:UpdatePixelPerfectBorder()
         segment:Show()
     end
 end
+local function SetDifficultyTextureColor(frame, red, green, blue)
+    if not frame then
+        return
+    end
+
+    if frame.SetBackdropColor then
+        frame:SetBackdropColor(red, green, blue, 1)
+    end
+    if frame.SetBackdropBorderColor then
+        frame:SetBackdropBorderColor(red, green, blue, 1)
+    end
+
+    if frame.IsObjectType and frame:IsObjectType("Texture") then
+        if frame.SetVertexColor then
+            frame:SetVertexColor(red, green, blue, 1)
+        end
+        return
+    end
+
+    if frame.GetRegions then
+        for index = 1, select("#", frame:GetRegions()) do
+            local region = select(index, frame:GetRegions())
+            if region and region.IsObjectType and region:IsObjectType("Texture") and region.SetVertexColor then
+                region:SetVertexColor(red, green, blue, 1)
+            end
+        end
+    end
+
+    if frame.GetChildren then
+        for index = 1, select("#", frame:GetChildren()) do
+            SetDifficultyTextureColor(select(index, frame:GetChildren()), red, green, blue)
+        end
+    end
+end
+
+local function GetDifficultyVisualColor()
+    local _, _, difficultyID = GetInstanceInfo()
+    local red, green, blue = 0.40, 0.80, 1.00 -- Normal: light blue
+
+    if difficultyID and GetDifficultyInfo then
+        local _, _, isHeroic, isChallengeMode, displayHeroic, displayMythic = GetDifficultyInfo(difficultyID)
+        if isChallengeMode or displayMythic then
+            red, green, blue = 0.65, 0.20, 0.90 -- Mythic: purple
+        elseif isHeroic or displayHeroic then
+            red, green, blue = 0.65, 0.08, 0.08 -- Heroic: dark red
+        end
+    end
+
+    return red, green, blue
+end
+local function ApplyNativeDifficultyColor(frame)
+    local red, green, blue = GetDifficultyVisualColor()
+    SetDifficultyTextureColor(frame, red, green, blue)
+end
+
+local function RestoreNativeInstanceDifficulty()
+    if not holder then
+        return
+    end
+
+    local cluster = _G.MinimapCluster
+    local modern = cluster and cluster.InstanceDifficulty
+    local legacy = _G.MiniMapInstanceDifficulty
+    local headBanner = _G.InstanceDifficultyHeadBanner
+    local primary = modern
+
+    local function IsDescendant(frame, ancestor)
+        if not (frame and ancestor and frame.GetParent) then
+            return false
+        end
+
+        local parent = frame:GetParent()
+        while parent do
+            if parent == ancestor then
+                return true
+            end
+            parent = parent.GetParent and parent:GetParent()
+        end
+        return false
+    end
+
+    if not primary or (legacy and legacy.IsShown and legacy:IsShown() and primary.IsShown and not primary:IsShown()) then
+        primary = legacy
+    end
+
+    local indicators = {}
+    if primary then
+        indicators[#indicators + 1] = primary
+    end
+    if headBanner and not IsDescendant(headBanner, primary) then
+        indicators[#indicators + 1] = headBanner
+    end
+
+    for _, frame in ipairs(indicators) do
+        if frame and frame.ClearAllPoints and frame.SetPoint then
+            local isTexture = frame.IsObjectType and frame:IsObjectType("Texture")
+
+            if frame.SetParent and frame:GetParent() ~= holder then
+                frame:SetParent(holder)
+            end
+
+            frame:ClearAllPoints()
+            frame:SetPoint("TOPRIGHT", holder, "TOPRIGHT", -2, -2)
+
+            if not isTexture and frame.SetSize then
+                frame:SetSize(38, 46)
+            end
+            if frame.SetScale then
+                frame:SetScale(1)
+            end
+            if frame.SetAlpha then
+                frame:SetAlpha(1)
+            end
+            if not isTexture and frame.SetFrameStrata then
+                frame:SetFrameStrata(holder:GetFrameStrata() or "MEDIUM")
+            end
+            if not isTexture and frame.SetFrameLevel then
+                frame:SetFrameLevel(holder:GetFrameLevel() + 8)
+            end
+
+            ApplyNativeDifficultyColor(frame)
+        end
+    end
+end
+
 function Mod:CreateLayout()
     if holder or not Minimap then
         return
@@ -1564,6 +1781,55 @@ function Mod:ApplyDefaultOffset()
     self.db.defaultOffsetVersion = DEFAULT_OFFSET_VERSION
 end
 
+function Mod:RestoreConfiguredClusterPosition(force)
+    local cluster = _G.MinimapCluster
+    if not (cluster and UIParent and cluster.GetPoint and cluster.ClearAllPoints and cluster.SetPoint) then
+        return
+    end
+
+    local point, relativeTo, relativePoint, offsetX, offsetY = cluster:GetPoint(1)
+    local isConfiguredPosition = point == "TOPRIGHT"
+        and relativePoint == "TOPRIGHT"
+        and (relativeTo == UIParent or relativeTo == nil)
+        and math.abs((tonumber(offsetX) or 0) + 20) < 1
+        and math.abs((tonumber(offsetY) or 0) + 20) < 1
+
+    if not force and isConfiguredPosition then
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return
+    end
+
+    self._ktRestoringClusterPosition = true
+    pcall(function()
+        cluster:ClearAllPoints()
+        cluster:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -20, -20)
+        if cluster.SetUserPlaced then
+            cluster:SetUserPlaced(true)
+        end
+    end)
+    self._ktRestoringClusterPosition = nil
+end
+
+function Mod:RestoreMinimapInteraction()
+    local cluster = _G.MinimapCluster
+    for _, frame in ipairs({ Minimap, cluster }) do
+        if frame then
+            if frame.EnableMouse then
+                pcall(frame.EnableMouse, frame, true)
+            end
+            if frame.SetMouseClickEnabled then
+                pcall(frame.SetMouseClickEnabled, frame, true)
+            end
+        end
+    end
+
+    if holder and holder.EnableMouse then
+        holder:EnableMouse(false)
+    end
+end
+
 function Mod:RememberClusterSize()
     local cluster = _G.MinimapCluster
     if not (cluster and cluster.GetWidth and cluster.GetHeight) then
@@ -1625,6 +1891,7 @@ function Mod:Refresh()
     isSquare = self.db.shape == "SQUARE"
 
     self:CreateLayout()
+    RestoreNativeInstanceDifficulty()
     self:ApplyMask()
     self:HandleBorders()
     self:ApplyZoneAnchor()
@@ -1633,6 +1900,8 @@ function Mod:Refresh()
 
     Minimap:SetScale(self.db.scale or 1)
     self:ApplyDefaultOffset()
+    self:RestoreConfiguredClusterPosition()
+    self:RestoreMinimapInteraction()
     self:UpdatePixelPerfectBorder()
 
     self:UpdateFonts()
@@ -1692,7 +1961,10 @@ function Mod:RefreshAfterUIShow()
     self:HandleBorders()
     Minimap:SetScale(self.db.scale or 1)
     self:UpdatePixelPerfectBorder()
+    self:RestoreConfiguredClusterPosition()
+    self:RestoreMinimapInteraction()
     self:RestoreClusterSize()
+
 
     if holder then
         holder:ClearAllPoints()
@@ -1734,9 +2006,9 @@ function Mod:RefreshAfterUIShow()
     self._ktRefreshingAfterUIShow = nil
 end
 
-function Mod:RestoreEditModeMinimapPosition()
+function Mod:RestoreEditModeMinimapPosition(force)
     local now = GetTimePreciseSec and GetTimePreciseSec() or 0
-    if self._ktLastRestoreEditModeAt and (now - self._ktLastRestoreEditModeAt) < 0.10 then
+    if not force and self._ktLastRestoreEditModeAt and (now - self._ktLastRestoreEditModeAt) < 0.10 then
         return
     end
     self._ktLastRestoreEditModeAt = now
@@ -1751,11 +2023,18 @@ function Mod:RestoreEditModeMinimapPosition()
         pcall(editMode.RestoreAllPositions, editMode)
     end
 
+    self:RestoreConfiguredClusterPosition(force)
+    self:RestoreMinimapInteraction()
+
     if Mod and Mod.RefreshAfterUIShow then
         Mod:RefreshAfterUIShow()
     end
 
     self._ktRestoringEditMode = nil
+end
+
+function Mod:OnCinematicStop()
+    QueueCinematicMinimapRestore()
 end
 
 function Mod:OnCVarUpdate(_, name, value)
@@ -2410,31 +2689,6 @@ function Mod:SuppressLegacyMinimapStats()
         end
     end
 
-    local difficultyFrames = {
-        (_G.MinimapCluster and _G.MinimapCluster.InstanceDifficulty) or nil,
-        _G.MiniMapInstanceDifficulty,
-        _G.GuildInstanceDifficulty,
-        _G.InstanceDifficultyHeadBanner,
-    }
-
-    for _, frame in ipairs(difficultyFrames) do
-        if frame then
-            if frame:GetParent() ~= self.hiddenFrame then
-                SafeHideFrame(frame, self.hiddenFrame)
-                frame:ClearAllPoints()
-                frame:SetPoint("TOPLEFT", self.hiddenFrame, "TOPLEFT", 0, 0)
-                frame.Show = function() end
-                frame:SetAlpha(0)
-            end
-            if not frame._ktHideHooked then
-                hooksecurefunc(frame, "Show", function(widget)
-                    widget:Hide()
-                    widget:SetAlpha(0)
-                end)
-                frame._ktHideHooked = true
-            end
-        end
-    end
 end
 
 function Mod:GetOptions()

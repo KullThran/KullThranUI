@@ -418,27 +418,35 @@ function H:Complete()
             local damageMembers = {}
             for _, m in ipairs(run.members or {}) do
                 m.damageRank, m.damageTotal, m.damageDPS = nil, nil, nil
-                for _, raw in ipairs(sources) do
+                for sourceIndex, raw in ipairs(sources) do
                     local src = tbl(raw)
                     local sourceGUID = src and text(src.sourceGUID)
+                    if not sourceGUID and src and plain(src.isLocalPlayer) and src.isLocalPlayer == true then
+                        sourceGUID = guid('player')
+                    end
                     local sourceName = src and text(src.name)
                     local matches = sourceGUID and m.guid and sourceGUID == m.guid
-                    if not sourceGUID and sourceName and m.name then
+                    if not matches and sourceName and m.name then
                         matches = sourceName == m.name or sourceName == m.name .. "-" .. (m.realm or "")
                     end
                     local total = src and number(src.totalAmount)
-                    if matches and total and total >= 0 then
-                        m.damageTotal = total
-                        m.damageDPS = number(src.amountPerSecond)
-                        local seconds = number(session.durationSeconds)
-                        if not m.damageDPS and seconds and seconds > 0 then m.damageDPS = total / seconds end
-                        damageMembers[#damageMembers+1] = m
+                    if matches then
+                        if total and total >= 0 then
+                            m.damageTotal = total
+                            m.damageDPS = number(src.amountPerSecond)
+                            local seconds = number(session.durationSeconds)
+                            if not m.damageDPS and seconds and seconds > 0 then m.damageDPS = total / seconds end
+                        end
+                        damageMembers[#damageMembers+1] = {member = m, total = total, sourceIndex = sourceIndex}
                         break
                     end
                 end
             end
-            table.sort(damageMembers, function(a,b) return a.damageTotal > b.damageTotal end)
-            for rank = 1, math.min(3, #damageMembers) do damageMembers[rank].damageRank = rank end
+            table.sort(damageMembers, function(a,b)
+                if a.total ~= nil and b.total ~= nil and a.total ~= b.total then return a.total > b.total end
+                return a.sourceIndex < b.sourceIndex
+            end)
+            for rank = 1, math.min(3, #damageMembers) do damageMembers[rank].member.damageRank = rank end
         end
     end
 

@@ -19,11 +19,29 @@ local function getFontPath()
     return "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
 end
 
+local function damageValue(member)
+    if type(member.damageTotal) == 'number' then return member.damageTotal end
+    if type(member.damageDPS) == 'number' then return member.damageDPS end
+end
+local function buildDamageRanks(members)
+    local ranked, ranks = {}, {}
+    for _, member in ipairs(members or {}) do
+        local value = damageValue(member)
+        if value and value >= 0 then ranked[#ranked + 1] = {member = member, value = value} end
+    end
+    table.sort(ranked, function(a, b) return a.value > b.value end)
+    for rank = 1, math.min(3, #ranked) do ranks[ranked[rank].member] = rank end
+    return ranks
+end
 local function label(parent, size, x, y, width)
+    local fontPath = getFontPath()
     local fs = parent:CreateFontString(nil, "OVERLAY")
     local config = H:Config()
     fs:SetFont(getFontPath(), math.max(8, size * (config.fontScale or 1)), config.fontOutline or "OUTLINE")
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    if KT.EnableTextFontFallback then
+        KT:EnableTextFontFallback(fs, fontPath)
+    end
     if width then fs:SetWidth(width) end
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(false)
@@ -459,6 +477,7 @@ function H:Render(selectedID, demo)
         return (a.name or "") < (b.name or "")
     end)
     
+    local damageRanks = buildDamageRanks(sortedMembers)
     for index,card in ipairs(f.members) do
         local m = sortedMembers[index]
         card.member = m
@@ -525,6 +544,9 @@ function H:Render(selectedID, demo)
             card.rio:SetText("RIO: |cffFFFFFF" .. number(m.rio) .. "|r")
             card.gear:SetText(T("View Gear ", "Ver Equipo ") .. number(m.gearCount) .. "/16")
             
+            local damageRank = m.damageRank
+            if not damageRank or damageRank < 1 or damageRank > 3 then damageRank = damageRanks[m] end
+            m.damageRank = damageRank
             if m.damageRank and m.damageRank >= 1 and m.damageRank <= 3 then
                 local colors = { {1, .76, .18}, {.82, .87, .94}, {.80, .46, .24} }
                 local c = colors[m.damageRank]
@@ -626,6 +648,9 @@ function H:RefreshStyle()
     local color = config.textColor or {r=.93,g=.93,b=.93}
     for _, entry in ipairs(self.fontStrings or {}) do
         entry.fs:SetFont(getFontPath(), math.max(8, entry.size * (config.fontScale or 1)), config.fontOutline or "OUTLINE")
+        if KT.EnableTextFontFallback then
+            KT:EnableTextFontFallback(entry.fs, getFontPath())
+        end
         entry.fs:SetTextColor(color.r,color.g,color.b,color.a or 1)
     end
     if self.window and self.window:IsShown() then self:Render(self.selectedID) end

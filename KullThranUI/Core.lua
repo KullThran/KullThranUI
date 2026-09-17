@@ -1730,7 +1730,7 @@ end
 -- 1. ON INITIALIZE
 -- ============================================================================
 function KT:PrintStartupMessages()
-    local version = KT.VERSION or "5.0.6"
+    local version = KT.VERSION or "5.0.7"
     local updateAvailable = false
     local latestVersion = KT.GetLatestArchivedChangelogVersion and KT:GetLatestArchivedChangelogVersion()
     if latestVersion and KT.CompareVersions then
@@ -2021,7 +2021,7 @@ function KT:InitializeCore()
         self._installerReopenWatcher = watcher
     end
 
-    local version = KT.VERSION or "5.0.6"
+    local version = KT.VERSION or "5.0.7"
     local accentR, accentG, accentB = self:GetStyleAccentRGB()
     self:Print("Welcome to |cff" .. string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r " .. version)
 end
@@ -2100,7 +2100,7 @@ function KT:MaybeAutoOpenInstaller()
         installerDb.isOpen = false
     end
 
-    local currentVersion = KT.VERSION or "5.0.6"
+    local currentVersion = KT.VERSION or "5.0.7"
     local characterKey = self:GetInstallerCharacterKey()
     local legacyCharacterGUID = UnitGUID and UnitGUID("player")
 

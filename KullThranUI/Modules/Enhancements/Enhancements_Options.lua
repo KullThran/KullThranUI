@@ -65,6 +65,10 @@ local function Refresh(opts)
     if Mod and Mod.RefreshSettings then
         Mod:RefreshSettings()
     end
+    local skins = KT and KT.GetModule and KT:GetModule('Skins', true)
+    if skins and skins.RefreshLFGClassBars then
+        skins:RefreshLFGClassBars()
+    end
     if opts and opts.rebuild and KT and KT.RefreshPage then
         KT:RefreshPage(true)
     end
@@ -1989,6 +1993,20 @@ local function BuildUIClutterBlock(container, W, db)
     })
 end
 
+local function BuildLFGVisualsBlock(container, W, db)
+    return AddToggleList(container, W, {
+        {
+            label = LText('Show LFG class color bars'),
+            get = function()
+                return db.visibility.showLFGClassBars ~= false
+            end,
+            set = function(value)
+                db.visibility.showLFGClassBars = value and true or false
+            end,
+        },
+    })
+end
+
 local function BuildTextSizeBlock(container, W, db)
     local y, h = AddToggleList(container, W, {
         { label = LText("Resize mail text"), get = function() return db.textSize.resizeMailText end, set = function(v) db.textSize.resizeMailText = v end },
@@ -2314,6 +2332,12 @@ local CATEGORY_SECTIONS = {
     },
     system = {
     },
+}
+
+CATEGORY_SECTIONS.interface[#CATEGORY_SECTIONS.interface + 1] = {
+    column = 'left',
+    title = LText('LFG Visuals'),
+    build = BuildLFGVisualsBlock,
 }
 
 local function BuildActiveCategory(parent, W, db)

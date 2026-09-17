@@ -1208,8 +1208,251 @@ local function PreserveLFGActionButton(button, size, fallbackText)
     if button.MiddleDisabled then button.MiddleDisabled:Show() end
     if button.RightDisabled then button.RightDisabled:Show() end
 end
+local lfgClassBars = setmetatable({}, { __mode = 'k' })
+local lfgClassBarsHooked = false
+
+local function SafeLFGValue(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    if _G.canaccessvalue and not _G.canaccessvalue(value) then return nil end
+    return value
+end
+
+local function GetLFGTableResult(fn, ...)
+    if type(fn) ~= 'function' then return nil end
+    local ok, result = pcall(fn, ...)
+    return ok and type(result) == 'table' and result or nil
+end
+
+local function IsPendingLFGStatus(status)
+    return status == 'applied' or status == 'pending'
+end
+
+local function IsLFGApplicationPending(resultID, entry)
+    -- The native entry exposes this label while an application is waiting.
+    -- Keep it as a fallback because protected/secret LFG data can make the
+    -- API result unavailable on current retail clients.
+    for _, key in ipairs({ 'PendingLabel', 'Pending' }) do
+        local pendingFrame = entry and entry[key]
+        if pendingFrame and pendingFrame.IsShown then
+            local ok, shown = pcall(pendingFrame.IsShown, pendingFrame)
+            if ok and shown == true then
+                return true
+            end
+        end
+    end
+
+    if not (resultID and C_LFGList and type(C_LFGList.GetApplicationInfo) == 'function') then
+        return false
+    end
+
+    local ok, first, second = pcall(C_LFGList.GetApplicationInfo, resultID)
+    if not ok then
+        return false
+    end
+
+    if type(first) == 'table' then
+        local applicationStatus = SafeLFGValue(first.applicationStatus or first.appStatus)
+        local pendingStatus = SafeLFGValue(first.pendingApplicationStatus or first.pendingStatus)
+        return IsPendingLFGStatus(applicationStatus) or IsPendingLFGStatus(pendingStatus)
+    end
+
+    return IsPendingLFGStatus(SafeLFGValue(first))
+        or IsPendingLFGStatus(SafeLFGValue(second))
+end
+
+local function HideLFGClassBars(entry)
+    for _, frame in ipairs(lfgClassBars[entry] or {}) do
+        frame:Hide()
+        if frame.ClassBar then frame.ClassBar:Hide() end
+    end
+end
+
+local function IsLFGClassBarsEnabled()
+    local enhancements = KT and KT.GetModule and KT:GetModule('Enhancements', true)
+    if enhancements and enhancements.GetDB then
+        local ok, db = pcall(enhancements.GetDB, enhancements)
+        if ok and type(db) == 'table' and type(db.visibility) == 'table' then
+            return db.visibility.showLFGClassBars ~= false
+        end
+    end
+    return true
+end
+
+local function IsLFGDungeonResult(info)
+    if type(info) ~= 'table' or not C_LFGList then return false end
+
+    local activityID = SafeLFGValue(info.activityID)
+    if not activityID and type(info.activityIDs) == 'table' then
+        activityID = SafeLFGValue(info.activityIDs[1])
+    end
+    if not activityID then return false end
+
+    local questID = SafeLFGValue(info.questID)
+    local activityInfo
+    if type(C_LFGList.GetActivityInfoTable) == 'function' then
+        local ok, result = pcall(C_LFGList.GetActivityInfoTable, activityID, questID)
+        if ok and type(result) == 'table' then activityInfo = result end
+    end
+
+    if activityInfo then
+        -- Role/class bars are useful for 5-player dungeon listings. Raid,
+        -- PvP, questing and other custom activities should keep the clean
+        -- native role display instead.
+        return SafeLFGValue(activityInfo.useDungeonRoleExpectations) == true
+            or SafeLFGValue(activityInfo.isMythicPlusActivity) == true
+    end
+
+    -- Compatibility with clients that only expose the legacy tuple API.
+    if type(C_LFGList.GetActivityInfo) == 'function' then
+        local ok, isMythicPlusActivity = pcall(function()
+            local values = { C_LFGList.GetActivityInfo(activityID) }
+            return values[13] == true
+        end)
+        return ok and isMythicPlusActivity == true
+    end
+
+    return false
+end
+
+local function BuildLFGClassMembers(resultID, count)
+    local members = {}
+    for index = 1, count do
+        local member = GetLFGTableResult(C_LFGList and C_LFGList.GetSearchResultPlayerInfo, resultID, index)
+        if member then
+            members[#members + 1] = {
+                class = SafeLFGValue(member.classFilename),
+                role = SafeLFGValue(member.assignedRole),
+                index = index,
+            }
+        end
+    end
+
+    local roleOrder = _G.LFG_LIST_GROUP_DATA_ROLE_ORDER
+    if type(roleOrder) ~= 'table' then roleOrder = { 'TANK', 'HEALER', 'DAMAGER' } end
+    local roleRank = { NOROLE = #roleOrder + 1 }
+    for index, role in ipairs(roleOrder) do roleRank[role] = index end
+
+    local classOrder = {}
+    local counts = GetLFGTableResult(C_LFGList and C_LFGList.GetSearchResultMemberCounts, resultID)
+    local classesByRole = counts and counts.classesByRole
+    for _, role in ipairs(roleOrder) do
+        local classes = classesByRole and classesByRole[role]
+        local order = 1
+        if type(classes) == 'table' then
+            for class in pairs(classes) do
+                classOrder[role .. ':' .. class] = order
+                order = order + 1
+            end
+        end
+    end
+
+    table.sort(members, function(a, b)
+        local aRole = roleRank[a.role] or (#roleOrder + 2)
+        local bRole = roleRank[b.role] or (#roleOrder + 2)
+        if aRole ~= bRole then return aRole < bRole end
+        local aClass = classOrder[(a.role or '') .. ':' .. (a.class or '')] or 999
+        local bClass = classOrder[(b.role or '') .. ':' .. (b.class or '')] or 999
+        if aClass ~= bClass then return aClass < bClass end
+        return a.index < b.index
+    end)
+    return members
+end
+
+local function UpdateLFGClassBars(entry)
+    if not entry then return end
+    if not IsLFGClassBarsEnabled() then
+        HideLFGClassBars(entry)
+        return
+    end
+    if _G.PremadeGroupsFilterSettings and _G.PremadeGroupsFilterSettings.classBar then
+        HideLFGClassBars(entry)
+        return
+    end
+
+    local resultID = SafeLFGValue(entry.resultID)
+    local info = resultID and GetLFGTableResult(C_LFGList and C_LFGList.GetSearchResultInfo, resultID)
+    if IsLFGApplicationPending(resultID, entry) then
+        HideLFGClassBars(entry)
+        return
+    end
+    if not IsLFGDungeonResult(info) then
+        HideLFGClassBars(entry)
+        return
+    end
+    local display = entry.DataDisplay and entry.DataDisplay.Enumerate
+    local icons = display and display.Icons
+    local iconCount = type(icons) == 'table' and #icons or 5
+    if iconCount < 1 then iconCount = 5 end
+
+    local frames = lfgClassBars[entry]
+    if not frames then
+        frames = {}
+        lfgClassBars[entry] = frames
+    end
+    for index = 1, iconCount do
+        local frame = frames[index]
+        if not frame then
+            frame = CreateFrame('Frame', nil, entry)
+            frame:Hide()
+            frame:SetFrameStrata('HIGH')
+            frame:SetSize(18, 35)
+            frame:SetPoint('CENTER', 0, 1)
+            frame:SetPoint('RIGHT', entry, 'RIGHT', -13 - (iconCount - index) * 18, 0)
+            frame.ClassBar = frame:CreateTexture(nil, 'OVERLAY')
+            frame.ClassBar:SetSize(16, 3)
+            frame.ClassBar:SetPoint('CENTER', 1, 0)
+            frame.ClassBar:SetPoint('BOTTOM', 0, 3)
+            frames[index] = frame
+        end
+        frame:Hide()
+        frame.ClassBar:Hide()
+        frame:ClearAllPoints()
+        frame:SetPoint('RIGHT', entry, 'RIGHT', -13 - (iconCount - index) * 18, 0)
+    end
+    for index = iconCount + 1, #frames do
+        frames[index]:Hide()
+        frames[index].ClassBar:Hide()
+    end
+    if not info then return end
+
+    local numMembers = SafeLFGValue(info.numMembers)
+    if type(numMembers) ~= 'number' then numMembers = iconCount end
+    numMembers = math.min(math.max(numMembers, 0), iconCount)
+    local members = BuildLFGClassMembers(resultID, numMembers)
+    for index, member in ipairs(members) do
+        local class = member.class
+        local color = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+        if color then
+            local frame = frames[index]
+            frame.ClassBar:SetColorTexture(color.r, color.g, color.b, 1)
+            frame.ClassBar:Show()
+            frame:Show()
+        end
+    end
+end
+
+function S:RefreshLFGClassBars()
+    for entry in pairs(lfgClassBars) do
+        if self.db and self.db.enable and self.db.lfg then
+            UpdateLFGClassBars(entry)
+        else
+            HideLFGClassBars(entry)
+        end
+    end
+end
+
+local function InstallLFGClassBars()
+    if lfgClassBarsHooked or type(_G.LFGListSearchEntry_Update) ~= 'function' then return end
+    hooksecurefunc('LFGListSearchEntry_Update', function(entry)
+        UpdateLFGClassBars(entry)
+    end)
+    lfgClassBarsHooked = true
+end
+
 local function SkinSecureLFGReadableText()
     if not (S.db.enable and S.db.lfg) then return end
+
+    InstallLFGClassBars()
 
     EnsureWindowAccentBorder(_G.PVEFrame)
     -- Only clear the outer shell's artwork; leave secure LFG controls alone.
@@ -1309,6 +1552,7 @@ end
 
 local function SkinLFG()
     if not (S.db.enable and S.db.lfg) then return end
+    InstallLFGClassBars()
 
     local secureLFGSafeMode = IsSecureLFGSafeMode()
     if secureLFGSafeMode then return end

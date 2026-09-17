@@ -636,6 +636,11 @@ local function KT_IsBNetWhisperEvent(event)
 end
 
 local function KT_GetBNetWhisperSenderID(arg13, arg14)
+    if KT_IsSecureChatSafeMode() then
+        local senderID = KT_GetAccessibleNumber(arg14) or KT_GetAccessibleNumber(arg13)
+        return senderID
+    end
+
     if type(arg14) == "number" then
         return arg14
     end
@@ -1163,6 +1168,98 @@ function Mod:GetWhisperTabIndex()
     return nil
 end
 
+function Mod:GetBNetWhisperTabIndex(target, bnetIDAccount)
+    local threadKey = KT_GetWhisperTargetKey(target, 'BN_WHISPER', bnetIDAccount)
+    if not threadKey then
+        return nil
+    end
+
+    for index, tab in ipairs(self.tabs or {}) do
+        if tab and tab.KT_WhisperThreadKey == threadKey then
+            return index
+        end
+    end
+
+    local normalizedTarget = KT_GetWhisperThreadTargetText(target)
+    if normalizedTarget then
+        for index, tab in ipairs(self.tabs or {}) do
+            if tab and tab.KT_WhisperThreadKey and tab.whisperTarget
+                and KT_GetWhisperThreadTargetText(tab.whisperTarget) == normalizedTarget then
+                return index
+            end
+        end
+    end
+
+    return nil
+end
+
+function Mod:EnsureBNetWhisperTab(target, bnetIDAccount, makeActive, skipRefresh)
+    target = KT_GetNonEmptyAccessibleString(target)
+    if not target and type(bnetIDAccount) == 'number' then
+        target = KT_ResolveBNetWhisperTarget(bnetIDAccount)
+    end
+    if not target then
+        return nil
+    end
+
+    if not self.tabs then
+        self.tabs = self:BuildConfiguredTabs()
+    end
+
+    local thread = {
+        target = target,
+        chatType = 'BN_WHISPER',
+        bnetIDAccount = bnetIDAccount,
+        threadKey = KT_GetWhisperTargetKey(target, 'BN_WHISPER', bnetIDAccount),
+    }
+    if not thread.threadKey then
+        return nil
+    end
+
+    local index = self:GetBNetWhisperTabIndex(target, bnetIDAccount)
+    local label = strtrim(target:match('^([^#]+)') or target)
+    local tab
+    if index then
+        tab = self.tabs[index]
+        tab.whisperTarget = target
+        tab.whisperThread = thread
+        tab.KT_WhisperThreadKey = thread.threadKey
+        tab.label = label ~= '' and label or 'Battle.net'
+        tab.prompt = tab.label
+    else
+        local safeID = thread.threadKey:gsub('[^%w]+', '-')
+        tab = {
+            id = 'bnetwhisper-' .. safeID,
+            label = label ~= '' and label or 'Battle.net',
+            prompt = label ~= '' and label or 'Battle.net',
+            command = '',
+            filterMode = 'WHISPER',
+            temporary = true,
+            tooltip = target,
+            whisperTarget = target,
+            whisperThread = thread,
+            KT_WhisperThreadKey = thread.threadKey,
+        }
+        tab.filter = function(entry)
+            return entry and KT_DoesEntryMatchWhisperThread(entry, tab.whisperThread)
+        end
+        tinsert(self.tabs, tab)
+        index = #self.tabs
+    end
+
+    if makeActive then
+        self.selectedWhisperThread = thread
+        self.activeWhisperTarget = target
+        self.activeWhisperBNetAccountID = (type(bnetIDAccount) == 'number') and bnetIDAccount or nil
+        self.selectedTabIndex = index
+    end
+
+    if not skipRefresh then
+        self:RefreshTabButtons()
+    end
+    return index
+end
+
 function Mod:GetWhisperStripReservedWidth(parent)
     local window = parent and parent:GetParent()
     local strip = window and window.KT_WhisperStrip
@@ -1430,6 +1527,32 @@ function Mod:AddWhisperTarget(target, chatType, makeActive, bnetIDAccount, skipP
     if not skipPersist then
         self:PersistPrivateChatState()
     end
+end
+
+function Mod:ActivateIncomingBNetWhisper(target, bnetIDAccount)
+    target = KT_GetNonEmptyAccessibleString(target)
+    if not target and type(bnetIDAccount) == 'number' then
+        target = KT_ResolveBNetWhisperTarget(bnetIDAccount)
+    end
+    if not target then
+        return false
+    end
+
+    -- Native Blizzard whisper windows are hidden by KUI. Selecting the
+    -- matching KUI conversation is therefore the equivalent of opening the
+    -- individual window for an incoming Battle.net whisper.
+    self:AddWhisperTarget(target, 'BN_WHISPER', true, bnetIDAccount)
+
+    local whisperTabIndex = self:GetWhisperTabIndex()
+    if whisperTabIndex then
+        self.selectedTabIndex = whisperTabIndex
+        self:SelectTab(whisperTabIndex)
+        self:RenderAllFrames()
+    else
+        self:RenderAllFrames()
+    end
+    self:RefreshChatFrameMode()
+    return true
 end
 
 function Mod:RemoveWhisperTarget(target, bnetIDAccount)
@@ -3024,6 +3147,34 @@ function Mod:GetResolvedFont()
     return fontPath, self.db.fontSize or 12, fontOutline
 end
 
+function Mod:EnableChatFrameTextFontFallback(frame, baseFontPath)
+    if not (frame and frame.GetRegions and KT and KT.EnableTextFontFallback) then
+        return
+    end
+
+    baseFontPath = baseFontPath or self:GetResolvedFont()
+    frame.KT_ChatBaseFontPath = baseFontPath
+
+    -- ScrollingMessageFrame has one font for all stored lines. It cannot apply
+    -- a different face to only a Cyrillic message, so leave the configured chat
+    -- font untouched instead of changing the complete chat when Russian text
+    -- arrives.
+
+    local ok, regions = pcall(function()
+        return { frame:GetRegions() }
+    end)
+    if not ok or type(regions) ~= 'table' then
+        return
+    end
+
+    for _, region in ipairs(regions) do
+        local objectType = region and region.GetObjectType and region:GetObjectType()
+        if objectType == 'FontString' and region.SetText then
+            KT:EnableTextFontFallback(region, baseFontPath)
+        end
+    end
+end
+
 function Mod:ApplyConfiguredFontToFrame(frame, fontPath, fontSize, fontOutline)
     if not frame then
         return
@@ -3048,10 +3199,13 @@ function Mod:ApplyConfiguredFontToFrame(frame, fontPath, fontSize, fontOutline)
         end
     end
 
+    frame.KT_ChatBaseFontPath = fontPath
+
     if frame.SetFont then
         pcall(frame.SetFont, frame, fontPath, fontSize, fontOutline)
     end
 
+    self:EnableChatFrameTextFontFallback(frame, fontPath)
     self:ApplyFrameFading(frame)
 end
 
@@ -3142,6 +3296,11 @@ function Mod:BuildTabFilter(config)
 
             if not isWhisperEntry then
                 return false
+            end
+
+            local activeTab = self:GetActiveTab()
+            if not (activeTab and activeTab.KT_WhisperThreadKey) then
+                return true
             end
 
             local selectedThread = self.selectedWhisperThread
@@ -3403,6 +3562,7 @@ function Mod:ResetTabs()
     if not self.selectedTabIndex or self.selectedTabIndex < 1 or self.selectedTabIndex > #self.tabs then
         self.selectedTabIndex = 1
     end
+
 end
 
 function Mod:GetActiveTab()
@@ -3922,6 +4082,10 @@ function Mod:OpenPositionDebugLog()
 end
 
 function Mod:HandlePositionDebugCommand(input)
+    if strlower(strtrim(tostring(input or ''))) == 'bnet' then
+        self:PrintBNetWhisperDebug()
+        return
+    end
     local command = strlower(strtrim(tostring(input or "")))
     if command == "dump" then
         self:OpenPositionDebugLog()
@@ -4088,8 +4252,8 @@ function Mod:OnDisable()
         self.nativeWhisperScanner:Cancel()
     end
     self.nativeWhisperScanner = nil
-    self.nativeWhisperMessageCount = nil
-    self.nativeWhisperLastText = nil
+    self.nativeWhisperMessageCounts = nil
+    self.nativeWhisperLastTexts = nil
     self.nativeWhisperSeenLookup = nil
     self.nativeWhisperSeenOrder = nil
     self:UnregisterAllRuntimeEvents()
@@ -5802,7 +5966,7 @@ function Mod:ActivateTab(index)
     if tabInfo then
         local idLower = tostring(tabInfo.id or ""):lower()
         local modeUpper = tostring(tabInfo.filterMode or ""):upper()
-        if idLower:find("whisp") or modeUpper:find("WHISP") then
+        if not tabInfo.KT_WhisperThreadKey and (idLower:find("whisp") or modeUpper:find("WHISP")) then
             self.selectedWhisperThread = nil
             self.activeWhisperTarget = nil
             self.activeWhisperBNetAccountID = nil
@@ -5986,6 +6150,13 @@ function Mod:RegisterChatEvents()
     self.chatEventsRegistered = true
 
     if KT_IsSecureChatSafeMode() then
+        -- Retail keeps Battle.net whispers in the inline/toast path instead of
+        -- appending them to the native chat frames. Capture only these two
+        -- events here; the payload readers below reject inaccessible values
+        -- before doing any string or number work.
+        self:RegisterEvent('CHAT_MSG_BN_WHISPER', 'OnWhisperEvent')
+        self:RegisterEvent('CHAT_MSG_BN_WHISPER_INFORM', 'OnWhisperEvent')
+
         -- KUI Chat: We no longer UnregisterAllEvents as it breaks whisper flow.
         -- Let Blizzard's native frames own the complete message path. In
         -- particular, do not register ChatFrame_AddMessageEventFilter callbacks:
@@ -6402,6 +6573,7 @@ function Mod:CreateMessageFrame(parent, globalName)
     frame:SetHyperlinksEnabled(true)
     frame:EnableMouse(true)
     frame:EnableMouseWheel(true)
+    self:EnableChatFrameTextFontFallback(frame, fontPath)
     frame:SetScript("OnHyperlinkClick", function(widget, link, text, button)
         -- Preserve KUI navigation on left-click, but delegate right-click to
         -- Blizzard for the standard player/report context menu.
@@ -6905,13 +7077,11 @@ function Mod:ImportNativeWhisperMessage(renderedText, r, g, b, messageID)
     renderedText = KT_GetNonEmptyAccessibleString(renderedText)
     local accessibleMessageID = KT_SafeString(messageID, nil)
     local signature = accessibleMessageID and ("id:" .. accessibleMessageID) or renderedText
-    if not renderedText or not KT_IsNativeWhisperColor(r, g, b)
-        or not self:RememberNativeWhisperMessage(signature) then
-        return false
-    end
-
     local target, chatType, bnetIDAccount = KT_GetNativeWhisperTarget(renderedText)
-    if not target then
+    local isBNetWhisper = chatType == 'BN_WHISPER'
+    if not renderedText or not target
+        or (not isBNetWhisper and not KT_IsNativeWhisperColor(r, g, b))
+        or not self:RememberNativeWhisperMessage(signature) then
         return false
     end
 
@@ -6920,7 +7090,11 @@ function Mod:ImportNativeWhisperMessage(renderedText, r, g, b, messageID)
         return false
     end
 
-    self:AddWhisperTarget(target, chatType, false, bnetIDAccount)
+    if chatType == 'BN_WHISPER' then
+        self:ActivateIncomingBNetWhisper(target, bnetIDAccount)
+    else
+        self:AddWhisperTarget(target, chatType, false, bnetIDAccount)
+    end
     local entry = {
         preformatted = true,
         persist = true,
@@ -6943,14 +7117,7 @@ function Mod:ImportNativeWhisperMessage(renderedText, r, g, b, messageID)
     return self:HandleIncomingEntry(entry) ~= nil
 end
 
-function Mod:ScanNativeWhisperMessages()
-    if not KT_IsSecureChatSafeMode() or not self.runtimeInitialized then
-        return
-    end
-
-    -- ChatFrame1 is owned and populated entirely by Blizzard. Reading its
-    -- rendered output avoids registering events or mutating protected lists.
-    local frame = _G.ChatFrame1
+function Mod:ScanNativeWhisperFrame(frame, frameKey)
     if not (frame and frame.GetNumMessages and frame.GetMessageInfo) then
         return
     end
@@ -6961,22 +7128,24 @@ function Mod:ScanNativeWhisperMessages()
         return
     end
 
-    local previousCount = tonumber(self.nativeWhisperMessageCount) or 0
+    self.nativeWhisperMessageCounts = self.nativeWhisperMessageCounts or {}
+    self.nativeWhisperLastTexts = self.nativeWhisperLastTexts or {}
+
+    local previousCount = tonumber(self.nativeWhisperMessageCounts[frameKey]) or 0
     local firstIndex = previousCount + 1
     if count < previousCount then
+        -- The frame rolled over. Keep the shared dedupe table intact because
+        -- the same line can be present in ChatFrame1 and ChatFrame6.
         firstIndex = 1
-        wipe(self.nativeWhisperSeenLookup or {})
-        wipe(self.nativeWhisperSeenOrder or {})
     elseif count == previousCount then
         if count == 0 then
-            self.nativeWhisperMessageCount = 0
-            self.nativeWhisperLastText = nil
+            self.nativeWhisperLastTexts[frameKey] = nil
             return
         end
 
         local okLast, lastText = pcall(frame.GetMessageInfo, frame, count)
         lastText = okLast and KT_GetNonEmptyAccessibleString(lastText) or nil
-        if lastText == self.nativeWhisperLastText then
+        if lastText == self.nativeWhisperLastTexts[frameKey] then
             return
         end
 
@@ -6992,12 +7161,114 @@ function Mod:ScanNativeWhisperMessages()
         end
     end
 
-    self.nativeWhisperMessageCount = count
+    self.nativeWhisperMessageCounts[frameKey] = count
     if count > 0 then
         local okLast, lastText = pcall(frame.GetMessageInfo, frame, count)
-        self.nativeWhisperLastText = okLast and KT_GetNonEmptyAccessibleString(lastText) or nil
+        self.nativeWhisperLastTexts[frameKey] = okLast and KT_GetNonEmptyAccessibleString(lastText) or nil
     else
-        self.nativeWhisperLastText = nil
+        self.nativeWhisperLastTexts[frameKey] = nil
+    end
+end
+
+function Mod:ScanNativeWhisperMessages()
+    if not KT_IsSecureChatSafeMode() or not self.runtimeInitialized then
+        return
+    end
+
+    -- ChatFrame1 is owned and populated entirely by Blizzard. Depending on
+    -- the client's whisper routing, Battle.net whispers can also be rendered
+    -- by the dedicated native whisper frame (normally ChatFrame6). Inspect
+    -- both without registering handlers or mutating protected chat lists.
+    self:ScanNativeWhisperFrame(_G.ChatFrame1, 'primary')
+
+    local whisperFrame = self.nativeTabFrames and self.nativeTabFrames.whisper
+    if whisperFrame and whisperFrame ~= _G.ChatFrame1 then
+        self:ScanNativeWhisperFrame(whisperFrame, 'whisper')
+    end
+end
+
+function Mod:PrintBNetWhisperDebug()
+    local function report(message)
+        if KT and KT.Print then
+            KT:Print('|cff66ccff[BN Debug]|r ' .. tostring(message or ''))
+        end
+    end
+
+    if KT_IsSecureChatSafeMode() then
+        self:ScanNativeWhisperMessages()
+    end
+
+    local bnetTabCount = 0
+    for _, tab in ipairs(self.tabs or {}) do
+        if tab and tab.KT_WhisperThreadKey then
+            bnetTabCount = bnetTabCount + 1
+        end
+    end
+
+    local activeTab = self:GetActiveTab()
+    report(format(
+        'secure=%s runtime=%s scanner=%s tabs=%d bnetTabs=%d active=%s',
+        tostring(KT_IsSecureChatSafeMode()),
+        tostring(self.runtimeInitialized == true),
+        tostring(self.nativeWhisperScanner ~= nil),
+        #(self.tabs or {}),
+        bnetTabCount,
+        tostring(activeTab and activeTab.label or 'nil')
+    ))
+    report(format(
+        'targets=%d history=%d selected=%s',
+        #(self.whisperTargets or {}),
+        #(self.history or {}),
+        tostring(self.selectedWhisperThread and self.selectedWhisperThread.target or 'nil')
+    ))
+
+    local bnetHistory = 0
+    for _, entry in ipairs(self.history or {}) do
+        if entry and entry.chatType == 'BN_WHISPER' then
+            bnetHistory = bnetHistory + 1
+        end
+    end
+    report('history BN_WHISPER=' .. tostring(bnetHistory))
+
+    local function inspectFrame(frame, frameName)
+        if not (frame and frame.GetNumMessages and frame.GetMessageInfo) then
+            report(frameName .. '=missing')
+            return
+        end
+
+        local okCount, count = pcall(frame.GetNumMessages, frame)
+        count = okCount and KT_GetAccessibleNumber(count) or nil
+        if not count then
+            report(frameName .. '=count-unavailable')
+            return
+        end
+
+        local found = 0
+        for index = math.max(1, count - 15), count do
+            local okInfo, text, r, g, b = pcall(frame.GetMessageInfo, frame, index)
+            local rendered = okInfo and KT_GetNonEmptyAccessibleString(text) or nil
+            local target, chatType, bnetIDAccount = KT_GetNativeWhisperTarget(rendered)
+            if chatType == 'BN_WHISPER' then
+                found = found + 1
+                report(format(
+                    '%s[%d] target=%s id=%s color=%.2f/%.2f/%.2f',
+                    frameName,
+                    index,
+                    tostring(target or 'nil'),
+                    tostring(bnetIDAccount or 'nil'),
+                    tonumber(r) or 0,
+                    tonumber(g) or 0,
+                    tonumber(b) or 0
+                ))
+            end
+        end
+        report(frameName .. ' messages=' .. tostring(count) .. ' BNfound=' .. tostring(found))
+    end
+
+    inspectFrame(_G.ChatFrame1, 'ChatFrame1')
+    local whisperFrame = self.nativeTabFrames and self.nativeTabFrames.whisper
+    if whisperFrame and whisperFrame ~= _G.ChatFrame1 then
+        inspectFrame(whisperFrame, 'WhisperFrame')
     end
 end
 
@@ -7006,8 +7277,8 @@ function Mod:StartNativeWhisperScanner()
         return
     end
 
-    self.nativeWhisperMessageCount = 0
-    self.nativeWhisperLastText = nil
+    self.nativeWhisperMessageCounts = {}
+    self.nativeWhisperLastTexts = {}
     self.nativeWhisperSeenLookup = {}
     self.nativeWhisperSeenOrder = {}
     self:ScanNativeWhisperMessages()
@@ -7117,6 +7388,7 @@ function Mod:EnsurePrimaryChatFrame(parent)
 
     frame.KT_UseAsPrimary = true
     self:ApplyNativeChatFrameLayout(frame, parent)
+    self:ApplyConfiguredFontToFrame(frame)
     self:HideNativeChatChrome(frame)
     return frame
 end
@@ -7959,7 +8231,11 @@ function Mod:OnWhisperEvent(event, ...)
         if sender then
             entry.whisperTarget = sender
             entry.whisperThreadKey = KT_GetWhisperTargetKey(sender, chatType, entry.bnSenderID)
-            self:AddWhisperTarget(sender, chatType, false, entry.bnSenderID)
+            if chatType == 'BN_WHISPER' then
+                self:ActivateIncomingBNetWhisper(sender, entry.bnSenderID)
+            else
+                self:AddWhisperTarget(sender, chatType, false, entry.bnSenderID)
+            end
         end
     end
 

@@ -5818,6 +5818,12 @@ local function GetPotionTrackerQualityPreference()
     return nil
 end
 
+local function GetPotionTrackerSelectionMode()
+    local potionCfg = KUI_CDM and KUI_CDM.db and KUI_CDM.db.profile
+        and KUI_CDM.db.profile.customTracker and KUI_CDM.db.profile.customTracker.potion
+    return potionCfg and tostring(potionCfg.potionQuality) == 'most' and 'most' or 'highest'
+end
+
 local function GetPotionTrackerItemQuality(itemID)
     itemID = tonumber(itemID)
     if not itemID then return nil end
@@ -5855,14 +5861,21 @@ end
 local function FindOwnedTrackerItem(priorityList, filterPotionQuality)
     if type(priorityList) ~= "table" then return nil end
     if not GetItemCount then return nil end
+    local preferMost = filterPotionQuality and GetPotionTrackerSelectionMode() == 'most'
+    local selectedItemID, selectedCount
     for i = 1, #priorityList do
         local itemID = priorityList[i]
         if itemID and (not filterPotionQuality or PotionMatchesSelectedQuality(itemID))
             and GetTrackerOwnedItemCount(itemID) > 0 then
-            return itemID
+            if not preferMost then return itemID end
+            local count = GetTrackerOwnedItemCount(itemID)
+            if not selectedCount or count > selectedCount then
+                selectedItemID = itemID
+                selectedCount = count
+            end
         end
     end
-    return nil
+    return selectedItemID
 end
 
 local function ChooseTrackerItemFromPriority(priorityList, syntheticGroup)
@@ -6127,6 +6140,42 @@ ns.ResolvePotionTrackerSlotItem = function(identifier)
         potionTrackerSlotCacheReady[slotKey] = true
     end
     return potionTrackerSlotItems[slotKey] or nil
+end
+
+-- A newly created healthstone can update the bag/count APIs a few frames after
+-- BAG_UPDATE_DELAYED (especially when the creation happens during combat).
+-- The complete KUI tracker sync is intentionally deferred in combat because it
+-- scans and classifies every tracked consumable. Refresh only this semantic
+-- slot, then let the normal sync take care of protected attributes after combat.
+local _potionTrackerHealthstoneRefreshToken = 0
+local function RefreshPotionTrackerHealthstoneSlot()
+    local previousItemID = potionTrackerSlotItems.healthstone
+    local itemID = ResolvePotionTrackerSlotItemFresh('healthstone') or false
+    potionTrackerSlotItems.healthstone = itemID
+    potionTrackerSlotCacheReady.healthstone = true
+    return previousItemID ~= itemID
+end
+
+ns.RequestPotionTrackerHealthstoneRefresh = function()
+    _potionTrackerHealthstoneRefreshToken = _potionTrackerHealthstoneRefreshToken + 1
+    local token = _potionTrackerHealthstoneRefreshToken
+    local retryDelays = { 0, 0.08, 0.20, 0.45, 0.90 }
+
+    local function RefreshAtDelay()
+        if token ~= _potionTrackerHealthstoneRefreshToken then return end
+        RefreshPotionTrackerHealthstoneSlot()
+        if ns.RequestCustomCooldownUpdate then
+            ns.RequestCustomCooldownUpdate('healthstone_inventory')
+        end
+    end
+
+    for _, delay in ipairs(retryDelays) do
+        if delay == 0 then
+            RefreshAtDelay()
+        elseif C_Timer and C_Timer.After then
+            C_Timer.After(delay, RefreshAtDelay)
+        end
+    end
 end
 
 ns.ShouldShowPotionTrackerItem = function(itemID)
@@ -6603,7 +6652,7 @@ local function EnsureCustomTrackerDefaults(p)
             end
             if key == "potion" then
                 local quality = tostring(ct.potionQuality or "highest")
-                if quality ~= "highest" and quality ~= "1" and quality ~= "2" and quality ~= "3" then
+                if quality ~= "highest" and quality ~= 'most' and quality ~= "1" and quality ~= "2" and quality ~= "3" then
                     quality = "highest"
                 end
                 ct.potionQuality = quality
@@ -13155,6 +13204,11 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
         or event == "ITEM_COUNT_CHANGED"
         or event == "ITEM_PUSH"
     then
+        if event == 'ITEM_COUNT_CHANGED' or event == 'ITEM_PUSH' then
+            if ns.RequestPotionTrackerHealthstoneRefresh then
+                ns.RequestPotionTrackerHealthstoneRefresh()
+            end
+        end
         if event == 'SPELL_UPDATE_COOLDOWN' and type(unit) == 'number'
             and not (issecretvalue and issecretvalue(unit))
             and GetFallbackItemCooldownDuration(unit)
@@ -13184,6 +13238,9 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
         if event == "BAG_UPDATE_DELAYED" then
         RequestUpdate("bag_update_delayed")
         local syntheticTriggered = ns.RefreshSyntheticItemCooldownsFromBags and ns.RefreshSyntheticItemCooldownsFromBags()
+        if ns.RequestPotionTrackerHealthstoneRefresh then
+            ns.RequestPotionTrackerHealthstoneRefresh()
+        end
         if ns.ScheduleKUITrackerSync then
             ns.ScheduleKUITrackerSync(0.2)
         end
@@ -13310,6 +13367,9 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
             if _pendingPotionTrackerSecureRefresh and UpdateCDMBarIcons then
                 _pendingPotionTrackerSecureRefresh = false
                 if ns.RefreshCDMIconAppearance then
+                    if ns.RequestCustomCooldownUpdate then
+                        ns.RequestCustomCooldownUpdate('healthstone_post_combat')
+                    end
                     ns.RefreshCDMIconAppearance("kui_potion")
                 end
                 UpdateCDMBarIcons("kui_potion")

@@ -45,10 +45,6 @@ local StaticPopup_Show = _G.StaticPopup_Show
 local StaticPopup_Visible = _G.StaticPopup_Visible
 local UnitAffectingCombat = _G.UnitAffectingCombat
 local UnitGUID = _G.UnitGUID
-local UnitName = _G.UnitName
-local UnitNameUnmodified = _G.UnitNameUnmodified
-local UnitTokenFromGUID = _G.UnitTokenFromGUID
-local ChatTypeInfo = _G.ChatTypeInfo
 local completeLFGRoleCheck = _G.CompleteLFGRoleCheck
 local ipairs = _G.ipairs
 local issecretvalue = _G.issecretvalue
@@ -272,10 +268,18 @@ function Mod:GetDB()
 end
 
 local function IsSecret(value)
-    if issecretvalue and issecretvalue(value) then return true end
-    if _G.canaccessvalue and not _G.canaccessvalue(value) then return true end
+    if issecretvalue then
+        local ok, secret = pcall(issecretvalue, value)
+        if ok and secret then return true end
+    end
+    if _G.canaccessvalue then
+        local ok, canAccess = pcall(_G.canaccessvalue, value)
+        if ok and not canAccess then return true end
+    end
     return false
 end
+
+local RAID_WARNING_COLOR = { r = 1.0, g = 0.1, b = 0.1 }
 
 local function OptimizationMessage(text)
     if KT and KT.Print then
@@ -741,36 +745,14 @@ local function HandleCombatRezDeathWarning(destGUID)
         return
     end
 
-    local unit = UnitTokenFromGUID and UnitTokenFromGUID(destGUID)
-    local deathName
-    if unit then
-        deathName = (UnitNameUnmodified and UnitNameUnmodified(unit)) or UnitName(unit)
-    end
-    if not deathName then
-        for _, groupUnit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
-            if UnitGUID(groupUnit) == destGUID then
-                deathName = (UnitNameUnmodified and UnitNameUnmodified(groupUnit)) or UnitName(groupUnit)
-                break
-            end
-        end
-    end
-    if not deathName then
-        for i = 1, 40 do
-            local raidUnit = "raid" .. i
-            if UnitGUID(raidUnit) == destGUID then
-                deathName = (UnitNameUnmodified and UnitNameUnmodified(raidUnit)) or UnitName(raidUnit)
-                break
-            end
-        end
-    end
-    if not deathName then
-        deathName = LText("Unknown")
-    end
+    -- Do not pass unit-derived values to Blizzard's RaidWarningFrame. Retail can
+    -- mark those strings as secret/tainted and Blizzard later performs arithmetic
+    -- on the resulting FontString layout values.
+    local msg = "A group member died"
 
     PlaySound((SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
     if RaidNotice_AddMessage and _G.RaidWarningFrame then
-        local msg = deathName .. " " .. LText("died")
-        RaidNotice_AddMessage(_G.RaidWarningFrame, msg, ChatTypeInfo and ChatTypeInfo["RAID_WARNING"])
+        pcall(RaidNotice_AddMessage, _G.RaidWarningFrame, msg, RAID_WARNING_COLOR)
     end
 end
 

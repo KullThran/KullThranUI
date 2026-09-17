@@ -155,7 +155,7 @@ local DEFAULTS = {
         sellJunk = false,
         autoRepair = false,
         repairUseGuildFunds = false,
-        repairShowSummary = false,
+        repairShowSummary = true,
         vendorShowSummary = false,
         durabilityWarning = false,
         durabilityThreshold = 30,
@@ -206,6 +206,7 @@ local DEFAULTS = {
         hideStanceBar = false,
         skipQueueConfirmation = false,
         hideMinimapIcon = false,
+        showLFGClassBars = true,
     },
     textSize = {
         resizeMailText = false,
@@ -540,6 +541,8 @@ local function MergeDefaults(target, defaults)
         end
     end
 end
+
+local KUI_CHAT_ICON = '|TInterface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUILogoCuadrado.PNG:16:16:0:0|t '
 
 local function SafeCoinText(amount)
     if C_CurrencyInfo and C_CurrencyInfo.GetCoinText then
@@ -1283,7 +1286,7 @@ function Mod:RepairGear()
     end
 
     if db.automation.repairShowSummary and KT and KT.Print then
-        KT:Print(string.format(LText("|cff00c8ffEnhancements|r: Repaired for %s."), SafeCoinText(repairCost)))
+        KT:Print(KUI_CHAT_ICON .. string.format(LText("|cff00c8ffEnhancements|r: Repaired for %s."), SafeCoinText(repairCost)))
     end
 end
 
@@ -1527,10 +1530,68 @@ function Mod:EnsureTalkingHeadHook()
     return true
 end
 
+function Mod:EnsureBattleNetToastVisibility()
+    local toast = _G.BNToastFrame
+    if not toast then
+        return false
+    end
+
+    -- Battle.net owns this native alert frame. Keep its toast setting enabled,
+    -- but do not move, reparent, recolor or skin the frame on Retail: those
+    -- operations can taint UIParent's protected alert layout.
+    local enabled
+    if _G.GetCVarBool then
+        local ok, value = pcall(_G.GetCVarBool, 'showToastWindow')
+        if ok then
+            enabled = value == true
+        end
+    end
+
+    if enabled == false and _G.SetCVar then
+        pcall(_G.SetCVar, 'showToastWindow', '1')
+    end
+
+    if type(toast.SetToastsEnabled) == 'function' then
+        pcall(toast.SetToastsEnabled, toast, true)
+    end
+    if type(toast.CheckShowToast) == 'function' then
+        pcall(toast.CheckShowToast, toast)
+    end
+
+    if not toast._KTEnhancementsVisibilityHook and toast.HookScript then
+        toast:HookScript('OnShow', function()
+            local db = Mod:GetDB()
+            if not (IsModuleEnabled() and db.visibility.hideAlerts) then
+                return
+            end
+
+            -- AlertFrame is the native alert manager. Temporarily showing it
+            -- lets BNToastFrame render without disabling the user's alert
+            -- filtering once the Battle.net toast disappears.
+            local alertFrame = _G.AlertFrame
+            if alertFrame and alertFrame.Show then
+                alertFrame.KT_BNetToastVisible = true
+                alertFrame:Show()
+                alertFrame.KT_BNetToastVisible = nil
+            end
+        end)
+        toast:HookScript('OnHide', function()
+            local db = Mod:GetDB()
+            if IsModuleEnabled() and db.visibility.hideAlerts and _G.AlertFrame then
+                _G.AlertFrame:Hide()
+            end
+        end)
+        toast._KTEnhancementsVisibilityHook = true
+    end
+
+    return true
+end
+
 function Mod:InstallHooks()
     -- Unlike the static frames below, TalkingHeadFrame can appear after this
     -- function's first pass. Always retry it before the one-time early return.
     self:EnsureTalkingHeadHook()
+    self:EnsureBattleNetToastVisibility()
     if runtime.hooksInstalled then
         self:EnsureLFGNoteHooks()
         return
@@ -1563,7 +1624,8 @@ function Mod:InstallHooks()
         _G.AlertFrame._KTEnhancementsHook = true
         _G.AlertFrame:HookScript("OnShow", function(frame)
             local db = Mod:GetDB()
-            if IsModuleEnabled() and db.visibility.hideAlerts then
+            if IsModuleEnabled() and db.visibility.hideAlerts and not frame.KT_BNetToastVisible
+                and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
                 frame:Hide()
             end
         end)
@@ -1734,6 +1796,7 @@ function Mod:RefreshSettings()
     self:ApplyCVars()
     self:ApplyCombatPlates()
     self:EnsureTalkingHeadHook()
+    self:EnsureBattleNetToastVisibility()
     if self.EnhancedFriendList and self.EnhancedFriendList.Refresh then
         self.EnhancedFriendList:Refresh()
     end
@@ -1742,7 +1805,8 @@ function Mod:RefreshSettings()
     if IsModuleEnabled() and db.blocks.blockFriendRequests then
         self:DeclinePendingFriendInvites()
     end
-    if _G.AlertFrame and IsModuleEnabled() and db.visibility.hideAlerts then
+    if _G.AlertFrame and IsModuleEnabled() and db.visibility.hideAlerts
+        and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
         _G.AlertFrame:Hide()
     end
     if _G.BossBanner and IsModuleEnabled() and db.visibility.hideBossBanner then

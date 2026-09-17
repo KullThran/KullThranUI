@@ -514,6 +514,9 @@ local function UpdatePlayerGuildLine(nameplate, unit)
     fs:SetFont((ns and ns.GetFont and ns.GetFont()) or "Fonts\\FRIZQT__.TTF",
         GetFriendlyGuildTextSize(),
         (ns and ns.GetNPOutline and ns.GetNPOutline()) or "OUTLINE")
+    if KT and KT.EnableTextFontFallback then
+        KT:EnableTextFontFallback(fs, (ns and ns.GetFont and ns.GetFont()) or 'Fonts\\FRIZQT__.TTF')
+    end
     local _, _, flags = nameFS:GetFont()
     if not ns or not ns.GetNPUseShadow or ns.GetNPUseShadow() then
         fs:SetShadowOffset(1, -1)

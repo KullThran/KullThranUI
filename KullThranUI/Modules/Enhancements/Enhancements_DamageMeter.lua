@@ -547,6 +547,9 @@ local function ApplyFontReadability(fontString)
     if not fontString then
         return
     end
+    if KT and KT.EnableTextFontFallback then
+        KT:EnableTextFontFallback(fontString, DAMAGE_METER_RESOLVED_FONT())
+    end
     fontString:SetShadowColor(0, 0, 0, 1)
     fontString:SetShadowOffset(1, -1)
 end

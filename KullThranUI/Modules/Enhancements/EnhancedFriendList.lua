@@ -17,6 +17,10 @@ EnhancedFriendList.projectIcons = {
     retail = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\WoWRetail.png",
     classic = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\SEDbDUlE_400x400.png",
     remix = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\WoWRemix.png",
+
+    -- Shared Forever artwork; add a separate Beta texture when available.
+    forever = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\WoWForever.png",
+    foreverBeta = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\WoWForever.png",
 }
 local C_BattleNet = _G.C_BattleNet
 local C_ClassColor = _G.C_ClassColor
@@ -113,6 +117,7 @@ local runtime = {
     hooksInstalled = false,
     eventFrame = nil,
     refreshScheduled = false,
+    refreshSerial = 0,
     refreshDelay = 0.08,
     forcePending = false,
     dataDirty = true,
@@ -121,6 +126,8 @@ local runtime = {
     contactsSubView = nil,
     selectedEntry = nil,
     selectedView = "contacts",
+    debugRaid = false,
+    raidTraceHooks = {},
     collapsedSections = {},
     original = {
         frameSize = nil,
@@ -323,8 +330,23 @@ function EnhancedFriendList:GetWoWProjectDisplay(gameInfo)
     local projectID = gameInfo.wowProjectID
     local key, label, texture, color, customTexture
 
+    -- Do not invent numeric IDs: use Blizzard constants when present and
+    -- rich presence as the fallback until Forever exposes stable IDs.
+    local foreverBetaProjectID = _G.WOW_PROJECT_FOREVER_BETA or _G.WOW_PROJECT_WOW_FOREVER_BETA
+    local foreverProjectID = _G.WOW_PROJECT_FOREVER or _G.WOW_PROJECT_WOW_FOREVER
+    local foreverPresence = presence:find("wow forever", 1, true)
+        or presence:find("world of warcraft: forever", 1, true)
+        or presence:find("world of warcraft forever", 1, true)
+        or presence:find("warcraft forever", 1, true)
+
+    -- Beta must be tested before the regular Forever branch.
+    if (foreverBetaProjectID and projectID == foreverBetaProjectID)
+        or (foreverPresence and presence:find("beta", 1, true)) then
+        key, label, texture, customTexture = "forever-beta", LText("WoW Forever Beta"), EnhancedFriendList.projectIcons.foreverBeta, true
+    elseif (foreverProjectID and projectID == foreverProjectID) or foreverPresence then
+        key, label, texture, customTexture = "forever", LText("WoW Forever"), EnhancedFriendList.projectIcons.forever, true
     -- Remix uses the mainline project ID, so rich presence must be checked first.
-    if presence:find("remix", 1, true) or presence:find("timerunning", 1, true) then
+    elseif presence:find("remix", 1, true) or presence:find("timerunning", 1, true) then
         key, label, texture, customTexture = "remix", LText("WoW Remix"), EnhancedFriendList.projectIcons.remix, true
     elseif presence:find("season of discovery", 1, true) or presence:find("discovery", 1, true) then
         key, label, texture = "sod", LText("Season of Discovery"), "Interface\\Icons\\INV_Misc_Rune_06"
@@ -1912,6 +1934,138 @@ local function GetActiveView()
     return runtime.selectedView or "contacts"
 end
 
+runtime.DebugRaidState = function(stage, button)
+    if not runtime.debugRaid or not (KT and KT.Print) then
+        return
+    end
+
+    local function frameName(frame)
+        if not frame then
+            return 'nil'
+        end
+        local ok, name = pcall(frame.GetName, frame)
+        if ok and name and name ~= '' then
+            return name
+        end
+        return '<unnamed>'
+    end
+
+    local function frameState(frame)
+        if not frame then
+            return 'nil'
+        end
+        local ok, shown = pcall(frame.IsShown, frame)
+        return (ok and shown) and 'shown' or 'hidden'
+    end
+
+    local friendsFrame = GetFriendsFrame()
+    local raidFrame = _G.RaidFrame
+    local friendsList = _G.FriendsListFrame
+    local selectedTab = '?'
+    if friendsFrame and PanelTemplates_GetSelectedTab then
+        local ok, value = pcall(PanelTemplates_GetSelectedTab, friendsFrame)
+        if ok and value then
+            selectedTab = tostring(value)
+        end
+    end
+
+    local raidParent
+    if raidFrame and raidFrame.GetParent then
+        local ok, parent = pcall(raidFrame.GetParent, raidFrame)
+        if ok then
+            raidParent = parent
+        end
+    end
+    local target = button and button._eflNativeTab or nil
+    local targetName = frameName(target)
+    local targetType = 'nil'
+    if button and button.GetAttribute then
+        local ok, value = pcall(button.GetAttribute, button, 'type1')
+        if ok and value then
+            targetType = tostring(value)
+        end
+    end
+
+    KT:Print(string.format(
+        '|cff00c8ffEFL debug|r %s | view=%s tab=%s FF=%s Raid=%s parent=%s List=%s target=%s type1=%s',
+        tostring(stage),
+        tostring(runtime.selectedView),
+        selectedTab,
+        frameState(friendsFrame),
+        frameState(raidFrame),
+        frameName(raidParent),
+        frameState(friendsList),
+        targetName,
+        targetType
+    ))
+end
+runtime.DebugRaidDetail = function(stage, button)
+    if not runtime.debugRaid or not (KT and KT.Print) then
+        return
+    end
+    runtime.debugSequence = (runtime.debugSequence or 0) + 1
+    local function nameOf(frame)
+        if not frame then return 'nil' end
+        local ok, name = pcall(frame.GetName, frame)
+        return (ok and name and name ~= '') and name or '<unnamed>'
+    end
+    local function shown(frame)
+        if not frame then return 'nil' end
+        local ok, value = pcall(frame.IsShown, frame)
+        return (ok and value) and 'Y' or 'N'
+    end
+    local tab = '?'
+    local friendsFrame = GetFriendsFrame()
+    if friendsFrame and PanelTemplates_GetSelectedTab then
+        local ok, value = pcall(PanelTemplates_GetSelectedTab, friendsFrame)
+        if ok and value then tab = tostring(value) end
+    end
+    local focus = GetMouseFocus and GetMouseFocus() or nil
+    local down = 'na'
+    if IsMouseButtonDown then
+        local ok, value = pcall(IsMouseButtonDown, 'LeftButton')
+        if ok then down = value and 'DOWN' or 'UP' end
+    end
+    KT:Print(string.format('|cff00c8ffEFL trace|r #%d t=%.3f %s view=%s tab=%s FF=%s List=%s Raid=%s Tab1=%s Tab3=%s focus=%s mouse=%s serial=%s scheduled=%s pending=%s target=%s', runtime.debugSequence, GetTime and GetTime() or 0, tostring(stage), tostring(runtime.selectedView), tab, shown(friendsFrame), shown(_G.FriendsListFrame), shown(_G.RaidFrame), shown(_G.FriendsFrameTab1), shown(_G.FriendsFrameTab3), nameOf(focus), down, tostring(runtime.refreshSerial or 0), runtime.refreshScheduled and 'Y' or 'N', runtime.raidNativeClickPending and 'Y' or 'N', nameOf(button and button._eflNativeTab)))
+end
+runtime.DebugRaidStack = function(stage)
+    if not runtime.debugRaid or not (KT and KT.Print) then
+        return
+    end
+
+    local raidFrame = _G.RaidFrame
+    local parent = nil
+    if raidFrame and raidFrame.GetParent then
+        local ok, value = pcall(raidFrame.GetParent, raidFrame)
+        if ok then parent = value end
+    end
+
+    local function nameOf(frame)
+        if not frame then return 'nil' end
+        local ok, value = pcall(frame.GetName, frame)
+        return (ok and value and value ~= '') and value or '<unnamed>'
+    end
+
+    local selected = '?'
+    local friendsFrame = GetFriendsFrame()
+    if friendsFrame and PanelTemplates_GetSelectedTab then
+        local ok, value = pcall(PanelTemplates_GetSelectedTab, friendsFrame)
+        if ok and value then selected = tostring(value) end
+    end
+
+    local raidParentTab = _G.RaidParentFrame and _G.RaidParentFrame.selectTab or nil
+    local stack = debugstack and debugstack(3, 12, 1) or '<debugstack unavailable>'
+    stack = string.gsub(stack or '', '[\r\n]+', ' ')
+
+    KT:Print(string.format(
+        '|cff00c8ffEFL stack|r %s parent=%s selected=%s raidParentTab=%s stack=%s',
+        tostring(stage),
+        nameOf(parent),
+        selected,
+        tostring(raidParentTab),
+        stack
+    ))
+end
 local function FindNavDefinition(key)
     for _, definition in ipairs(NAV_ORDER) do
         if definition.key == key then
@@ -2105,7 +2259,10 @@ local function InvokeOriginalTab(definition)
         if t then t:Hide() end
     end
 
-    SetFrameAlphaState(_G.FriendsListFrame, definition.key ~= "contacts")
+    if EnhancedFriendList and EnhancedFriendList.SetBaseFrameState then
+        EnhancedFriendList:SetBaseFrameState(true)
+    end
+    SetFrameAlphaState(_G.FriendsListFrame, true)
 end
 
 local CreateSimpleButton -- forward declaration
@@ -3623,6 +3780,16 @@ function EnhancedFriendList:RegisterChatCommands()
 
     KT:RegisterChatCommand("ktfixfriendgroups", ResetGroupsCommand)
     KT:RegisterChatCommand("ktfriendgroupsreset", ResetGroupsCommand)
+    KT:RegisterChatCommand("ktfrienddebug", function()
+        runtime.debugRaid = not runtime.debugRaid
+        KT:Print(string.format(
+            "|cff00c8ffEnhanced Friend List raid debug:|r %s",
+            runtime.debugRaid and "ON — vuelve a pulsar Raid y copia todas las líneas EFL debug." or "OFF"
+        ))
+        if runtime.debugRaid then
+            runtime.DebugRaidState("manual")
+        end
+    end)
     runtime.chatCommandsRegistered = true
 end
 
@@ -3696,8 +3863,17 @@ function EnhancedFriendList:CreateOptionMenu()
 end
 
 function EnhancedFriendList:CreateNavButton(parent, definition)
-    local nativeTab = definition.nativePassthrough and _G[definition.tab] or nil
-    local button = CreateSimpleButton(parent, 0, 24, LText(definition.label), "nav", nativeTab ~= nil)
+    -- Keep the Raid button a real secure action button. The native raid roster
+    -- is protected, so the Blizzard tab must receive the hardware click itself.
+    local isNativePassthrough = definition.nativePassthrough and true or false
+    local button = CreateSimpleButton(
+        parent,
+        0,
+        24,
+        LText(definition.label),
+        "nav",
+        isNativePassthrough
+    )
     button.definition = definition
     button.label:SetFont(ResolveFont(), 10, "OUTLINE")
 
@@ -3710,16 +3886,71 @@ function EnhancedFriendList:CreateNavButton(parent, definition)
         end
     end
 
-    if nativeTab then
-        -- RaidGroup frames are protected. Forward the hardware click through a
-        -- secure action instead of invoking Blizzard's tab handler from Lua.
+    if isNativePassthrough then
+        local function ConfigureNativeClick()
+            local nativeTab = _G[definition.tab]
+            if not nativeTab then
+                return false
+            end
+            if InCombatLockdown and InCombatLockdown() then
+                return button._eflNativeTab == nativeTab
+            end
+
+            if button._eflNativeTab ~= nativeTab then
+                -- Use button-specific attributes for the left hardware click.
+                -- Keep the unsuffixed pair for clients that still read it.
+                -- The secure handler otherwise follows ActionButtonUseKeyDown;
+                -- this button is deliberately registered for the release only.
+                button:SetAttribute("useOnKeyDown", false)
+                button:SetAttribute("*type1", "click")
+                button:SetAttribute("*clickbutton1", nativeTab)
+                button:SetAttribute("type1", "click")
+                button:SetAttribute("clickbutton1", nativeTab)
+                button:SetAttribute("type", "click")
+                button:SetAttribute("clickbutton", nativeTab)
+                button._eflNativeTab = nativeTab
+            end
+            return true
+        end
+
+        ConfigureNativeClick()
         button:RegisterForClicks("LeftButtonUp")
-        button:SetAttribute("type", "click")
-        button:SetAttribute("clickbutton", nativeTab)
-        button:SetScript("PostClick", function()
+
+        -- This runs in the hardware-click path before Blizzard changes frames.
+        button:SetScript("PreClick", function()
+            ConfigureNativeClick()
             runtime.selectedView = definition.key
-            FinishNavigation()
+            runtime.raidNativeClickPending = true
+            runtime.DebugRaidState("PreClick", button)
+            runtime.DebugRaidDetail("PreClick", button)
         end)
+
+        -- Blizzard's protected tab handler has completed here. Refresh once,
+        -- synchronously, so the enhanced Contacts panel cannot remain visible.
+        button:SetScript("PostClick", function()
+            runtime.raidNativeClickPending = false
+            runtime.selectedView = definition.key
+            runtime.DebugRaidState("PostClick", button)
+            runtime.DebugRaidDetail("PostClick", button)
+
+            -- Do not restore native tabs during the same mouse-up event.
+            -- Otherwise that event can click FriendsFrameTab1 underneath us.
+            local handoff = function()
+                if runtime.selectedView ~= definition.key then
+                    return
+                end
+                FinishNavigation()
+                runtime.DebugRaidState("PostClick-after-refresh", button)
+                runtime.DebugRaidDetail("Handoff-complete", button)
+            end
+            if C_Timer and C_Timer.After then
+                runtime.DebugRaidDetail("Handoff-queued", button)
+                C_Timer.After(0, handoff)
+            else
+                handoff()
+            end
+        end)
+
     else
         button:SetScript("OnClick", function()
             InvokeOriginalTab(definition)
@@ -4988,6 +5219,13 @@ function EnhancedFriendList:SetNativeFrameArtHidden(hidden)
     for _, target in pairs(targets) do
         SetFrameAlphaState(target, hidden)
     end
+
+    -- Hide unnamed root artwork restored by Blizzard during tab changes.
+    if friendsFrame.GetRegions then
+        for _, region in ipairs({ friendsFrame:GetRegions() }) do
+            SetFrameAlphaState(region, hidden)
+        end
+    end
 end
 
 function EnhancedFriendList:SetBaseFrameState(active)
@@ -5000,12 +5238,6 @@ function EnhancedFriendList:SetBaseFrameState(active)
         -- Reapply on every refresh because Blizzard layout code may restore
         -- inherited frame artwork after FriendsFrame has already been shown.
         self:SetNativeFrameArtHidden(true)
-        if runtime.baseApplied then
-            SetNativeContactsMouse(false)
-            self:SetBattleNetHeaderArtHidden(true)
-            self:AttachStatusDropdown()
-            return
-        end
         if not runtime.original.frameSize then
             runtime.original.frameSize = {
                 width = friendsFrame:GetWidth(),
@@ -5025,6 +5257,10 @@ function EnhancedFriendList:SetBaseFrameState(active)
             _G.FriendsFrameIgnorePlayerButton,
             _G.FriendsFrameUnsquelchButton,
             _G.FriendsTabHeader,
+            _G.FriendsFrameTabHeader,
+            friendsFrame.FriendsTabHeader,
+            friendsFrame.TabHeader,
+            friendsFrame.Tabs,
             _G.FriendsFrameTab1,
             _G.FriendsFrameTab2,
             _G.FriendsFrameTab3,
@@ -5597,6 +5833,7 @@ function EnhancedFriendList:RefreshView(dataset)
 
     self.contactsPane:Hide()
     self.footer:Hide()
+    self:RestoreExternalFrames()
     self.externalHost:Show()
     self:AttachExternalFrame(FindNavDefinition(activeView))
 end
@@ -5716,6 +5953,7 @@ function EnhancedFriendList:RequestRefresh(force)
     if force then
         runtime.forcePending = false
         runtime.refreshScheduled = false
+        runtime.refreshSerial = (runtime.refreshSerial or 0) + 1
         self:Refresh(true)
         return
     end
@@ -5725,7 +5963,12 @@ function EnhancedFriendList:RequestRefresh(force)
     end
 
     runtime.refreshScheduled = true
+    runtime.refreshSerial = (runtime.refreshSerial or 0) + 1
+    local serial = runtime.refreshSerial
     C_Timer.After(runtime.refreshDelay or 0.08, function()
+        if serial ~= runtime.refreshSerial then
+            return
+        end
         runtime.refreshScheduled = false
         local wantsForce = runtime.forcePending
         runtime.forcePending = false
@@ -5749,27 +5992,123 @@ function EnhancedFriendList:InstallHooks()
     end
 
     friendsFrame:HookScript("OnShow", function()
+        runtime.DebugRaidState("FriendsFrame-OnShow")
+        runtime.DebugRaidDetail("FriendsFrame-OnShow")
+        runtime.DebugRaidStack("FriendsFrame-OnShow")
         if EnhancedFriendList and EnhancedFriendList.RequestRefresh then
             EnhancedFriendList:RequestRefresh(true)
         end
     end)
     friendsFrame:HookScript("OnHide", function()
+        runtime.DebugRaidState("FriendsFrame-OnHide")
+        runtime.DebugRaidDetail("FriendsFrame-OnHide")
+        runtime.DebugRaidStack("FriendsFrame-OnHide")
         if runtime.optionMenu then
             runtime.optionMenu:Hide()
         end
     end)
 
+    -- Diagnostic hooks only: no polling and no refresh is scheduled here.
+    if _G.RaidFrame then
+        _G.RaidFrame:HookScript("OnShow", function()
+            runtime.DebugRaidState("RaidFrame-OnShow")
+            runtime.DebugRaidDetail("RaidFrame-OnShow")
+            runtime.DebugRaidStack("RaidFrame-OnShow")
+        end)
+        _G.RaidFrame:HookScript("OnHide", function()
+            runtime.DebugRaidState("RaidFrame-OnHide")
+            runtime.DebugRaidDetail("RaidFrame-OnHide")
+            runtime.DebugRaidStack("RaidFrame-OnHide")
+        end)
+        if not runtime.raidTraceHooks.raidEvent then
+            _G.RaidFrame:HookScript("OnEvent", function(_, event)
+                if not runtime.debugRaid then
+                    return
+                end
+                local stage = "RaidFrame-OnEvent-" .. tostring(event)
+                runtime.DebugRaidState(stage)
+                runtime.DebugRaidDetail(stage)
+                runtime.DebugRaidStack(stage)
+            end)
+            runtime.raidTraceHooks.raidEvent = true
+        end
+    end
+    if _G.FriendsListFrame then
+        _G.FriendsListFrame:HookScript("OnShow", function()
+            runtime.DebugRaidState("FriendsListFrame-OnShow")
+            runtime.DebugRaidDetail("FriendsListFrame-OnShow")
+            runtime.DebugRaidStack("FriendsListFrame-OnShow")
+        end)
+        _G.FriendsListFrame:HookScript("OnHide", function()
+            runtime.DebugRaidState("FriendsListFrame-OnHide")
+            runtime.DebugRaidDetail("FriendsListFrame-OnHide")
+            runtime.DebugRaidStack("FriendsListFrame-OnHide")
+        end)
+    end
+
     for _, definition in ipairs(NAV_ORDER) do
         local tab = _G[definition.tab]
         if tab then
+            tab:HookScript("PreClick", function(self)
+                if runtime.debugRaid then
+                    local stage = "NativeTab-PreClick-" .. definition.key
+                    runtime.DebugRaidState(stage, self)
+                    runtime.DebugRaidDetail(stage, self)
+                    runtime.DebugRaidStack(stage)
+                end
+            end)
+            tab:HookScript("PostClick", function(self)
+                if runtime.debugRaid then
+                    local stage = "NativeTab-PostClick-" .. definition.key
+                    runtime.DebugRaidState(stage, self)
+                    runtime.DebugRaidDetail(stage, self)
+                    runtime.DebugRaidStack(stage)
+                end
+            end)
             tab:HookScript("OnClick", function()
                 runtime.selectedView = definition.key
-                if EnhancedFriendList and EnhancedFriendList.RequestRefresh then
+                if runtime.debugRaid then
+                    runtime.DebugRaidState("NativeTab-OnClick-" .. definition.key)
+                    runtime.DebugRaidDetail("NativeTab-OnClick-" .. definition.key)
+                    if definition.key == "contacts" and debugstack and KT and KT.Print then
+                        KT:Print("|cff00c8ffEFL reset stack|r " .. string.gsub(debugstack(2, 5, 1), "[\r\n]+", " "))
+                    end
+                end
+                if (definition.key ~= "raid" or not runtime.raidNativeClickPending)
+                    and EnhancedFriendList and EnhancedFriendList.RequestRefresh then
                     EnhancedFriendList:RequestRefresh()
                 end
             end)
         end
     end
+
+    local function HookTraceFunction(name)
+        if runtime.raidTraceHooks[name] or not hooksecurefunc or type(_G[name]) ~= "function" then
+            return
+        end
+
+        local ok = pcall(hooksecurefunc, name, function(...)
+            if not runtime.debugRaid then
+                return
+            end
+            local stage = "Native-" .. name
+            if name == "RaidParentFrame_SetView" then
+                stage = stage .. "-" .. tostring(select(1, ...))
+            end
+            runtime.DebugRaidState(stage)
+            runtime.DebugRaidDetail(stage)
+            runtime.DebugRaidStack(stage)
+        end)
+        if ok then
+            runtime.raidTraceHooks[name] = true
+        end
+    end
+
+    HookTraceFunction("ClaimRaidFrame")
+    HookTraceFunction("RaidParentFrame_SetView")
+    HookTraceFunction("FriendsFrame_Update")
+    HookTraceFunction("FriendsFrame_ShowSubFrame")
+    HookTraceFunction("RaidFrame_Update")
 
     runtime.hooksInstalled = true
 end
@@ -5882,16 +6221,6 @@ function EnhancedFriendList:Refresh(force)
     end
 
     local activeView = GetActiveView()
-    if activeView == "raid" then
-        -- Keep Blizzard's protected raid roster entirely in its native host.
-        -- Reanchoring or showing it from addon code taints later roster events,
-        -- which can block RaidGroupN:Show() during combat.
-        self.frame:Hide()
-        self:SetBaseFrameState(false)
-        self:RestoreExternalFrames()
-        return
-    end
-
     self:SetBaseFrameState(true)
     local dataset = nil
     if activeView == "contacts" then
@@ -5924,5 +6253,11 @@ function EnhancedFriendList:Refresh(force)
             sections = {},
         }
     end
+    if activeView == "raid" then
+        runtime.DebugRaidState("Refresh-raid-before-embed")
+    end
     self:RefreshView(dataset)
+    if activeView == "raid" then
+        runtime.DebugRaidState("Refresh-raid-after-embed")
+    end
 end

@@ -520,9 +520,16 @@ local function SkinGuildInvite()
     S:HandleButton(_G.GuildInviteFrameJoinButton)
     S:HandleButton(_G.GuildInviteFrameDeclineButton)
     GuildInviteFrame:SetHeight(225)
-    if not GuildInviteFrame._ktGuildInviteEventHooked then
+if not GuildInviteFrame._ktGuildInviteEventHooked then
         GuildInviteFrame:HookScript("OnEvent", function(frame, event)
-            frame:SetHeight(225)
+            -- Deferred: this popup's OnEvent may run inside Blizzard's protected
+            -- context; a synchronous SetHeight here dirties UIParent's layout and
+            -- taints a later MultiBar ActionButton update.
+            C_Timer.After(0, function()
+                if not (frame.IsForbidden and frame:IsForbidden()) then
+                    frame:SetHeight(225)
+                end
+            end)
             if event == "GUILD_INVITE_REQUEST" then
                 C_Timer.After(0, function()
                     RestoreGuildInviteIconTextures(CollectGuildInviteIconTextures(frame))
