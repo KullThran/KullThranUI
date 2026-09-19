@@ -334,6 +334,16 @@ local function CreatePreviewUnit(parent)
     frame.value:SetPoint("RIGHT", -6, 0)
     frame.value:SetJustifyH("RIGHT")
 
+    frame.levelText = frame:CreateFontString(nil, "OVERLAY")
+    frame.levelText:SetJustifyH("LEFT")
+    frame.levelText:SetWordWrap(false)
+    frame.levelText:SetWidth(38)
+    frame.levelText:SetHeight(14)
+    frame.levelText:Hide()
+    frame.pvpIcon = frame:CreateTexture(nil, "OVERLAY")
+    frame.pvpIcon:SetSize(16, 16)
+    frame.pvpIcon:Hide()
+
     frame.hover = frame:CreateTexture(nil, "HIGHLIGHT")
     frame.hover:SetAllPoints()
     KT:SetAccentTexture(frame.hover, 0.12)
@@ -620,6 +630,29 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
     local valueInset = (isCircular and portraitSide == "right") and (circularOverlap + 5) or 6
     frame.name:SetPoint("LEFT", frame.health, "LEFT", nameInset, 0)
     frame.value:SetPoint("RIGHT", frame.health, "RIGHT", -valueInset, 0)
+    local metadataAnchor = showPortrait and frame.portraitFrame or frame.health
+    frame.levelText:ClearAllPoints()
+    if unitKey == "target" then
+        frame.levelText:SetPoint("BOTTOMRIGHT", metadataAnchor, "TOPRIGHT", -(tonumber(globalDB.levelX) or 2), tonumber(globalDB.levelY) or 2)
+    else
+        frame.levelText:SetPoint("BOTTOMLEFT", metadataAnchor, "TOPLEFT", tonumber(globalDB.levelX) or 2, tonumber(globalDB.levelY) or 2)
+    end
+    local levelOutline = globalDB.levelFontOutline
+    if levelOutline == "NONE" then levelOutline = "" end
+    frame.levelText:SetFont(ResolvePreviewFont(globalDB.levelFont), tonumber(globalDB.levelFontSize) or 11, levelOutline or "OUTLINE")
+    local levelColor = globalDB.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }
+    frame.levelText:SetTextColor(levelColor.r or 1, levelColor.g or 1, levelColor.b or 1, levelColor.a or 1)
+    frame.levelText:SetText(unitKey == "player" and "80" or "70")
+    frame.levelText:SetShown(globalDB.showCharacterLevel == true)
+    frame.pvpIcon:ClearAllPoints()
+    if unitKey == "target" then
+        frame.pvpIcon:SetPoint("LEFT", metadataAnchor, "RIGHT", 2, 1)
+        frame.pvpIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\Horde.png")
+    else
+        frame.pvpIcon:SetPoint("RIGHT", metadataAnchor, "LEFT", -2, 1)
+        frame.pvpIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\Alliance.png")
+    end
+    frame.pvpIcon:SetShown(globalDB.showPvPIcon == true and (unitKey == "player" or unitKey == "target"))
     frame.name:SetFont(PREVIEW_FONT, settings.leftTextSize or settings.textSize or 14, "OUTLINE")
     frame.value:SetFont(PREVIEW_FONT, settings.rightTextSize or settings.textSize or 14, "OUTLINE")
     frame.name:SetText(nameText)
@@ -1160,6 +1193,31 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
                     db.enable = v
                     ReloadUI()
                 end); by = by + h
+            _, h = W:Toggle(container, 'Show Character Level', -by,
+                function() return db.showCharacterLevel == true end,
+                function(v) SetAndRefresh(function() db.showCharacterLevel = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Show PvP Faction Icon', -by,
+                function() return db.showPvPIcon == true end,
+                function(v) SetAndRefresh(function() db.showPvPIcon = v and true or false end) end); by = by + h
+            local levelOutlineValues = { NONE = 'None', OUTLINE = 'Outline', THICKOUTLINE = 'Thick Outline', MONOCHROME = 'Monochrome', OUTLINEMONOCHROME = 'Monochrome Outline' }
+            _, h = W:Dropdown(container, 'Level Font', -by, FontValues,
+                function() return db.levelFont or 'AAA_ITC_Avant_Garde' end,
+                function(v) SetAndRefresh(function() db.levelFont = v end) end); by = by + h
+            _, h = W:Slider(container, 'Level Font Size', -by,
+                function() return tonumber(db.levelFontSize) or 11 end,
+                function(v) SetAndRefresh(function() db.levelFontSize = v end) end, 6, 48, 1); by = by + h
+            _, h = W:Dropdown(container, 'Level Text Outline', -by, levelOutlineValues,
+                function() return db.levelFontOutline or 'OUTLINE' end,
+                function(v) SetAndRefresh(function() db.levelFontOutline = v end) end); by = by + h
+            _, h = W:ColorSwatch(container, 'Level Text Color', -by,
+                function() local c = db.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }; return c.r, c.g, c.b, c.a end,
+                function(r, g, b, a) SetAndRefresh(function() db.levelColor = { r = r, g = g, b = b, a = a or 1 } end) end, true); by = by + h
+            _, h = W:Slider(container, 'Level X Offset', -by,
+                function() return tonumber(db.levelX) or 2 end,
+                function(v) SetAndRefresh(function() db.levelX = v end) end, -200, 200, 1); by = by + h
+            _, h = W:Slider(container, 'Level Y Offset', -by,
+                function() return tonumber(db.levelY) or 2 end,
+                function(v) SetAndRefresh(function() db.levelY = v end) end, -100, 200, 1); by = by + h
             _, h = W:Dropdown(container, 'Portrait Style', -by, PORTRAIT_STYLES,
                 function() return db.portraitStyle or 'attached' end,
                 function(v) SetAndRefresh(function() db.portraitStyle = v end) end); by = by + h

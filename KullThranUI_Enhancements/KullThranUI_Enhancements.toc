@@ -10,10 +10,6 @@ Init.lua
 
 # Runtime ownership lives in this addon. The source remains centralized in the
 # core folder so releases cannot ship two divergent copies.
-..\KullThranUI\Modules\BlizzMove\BlizzMove.lua
-..\KullThranUI\Modules\BlizzMove\BlizzMoveAPI.lua
-..\KullThranUI\Modules\BlizzMove\BlizzMoveConfig.lua
-..\KullThranUI\Modules\BlizzMove\Frames.lua
 ..\KullThranUI\Modules\BlizzardFrames.lua
 ..\KullThranUI\Modules\DurabilityMovable.lua
 ..\KullThranUI\Modules\EscapeMenu.lua

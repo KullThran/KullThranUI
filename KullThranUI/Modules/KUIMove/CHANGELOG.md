@@ -1,4 +1,4 @@
-# BlizzMove
+# KUIMove
 
 ## [v3.7.25](https://github.com/Kiatra/BlizzMove/tree/v3.7.25) (2026-02-11)
 [Full Changelog](https://github.com/Kiatra/BlizzMove/compare/v3.7.24...v3.7.25) [Previous Releases](https://github.com/Kiatra/BlizzMove/releases)

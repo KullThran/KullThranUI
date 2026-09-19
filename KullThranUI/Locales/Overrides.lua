@@ -1178,7 +1178,7 @@ esES["Frame Movers / Edit Mode"] = "Posicionadores de marcos / Modo Edicion"
 esES["KUI Minimap Button Bar"] = "Barra de botones del minimapa de KUI"
 esES["KUI Objective Tracker"] = "Rastreador de objetivos de KUI"
 esES["KUI Cursor"] = "Cursor de KUI"
-esES["KUI Unlock Mode / BlizzMove"] = "Modo desbloqueo de KUI / BlizzMove"
+esES["KUI Unlock Mode / KUIMove"] = "Modo desbloqueo de KUI / KUIMove"
 esES["Multiple minimap button collectors can reparent or hide the same buttons, producing missing, duplicated, or inaccessible icons."] = "Varios recolectores pueden reasignar u ocultar los mismos botones del minimapa, provocando iconos ausentes, duplicados o inaccesibles."
 esES["Objective tracker replacements can move, rebuild, or hide the same Blizzard tracker styled and positioned by KUI."] = "Los reemplazos del rastreador pueden mover, reconstruir u ocultar el mismo rastreador de Blizzard que KUI posiciona y estiliza."
 esES["Running more than one cursor effect creates duplicate rings or trails and unnecessary per-frame updates."] = "Usar mas de un efecto de cursor crea anillos o estelas duplicados y actualizaciones por frame innecesarias."
@@ -1257,7 +1257,7 @@ local frFR_overrides = {
     ["KUI Minimap Button Bar"] = "Barre de boutons mini-carte KUI",
     ["KUI Objective Tracker"] = "Suivi des objectifs KUI",
     ["KUI Cursor"] = "Curseur KUI",
-    ["KUI Unlock Mode / BlizzMove"] = "Mode de déverrouillage KUI / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "Mode de déverrouillage KUI / KUIMove",
     ["Multiple minimap button collectors can reparent or hide the same buttons, producing missing, duplicated, or inaccessible icons."] = "Plusieurs collecteurs peuvent réassigner ou masquer les mêmes boutons, produisant des icônes manquantes, dupliquées ou inaccessibles.",
     ["Objective tracker replacements can move, rebuild, or hide the same Blizzard tracker styled and positioned by KUI."] = "Les remplacements de suivi peuvent déplacer, reconstruire ou masquer le même suivi Blizzard stylisé et positionné par KUI.",
     ["Running more than one cursor effect creates duplicate rings or trails and unnecessary per-frame updates."] = "L'exécution de plus d'un effet de curseur crée des anneaux ou des traînées dupliqués et des mises à jour inutiles par image.",
@@ -1274,7 +1274,7 @@ local ptBR_overrides = {
     ["KUI Minimap Button Bar"] = "Barra de botões mini-mapa KUI",
     ["KUI Objective Tracker"] = "Rastreador de objetivos KUI",
     ["KUI Cursor"] = "Cursor KUI",
-    ["KUI Unlock Mode / BlizzMove"] = "Modo de desbloqueio KUI / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "Modo de desbloqueio KUI / KUIMove",
 }
 
 local itIT_overrides = {
@@ -1287,7 +1287,7 @@ local itIT_overrides = {
     ["KUI Minimap Button Bar"] = "Barra pulsanti mini-mappa KUI",
     ["KUI Objective Tracker"] = "Tracciatore obiettivi KUI",
     ["KUI Cursor"] = "Cursore KUI",
-    ["KUI Unlock Mode / BlizzMove"] = "Modalità sblocco KUI / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "Modalità sblocco KUI / KUIMove",
 }
 
 local ruRU_overrides = {
@@ -1300,7 +1300,7 @@ local ruRU_overrides = {
     ["KUI Minimap Button Bar"] = "Панель кнопок мини-карты KUI",
     ["KUI Objective Tracker"] = "Отслеживатель целей KUI",
     ["KUI Cursor"] = "Курсор KUI",
-    ["KUI Unlock Mode / BlizzMove"] = "Режим разблокировки KUI / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "Режим разблокировки KUI / KUIMove",
 }
 
 local koKR_overrides = {
@@ -1313,7 +1313,7 @@ local koKR_overrides = {
     ["KUI Minimap Button Bar"] = "KUI 미니맵 버튼 바",
     ["KUI Objective Tracker"] = "KUI 목표 추적기",
     ["KUI Cursor"] = "KUI 커서",
-    ["KUI Unlock Mode / BlizzMove"] = "KUI 잠금 해제 모드 / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "KUI 잠금 해제 모드 / KUIMove",
 }
 
 local zhCN_overrides = {
@@ -1326,7 +1326,7 @@ local zhCN_overrides = {
     ["KUI Minimap Button Bar"] = "KUI 小地图按钮栏",
     ["KUI Objective Tracker"] = "KUI 目标追踪器",
     ["KUI Cursor"] = "KUI 光标",
-    ["KUI Unlock Mode / BlizzMove"] = "KUI 解锁模式 / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "KUI 解锁模式 / KUIMove",
 }
 
 local zhTW_overrides = {
@@ -1339,7 +1339,7 @@ local zhTW_overrides = {
     ["KUI Minimap Button Bar"] = "KUI 小地圖按鈕欄",
     ["KUI Objective Tracker"] = "KUI 目標追蹤器",
     ["KUI Cursor"] = "KUI 游標",
-    ["KUI Unlock Mode / BlizzMove"] = "KUI 解鎖模式 / BlizzMove",
+    ["KUI Unlock Mode / KUIMove"] = "KUI 解鎖模式 / KUIMove",
 }
 
 apply(locales.enUS, enUS)

@@ -1344,7 +1344,7 @@ function KT:SanitizeLegacyMinimapData(profileDB)
         end
     end
 
-    for _, moveKey in ipairs({ "blizzMove", "BlizzMove" }) do
+    for _, moveKey in ipairs({ "kuiMove", "blizzMove", "BlizzMove", "KUIMove" }) do
         local moveDB = profileDB[moveKey]
         if type(moveDB) == "table" then
             if type(moveDB.points) == "table" and ClearSensitiveBlizzardKeys(moveDB.points) then
@@ -1506,9 +1506,9 @@ function KT:RestoreManagedPositions()
         end
     end
 
-    local blizzMove = self.GetModule and self:GetModule("BlizzMove", true)
-    if blizzMove and blizzMove.FrameData and blizzMove.AddToSetFramePointsQueue then
-        for frame, frameData in pairs(blizzMove.FrameData) do
+    local kuiMove = self.GetModule and self:GetModule("KUIMove", true)
+    if kuiMove and kuiMove.FrameData and kuiMove.AddToSetFramePointsQueue then
+        for frame, frameData in pairs(kuiMove.FrameData) do
             local storage = frameData and frameData.storage
             local points = storage and storage.points
             local dragPoints = points and points.dragPoints
@@ -1521,10 +1521,10 @@ function KT:RestoreManagedPositions()
                 and dragPoints
                 and not (frameData.IgnoreSavedPositionWhenMaximized and frame.isMaximized)
             then
-                if blizzMove.SetupPointStorage then
-                    pcall(blizzMove.SetupPointStorage, blizzMove, frame)
+                if kuiMove.SetupPointStorage then
+                    pcall(kuiMove.SetupPointStorage, kuiMove, frame)
                 end
-                pcall(blizzMove.AddToSetFramePointsQueue, blizzMove, frame, dragPoints)
+                pcall(kuiMove.AddToSetFramePointsQueue, kuiMove, frame, dragPoints)
             end
         end
     end
@@ -1730,7 +1730,7 @@ end
 -- 1. ON INITIALIZE
 -- ============================================================================
 function KT:PrintStartupMessages()
-    local version = KT.VERSION or "5.0.7"
+    local version = KT.VERSION or "5.0.8"
     local updateAvailable = false
     local latestVersion = KT.GetLatestArchivedChangelogVersion and KT:GetLatestArchivedChangelogVersion()
     if latestVersion and KT.CompareVersions then
@@ -2021,7 +2021,7 @@ function KT:InitializeCore()
         self._installerReopenWatcher = watcher
     end
 
-    local version = KT.VERSION or "5.0.7"
+    local version = KT.VERSION or "5.0.8"
     local accentR, accentG, accentB = self:GetStyleAccentRGB()
     self:Print("Welcome to |cff" .. string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r " .. version)
 end
@@ -2100,7 +2100,7 @@ function KT:MaybeAutoOpenInstaller()
         installerDb.isOpen = false
     end
 
-    local currentVersion = KT.VERSION or "5.0.7"
+    local currentVersion = KT.VERSION or "5.0.8"
     local characterKey = self:GetInstallerCharacterKey()
     local legacyCharacterGUID = UnitGUID and UnitGUID("player")
 

@@ -2351,6 +2351,46 @@ local function AddFrameIndicatorControls(container, W, mode)
         function() return GetValue(mode, "showReadyCheckIcon", true) ~= false end,
         function(v) ApplyValue(mode, "showReadyCheckIcon", v and true or false) end
     ); by = by + h
+    if mode == "party" then
+        _, h = W:Toggle(container, "Show Character Level", -by,
+            function() return GetRootValue("showCharacterLevel", false) == true end,
+            function(v) ApplyRootValue("showCharacterLevel", v and true or false) end
+        ); by = by + h
+        _, h = W:Toggle(container, "Show PvP Faction Icon", -by,
+            function() return GetRootValue("showPvPIcon", false) == true end,
+            function(v) ApplyRootValue("showPvPIcon", v and true or false) end
+        ); by = by + h
+        local levelFonts = {}
+        if LSM and LSM.List then
+            for _, name in ipairs(LSM:List("font")) do levelFonts[name] = name end
+        end
+        levelFonts[GetRootValue("levelFont", "AAA_ITC_Avant_Garde")] = GetRootValue("levelFont", "AAA_ITC_Avant_Garde")
+        _, h = W:Dropdown(container, "Level Font", -by, levelFonts,
+            function() return GetRootValue("levelFont", "AAA_ITC_Avant_Garde") end,
+            function(v) ApplyRootValue("levelFont", v) end
+        ); by = by + h
+        _, h = W:Slider(container, "Level Font Size", -by,
+            function() return tonumber(GetRootValue("levelFontSize", 11)) or 11 end,
+            function(v) ApplyRootValue("levelFontSize", v) end, 6, 48, 1
+        ); by = by + h
+        local outlineValues = { NONE = "None", OUTLINE = "Outline", THICKOUTLINE = "Thick Outline", MONOCHROME = "Monochrome", OUTLINEMONOCHROME = "Monochrome Outline" }
+        _, h = W:Dropdown(container, "Level Text Outline", -by, outlineValues,
+            function() return GetRootValue("levelFontOutline", "OUTLINE") end,
+            function(v) ApplyRootValue("levelFontOutline", v) end
+        ); by = by + h
+        _, h = W:ColorSwatch(container, "Level Text Color", -by,
+            function() local c = GetRootValue("levelColor", { r = 1, g = 0.82, b = 0.20, a = 1 }); return c.r, c.g, c.b, c.a end,
+            function(r, g, b, a) ApplyRootValue("levelColor", { r = r, g = g, b = b, a = a or 1 }) end, true
+        ); by = by + h
+        _, h = W:Slider(container, "Level X Offset", -by,
+            function() return tonumber(GetRootValue("levelX", 3)) or 3 end,
+            function(v) ApplyRootValue("levelX", v) end, -200, 200, 1
+        ); by = by + h
+        _, h = W:Slider(container, "Level Y Offset", -by,
+            function() return tonumber(GetRootValue("levelY", 1)) or 1 end,
+            function(v) ApplyRootValue("levelY", v) end, -100, 200, 1
+        ); by = by + h
+    end
     _, h = W:Toggle(container, "Leader Icons", -by,
         function() return GetValue(mode, "showLeaderIcon", true) ~= false end,
         function(v) ApplyValue(mode, "showLeaderIcon", v and true or false) end

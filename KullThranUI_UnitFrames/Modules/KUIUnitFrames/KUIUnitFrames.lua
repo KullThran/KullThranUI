@@ -21,10 +21,35 @@ local SetupPlayerStatusIndicators
 
 -- ─── Ruta base para los iconos de indicadores de estado ────────────
 local KUI_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\UnitFramesIcons\\"
+local PVP_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\"
+
+local function SafeUnitLevelText(unit)
+    if not unit or type(UnitLevel) ~= "function" then return nil end
+    local ok, level = pcall(UnitLevel, unit)
+    if not ok or (KT.IsSecret and KT.IsSecret(level)) or type(level) ~= "number" or level <= 0 then return nil end
+    return tostring(level)
+end
+
+local function SafeUnitPvPFaction(unit)
+    if not unit or type(UnitIsPVP) ~= "function" or type(UnitFactionGroup) ~= "function" then return nil end
+    local ok, active = pcall(UnitIsPVP, unit)
+    if not ok or (KT.IsSecret and KT.IsSecret(active)) or active ~= true then return nil end
+    ok, active = pcall(UnitFactionGroup, unit)
+    if not ok or (KT.IsSecret and KT.IsSecret(active)) then return nil end
+    return (active == "Horde" or active == "Alliance") and active or nil
+end
 
 local defaults = {
     profile = {
         enable = true,
+        showCharacterLevel = false,
+        showPvPIcon = false,
+        levelFont = "AAA_ITC_Avant_Garde",
+        levelFontSize = 11,
+        levelFontOutline = "OUTLINE",
+        levelColor = { r = 1, g = 0.82, b = 0.20, a = 1 },
+        levelX = 2,
+        levelY = 2,
         showPortrait = false,
         castbarOpacity = 1.0,
         castbarColor = nil,  -- Follows the active theme accent
@@ -927,6 +952,30 @@ local function SetFSFont(fs, size, flags)
   fs:SetShadowColor(0, 0, 0, 0.9)
 end
 
+local function ApplyForeverLevelTextStyle(text, profile, frame)
+    if not (text and text.SetFont) then return end
+    profile = profile or {}
+    local fontName = profile.levelFont or "AAA_ITC_Avant_Garde"
+    local fontPath = Compat.fontPaths and Compat.fontPaths[fontName]
+    if not fontPath then
+        local lsm = LibStub("LibSharedMedia-3.0", true)
+        fontPath = lsm and lsm:Fetch("font", fontName, true)
+    end
+    fontPath = fontPath or DEFAULT_FONT
+    local size = math.max(6, math.min(48, tonumber(profile.levelFontSize) or 11))
+    local outline = profile.levelFontOutline
+    if outline == "NONE" then outline = "" end
+    if type(outline) ~= "string" then outline = "OUTLINE" end
+    text:SetFont(fontPath, size, outline)
+    if KT and KT.EnableTextFontFallback then KT:EnableTextFontFallback(text, fontPath) end
+    local color = profile.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }
+    text:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+    if frame then
+        text:ClearAllPoints()
+        text:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", tonumber(profile.levelX) or 2, tonumber(profile.levelY) or 2)
+    end
+end
+
 -- Disable WoW's automatic pixel snapping on a texture (prevents sub-pixel jitter)
 local function UnsnapTex(tex)
     local PP = Compat and Compat.PP
@@ -1691,6 +1740,7 @@ end
 -- content: "name", "both", "curhpshort", "curhp", "curhp_perhp", "perhp", "perhpnosign", "perhpnum", "deficit", "none"
 local function ContentToTag(content)
     if content == "name" then return "[name]"
+    elseif content == "level" then return "[level]"
     elseif content == "both" then return "[curhpshort] | [perhp]%"
     elseif content == "curhp_perhp" then return "[curhp] | [perhp]%"
     elseif content == "perhpnum" then return "[perhp]% | [curhpshort]"
@@ -1710,6 +1760,7 @@ end
 -- Flat pixel assumptions matching the nameplate system.
 local UF_TEXT_PADDING = 10
 local ufTextWidths = {
+    level       = 28,
     both        = 75,  -- "132 K | 86%"
     curhp_perhp = 90,  -- "132000 | 86%"
     perhpnum    = 75,  -- "86% | 132 K"
@@ -4075,6 +4126,57 @@ local function SetupUnitIndicators(frame, unit)
     end
     local iOvr = frame._kuiIndicatorOverlay
 
+    if not frame._kuiLevelText then
+        local levelText = iOvr:CreateFontString(nil, "OVERLAY")
+        ApplyForeverLevelTextStyle(levelText, db and db.profile, frame)
+        levelText:SetJustifyH("LEFT")
+        levelText:SetWordWrap(false)
+        levelText:SetWidth(38)
+        levelText:SetHeight(14)
+        levelText:Hide()
+        frame._kuiLevelText = levelText
+    end
+    if not frame._kuiPvPIcon then
+        local pvp = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
+        pvp:SetSize(16, 16)
+        pvp:Hide()
+        frame._kuiPvPIcon = pvp
+    end
+
+    local function RefreshForeverMetadata()
+        local u = frame.unit or (frame.GetAttribute and frame:GetAttribute("unit")) or unit
+        local profile = db and db.profile
+        local anchor = (frame.Portrait and (frame.Portrait.backdrop or frame.Portrait)) or frame
+        local showLevel = profile and profile.showCharacterLevel == true
+        ApplyForeverLevelTextStyle(frame._kuiLevelText, profile, anchor)
+        if u == "target" then
+            frame._kuiLevelText:ClearAllPoints()
+            frame._kuiLevelText:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -(tonumber(profile and profile.levelX) or 2), tonumber(profile and profile.levelY) or 2)
+            frame._kuiPvPIcon:ClearAllPoints()
+            frame._kuiPvPIcon:SetPoint("LEFT", anchor, "RIGHT", 2, 1)
+        else
+            frame._kuiPvPIcon:ClearAllPoints()
+            frame._kuiPvPIcon:SetPoint("RIGHT", anchor, "LEFT", -2, 1)
+        end
+        local levelText = showLevel and SafeUnitLevelText(u) or nil
+        if levelText then
+            frame._kuiLevelText:SetText(levelText)
+            frame._kuiLevelText:Show()
+        else
+            frame._kuiLevelText:SetText("")
+            frame._kuiLevelText:Hide()
+        end
+        local faction = profile and profile.showPvPIcon == true and (u == "player" or u == "target") and SafeUnitPvPFaction(u) or nil
+        if faction then
+            frame._kuiPvPIcon:SetTexture(PVP_ICON_PATH .. faction .. ".png")
+            frame._kuiPvPIcon:SetTexCoord(0, 1, 0, 1)
+            frame._kuiPvPIcon:Show()
+        else
+            frame._kuiPvPIcon:Hide()
+        end
+    end
+    frame._kuiMetadataRefresh = RefreshForeverMetadata
+
     -- ── Leader ──────────────────────────────────────────────────
     if not frame.LeaderIndicator then
         local tex = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -4204,14 +4306,17 @@ local function SetupUnitIndicators(frame, unit)
             "PLAYER_FLAGS_CHANGED", "UNIT_FLAGS",
             "UNIT_HEALTH", "UNIT_CONNECTION",
             "PARTY_MEMBER_ENABLE", "PARTY_MEMBER_DISABLE",
+            "UNIT_LEVEL", "UNIT_FACTION", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED",
         }
         for _, ev in ipairs(evts) do
             frame:RegisterEvent(ev, function()
                 RefreshStatusOverlay()
+                RefreshForeverMetadata()
             end, true)
         end
     end
     RefreshStatusOverlay()
+    RefreshForeverMetadata()
 end
 
 local function StyleFullFrame(frame, unit)
@@ -8314,6 +8419,11 @@ function Mod:BindDatabase()
     Compat.CopyDefaults(KT.db.profile.unitFrames, defaults.profile)
     db = { profile = KT.db.profile.unitFrames }
     self.db = db.profile
+    if not self.db._kuiForeverLevelPvpOptionsReset then
+        self.db.showCharacterLevel = false
+        self.db.showPvPIcon = false
+        self.db._kuiForeverLevelPvpOptionsReset = true
+    end
     self.db.enable = self.db.enable ~= false
 end
 

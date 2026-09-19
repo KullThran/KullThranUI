@@ -1,4 +1,4 @@
-﻿local _, ns = ...
+local _, ns = ...
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 -- KUI localization helper (resolved at call time; falls back to the raw text)
 local function LText(text)
@@ -362,6 +362,7 @@ local PF_STATIC = {
 
 local TEXTURE_FILL = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\CustomTextures\\MelliReforged.tga"
 local ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\UnitFramesIcons\\"
+local PVP_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\"
 local ROLE_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Modules\\Tooltip\\Icons\\"
 local DEFAULT_FONT_NAME = KT.DEFAULT_FONT_NAME or "AAA_ITC_Avant_Garde"
 local DEFAULT_FONT_PATH = KT.DEFAULT_FONT_PATH or "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
@@ -849,6 +850,14 @@ local PROFILE_PRESETS = {
 
 local DEFAULTS = {
     enable = true,
+    showCharacterLevel = false,
+    showPvPIcon = false,
+    levelFont = DEFAULT_FONT_NAME,
+    levelFontSize = 11,
+    levelFontOutline = "OUTLINE",
+    levelColor = { r = 1, g = 0.82, b = 0.20, a = 1 },
+    levelX = 3,
+    levelY = 1,
     party = {
         enabled = true,
         frameWidth = 235,
@@ -1352,6 +1361,33 @@ local function ApplyTextStyle(text, db, sizeKey, fallbackSize, maxSize)
     text:SetTextColor(1, 1, 1, 1)
 end
 
+local function ApplyCharacterLevelTextStyle(text, db, anchor)
+    if not text then return end
+    db = db or DEFAULTS
+    local outline = db.levelFontOutline
+    if outline == "NONE" then outline = "" end
+    if type(outline) ~= "string" then outline = "OUTLINE" end
+    local size = math.max(6, math.min(48, tonumber(db.levelFontSize) or 11))
+    local fontPath = ResolveFontPath(db.levelFont or DEFAULT_FONT_NAME)
+    text:SetFont(fontPath, size, outline)
+    if KT and KT.EnableTextFontFallback then KT:EnableTextFontFallback(text, fontPath) end
+    local color = db.levelColor or DEFAULTS.levelColor
+    text:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+    if anchor then
+        text:ClearAllPoints()
+        text:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", tonumber(db.levelX) or 3, tonumber(db.levelY) or 1)
+    end
+end
+
+local function GetPvPFaction(unit)
+    if not unit or type(UnitIsPVP) ~= "function" or type(UnitFactionGroup) ~= "function" then return nil end
+    local ok, active = pcall(UnitIsPVP, unit)
+    if not ok or IsSecretValue(active) or active ~= true then return nil end
+    ok, active = pcall(UnitFactionGroup, unit)
+    if not ok or IsSecretValue(active) then return nil end
+    return (active == "Horde" or active == "Alliance") and active or nil
+end
+
 local function FormatHealthValue(value, abbreviate)
     if abbreviate and AbbreviateNumbers then
         return AbbreviateNumbers(value)
@@ -1801,6 +1837,11 @@ function Mod:EnsureDB()
     KT.db.profile.partyFrames = KT.db.profile.partyFrames or {}
     CopyDefaults(DEFAULTS, KT.db.profile.partyFrames)
     self.db = KT.db.profile.partyFrames
+    if not self.db._kuiForeverLevelPvpOptionsReset then
+        self.db.showCharacterLevel = false
+        self.db.showPvPIcon = false
+        self.db._kuiForeverLevelPvpOptionsReset = true
+    end
     self.db.raid40 = self.db.raid40 or {}
     CopyDefaults(DEFAULTS.raid, self.db.raid40)
     for _, mode in ipairs(MODE_ORDER) do
@@ -2399,6 +2440,12 @@ function Mod:SetRootConfigValue(key, value)
     if key == "autoProfileBySpec" and value then
         return self:ApplyCurrentSpecProfile(true)
     end
+    if key == "showPvPIcon" then
+        self:RefreshAllIndicators()
+    elseif key == "showCharacterLevel" or key == "levelFont" or key == "levelFontSize"
+        or key == "levelFontOutline" or key == "levelColor" or key == "levelX" or key == "levelY" then
+        self:RefreshAll()
+    end
     return true
 end
 
@@ -2892,6 +2939,14 @@ function Mod:CreateUnitButton(parent, name)
     if button.nameText.SetNonSpaceWrap then button.nameText:SetNonSpaceWrap(false) end
     ApplyTextStyle(button.nameText, DEFAULTS.party, "nameFontSize", 15)
 
+    button.levelText = button.overlayFrame:CreateFontString(nil, "OVERLAY")
+    button.levelText:SetJustifyH("LEFT")
+    button.levelText:SetWordWrap(false)
+    button.levelText:SetWidth(38)
+    button.levelText:SetHeight(14)
+    ApplyCharacterLevelTextStyle(button.levelText, DEFAULTS, button)
+    button.levelText:Hide()
+
     button.valueText = button.overlayFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     button.valueText:SetJustifyH("RIGHT")
     button.valueText:SetWordWrap(false)
@@ -2919,6 +2974,7 @@ function Mod:CreateUnitButton(parent, name)
     button.leaderIcon = CreateOverlayIcon(button.overlayFrame, 12)
     button.raidTargetIcon = CreateOverlayIcon(button, 16)
     button.readyCheckIcon = CreateOverlayIcon(button.overlayFrame, 16)
+    button.pvpIcon = CreateOverlayIcon(button, 16)
 
     button.statusText = button.overlayFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     button.statusText:SetJustifyH("CENTER")
@@ -4865,6 +4921,17 @@ ns.SetReadyCheckIcon = function(icon, status)
     end
 end
 
+ns.SetPvPIcon = function(icon, faction)
+    if not icon then return end
+    if faction == "Horde" or faction == "Alliance" then
+        icon.texture:SetTexture(PVP_ICON_PATH .. faction .. ".png")
+        icon.texture:SetTexCoord(0, 1, 0, 1)
+        icon:Show()
+    else
+        icon:Hide()
+    end
+end
+
 function Mod:UpdateFrameIndicators(frame, data)
     if not frame then return end
     local db = self:GetModeDB(frame.mode or "party")
@@ -4883,6 +4950,7 @@ function Mod:UpdateFrameIndicators(frame, data)
         else
             frame.readyCheckIcon:Hide()
         end
+        ns.SetPvPIcon(frame.pvpIcon, nil)
         return
     end
 
@@ -4892,6 +4960,7 @@ function Mod:UpdateFrameIndicators(frame, data)
         ns.SetLeaderIcon(frame.leaderIcon, nil)
         frame.raidTargetIcon:Hide()
         frame.readyCheckIcon:Hide()
+        ns.SetPvPIcon(frame.pvpIcon, nil)
         return
     end
 
@@ -4953,6 +5022,7 @@ function Mod:UpdateFrameIndicators(frame, data)
     else
         frame.readyCheckIcon:Hide()
     end
+    ns.SetPvPIcon(frame.pvpIcon, self.db.showPvPIcon == true and GetPvPFaction(unit) or nil)
 end
 
 function Mod:GetUnits(mode)
@@ -5552,6 +5622,12 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
     frame.readyCheckIcon:SetScale(1.6)
     frame.readyCheckIcon:SetPoint("CENTER", frame, "CENTER", 0, 0)
 
+    frame.levelText:ClearAllPoints()
+    frame.levelText:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", self:GetRootConfigValue("levelX", 3), self:GetRootConfigValue("levelY", 1))
+    frame.pvpIcon:ClearAllPoints()
+    frame.pvpIcon:SetSize(16, 16)
+    frame.pvpIcon:SetPoint("RIGHT", frame, "LEFT", -2, 0)
+
     frame.absorb:ClearAllPoints()
     frame.absorb:SetPoint("TOPRIGHT", frame.health:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
     frame.absorb:SetPoint("BOTTOMRIGHT", frame.health:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
@@ -5611,6 +5687,29 @@ end
 
 function Mod:UpdateFrameVisual(frame, refreshAuras)
     if not frame then return end
+
+    local showPartyLevel = self:GetRootConfigValue("showCharacterLevel", false) == true and frame.mode == "party"
+    ApplyCharacterLevelTextStyle(frame.levelText, self.db, frame)
+    if showPartyLevel then
+        local levelText
+        if frame.fakeUnit then
+            local fakeIndex = frame.fakeUnit.index or 1
+            levelText = tostring(70 + ((fakeIndex - 1) % 10))
+        elseif frame.unit and UnitLevel then
+            local ok, level = pcall(UnitLevel, frame.unit)
+            if ok and not IsSecretValue(level) and type(level) == "number" and level > 0 then levelText = tostring(level) end
+        end
+        if levelText then
+            frame.levelText:SetText(levelText)
+            frame.levelText:Show()
+        else
+            frame.levelText:SetText("")
+            frame.levelText:Hide()
+        end
+    else
+        frame.levelText:SetText("")
+        frame.levelText:Hide()
+    end
 
     if frame.fakeUnit then
         local db = self:GetModeDB(frame.mode or "party")
@@ -5722,6 +5821,8 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     end
     Mod:SetArenaSpecIcon(frame, specIcon, specName)
     if not IsUnitUsable(unit) then
+        frame.levelText:SetText("")
+        frame.levelText:Hide()
         local arenaIndex = frame.mode == 'arenaEnemy' and type(unit) == 'string'
             and tonumber(string.match(unit, '^arena(%d+)$')) or nil
         frame.nameText:SetText(arenaIndex and FitText(frame._arenaSpecName or ('Enemy ' .. arenaIndex), frame._nameMaxChars) or '')

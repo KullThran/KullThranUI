@@ -1289,6 +1289,17 @@ initFrame:SetScript("OnEvent", function(self)
         nameFS:SetText(LText("Enemy Name Text"))
         nameFS:SetTextColor(1, 1, 1, 1)
 
+        local levelFS = topTextFrame:CreateFontString(nil, "OVERLAY")
+        if ns.ApplyNameplateLevelTextStyle then ns.ApplyNameplateLevelTextStyle(levelFS) end
+        levelFS:SetJustifyH("LEFT")
+        levelFS:SetWordWrap(false)
+        levelFS:SetMaxLines(1)
+        levelFS:SetText("30")
+        levelFS:SetWidth(160)
+        levelFS:SetHeight(48)
+        levelFS:SetPoint("BOTTOMLEFT", health, "TOPLEFT", 24, 4)
+        pf._levelFS = levelFS
+
         -- Health percentage text (right-aligned inside health bar)
         local hpText = healthTextFrame:CreateFontString(nil, "OVERLAY")
         SetPVFont(hpText, FONT_PATH, 10, GetNPOptOutline())
@@ -1618,6 +1629,15 @@ initFrame:SetScript("OnEvent", function(self)
             local pctNoSignStr = tostring(curHpPct)
             local hpNumStr = tostring(curHpVal):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
             -- Text on hpText/hpNumber is set later by the slot-based positioning logic
+            if pf._levelFS then
+                if ns.ApplyNameplateLevelTextStyle then ns.ApplyNameplateLevelTextStyle(pf._levelFS) end
+                pf._levelFS:SetText("30")
+                pf._levelFS:SetWidth(math.max(80, barW + 80))
+                pf._levelFS:SetHeight(math.max(16, (tonumber(DBVal("levelFontSize")) or 11) + 6))
+                pf._levelFS:ClearAllPoints()
+                pf._levelFS:SetPoint("BOTTOMLEFT", health, "TOPLEFT", tonumber(DBVal("levelXOffset")) or 24, tonumber(DBVal("levelYOffset")) or 4)
+                pf._levelFS:SetShown(DBVal("showLevel") == true)
+            end
             cast:SetValue(_previewCastFill or 0.60)
             castParts.icon:SetTexture(castParts.previewIcon or displayCastIcons[_previewCastIconIdx or 1])
 
@@ -5159,6 +5179,74 @@ initFrame:SetScript("OnEvent", function(self)
                 end,
             })
         y = y - h
+
+        local function RefreshNameplateLevelSettings()
+            for _, plate in pairs(plates) do
+                if plate.UpdateLevel then plate:UpdateLevel() end
+            end
+            UpdatePreview()
+        end
+        local levelFontValues, levelFontOrder = {}, {}
+        if LSM and LSM.List then
+            for _, fontName in ipairs(LSM:List("font")) do
+                levelFontValues[fontName] = fontName
+                levelFontOrder[#levelFontOrder + 1] = fontName
+            end
+        end
+        local currentLevelFont = DBVal("levelFont") or defaults.levelFont
+        if currentLevelFont and not levelFontValues[currentLevelFont] then
+            levelFontValues[currentLevelFont] = currentLevelFont
+            levelFontOrder[#levelFontOrder + 1] = currentLevelFont
+        end
+        local levelOutlineValues = {
+            NONE = "None", OUTLINE = "Outline", THICKOUTLINE = "Thick Outline",
+            MONOCHROME = "Monochrome", OUTLINEMONOCHROME = "Monochrome Outline",
+        }
+        local levelOutlineOrder = { "NONE", "OUTLINE", "THICKOUTLINE", "MONOCHROME", "OUTLINEMONOCHROME" }
+        _, h = W:SectionHeader(parent, "NAMEPLATE LEVEL", y); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
+                type = "toggle", text = LText("Show Level"),
+                getValue = function() return DBVal("showLevel") == true end,
+                setValue = function(v) DB().showLevel = v and true or false; RefreshNameplateLevelSettings() end,
+            },
+            {
+                type = "dropdown", text = LText("Level Font"), values = levelFontValues, order = levelFontOrder,
+                getValue = function() return DBVal("levelFont") or defaults.levelFont end,
+                setValue = function(v) DB().levelFont = v; RefreshNameplateLevelSettings() end,
+            }); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
+                type = "slider", text = LText("Level Font Size"), min = 6, max = 48, step = 1,
+                getValue = function() return tonumber(DBVal("levelFontSize")) or 11 end,
+                setValue = function(v) DB().levelFontSize = v; RefreshNameplateLevelSettings() end,
+            },
+            {
+                type = "dropdown", text = LText("Level Text Outline"), values = levelOutlineValues, order = levelOutlineOrder,
+                getValue = function() return DBVal("levelFontOutline") or "OUTLINE" end,
+                setValue = function(v) DB().levelFontOutline = v; RefreshNameplateLevelSettings() end,
+            }); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
+                type = "colorpicker", text = LText("Level Text Color"),
+                getValue = function() local c = DBVal("levelColor") or defaults.levelColor; return c.r or 1, c.g or 1, c.b or 1 end,
+                setValue = function(r, g, b) DB().levelColor = { r = r, g = g, b = b, a = 1 }; RefreshNameplateLevelSettings() end,
+            },
+            { type = "toggle", text = LText("Level Text Shadow"),
+                getValue = function() return DBVal("levelShadow") ~= false end,
+                setValue = function(v) DB().levelShadow = v and true or false; RefreshNameplateLevelSettings() end,
+            }); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
+                type = "slider", text = LText("Level X Offset"), min = -200, max = 200, step = 1,
+                getValue = function() return tonumber(DBVal("levelXOffset")) or 24 end,
+                setValue = function(v) DB().levelXOffset = v; RefreshNameplateLevelSettings() end,
+            },
+            {
+                type = "slider", text = LText("Level Y Offset"), min = -100, max = 200, step = 1,
+                getValue = function() return tonumber(DBVal("levelYOffset")) or 4 end,
+                setValue = function(v) DB().levelYOffset = v; RefreshNameplateLevelSettings() end,
+            }); y = y - h
 
         _, h = W:Spacer(parent, y, 8)
         y = y - h

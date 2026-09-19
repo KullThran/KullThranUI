@@ -1,9 +1,9 @@
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
---- @type BlizzMoveAPI
-local BlizzMoveAPI = KT and KT.BlizzMoveAPI
-if not BlizzMoveAPI then return; end
+--- @type KUIMoveAPI
+local KUIMoveAPI = KT and KT.KUIMoveAPI
+if not KUIMoveAPI then return; end
 
-BlizzMoveAPI:RegisterFrames({
+KUIMoveAPI:RegisterFrames({
     ["AddonList"] =
     {
         MinVersion = 0,
@@ -380,7 +380,7 @@ BlizzMoveAPI:RegisterFrames({
     ["PVEFrame"] =
     {
         MinVersion = 30403,
-        MaxVersion = 120001, -- Midnight retail: LFGList secure payloads taint when BlizzMove hooks PVEFrame
+        MaxVersion = 120001, -- Midnight retail: LFGList secure payloads taint when KUIMove hooks PVEFrame
         SilenceCompatabilityWarnings = true, -- frame exists in classic, but is not functional
     },
     ["PVPBannerFrame"] =
@@ -548,7 +548,7 @@ BlizzMoveAPI:RegisterFrames({
     },
 });
 
-BlizzMoveAPI:RegisterAddOnFrames({
+KUIMoveAPI:RegisterAddOnFrames({
     ["Blizzard_AccountStore"] =
     {
         ["AccountStoreFrame"] =

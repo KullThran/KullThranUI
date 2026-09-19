@@ -146,7 +146,7 @@ function M:LogGameMenuState(label, menu)
         DebugMetric(uiEffectiveScale),
         DebugFlag(self._refreshing),
         DebugFlag(self._refreshPending),
-        DebugFlag(self._blizzMoveGameMenuDetached)
+        DebugFlag(self._kuiMoveGameMenuDetached)
     )
 end
 
@@ -360,12 +360,12 @@ local function RunEscapeMenuStep(stepName, callback)
     return ok
 end
 
-local function DisableBlizzMoveGameMenuHandling()
-    if not M or M._blizzMoveGameMenuDetached then
+local function DisableKUIMoveGameMenuHandling()
+    if not M or M._kuiMoveGameMenuDetached then
         return
     end
 
-    local api = KT and KT.BlizzMoveAPI
+    local api = KT and KT.KUIMoveAPI
     if not (api and api.UnregisterFrame) then
         return
     end
@@ -375,7 +375,7 @@ local function DisableBlizzMoveGameMenuHandling()
     end)
 
     if ok then
-        M._blizzMoveGameMenuDetached = true
+        M._kuiMoveGameMenuDetached = true
         if InCombatLockdown and InCombatLockdown() then
             return
         end
@@ -1252,7 +1252,7 @@ function M:StyleMenuFrame()
     end
 
     self:HideNativeMenuArt(menu)
-    DisableBlizzMoveGameMenuHandling()
+    DisableKUIMoveGameMenuHandling()
     NormalizeGameMenuScale(menu)
     EnsureGameMenuDraggable(menu)
 
@@ -2028,7 +2028,7 @@ function M:RunCombatFullStyle(menu)
 
     -- Replicate the out-of-combat presentation during combat so the menu looks
     -- identical (compact layout, custom buttons, KUI textures, styled title).
-    -- NormalizeGameMenuScale (SetScale), the BlizzMove detach and the draggable
+    -- NormalizeGameMenuScale (SetScale), the KUIMove detach and the draggable
     -- wiring are already applied and become no-ops here. Blizzard's Layout has
     -- already run on show, so we only re-style and re-position on top of it.
     self:EnsureButtons()
@@ -2299,7 +2299,7 @@ function M:HookMenu()
         local traceToken = M:StartDebugTrace("OnShow:start", menu)
         M._menuHealthToken = (M._menuHealthToken or 0) + 1
         M:BeginMenuSettle(menu)
-        DisableBlizzMoveGameMenuHandling()
+        DisableKUIMoveGameMenuHandling()
         NormalizeGameMenuScale(menu)
 
         M:LogGameMenuState("OnShow:beforeRefresh", menu)
@@ -2329,7 +2329,7 @@ function M:TrySetup()
         return true
     end
 
-    DisableBlizzMoveGameMenuHandling()
+    DisableKUIMoveGameMenuHandling()
     self:EnsureButtons()
     self:StyleMenuFrame()
     self:HookMenu()

@@ -54,35 +54,35 @@ local function SafeBooleanCall(func)
     return ok and not IsSecret(value) and value == true;
 end
 
-local name = "BlizzMove";
+local name = "KUIMove";
 local INTERNAL_ADDON_NAME = "KullThranUI";
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
---- @class BlizzMove: AceModule,AceConsole-3.0,AceEvent-3.0,AceHook-3.0
-local BlizzMove = KT:NewModule(name, "AceConsole-3.0", "AceEvent-3.0", "AceHook-3.0");
-if not BlizzMove then return; end
+--- @class KUIMove: AceModule,AceConsole-3.0,AceEvent-3.0,AceHook-3.0
+local KUIMove = KT:NewModule(name, "AceConsole-3.0", "AceEvent-3.0", "AceHook-3.0");
+if not KUIMove then return; end
 
 local L = LibStub("AceLocale-3.0"):GetLocale(name, true) or LibStub("AceLocale-3.0"):GetLocale(INTERNAL_ADDON_NAME, true);
 if not L then L = setmetatable({}, { __index = function(t, k) return k end }) end
 -- Various debug texts have been left untranslated on purpose, to make debugging easier. Instructions or information for users is translated.
 
---- @type BlizzMoveAPI_AddonFrameTable
-BlizzMove.Frames = {};
---- @type table<Frame, BlizzMove_FrameData>
-BlizzMove.FrameData = {};
+--- @type KUIMoveAPI_AddonFrameTable
+KUIMove.Frames = {};
+--- @type table<Frame, KUIMove_FrameData>
+KUIMove.FrameData = {};
 --- @type table<string, table<string, Frame>> # [addOnName][frameName] = frame
-BlizzMove.FrameRegistry = {};
+KUIMove.FrameRegistry = {};
 --- @type table<PanelDragBarTemplate, boolean> # [moveHandleFrame] = true
-BlizzMove.MoveHandles = {};
---- @type BlizzMove_CombatLockdownQueueItem[]
-BlizzMove.CombatLockdownQueue = {};
+KUIMove.MoveHandles = {};
+--- @type KUIMove_CombatLockdownQueueItem[]
+KUIMove.CombatLockdownQueue = {};
 --- @type table<Frame, true>
-BlizzMove.CurrentMouseoverFrames = {};
+KUIMove.CurrentMouseoverFrames = {};
 --- @type table<string, number> # [frameName] = scale
-BlizzMove.SessionScales = {}
+KUIMove.SessionScales = {}
 
 local MAX_SCALE = 2.5;
 local MIN_SCALE = 0.3; -- steps are in 0.1 increments, and we'd like to stay above 0.25
-local BLIZZMOVE_ENABLED = true;
+local KUIMOVE_ENABLED = true;
 
 local damageMeterFrameNames = {
     "DamageMeter",
@@ -190,11 +190,9 @@ end
 ------------------------------------------------------------------------------------------------------
 --- Debug Functions
 ------------------------------------------------------------------------------------------------------
---[==[@debug@
-_G['BlizzMove'] = BlizzMove;
---@end-debug@]==]
+_G['KUIMove'] = KUIMove;
 do
-    function BlizzMove:DebugPrint(...)
+    function KUIMove:DebugPrint(...)
         if self.DB and self.DB.DebugPrints then self:Print("Debug message:\n", ...); end
     end
 end
@@ -208,15 +206,15 @@ do
         return type(value) == "table" and type(value.IsObjectType) == "function" and value:IsObjectType("Frame");
     end
 
-    function BlizzMove:ValidateFrame(frameName, frameData, isSubFrame)
+    function KUIMove:ValidateFrame(frameName, frameData, isSubFrame)
         return self:ValidateFrameName(frameName) and self:ValidateFrameData(frameName, frameData, isSubFrame);
     end
 
-    function BlizzMove:ValidateFrameName(frameName)
+    function KUIMove:ValidateFrameName(frameName)
         return #frameName > 0;
     end
 
-    function BlizzMove:ValidateFrameData(frameName, frameData, isSubFrame)
+    function KUIMove:ValidateFrameData(frameName, frameData, isSubFrame)
         local validationError;
 
         for key, value in pairs(frameData) do
@@ -289,7 +287,7 @@ do
         return true;
     end
 
-    function BlizzMove:RegisterFrame(addOnName, frameName, frameData, skipConfigUpdate)
+    function KUIMove:RegisterFrame(addOnName, frameName, frameData, skipConfigUpdate)
         if not addOnName then addOnName = INTERNAL_ADDON_NAME; end
 
         local copiedData = self:CopyTable(frameData);
@@ -311,7 +309,7 @@ do
 
     end
 
-    function BlizzMove:UnregisterFrame(addOnName, frameName, permanent)
+    function KUIMove:UnregisterFrame(addOnName, frameName, permanent)
         if not addOnName then addOnName = INTERNAL_ADDON_NAME; end
 
         if self:IsFrameDisabled(addOnName, frameName) then return; end
@@ -331,7 +329,7 @@ do
         return true;
     end
 
-    function BlizzMove:GetRegisteredAddOns()
+    function KUIMove:GetRegisteredAddOns()
         local returnTable = {};
 
         for addOnName, _ in pairs(self.Frames) do
@@ -343,7 +341,7 @@ do
         return returnTable;
     end
 
-    function BlizzMove:GetRegisteredFrames(addOnName)
+    function KUIMove:GetRegisteredFrames(addOnName)
         if not addOnName then addOnName = INTERNAL_ADDON_NAME; end
 
         local returnTable = {};
@@ -359,15 +357,15 @@ do
         return returnTable;
     end
 
-    function BlizzMove:DisableFrame(addOnName, frameName)
+    function KUIMove:DisableFrame(addOnName, frameName)
         if not addOnName then addOnName = INTERNAL_ADDON_NAME; end
 
         if self:IsFrameDisabled(addOnName, frameName) then return; end
 
-        BlizzMove:UnregisterFrame(addOnName, frameName, true);
+        KUIMove:UnregisterFrame(addOnName, frameName, true);
     end
 
-    function BlizzMove:EnableFrame(addOnName, frameName)
+    function KUIMove:EnableFrame(addOnName, frameName)
         if (not addOnName) then addOnName = INTERNAL_ADDON_NAME; end
 
         if (not self:IsFrameDisabled(addOnName, frameName)) then return; end
@@ -396,7 +394,7 @@ do
         end
     end
 
-    function BlizzMove:IsFrameDisabled(addOnName, frameName)
+    function KUIMove:IsFrameDisabled(addOnName, frameName)
         if (not addOnName) then addOnName = INTERNAL_ADDON_NAME; end
 
         if (self.DB and self.DB.disabledFrames and self.DB.disabledFrames[addOnName] and self.DB.disabledFrames[addOnName][frameName]) then
@@ -413,7 +411,7 @@ do
         return false;
     end
 
-    function BlizzMove:IsFrameDefaultDisabled(addOnName, frameName)
+    function KUIMove:IsFrameDefaultDisabled(addOnName, frameName)
         if (not addOnName) then addOnName = INTERNAL_ADDON_NAME; end
 
         if (self.Frames[addOnName] and self.Frames[addOnName][frameName] and self.Frames[addOnName][frameName].DefaultDisabled) then
@@ -428,7 +426,7 @@ end
 --- FrameData and storage Functions
 ------------------------------------------------------------------------------------------------------
 do
-    function BlizzMove:GetFrameFromName(addOnName, frameName)
+    function KUIMove:GetFrameFromName(addOnName, frameName)
         if self.FrameRegistry[addOnName] and self.FrameRegistry[addOnName][frameName] then
             return self.FrameRegistry[addOnName][frameName];
         end
@@ -444,7 +442,7 @@ do
         return frameTable;
     end
 
-    function BlizzMove:GetFrameName(frame)
+    function KUIMove:GetFrameName(frame)
         return
             frame
             and self.FrameData
@@ -453,15 +451,15 @@ do
             and self.FrameData[frame].storage.frameName
     end
 
-    function BlizzMove:ResetScaleStorage()
+    function KUIMove:ResetScaleStorage()
         wipe(self.DB.scales);
     end
 
-    function BlizzMove:ResetPointStorage()
+    function KUIMove:ResetPointStorage()
         wipe(self.DB.points);
     end
 
-    function BlizzMove:SetupPointStorage(frame)
+    function KUIMove:SetupPointStorage(frame)
         local frameName = self:GetFrameName(frame);
         if not frameName then return false; end
 
@@ -492,8 +490,8 @@ do
     end
 
     local _, buildNumber, _, gameVersion = GetBuildInfo();
-    BlizzMove.gameBuild   = tonumber(buildNumber);
-    BlizzMove.gameVersion = tonumber(gameVersion);
+    KUIMove.gameBuild   = tonumber(buildNumber);
+    KUIMove.gameVersion = tonumber(gameVersion);
 
     local function checkRanges(ranges, needle)
         for _, range in ipairs(ranges) do
@@ -512,7 +510,7 @@ do
         end
         return false;
     end
-    function BlizzMove:MatchesCurrentBuild(frameData)
+    function KUIMove:MatchesCurrentBuild(frameData)
         -- Compare versus current build version.
         if frameData.MinBuild and frameData.MinBuild > self.gameBuild then return false; end
         if frameData.MaxBuild and frameData.MaxBuild <= self.gameBuild then return false; end
@@ -534,7 +532,7 @@ do
         return true;
     end
 
-    function BlizzMove:CopyTable(table)
+    function KUIMove:CopyTable(table)
         local copy = {};
         for k, v in pairs(table) do
             if type(v) == "table" then
@@ -575,8 +573,8 @@ do
                 framePoints[curPoint].offY = frame:GetPoint(curPoint);
 
                 local relativeFrame = framePoints[curPoint].relativeFrame;
-                if (BlizzMove:GetFrameName(relativeFrame)) then
-                    framePoints[curPoint].relativeFrameName = BlizzMove:GetFrameName(relativeFrame);
+                if (KUIMove:GetFrameName(relativeFrame)) then
+                    framePoints[curPoint].relativeFrameName = KUIMove:GetFrameName(relativeFrame);
                 elseif (relativeFrame and relativeFrame.GetName and relativeFrame:GetName()) then
                     framePoints[curPoint].relativeFrameName = relativeFrame:GetName();
                 end
@@ -593,9 +591,9 @@ do
         local scale = frame:GetScale();
         if not scale then return end
         if not frame:GetLeft() then
-            local frameData = BlizzMove.FrameData[frame];
+            local frameData = KUIMove.FrameData[frame];
             local frameName = frameData and frameData.storage and frameData.storage.frameName or 'unknown';
-            local sharedText = L['BlizzMove: The frame you just moved (%s) is probably in a broken state, possibly because of other addons.']:format(frameName);
+            local sharedText = L['KUIMove: The frame you just moved (%s) is probably in a broken state, possibly because of other addons.']:format(frameName);
 
             error(sharedText .. ' ' .. L['Copy the text from the popup window, and report it to the addon author.']);
             return;
@@ -634,7 +632,7 @@ do
             point = "CENTER"
         end
 
-        BlizzMove:DebugPrint("GetAbsoluteFramePosition", "x:", math.floor(x), "y:", math.floor(y), "point:", point);
+        KUIMove:DebugPrint("GetAbsoluteFramePosition", "x:", math.floor(x), "y:", math.floor(y), "point:", point);
 
         -- the nested table is for backwards compatibility
         return {
@@ -649,7 +647,7 @@ do
     end
 
     --- @param frame Frame
-    --- @param framePoints BlizzMove_FramePoint[]
+    --- @param framePoints KUIMove_FramePoint[]
     --- @param raw boolean? # if true, will not factor in the frame scale
     --- @return boolean
     function SetFramePoints(frame, framePoints, raw)
@@ -685,14 +683,14 @@ local GetFrameScale;
 local SetFrameScale;
 do
     function GetFrameScale(frame)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         local parentScale = (frameData.storage.frameParent and not frameData.ManuallyScaleWithParent and GetFrameScale(frameData.storage.frameParent)) or 1;
 
         return frame:GetScale() * parentScale;
     end
 
     local function SetFrameScaleSubs(frame, oldScale, newScale)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
 
         if frameData.SubFrames then
             for subFrameName, subFrameData in pairs(frameData.SubFrames) do
@@ -702,10 +700,10 @@ do
                     if subFrame then
                         if subFrameData.ManuallyScaleWithParent and not subFrameData.storage.detached then
                             subFrame:SetScale((subFrame:GetScale() / oldScale) * newScale);
-                            BlizzMove:DebugPrint("SetSubFrameScale:", subFrameName, string__format("%.2f %.2f %.2f %.2f", oldScale, newScale, subFrame:GetScale(), GetFrameScale(subFrame)));
+                            KUIMove:DebugPrint("SetSubFrameScale:", subFrameName, string__format("%.2f %.2f %.2f %.2f", oldScale, newScale, subFrame:GetScale(), GetFrameScale(subFrame)));
                         elseif not subFrameData.ManuallyScaleWithParent and subFrameData.storage.detached then
                             subFrame:SetScale((oldScale * subFrame:GetScale()) / newScale);
-                            BlizzMove:DebugPrint("SetSubFrameScale:", subFrameName, string__format("%.2f %.2f %.2f %.2f", oldScale, newScale, subFrame:GetScale(), GetFrameScale(subFrame)));
+                            KUIMove:DebugPrint("SetSubFrameScale:", subFrameName, string__format("%.2f %.2f %.2f %.2f", oldScale, newScale, subFrame:GetScale(), GetFrameScale(subFrame)));
                         else
                             SetFrameScaleSubs(subFrame, oldScale, newScale);
                         end
@@ -717,7 +715,7 @@ do
 
     function SetFrameScale(frame, frameScale)
         if InCombatLockdown() and frame:IsProtected() then return true; end
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         local oldScale = GetFrameScale(frame);
         local newScale = frameScale;
 
@@ -730,10 +728,10 @@ do
             newScale = parentScale;
         end
 
-        BlizzMove.DB.scales[frameData.storage.frameName] = newScale;
-        BlizzMove.SessionScales[frameData.storage.frameName] = newScale;
+        KUIMove.DB.scales[frameData.storage.frameName] = newScale;
+        KUIMove.SessionScales[frameData.storage.frameName] = newScale;
         frame:SetScale(newScale);
-        BlizzMove:DebugPrint("SetFrameScale:", frameData.storage.frameName, string__format("%.2f %.2f %.2f", frameScale, frame:GetScale(), GetFrameScale(frame)));
+        KUIMove:DebugPrint("SetFrameScale:", frameData.storage.frameName, string__format("%.2f %.2f %.2f", frameScale, frame:GetScale(), GetFrameScale(frame)));
 
         SetFrameScaleSubs(frame, oldScale, newScale);
 
@@ -747,15 +745,15 @@ end
 local SetFrameParent;
 do
     local function SetFrameParentSubs(frame, addOnName)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         local returnValue = true;
 
         if not frameData or not frameData.SubFrames then return returnValue end
 
         for subFrameName, subFrameData in pairs(frameData.SubFrames) do
-            local subFrame = BlizzMove:GetFrameFromName(addOnName, subFrameName);
+            local subFrame = KUIMove:GetFrameFromName(addOnName, subFrameName);
 
-            if subFrame and BlizzMove:MatchesCurrentBuild(subFrameData) then
+            if subFrame and KUIMove:MatchesCurrentBuild(subFrameData) then
                 if subFrameData.ForceParentage and subFrame.GetParent and subFrame.SetParent and subFrame:GetParent() ~= frame then
                     subFrame:SetParent(frame);
                 elseif subFrameData.ForceParentage then
@@ -769,7 +767,7 @@ do
     end
 
     function SetFrameParent(frame)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
 
         return (frameData.storage.frameParent and SetFrameParent(frameData.storage.frameParent)) or SetFrameParentSubs(frame, frameData.storage.addOnName);
     end
@@ -787,7 +785,7 @@ do
     local function returnFalse() return false; end
 
     function StartMoving(frame)
-        if BlizzMove.MoveHandles[frame] then
+        if KUIMove.MoveHandles[frame] then
             setNil(frame, 'onDragStartCallback');
 
             return;
@@ -796,7 +794,7 @@ do
     end
 
     function StopMoving(frame)
-        if BlizzMove.MoveHandles[frame] then
+        if KUIMove.MoveHandles[frame] then
             frame.onDragStartCallback = returnFalse;
 
             return;
@@ -819,7 +817,7 @@ local OnShow;
 local OnSubFrameHide;
 do
     function OnMouseDown(frame, button)
-        local moveHandle = BlizzMove.MoveHandles[frame] and frame or nil;
+        local moveHandle = KUIMove.MoveHandles[frame] and frame or nil;
         if moveHandle then
             frame = moveHandle:GetParent();
         end
@@ -827,14 +825,14 @@ do
         return DoOnMouseDown(frame, button, moveHandle);
     end
     function DoOnMouseDown(frame, button, moveHandle)
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
         local returnValue = false;
         local parentReturnValue = false;
-        local frameData = BlizzMove.FrameData[frame];
-        BlizzMove:SetupPointStorage(frame);
+        local frameData = KUIMove.FrameData[frame];
+        KUIMove:SetupPointStorage(frame);
 
-        BlizzMove:DebugPrint("OnMouseDown:", frameData.storage.frameName, button);
+        KUIMove:DebugPrint("OnMouseDown:", frameData.storage.frameName, button);
 
         if button == "LeftButton" then
             if not moveHandle and IsAltKeyDown() and frameData.Detachable and not frameData.storage.detached then
@@ -851,7 +849,7 @@ do
 
             if
                 (frameData.storage.detached or not parentReturnValue)
-                and (not (BlizzMove.DB and BlizzMove.DB.requireMoveModifier) or IsShiftKeyDown())
+                and (not (KUIMove.DB and KUIMove.DB.requireMoveModifier) or IsShiftKeyDown())
             then
                 local userPlaced = frame:IsUserPlaced();
 
@@ -868,7 +866,7 @@ do
     end
 
     function OnMouseUp(frame, button)
-        local moveHandle = BlizzMove.MoveHandles[frame] and frame or nil;
+        local moveHandle = KUIMove.MoveHandles[frame] and frame or nil;
         if moveHandle then
             frame = moveHandle:GetParent();
         end
@@ -876,13 +874,13 @@ do
     end
     function DoOnMouseUp(frame, button, moveHandle)
         if moveHandle then StopMoving(moveHandle); end
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
         local returnValue = false;
         local parentReturnValue = false;
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
 
-        BlizzMove:DebugPrint("OnMouseUp:", frameData.storage.frameName, button);
+        KUIMove:DebugPrint("OnMouseUp:", frameData.storage.frameName, button);
 
         if not frameData.storage.detached then
             parentReturnValue = (frameData.storage.frameParent and DoOnMouseUp(frameData.storage.frameParent, button, moveHandle)) or false;
@@ -938,13 +936,13 @@ do
     function OnMouseWheel(frame, delta, ...)
         local controlDown = IsControlKeyDown();
         if IsSecret(controlDown) or not controlDown then return; end
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
         local returnValue = false;
         local parentReturnValue = false;
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
 
-        BlizzMove:DebugPrint("OnMouseWheel:", frameData.storage.frameName, delta);
+        KUIMove:DebugPrint("OnMouseWheel:", frameData.storage.frameName, delta);
 
         if not frameData.storage.detached then
             parentReturnValue = (frameData.storage.frameParent and OnMouseWheel(frameData.storage.frameParent, delta, ...)) or false;
@@ -963,25 +961,25 @@ do
     end
 
     function OnShow(frame, skipAdditionalRunNextFrame)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         if not frameData or not frameData.storage or frameData.storage.disabled then return; end
 
-        BlizzMove:DebugPrint("OnShow:", BlizzMove:GetFrameName(frame));
+        KUIMove:DebugPrint("OnShow:", KUIMove:GetFrameName(frame));
 
         if InCombatLockdown() and frame:IsProtected() then
-            BlizzMove:AddToCombatLockdownQueue(OnShow, frame);
-            BlizzMove:DebugPrint('Adding to combatLockdownQueue: OnShow - ', BlizzMove:GetFrameName(frame));
+            KUIMove:AddToCombatLockdownQueue(OnShow, frame);
+            KUIMove:DebugPrint('Adding to combatLockdownQueue: OnShow - ', KUIMove:GetFrameName(frame));
 
             return;
         end
 
         SetFrameParent(frame);
 
-        local frameName = BlizzMove:GetFrameName(frame);
-        if BlizzMove.DB.saveScaleStrategy == 'permanent' and BlizzMove.DB.scales[frameName] then
-            SetFrameScale(frame, BlizzMove.DB.scales[frameName]);
-        elseif BlizzMove.SessionScales[frameName] then
-            SetFrameScale(frame, BlizzMove.SessionScales[frameName]);
+        local frameName = KUIMove:GetFrameName(frame);
+        if KUIMove.DB.saveScaleStrategy == 'permanent' and KUIMove.DB.scales[frameName] then
+            SetFrameScale(frame, KUIMove.DB.scales[frameName]);
+        elseif KUIMove.SessionScales[frameName] then
+            SetFrameScale(frame, KUIMove.SessionScales[frameName]);
         end
 
         if not skipAdditionalRunNextFrame then
@@ -990,31 +988,31 @@ do
     end
 
     function OnSubFrameHide(frame)
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         local parent = frameData.storage.frameParent or nil;
 
-        BlizzMove:DebugPrint("OnHide:", frameData.storage.frameName, frameData.storage.isMoving);
+        KUIMove:DebugPrint("OnHide:", frameData.storage.frameName, frameData.storage.isMoving);
         if parent then return OnSubFrameHide(parent); end
 
         if frameData.storage.isMoving then
-            BlizzMove:WaitForGlobalMouseUp(frame);
+            KUIMove:WaitForGlobalMouseUp(frame);
         end
     end
 
     function OnEnter(frame)
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
-        BlizzMove.CurrentMouseoverFrames[frame] = true;
-        BlizzMove:CheckMouseWheelCapture();
+        KUIMove.CurrentMouseoverFrames[frame] = true;
+        KUIMove:CheckMouseWheelCapture();
     end
 
     function OnLeave(frame)
-        if not BlizzMove.CurrentMouseoverFrames[frame] then return; end
+        if not KUIMove.CurrentMouseoverFrames[frame] then return; end
 
-        BlizzMove.CurrentMouseoverFrames[frame] = nil;
-        BlizzMove:CheckMouseWheelCapture();
+        KUIMove.CurrentMouseoverFrames[frame] = nil;
+        KUIMove:CheckMouseWheelCapture();
     end
 end
 
@@ -1036,7 +1034,7 @@ do
     The previous solution involved manually calling childFrame:GetScript("OnMouseWheel")(childFrame, delta)
         which results in scrolling being tainted, which in rare situations would cause problems.
     --]]
-    function BlizzMove:InitMouseWheelCaptureFrame()
+    function KUIMove:InitMouseWheelCaptureFrame()
         captureFrame = CreateFrame("Frame");
         captureFrame:SetPoint("TOPLEFT", nil);
         captureFrame:SetPoint("BOTTOMRIGHT", nil);
@@ -1056,7 +1054,7 @@ do
             local mouseFoci = GetMouseFoci();
             if not CanIterate(mouseFoci) then return; end
             for _, frame in ipairs(mouseFoci) do
-                --- @type BlizzMoveAPI_FrameData?
+                --- @type KUIMoveAPI_FrameData?
                 local frameData = self.FrameData[frame];
 
                 if frameData and not (frameData.IgnoreMouse or frameData.IgnoreMouseWheel) and self.CurrentMouseoverFrames[frame] then
@@ -1066,9 +1064,6 @@ do
                 end
             end
 
-            --[==[@debug@
-            self:Print('dev debug print: no frame found?? :-(');
-            --@end-debug@]==]
         end);
         captureFrame:SetFrameStrata("TOOLTIP");
         captureFrame:SetFrameLevel(9999); -- try to overlay everything ;-)
@@ -1077,7 +1072,7 @@ do
         RunNextFrame(function() self:CheckMouseWheelCapture(); end);
     end
 
-    function BlizzMove:CheckMouseWheelCapture()
+    function KUIMove:CheckMouseWheelCapture()
         captureFrame:EnableMouseWheel(false);
 
         local controlDown = IsControlKeyDown();
@@ -1089,7 +1084,7 @@ do
         end
 
         for _, frame in ipairs(mouseFoci) do
-            --- @type BlizzMoveAPI_FrameData?
+            --- @type KUIMoveAPI_FrameData?
             local frameData = self.FrameData[frame];
             local shouldHandleMouseWheel = frameData and not (frameData.IgnoreMouse or frameData.IgnoreMouseWheel);
 
@@ -1127,34 +1122,34 @@ local OnSizeUpdate;
 do
     --- @param frame Frame
     function OnSetPoint(frame)
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
-        if BlizzMove.DB.savePosStrategy == "off" then return; end
+        if KUIMove.DB.savePosStrategy == "off" then return; end
 
         if ignoreSetPointHook then return; end
 
-        BlizzMove:SetupPointStorage(frame);
+        KUIMove:SetupPointStorage(frame);
 
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         if
-            BlizzMove.FrameData[frame].storage.points.dragged
+            KUIMove.FrameData[frame].storage.points.dragged
             and (not frameData.IgnoreSavedPositionWhenMaximized or not frame.isMaximized)
             and (not frameData.storage.frameParent or frameData.storage.detached)
         then
-            if BlizzMove.DB.savePosStrategy ~= "permanent" then
-                SetFramePoints(frame, BlizzMove.FrameData[frame].storage.points.dragPoints);
+            if KUIMove.DB.savePosStrategy ~= "permanent" then
+                SetFramePoints(frame, KUIMove.FrameData[frame].storage.points.dragPoints);
             else
-                BlizzMove:AddToSetFramePointsQueue(frame, BlizzMove.FrameData[frame].storage.points.dragPoints);
+                KUIMove:AddToSetFramePointsQueue(frame, KUIMove.FrameData[frame].storage.points.dragPoints);
             end
         end
     end
 
     --- @param frame Frame
     function OnSizeUpdate(frame)
-        local frameData = BlizzMove.FrameData[frame];
+        local frameData = KUIMove.FrameData[frame];
         if not frameData or not frameData.storage or frameData.storage.disabled or frameData.IgnoreClamping then return; end
         if frame:IsProtected() and InCombatLockdown() then
-            BlizzMove:AddToCombatLockdownQueue(OnSizeUpdate, frame);
+            KUIMove:AddToCombatLockdownQueue(OnSizeUpdate, frame);
 
             return;
         end
@@ -1173,22 +1168,22 @@ end
 local OnUpdateScaleForFit;
 do
     function OnUpdateScaleForFit(frame)
-        if not BlizzMove.FrameData[frame] or not BlizzMove.FrameData[frame].storage or BlizzMove.FrameData[frame].storage.disabled then return; end
+        if not KUIMove.FrameData[frame] or not KUIMove.FrameData[frame].storage or KUIMove.FrameData[frame].storage.disabled then return; end
 
-        BlizzMove:DebugPrint("OnUpdateScaleForFit:", BlizzMove:GetFrameName(frame));
+        KUIMove:DebugPrint("OnUpdateScaleForFit:", KUIMove:GetFrameName(frame));
 
         if InCombatLockdown() and frame:IsProtected() then
-            BlizzMove:AddToCombatLockdownQueue(OnUpdateScaleForFit, frame);
-            BlizzMove:DebugPrint('Adding to combatLockdownQueue: OnUpdateScaleForFit - ', BlizzMove:GetFrameName(frame));
+            KUIMove:AddToCombatLockdownQueue(OnUpdateScaleForFit, frame);
+            KUIMove:DebugPrint('Adding to combatLockdownQueue: OnUpdateScaleForFit - ', KUIMove:GetFrameName(frame));
 
             return;
         end
 
-        local frameName = BlizzMove:GetFrameName(frame);
-        if BlizzMove.DB.saveScaleStrategy == 'permanent' and BlizzMove.DB.scales[frameName] then
-            SetFrameScale(frame, BlizzMove.DB.scales[frameName]);
-        elseif BlizzMove.SessionScales[frameName] then
-            SetFrameScale(frame, BlizzMove.SessionScales[frameName]);
+        local frameName = KUIMove:GetFrameName(frame);
+        if KUIMove.DB.saveScaleStrategy == 'permanent' and KUIMove.DB.scales[frameName] then
+            SetFrameScale(frame, KUIMove.DB.scales[frameName]);
+        elseif KUIMove.SessionScales[frameName] then
+            SetFrameScale(frame, KUIMove.SessionScales[frameName]);
         end
     end
 end
@@ -1202,12 +1197,12 @@ do
     --- @param handler? function|string
     local function hookScript(frame, script, handler)
         if (frame:HasScript(script)) then
-            BlizzMove:SecureHookScript(frame, script, handler);
+            KUIMove:SecureHookScript(frame, script, handler);
             hooksecurefunc(frame, 'SetScript', function(self, scriptName)
                 if (scriptName == script and self == frame) then
-                    BlizzMove:DebugPrint('SetScript hook triggered for ', BlizzMove:GetFrameName(frame), scriptName);
-                    BlizzMove:Unhook(frame, script);
-                    BlizzMove:SecureHookScript(frame, script, handler);
+                    KUIMove:DebugPrint('SetScript hook triggered for ', KUIMove:GetFrameName(frame), scriptName);
+                    KUIMove:Unhook(frame, script);
+                    KUIMove:SecureHookScript(frame, script, handler);
                 end
             end);
         end
@@ -1217,7 +1212,7 @@ do
     ---@param parent Frame
     ---@return PanelDragBarTemplate
     local function MakeMoveHandle(frame, parent)
-        BlizzMove:DebugPrint('Making move handle for', BlizzMove:GetFrameName(frame), 'parent:', BlizzMove:GetFrameName(parent));
+        KUIMove:DebugPrint('Making move handle for', KUIMove:GetFrameName(frame), 'parent:', KUIMove:GetFrameName(parent));
         -- can't really use a framepool, since we need the OnLoad to run with the correct parent
         local handle = CreateFrame('Frame', nil, parent, 'PanelDragBarTemplate');
         handle:SetParent(frame);
@@ -1234,7 +1229,7 @@ do
     end
 
     ---@param frame Frame
-    ---@param frameData BlizzMove_FrameData
+    ---@param frameData KUIMove_FrameData
     local function MakeMoveHandles(frame, frameData)
         if frameData.moveHandles then
             for _, handle in pairs(frameData.moveHandles) do
@@ -1242,7 +1237,7 @@ do
                 handle:SetScript("OnEvent", nil);
                 handle:SetScript("OnUpdate", nil);
                 handle:Hide();
-                BlizzMove.MoveHandles[handle] = nil;
+                KUIMove.MoveHandles[handle] = nil;
             end
         end
         frameData.moveHandles = {}; ---@diagnostic disable-line: inject-field
@@ -1272,13 +1267,13 @@ do
         local rootParent = parentData and parentData.storage and parentData.storage.frame or frame;
         local moveHandle = MakeMoveHandle(frame, rootParent);
         tinsert(frameData.moveHandles, moveHandle);
-        BlizzMove.MoveHandles[moveHandle] = true;
+        KUIMove.MoveHandles[moveHandle] = true;
     end
 
     --- @param frame Frame
     --- @param addOnName string
     --- @param frameName string
-    --- @param frameData BlizzMoveAPI_FrameData|BlizzMoveAPI_SubFrameData|BlizzMove_FrameData
+    --- @param frameData KUIMoveAPI_FrameData|KUIMoveAPI_SubFrameData|KUIMove_FrameData
     --- @param frameParent Frame?
     local function MakeFrameMovable(frame, addOnName, frameName, frameData, frameParent)
         if not frame then return false; end
@@ -1290,13 +1285,13 @@ do
             clampFrame = true;
         end
 
-        if frame and BlizzMove.FrameData[frame] and BlizzMove.FrameData[frame].storage and not frameData.storage then
-            frameData.storage = BlizzMove.FrameData[frame].storage;
-            frameData.parentData = frameParent and BlizzMove.FrameData[frameParent] or nil;
+        if frame and KUIMove.FrameData[frame] and KUIMove.FrameData[frame].storage and not frameData.storage then
+            frameData.storage = KUIMove.FrameData[frame].storage;
+            frameData.parentData = frameParent and KUIMove.FrameData[frameParent] or nil;
             frameData.storage.frameName = frameName;
             frameData.storage.addOnName = addOnName;
             frameData.storage.frameParent = frameParent;
-            BlizzMove.FrameData[frame] = frameData; ---@diagnostic disable-line: assign-type-mismatch
+            KUIMove.FrameData[frame] = frameData; ---@diagnostic disable-line: assign-type-mismatch
         end
         if frame and frameData.storage and frameData.storage.hooked then
             -- it's already hooked, don't hook twice
@@ -1328,7 +1323,7 @@ do
             return true;
         end
 
-        frameData.parentData = frameParent and BlizzMove.FrameData[frameParent] or nil;
+        frameData.parentData = frameParent and KUIMove.FrameData[frameParent] or nil;
 
         if not frame or (frameData.storage and frameData.storage.hooked) then return false; end
 
@@ -1340,7 +1335,7 @@ do
             addOnName = addOnName,
         };
 
-        BlizzMove.FrameData[frame] = frameData; ---@diagnostic disable-line: assign-type-mismatch
+        KUIMove.FrameData[frame] = frameData; ---@diagnostic disable-line: assign-type-mismatch
 
         frame:SetMovable(true);
         if not frameData.IgnoreClamping then
@@ -1380,10 +1375,10 @@ do
 
         if frameData.ForcePosition or (not frameData.IgnoreMouse and not frameData.NonDraggable) then
             -- prevents rubberbanding when a frame's movement is handled by something else
-            BlizzMove:SecureHook(frame, "SetPoint", OnSetPoint);
+            KUIMove:SecureHook(frame, "SetPoint", OnSetPoint);
         end
-        BlizzMove:SecureHook(frame, "SetWidth", OnSizeUpdate);
-        BlizzMove:SecureHook(frame, "SetHeight", OnSizeUpdate);
+        KUIMove:SecureHook(frame, "SetWidth", OnSizeUpdate);
+        KUIMove:SecureHook(frame, "SetHeight", OnSizeUpdate);
 
         OnShow(frame);
         OnSizeUpdate(frame);
@@ -1415,7 +1410,7 @@ do
                 handle:SetScript("OnEvent", nil);
                 handle:SetScript("OnUpdate", nil);
                 handle:Hide();
-                BlizzMove.MoveHandles[handle] = nil;
+                KUIMove.MoveHandles[handle] = nil;
             end
             frameData.moveHandles = nil;
         end
@@ -1426,22 +1421,22 @@ do
     --- @param frame Frame
     --- @param addOnName string
     --- @param frameName string
-    --- @param frameData BlizzMoveAPI_FrameData|BlizzMoveAPI_SubFrameData|BlizzMove_FrameData
+    --- @param frameData KUIMoveAPI_FrameData|KUIMoveAPI_SubFrameData|KUIMove_FrameData
     --- @param frameParent Frame?
-    function BlizzMove:MakeFrameMovable(frame, addOnName, frameName, frameData, frameParent)
+    function KUIMove:MakeFrameMovable(frame, addOnName, frameName, frameData, frameParent)
         return xpcall(MakeFrameMovable, CallErrorHandler, frame, addOnName, frameName, frameData, frameParent);
     end
 
-    function BlizzMove:MakeFrameUnmovable(frame, frameData)
+    function KUIMove:MakeFrameUnmovable(frame, frameData)
         return xpcall(MakeFrameUnmovable, CallErrorHandler, frame, frameData);
     end
 
     --- @param addOnName string
     --- @param frameName string
-    --- @param frameData BlizzMoveAPI_FrameData|BlizzMoveAPI_SubFrameData|BlizzMove_FrameData
+    --- @param frameData KUIMoveAPI_FrameData|KUIMoveAPI_SubFrameData|KUIMove_FrameData
     --- @param frameParent Frame?
     --- @param retriedAfterNotFound boolean?
-    function BlizzMove:ProcessFrame(addOnName, frameName, frameData, frameParent, retriedAfterNotFound)
+    function KUIMove:ProcessFrame(addOnName, frameName, frameData, frameParent, retriedAfterNotFound)
         if self:IsFrameDisabled(addOnName, frameName) then return; end
         if IsSensitiveBlizzardFrame(frameName) then
             return false;
@@ -1458,7 +1453,7 @@ do
 
         if (not matchesBuild) then
             if (frame and not frameData.SilenceCompatabilityWarnings) then
-                self:Print(L["Frame was marked as incompatible, but does exist"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| BMVersion:", self.Config.version, "):", frameName);
+                self:Print(L["Frame was marked as incompatible, but does exist"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| KMVersion:", self.Config.version, "):", frameName);
             end
 
             return false;
@@ -1474,7 +1469,7 @@ do
             end
             self.notFoundFrames = self.notFoundFrames or {};
             tinsert(self.notFoundFrames, frameName);
-            self:Print(L["Could not find frame"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| BMVersion:", self.Config.version, "):", frameName);
+            self:Print(L["Could not find frame"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| KMVersion:", self.Config.version, "):", frameName);
 
             return false;
         end
@@ -1485,7 +1480,7 @@ do
         end
 
         if InCombatLockdown() and frame:IsProtected() then
-            self:AddToCombatLockdownQueue(BlizzMove.ProcessFrame, self, addOnName, frameName, frameData, frameParent);
+            self:AddToCombatLockdownQueue(KUIMove.ProcessFrame, self, addOnName, frameName, frameData, frameParent);
             self:DebugPrint('Adding to combatLockdownQueue: ProcessFrame - ', addOnName, ' - ', frameName);
 
             return false;
@@ -1504,7 +1499,7 @@ do
         end
     end
 
-    function BlizzMove:ProcessFrames(addOnName)
+    function KUIMove:ProcessFrames(addOnName)
         if not (self.Frames and self.Frames[addOnName]) then return; end
 
         for frameName, frameData in pairs(self.Frames[addOnName]) do
@@ -1512,7 +1507,7 @@ do
         end
     end
 
-    function BlizzMove:UnprocessFrame(addOnName, frameName)
+    function KUIMove:UnprocessFrame(addOnName, frameName)
         local frame = self:GetFrameFromName(addOnName, frameName)
 
         if not frame then return; end
@@ -1524,7 +1519,7 @@ do
         if not self:MatchesCurrentBuild(frameData) then return; end
 
         if InCombatLockdown() and frame:IsProtected() then
-            self:AddToCombatLockdownQueue(BlizzMove.UnprocessFrame, self, addOnName, frameName);
+            self:AddToCombatLockdownQueue(KUIMove.UnprocessFrame, self, addOnName, frameName);
             self:DebugPrint('Adding to combatLockdownQueue: UnprocessFrame - ', addOnName, ' - ', frameName);
 
             return;
@@ -1544,7 +1539,7 @@ end
 --- Addon Init and Event Handling Functions
 ------------------------------------------------------------------------------------------------------
 do
-    function BlizzMove:AddToCombatLockdownQueue(func, ...)
+    function KUIMove:AddToCombatLockdownQueue(func, ...)
         if not InCombatLockdown() then
             func(...);
         end
@@ -1555,7 +1550,7 @@ do
         tinsert(self.CombatLockdownQueue, { func = func, args = { ... } });
     end
 
-    function BlizzMove:PLAYER_REGEN_ENABLED()
+    function KUIMove:PLAYER_REGEN_ENABLED()
         self:UnregisterEvent("PLAYER_REGEN_ENABLED");
         if #self.CombatLockdownQueue == 0 then return; end
         self:DebugPrint('Processing self.CombatLockdownQueue, length:', #self.CombatLockdownQueue);
@@ -1568,7 +1563,7 @@ do
 
     local setFramePointsQueue = {};
     local onUpdateFrame = CreateFrame("Frame")
-    function BlizzMove:SavePositionStrategyChanged(oldValue, newValue)
+    function KUIMove:SavePositionStrategyChanged(oldValue, newValue)
         if oldValue == 'permanent' then
             onUpdateFrame:SetScript("OnUpdate", nil);
         end
@@ -1577,16 +1572,16 @@ do
         end
     end
 
-    function BlizzMove:AddToSetFramePointsQueue(frame, framePoints)
+    function KUIMove:AddToSetFramePointsQueue(frame, framePoints)
         if setFramePointsQueue[frame] then return; end
         self:DebugPrint('Adding to setFramePointsQueue: ', frame.GetName and frame:GetName() or 'unknown frame');
 
         setFramePointsQueue[frame] = framePoints;
     end
 
-    function BlizzMove:OnUpdate()
+    function KUIMove:OnUpdate()
         local profiler = KT and KT.CombatProfiler
-        local profileStarted = profiler and profiler:Begin("core.blizzmove.positionQueue")
+        local profileStarted = profiler and profiler:Begin("core.kuimove.positionQueue")
         local count = 0;
         for frame, framePoints in pairs(setFramePointsQueue) do
             count = count + 1;
@@ -1596,22 +1591,22 @@ do
             end
         end
         if count == 0 then
-            if profileStarted then profiler:End("core.blizzmove.positionQueue", profileStarted) end
+            if profileStarted then profiler:End("core.kuimove.positionQueue", profileStarted) end
             return;
         end
 
         self:DebugPrint('Processed setFramePointsQueue, length: ', count);
         wipe(setFramePointsQueue)
-        if profileStarted then profiler:End("core.blizzmove.positionQueue", profileStarted) end
+        if profileStarted then profiler:End("core.kuimove.positionQueue", profileStarted) end
     end
 
     local awaitingGlobalMouseUp;
-    function BlizzMove:WaitForGlobalMouseUp(frame)
+    function KUIMove:WaitForGlobalMouseUp(frame)
         awaitingGlobalMouseUp = frame;
         self:RegisterEvent('GLOBAL_MOUSE_UP');
     end
 
-    function BlizzMove:GLOBAL_MOUSE_UP(event, button)
+    function KUIMove:GLOBAL_MOUSE_UP(event, button)
         self:UnregisterEvent(event);
         if not awaitingGlobalMouseUp then return; end
         self:DebugPrint('Processing global MouseUp event after sub-frame got hidden');
@@ -1628,26 +1623,37 @@ do
         dumpMissingFrames = 'dumpMissingFrames',
         dumpTopLevelFrames = 'dumpTopLevelFrames',
     };
-    function BlizzMove:OnInitialize()
-        if not BLIZZMOVE_ENABLED then
+    function KUIMove:OnInitialize()
+        if not KUIMOVE_ENABLED then
             self.disabledByKullThranUI = true;
             return;
         end
 
         self.initialized = true;
 
-        KT.db.profile.blizzMove = KT.db.profile.blizzMove or KT.db.profile.BlizzMove or {}
-        KT.db.profile.BlizzMove = KT.db.profile.blizzMove
-        --- @type BlizzMoveDB
-        self.DB = KT.db.profile.blizzMove;
+        local legacyMoveDB = KT.db.profile.blizzMove or KT.db.profile.BlizzMove or KT.db.profile.KUIMove
+        KT.db.profile.kuiMove = KT.db.profile.kuiMove or legacyMoveDB or {}
+        KT.db.profile.blizzMove = nil
+        KT.db.profile.BlizzMove = nil
+        KT.db.profile.KUIMove = nil
+        --- @type KUIMoveDB
+        self.DB = KT.db.profile.kuiMove;
 
         self:InitDefaults();
 
-        if self.DB.disabledFrames and self.DB.disabledFrames[name] and not self.DB.disabledFrames[INTERNAL_ADDON_NAME] then
-            self.DB.disabledFrames[INTERNAL_ADDON_NAME] = self.DB.disabledFrames[name];
+        if self.DB.disabledFrames then
+            local legacyDisabled = self.DB.disabledFrames[name] or self.DB.disabledFrames["BlizzMove"]
+            if legacyDisabled and not self.DB.disabledFrames[INTERNAL_ADDON_NAME] then
+                self.DB.disabledFrames[INTERNAL_ADDON_NAME] = legacyDisabled;
+            end
+            self.DB.disabledFrames["BlizzMove"] = nil
         end
-        if self.DB.enabledFrames and self.DB.enabledFrames[name] and not self.DB.enabledFrames[INTERNAL_ADDON_NAME] then
-            self.DB.enabledFrames[INTERNAL_ADDON_NAME] = self.DB.enabledFrames[name];
+        if self.DB.enabledFrames then
+            local legacyEnabled = self.DB.enabledFrames[name] or self.DB.enabledFrames["BlizzMove"]
+            if legacyEnabled and not self.DB.enabledFrames[INTERNAL_ADDON_NAME] then
+                self.DB.enabledFrames[INTERNAL_ADDON_NAME] = legacyEnabled;
+            end
+            self.DB.enabledFrames["BlizzMove"] = nil
         end
 
         -- Damage Meter must remain fully Blizzard-owned to avoid secret-value
@@ -1661,13 +1667,10 @@ do
 
         self:InitMouseWheelCaptureFrame();
 
-        self:RegisterChatCommand('kuiblizzmove', 'OnSlashCommand');
-        self:RegisterChatCommand('kuibm', 'OnSlashCommand');
-        self:RegisterChatCommand('blizzmove', 'OnSlashCommand');
-        self:RegisterChatCommand('bm', 'OnSlashCommand');
+        self:RegisterChatCommand('kuimove', 'OnSlashCommand');
+        self:RegisterChatCommand('kuim', 'OnSlashCommand');
         for _, command in pairs(commands) do
-            self:RegisterChatCommand('bm' .. command, function(message) self:OnSlashCommand(command .. ' ' .. message); end);
-            self:RegisterChatCommand('kuibm' .. command, function(message) self:OnSlashCommand(command .. ' ' .. message); end);
+            self:RegisterChatCommand('kuimove' .. command, function(message) self:OnSlashCommand(command .. ' ' .. message); end);
         end
 
         if _G.UIPanelUpdateScaleForFit then
@@ -1684,9 +1687,9 @@ do
 
         EventRegistry:RegisterCallback('SetItemRef', function(_, link)
             local linkType, addOnName, linkData = strsplit(':', link, 3);
-            if linkType == 'addon' and addOnName == 'kuiblizzmoveCopy' then
+            if linkType == 'addon' and addOnName == 'kuimoveCopy' then
                 self.Config:ShowURLPopup(linkData)
-            elseif linkType == 'addon' and addOnName == 'kuiblizzmoveMuteWarning' and linkData then
+            elseif linkType == 'addon' and addOnName == 'kuimoveMuteWarning' and linkData then
                 ---@diagnostic disable-next-line: assign-type-mismatch
                 self.DB.mutedCompatWarnings[linkData] = date('%Y%m%d');
                 self:Print(L['Muted warning for %s']:format(linkData));
@@ -1708,7 +1711,7 @@ do
         self:RegisterEvent("ADDON_LOADED");
     end
 
-    function BlizzMove:OnSlashCommand(message)
+    function KUIMove:OnSlashCommand(message)
         local arg1, arg2 = strsplit(' ', message);
         if
             arg1 == commands.dumpDebugInfo
@@ -1716,7 +1719,7 @@ do
             or arg1 == commands.debugAnchor
             or arg1 == commands.dumpTopLevelFrames
         then
-            self:Print("Integrated KullThranUI BlizzMove debug plugin is not bundled.");
+            self:Print("Integrated KullThranUI KUIMove debug plugin is not bundled.");
             return;
         end
 
@@ -1727,7 +1730,7 @@ do
             return;
         elseif arg1 == commands.dumpMissingFrames then
             self.Config:ShowURLPopup(
-                'Build:' .. self.gameBuild .. '| Version:' .. self.gameVersion .. '| BMVersion:' .. self.Config.version .. "\n\n"
+                'Build:' .. self.gameBuild .. '| Version:' .. self.gameVersion .. '| KMVersion:' .. self.Config.version .. "\n\n"
                 .. table.concat(self.notFoundFrames or { '<none>' }, "\n")
             );
             return;
@@ -1736,7 +1739,7 @@ do
         self.Config:OpenConfig();
     end
 
-    --- @type BlizzMoveDB
+    --- @type KUIMoveDB
     local defaults = {
         savePosStrategy = "session",
         saveScaleStrategy = "session",
@@ -1744,7 +1747,7 @@ do
         scales = {},
         mutedCompatWarnings = {},
     };
-    function BlizzMove:InitDefaults()
+    function KUIMove:InitDefaults()
         for property, value in pairs(defaults) do
             if self.DB[property] == nil then
                 self.DB[property] = value;
@@ -1757,7 +1760,7 @@ do
         end
     end
 
-    function BlizzMove:ADDON_LOADED(_, addOnName)
+    function KUIMove:ADDON_LOADED(_, addOnName)
         if addOnName == INTERNAL_ADDON_NAME then return; end
         if addOnName == "Blizzard_DamageMeter" then
             DisableDamageMeterFrames(self);
@@ -1769,7 +1772,7 @@ do
         self:CheckCompatibility(addOnName);
     end
 
-    function BlizzMove:ApplyAddOnSpecificFixes(addOnName)
+    function KUIMove:ApplyAddOnSpecificFixes(addOnName)
         -- fix a stupid anchor family connection issue blizzard added in 9.1.5
         if addOnName == "Blizzard_Collections" then
             local checkbox = _G.WardrobeTransmogFrame and _G.WardrobeTransmogFrame.ToggleSecondaryAppearanceCheckbox;
@@ -1888,14 +1891,14 @@ do
         end
     end
 
-    function BlizzMove:CheckCompatibility(addOnName)
+    function KUIMove:CheckCompatibility(addOnName)
         local warnings = {
             ['MoveAny'] = L['MoveAny is loaded, some users reported this breaks moving frames. If you encounter this issue yourself, try disabling MoveAny.'],
-            ['DeModal'] = L['DeModal is loaded, this addon is known to cause issues, consider replacing it with %s instead.']:format('|cff71d5ff|Haddon:kuiblizzmoveCopy:https://www.curseforge.com/wow/addons/no-auto-close|h[NoAutoClose]|h|r'),
+            ['DeModal'] = L['DeModal is loaded, this addon is known to cause issues, consider replacing it with %s instead.']:format('|cff71d5ff|Haddon:kuimoveCopy:https://www.curseforge.com/wow/addons/no-auto-close|h[NoAutoClose]|h|r'),
         };
         -- muted warnings are muted for 3 months
         if warnings[addOnName] and (not self.DB.mutedCompatWarnings[addOnName] or self.DB.mutedCompatWarnings[addOnName] < (GetServerTime() - (3 * 31 * 24 * 3600))) then
-            self:Print(warnings[addOnName], ' |cff71d5ff|Haddon:kuiblizzmoveMuteWarning:' .. addOnName .. '|h[' .. L['Mute this warning'] .. ']|h|r');
+            self:Print(warnings[addOnName], ' |cff71d5ff|Haddon:kuimoveMuteWarning:' .. addOnName .. '|h[' .. L['Mute this warning'] .. ']|h|r');
         end
     end
 end

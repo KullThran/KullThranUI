@@ -342,6 +342,14 @@ local defaults = {
     castBarTexture = "Melli Reforged",
     friendlyPlayerHealthTexture = "Melli Reforged",
     friendlyNPCHealthTexture = "Melli Reforged",
+    showLevel = false,
+    levelFont = ns.DEFAULT_FONT_PATH,
+    levelFontSize = 11,
+    levelFontOutline = "OUTLINE",
+    levelShadow = true,
+    levelColor = { r = 1, g = 0.82, b = 0.20, a = 1 },
+    levelXOffset = 24,
+    levelYOffset = 4,
 }
 local BAR_W = 150
 ns.defaults = defaults
@@ -351,6 +359,43 @@ _G.KullThranUINameplatesDefaults = defaults
 -- Assigned in InitDB(); declared before the shared indicator helpers so they
 -- close over the same profile table as the rest of the module.
 local db
+
+local function GetLevelConfigValue(key)
+    if db and db[key] ~= nil then return db[key] end
+    return defaults[key]
+end
+
+local function SafeUnitLevelText(unit)
+    if not unit or type(UnitLevel) ~= "function" then return nil end
+    local ok, level = pcall(UnitLevel, unit)
+    if not ok or ns._IsSecretValue(level) or type(level) ~= "number" or level < 0 then
+        return nil
+    end
+    return tostring(level)
+end
+
+local function ApplyLevelTextStyle(fontString)
+    if not (fontString and fontString.SetFont) then return end
+    local fontPath = ns.ResolveNameplateFont(GetLevelConfigValue("levelFont") or ns.DEFAULT_FONT_PATH)
+    local size = math.max(6, math.min(48, tonumber(GetLevelConfigValue("levelFontSize")) or 11))
+    local outline = GetLevelConfigValue("levelFontOutline")
+    if outline == "NONE" then outline = "" end
+    if type(outline) ~= "string" then outline = "OUTLINE" end
+    local ok = pcall(fontString.SetFont, fontString, fontPath, size, outline)
+    if not ok then pcall(fontString.SetFont, fontString, ns.DEFAULT_FONT_PATH, size, outline) end
+    local color = GetLevelConfigValue("levelColor") or defaults.levelColor
+    fontString:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+    if GetLevelConfigValue("levelShadow") ~= false then
+        fontString:SetShadowColor(0, 0, 0, 1)
+        fontString:SetShadowOffset(1, -1)
+    else
+        fontString:SetShadowColor(0, 0, 0, 0)
+        fontString:SetShadowOffset(0, 0)
+    end
+end
+
+ns.GetNameplateLevelText = SafeUnitLevelText
+ns.ApplyNameplateLevelTextStyle = ApplyLevelTextStyle
 
 -- Shared catalogue for live plates, options and previews. Imported indicators
 -- are 64x64 TGA files; their visible geometry is kept square and scaled from a
@@ -2102,6 +2147,15 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     PP.Width(plate.name, math.max(GetHealthBarWidth(), 20))
     plate.name:SetWordWrap(false)
     plate.name:SetMaxLines(1)
+    plate.level = plate.topTextFrame:CreateFontString(nil, "OVERLAY")
+    ApplyLevelTextStyle(plate.level)
+    plate.level:SetJustifyH("LEFT")
+    plate.level:SetWordWrap(false)
+    plate.level:SetMaxLines(1)
+    plate.level:SetWidth(math.max(60, GetHealthBarWidth() + 80))
+    plate.level:SetHeight(18)
+    plate.level:SetPoint("BOTTOMLEFT", plate.health, "TOPLEFT", 24, 4)
+    plate.level:Hide()
     plate.raidFrame = CreateFrame("Frame", nil, plate)
     local rmSize = GetRaidMarkerSize()
     PP.Size(plate.raidFrame, rmSize, rmSize)
@@ -2340,6 +2394,10 @@ local function InitDB()
         KullThranUINameplatesDB = {}
     end
     db = KullThranUINameplatesDB
+    if not db._kuiForeverLevelPvpOptionsReset then
+        db.showLevel = false
+        db._kuiForeverLevelPvpOptionsReset = true
+    end
     if not KullThranUINameplatesDB._friendlyPlateDefaultsMigrated_v2 then
         -- Normalize friendly plates to the intended default behavior:
         -- visible by default, but rendered name-only instead of health bars.
@@ -4234,6 +4292,7 @@ end
 function NameplateFrame:RefreshPlateState()
     self:UpdateHealth()
     self:UpdateName()
+    self:UpdateLevel()
     self:UpdateClassification()
     self:UpdateRaidIcon()
     self:ApplyTarget()
@@ -4320,6 +4379,7 @@ function NameplateFrame:ClearUnit()
 
     -- 3. Limpiar ranuras de auras: CC primero (2 ranuras), luego debuffs+buffs (4 c/u)
     self.name:SetText("")
+    if self.level then self.level:SetText(""); self.level:Hide() end
     local resetCD = ns._ResetAuraCooldown
     for i = 1, 2 do
         local slot = self.cc[i]
@@ -4830,6 +4890,30 @@ function NameplateFrame:UpdateName()
 
     local displayName = UnitName(unit)
     self.name:SetText(type(displayName) == "string" and displayName or "")
+end
+function NameplateFrame:UpdateLevel()
+    if not self.level then return end
+    local unit = SyncPlateUnitToken(self)
+    if not unit or GetLevelConfigValue("showLevel") == false then
+        self.level:SetText("")
+        self.level:Hide()
+        return
+    end
+    local levelText = SafeUnitLevelText(unit)
+    if not levelText then
+        self.level:SetText("")
+        self.level:Hide()
+        return
+    end
+    ApplyLevelTextStyle(self.level)
+    self.level:SetText(levelText)
+    self.level:SetWidth(math.max(60, GetHealthBarWidth() + 80))
+    self.level:SetHeight(math.max(16, (tonumber(GetLevelConfigValue("levelFontSize")) or 11) + 6))
+    self.level:ClearAllPoints()
+    self.level:SetPoint("BOTTOMLEFT", self.health, "TOPLEFT",
+        tonumber(GetLevelConfigValue("levelXOffset")) or 24,
+        tonumber(GetLevelConfigValue("levelYOffset")) or 4)
+    self.level:Show()
 end
 -- Muestra/oculta el icono de clasificación (elite, worldboss, rareelite, rare)
 -- según el slot configurado. Dentro de instancia se oculta siempre.
@@ -5732,6 +5816,7 @@ local PLATE_HANDLER_GROUPS = {
     { "UpdateAbsorbValue",  "UNIT_ABSORB_AMOUNT_CHANGED" },
     { "UpdateAuras",        "LOSS_OF_CONTROL_UPDATE", "LOSS_OF_CONTROL_ADDED" },
     { "UpdateName",         "UNIT_NAME_UPDATE" },
+    { "UpdateLevel",        "UNIT_LEVEL" },
     { "UpdateHealthColor",  "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "UNIT_FLAGS", "UNIT_FACTION" },
     { "UpdateCast",         "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START",
                             "UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_CHANNEL_UPDATE",
