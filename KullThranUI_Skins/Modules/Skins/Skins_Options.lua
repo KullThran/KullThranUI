@@ -5,6 +5,7 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
 if not KT then return end
 
 local Opt = KT.Options or {}
+local LText = Opt.LText or function(t) return t end
 local Reload = Opt.Reload or function() StaticPopup_Show("KULLTHRANUI_RELOAD") end
 local S = KT:GetModule("Skins", true)
 

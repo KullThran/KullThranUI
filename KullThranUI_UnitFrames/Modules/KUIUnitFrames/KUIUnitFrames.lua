@@ -3493,6 +3493,11 @@ local function SetupShowOnCastBar(frame, unit)
     local function dismissCastBar(self)
         self:Hide()
         if self._iconFrame then self._iconFrame:Hide() end
+        if self.Icon then self.Icon:SetTexture(nil) end
+        if self.Text then self.Text:SetText() end
+        if self.Time then self.Time:SetText() end
+        if self.castTintLayer then self.castTintLayer:SetAlpha(0) end
+        if self._shieldedTint then self._shieldedTint:SetAlpha(0) end
         if hideWhenInactive then
             local bg = self:GetParent()
             if bg then bg:Hide() end
@@ -3500,6 +3505,7 @@ local function SetupShowOnCastBar(frame, unit)
     end
     castbar.PostCastStop = dismissCastBar
     castbar.PostChannelStop = dismissCastBar
+    castbar.PostCastInterrupted = dismissCastBar
     castbar.PostCastFail = dismissCastBar
 end
 

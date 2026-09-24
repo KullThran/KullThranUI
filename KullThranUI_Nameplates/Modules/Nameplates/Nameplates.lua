@@ -342,7 +342,11 @@ local defaults = {
     castBarTexture = "Melli Reforged",
     friendlyPlayerHealthTexture = "Melli Reforged",
     friendlyNPCHealthTexture = "Melli Reforged",
+    -- Independent visibility for enemy and friendly nameplate levels.
+    -- showLevel remains as a legacy SavedVariables key.
     showLevel = false,
+    showEnemyLevel = false,
+    showFriendlyLevel = false,
     levelFont = ns.DEFAULT_FONT_PATH,
     levelFontSize = 11,
     levelFontOutline = "OUTLINE",
@@ -364,6 +368,14 @@ local function GetLevelConfigValue(key)
     if db and db[key] ~= nil then return db[key] end
     return defaults[key]
 end
+
+local function ShouldShowNameplateLevel(isFriendly)
+    local key = isFriendly and "showFriendlyLevel" or "showEnemyLevel"
+    if db and db[key] ~= nil then return db[key] == true end
+    if not isFriendly and db and db.showLevel ~= nil then return db.showLevel == true end
+    return defaults[key] == true
+end
+ns.ShouldShowNameplateLevel = ShouldShowNameplateLevel
 
 local function SafeUnitLevelText(unit)
     if not unit or type(UnitLevel) ~= "function" then return nil end
@@ -396,6 +408,72 @@ end
 
 ns.GetNameplateLevelText = SafeUnitLevelText
 ns.ApplyNameplateLevelTextStyle = ApplyLevelTextStyle
+local function GetRenderedFontStringWidth(fontString)
+    if not fontString then return 0 end
+    local width
+    if fontString.GetUnboundedStringWidth then
+        local ok, value = pcall(fontString.GetUnboundedStringWidth, fontString)
+        if ok then width = value end
+    elseif fontString.GetStringWidth then
+        local ok, value = pcall(fontString.GetStringWidth, fontString)
+        if ok then width = value end
+    end
+    if type(width) ~= "number" then return 0 end
+    local ok, result = pcall(math.max, 0, width)
+    return ok and type(result) == "number" and result or 0
+end
+
+local function PositionNameplateLevelText(level, name, health, nameSlot, fallbackX, fallbackY)
+    if not level then return end
+
+    level:ClearAllPoints()
+    local nameText
+    local nameTextIsSafe = false
+    local nameShown = false
+    if name and name.GetText then
+        local ok, value = pcall(name.GetText, name)
+        local isSecret = false
+        if ok and ns._IsSecretValue then
+            local secretOK, secretValue = pcall(ns._IsSecretValue, value)
+            isSecret = secretOK and secretValue == true
+        end
+        if ok and not isSecret and type(value) == "string" then
+            nameText = value
+            nameTextIsSafe = true
+        end
+    end
+    if name and name.IsShown then
+        local ok, value = pcall(name.IsShown, name)
+        local isSecret = false
+        if ok and ns._IsSecretValue then
+            local secretOK, secretValue = pcall(ns._IsSecretValue, value)
+            isSecret = secretOK and secretValue == true
+        end
+        nameShown = ok and not isSecret and type(value) == "boolean" and value
+    end
+    local nameWidth = nameShown and GetRenderedFontStringWidth(name) or 0
+    local hasName = nameSlot and nameTextIsSafe and nameText ~= "" and nameWidth > 0
+
+    if hasName then
+        local gap = 4
+        local yOffset = (tonumber(fallbackY) or 4) - 4
+        local justify = name:GetJustifyH()
+
+        if justify == "RIGHT" then
+            -- Keep the level inside the bar when the name is right-aligned.
+            level:SetPoint("BOTTOMRIGHT", name, "BOTTOMRIGHT", -nameWidth - gap, yOffset)
+        elseif justify == "LEFT" then
+            level:SetPoint("BOTTOMLEFT", name, "BOTTOMLEFT", nameWidth + gap, yOffset)
+        else
+            -- CENTER (and unknown modes): continue from the rendered right edge.
+            level:SetPoint("BOTTOMLEFT", name, "BOTTOM", nameWidth * 0.5 + gap, yOffset)
+        end
+    elseif health then
+        level:SetPoint("BOTTOMLEFT", health, "TOPLEFT", tonumber(fallbackX) or 24, tonumber(fallbackY) or 4)
+    end
+end
+
+ns.PositionNameplateLevelText = PositionNameplateLevelText
 
 -- Shared catalogue for live plates, options and previews. Imported indicators
 -- are 64x64 TGA files; their visible geometry is kept square and scaled from a
@@ -2729,6 +2807,17 @@ function ns.RefreshAllSettings()
     end
     if ns.ApplyClassPowerSetting then ns.ApplyClassPowerSetting() end
 end
+
+function ns.RefreshNameplateLevels()
+    for _, plate in pairs(ns.plates or {}) do
+        if plate.UpdateLevel then plate:UpdateLevel() end
+    end
+    for _, plate in pairs(ns.friendlyPlates or {}) do
+        if plate.UpdateLevel then plate:UpdateLevel() end
+    end
+    if ns.RefreshFriendlyNameOnlyLevels then ns.RefreshFriendlyNameOnlyLevels() end
+end
+
 local kickWatcher = CreateFrame("Frame")
 kickWatcher:RegisterEvent("PLAYER_LOGIN")
 kickWatcher:RegisterEvent("SPELLS_CHANGED")
@@ -4890,11 +4979,12 @@ function NameplateFrame:UpdateName()
 
     local displayName = UnitName(unit)
     self.name:SetText(type(displayName) == "string" and displayName or "")
+    if self.level and self.level:IsShown() then self:UpdateLevel() end
 end
 function NameplateFrame:UpdateLevel()
     if not self.level then return end
     local unit = SyncPlateUnitToken(self)
-    if not unit or GetLevelConfigValue("showLevel") == false then
+    if not unit or not ShouldShowNameplateLevel(false) then
         self.level:SetText("")
         self.level:Hide()
         return
@@ -4907,12 +4997,9 @@ function NameplateFrame:UpdateLevel()
     end
     ApplyLevelTextStyle(self.level)
     self.level:SetText(levelText)
-    self.level:SetWidth(math.max(60, GetHealthBarWidth() + 80))
+    self.level:SetWidth(math.max(20, GetRenderedFontStringWidth(self.level) + 4))
     self.level:SetHeight(math.max(16, (tonumber(GetLevelConfigValue("levelFontSize")) or 11) + 6))
-    self.level:ClearAllPoints()
-    self.level:SetPoint("BOTTOMLEFT", self.health, "TOPLEFT",
-        tonumber(GetLevelConfigValue("levelXOffset")) or 24,
-        tonumber(GetLevelConfigValue("levelYOffset")) or 4)
+    PositionNameplateLevelText(self.level, self.name, self.health, FindSlotForElement("enemyName"), GetLevelConfigValue("levelXOffset"), GetLevelConfigValue("levelYOffset"))
     self.level:Show()
 end
 -- Muestra/oculta el icono de clasificación (elite, worldboss, rareelite, rare)
@@ -4978,6 +5065,7 @@ function NameplateFrame:RefreshNamePosition()
         self.name:Show()
     end
 
+    if self.level and self.level:IsShown() then self:UpdateLevel() end
     self:UpdateAuras()
     self:UpdateClassification()
 end

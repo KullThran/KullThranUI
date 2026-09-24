@@ -1070,6 +1070,7 @@ local defaults = {
             opacity = 1.0,
             frameStrata = "MEDIUM",
             cursorAttach = false,
+            iconOrder = {},
         },
         raidBuffs = {
             -- Class-wide upkeep buffs are useful while questing, testing a
@@ -1656,6 +1657,35 @@ end
 -------------------------------------------------------------------------------
 local refreshQueued = false
 local pendingOOCRefresh = false
+
+
+local function GetReminderOrderKey(reminder)
+    if not reminder then return nil end
+    if reminder.cat and reminder.data and reminder.data.key then
+        return reminder.cat .. ":" .. reminder.data.key
+    end
+    if reminder.dismissKey then return reminder.dismissKey end
+    return reminder.cat
+end
+
+local function ApplyReminderIconOrder(list)
+    local order = db and db.profile and db.profile.display and db.profile.display.iconOrder
+    if type(order) ~= "table" or #list < 2 then return end
+    local rank = {}
+    for index, key in ipairs(order) do
+        if type(key) == "string" and rank[key] == nil then rank[key] = index end
+    end
+    for index, reminder in ipairs(list) do reminder._ktOriginalOrder = index end
+    table.sort(list, function(left, right)
+        local leftRank = rank[GetReminderOrderKey(left)]
+        local rightRank = rank[GetReminderOrderKey(right)]
+        if leftRank and rightRank then return leftRank < rightRank end
+        if leftRank then return true end
+        if rightRank then return false end
+        return left._ktOriginalOrder < right._ktOriginalOrder
+    end)
+    for _, reminder in ipairs(list) do reminder._ktOriginalOrder = nil end
+end
 
 local function HideAllIcons()
     HidePetMenu()
@@ -2393,6 +2423,7 @@ local function Refresh()
     --  5) Pet Reminder
     ---------------------------------------------------------------------------
     CollectPetReminders(missing, playerClass)
+    ApplyReminderIconOrder(missing)
 
 
     ---------------------------------------------------------------------------

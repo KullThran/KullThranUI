@@ -727,6 +727,33 @@ initFrame:SetScript("OnEvent", function(self)
         if _G._KUIAR_RequestRefresh then _G._KUIAR_RequestRefresh() end
     end
 
+    local function PreviewIconOrderKey(iconData)
+        if not iconData then return nil end
+        if iconData.cat and iconData.itemKey then return iconData.cat .. ":" .. iconData.itemKey end
+        return iconData.cat
+    end
+
+    local function ApplyPreviewIconOrder(icons)
+        local d = DDB()
+        local order = d and d.iconOrder
+        if type(order) ~= "table" or #icons < 2 then return end
+        local rank = {}
+        for index, key in ipairs(order) do
+            if type(key) == "string" and rank[key] == nil then rank[key] = index end
+        end
+        for index, iconData in ipairs(icons) do iconData._ktOriginalOrder = index end
+        table.sort(icons, function(left, right)
+            local leftRank = rank[PreviewIconOrderKey(left)]
+            local rightRank = rank[PreviewIconOrderKey(right)]
+            if leftRank and rightRank then return leftRank < rightRank end
+            if leftRank then return true end
+            if rightRank then return false end
+            return left._ktOriginalOrder < right._ktOriginalOrder
+        end)
+        for _, iconData in ipairs(icons) do iconData._ktOriginalOrder = nil end
+    end
+
+
     ---------------------------------------------------------------------------
     --  Preview Header shows potential buff/aura icons for current class/spec
     ---------------------------------------------------------------------------
@@ -878,6 +905,7 @@ initFrame:SetScript("OnEvent", function(self)
             }
         end
 
+        ApplyPreviewIconOrder(icons)
         return icons
     end
 
@@ -1010,6 +1038,149 @@ initFrame:SetScript("OnEvent", function(self)
     local _kuiarGlowFrame
     local _kuiarClickMappings = {}
     local _kuiarHitOverlays = {}
+    local KUIARNavigateToSetting
+    local previewDragOverlay, previewDragIndex, previewDragTarget, previewDragGhost
+    local previewDragStartX, previewDragStartY, previewDragActive
+
+    local function FindPreviewDropTarget(cursorX, cursorY)
+        local bestIndex, bestDistance
+        for index, pIcon in ipairs(_previewIcons) do
+            local frame = pIcon.frame
+            local left, right = frame:GetLeft(), frame:GetRight()
+            local bottom, top = frame:GetBottom(), frame:GetTop()
+            if left and right and bottom and top then
+                if cursorX >= left and cursorX <= right and cursorY >= bottom and cursorY <= top then
+                    return index
+                end
+                local centerX, centerY = (left + right) * 0.5, (bottom + top) * 0.5
+                local distance = (cursorX - centerX) ^ 2 + (cursorY - centerY) ^ 2
+                if not bestDistance or distance < bestDistance then
+                    bestDistance, bestIndex = distance, index
+                end
+            end
+        end
+        return bestIndex
+    end
+
+    local function EnsurePreviewDragGhost()
+        if previewDragGhost then return previewDragGhost end
+        previewDragGhost = CreateFrame("Frame", nil, UIParent)
+        previewDragGhost:SetFrameStrata("TOOLTIP")
+        previewDragGhost:SetSize(40, 40)
+        previewDragGhost:SetAlpha(0.75)
+        previewDragGhost._icon = previewDragGhost:CreateTexture(nil, "ARTWORK")
+        previewDragGhost._icon:SetAllPoints()
+        previewDragGhost:Hide()
+        return previewDragGhost
+    end
+
+    local function SavePreviewIconOrder()
+        local d = DDB()
+        if not d then return end
+        local order, seen = {}, {}
+        for _, pIcon in ipairs(_previewIcons) do
+            local key = PreviewIconOrderKey(pIcon.data)
+            if key and not seen[key] then
+                order[#order + 1], seen[key] = key, true
+            end
+        end
+        for _, key in ipairs(d.iconOrder or {}) do
+            if type(key) == "string" and not seen[key] then
+                order[#order + 1], seen[key] = key, true
+            end
+        end
+        d.iconOrder = order
+    end
+
+    local function ClearPreviewDrag()
+        if previewDragOverlay then previewDragOverlay:SetAlpha(1) end
+        if previewDragTarget and _previewIcons[previewDragTarget] then
+            _previewIcons[previewDragTarget].frame:SetAlpha(1)
+        end
+        if previewDragGhost then previewDragGhost:Hide() end
+        if _previewContainer then _previewContainer:SetScript("OnUpdate", nil) end
+        previewDragOverlay, previewDragIndex, previewDragTarget = nil, nil, nil
+        previewDragStartX, previewDragStartY, previewDragActive = nil, nil, nil
+        UpdatePreviewHeader()
+    end
+
+    local function FinishPreviewDrag()
+        if not previewDragOverlay then return end
+        local sourceIndex, targetIndex = previewDragIndex, previewDragTarget
+        local wasDragged, mappingKey = previewDragActive, previewDragOverlay._mappingKey
+
+        if wasDragged and targetIndex and targetIndex ~= sourceIndex then
+            _previewIcons[sourceIndex], _previewIcons[targetIndex] =
+                _previewIcons[targetIndex], _previewIcons[sourceIndex]
+            SavePreviewIconOrder()
+            for newIndex, pIcon in ipairs(_previewIcons) do
+                if pIcon.overlay then
+                    pIcon.overlay._previewIndex = newIndex
+                    pIcon.overlay._mappingKey = pIcon.data.itemKey
+                        and ("item:" .. pIcon.data.itemKey) or (pIcon.data.cat or "display")
+                end
+            end
+            RelayoutPreviewIcons()
+            RefreshAll()
+        elseif not wasDragged and mappingKey then
+            KUIARNavigateToSetting(mappingKey)
+        end
+        ClearPreviewDrag()
+    end
+
+    local function BeginPreviewDrag(overlay, index, mappingKey)
+        if previewDragOverlay then return end
+        local cursorX, cursorY = GetCursorPosition()
+        previewDragOverlay, previewDragIndex, previewDragTarget = overlay, index, index
+        overlay._mappingKey = mappingKey
+        previewDragStartX, previewDragStartY, previewDragActive = cursorX, cursorY, false
+
+        overlay:SetScript("OnUpdate", function(self)
+            if not IsMouseButtonDown("LeftButton") then
+                self:SetScript("OnUpdate", nil)
+                FinishPreviewDrag()
+                return
+            end
+            local nextX, nextY = GetCursorPosition()
+            if not previewDragActive and (nextX - previewDragStartX) ^ 2 + (nextY - previewDragStartY) ^ 2 >= 25 then
+                self:SetScript("OnUpdate", nil)
+                previewDragActive = true
+                local sourceFrame = _previewIcons[index] and _previewIcons[index].frame
+                local ghost = EnsurePreviewDragGhost()
+                ghost:SetSize(sourceFrame and sourceFrame:GetWidth() or 40, sourceFrame and sourceFrame:GetHeight() or 40)
+                ghost._icon:SetTexture(sourceFrame and sourceFrame._icon and sourceFrame._icon:GetTexture() or 134400)
+                ghost._icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+                ghost:Show()
+                overlay:SetAlpha(0.3)
+                GameTooltip:Hide()
+
+                if _previewContainer then
+                    _previewContainer:SetScript("OnUpdate", function()
+                        if not IsMouseButtonDown("LeftButton") then
+                            FinishPreviewDrag()
+                            return
+                        end
+                        local gx, gy = GetCursorPosition()
+                        local scale = UIParent:GetEffectiveScale()
+                        local cursorUIX, cursorUIY = gx / scale, gy / scale
+                        ghost:ClearAllPoints()
+                        ghost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cursorUIX, cursorUIY)
+                        local newTarget = FindPreviewDropTarget(cursorUIX, cursorUIY)
+                        if newTarget and newTarget ~= previewDragTarget then
+                            if previewDragTarget and _previewIcons[previewDragTarget]
+                                and _previewIcons[previewDragTarget].frame ~= sourceFrame then
+                                _previewIcons[previewDragTarget].frame:SetAlpha(1)
+                            end
+                            previewDragTarget = newTarget
+                            if _previewIcons[newTarget] and _previewIcons[newTarget].frame ~= sourceFrame then
+                                _previewIcons[newTarget].frame:SetAlpha(0.65)
+                            end
+                        end
+                    end)
+                end
+            end
+        end)
+    end
 
     local function KUIARPlaySettingGlow(targetFrame)
         if not targetFrame then return end
@@ -1067,7 +1238,7 @@ initFrame:SetScript("OnEvent", function(self)
         return PAGE_CONSUMABLES
     end
 
-    local function KUIARNavigateToSetting(key)
+    KUIARNavigateToSetting = function(key)
         local m = _kuiarClickMappings[key]
         if not m or not m.section or not m.target then
             local destination = PreviewDestination(key)
@@ -1126,7 +1297,7 @@ initFrame:SetScript("OnEvent", function(self)
         C_Timer.After(0.15, function() KUIARPlaySettingGlow(m.target) end)
     end
 
-    local function KUIARCreateHitOverlay(element, mappingKey, frameLevelOverride)
+    local function KUIARCreateHitOverlay(element, mappingKey, frameLevelOverride, previewIndex)
         local anchor = element
         if not anchor.CreateTexture then anchor = anchor:GetParent() end
         local btn = CreateFrame("Button", nil, anchor)
@@ -1138,7 +1309,21 @@ initFrame:SetScript("OnEvent", function(self)
         brd:Hide()
         btn:SetScript("OnEnter", function() brd:Show() end)
         btn:SetScript("OnLeave", function() brd:Hide() end)
-        btn:SetScript("OnMouseDown", function() KUIARNavigateToSetting(mappingKey) end)
+        btn._previewIndex = previewIndex
+        btn._mappingKey = mappingKey
+        btn:SetScript("OnMouseDown", function(self, mouseButton)
+            if self._previewIndex and mouseButton == "LeftButton" then
+                BeginPreviewDrag(self, self._previewIndex, self._mappingKey)
+            else
+                KUIARNavigateToSetting(self._mappingKey)
+            end
+        end)
+        btn:SetScript("OnMouseUp", function(self, mouseButton)
+            if self._previewIndex and mouseButton == "LeftButton" then
+                self:SetScript("OnUpdate", nil)
+                FinishPreviewDrag()
+            end
+        end)
         _kuiarHitOverlays[#_kuiarHitOverlays + 1] = btn
         return btn
     end
@@ -1211,7 +1396,7 @@ initFrame:SetScript("OnEvent", function(self)
             if pIcon.frame and pIcon.data then
                 -- Use per-item key if available, fall back to category
                 local mappingKey = pIcon.data.itemKey and ("item:" .. pIcon.data.itemKey) or (pIcon.data.cat or "display")
-                KUIARCreateHitOverlay(pIcon.frame, mappingKey, overlayLevel)
+                pIcon.overlay = KUIARCreateHitOverlay(pIcon.frame, mappingKey, overlayLevel, i)
                 -- Hit overlay on text label scrolls to Show Text setting
                 if pIcon.frame._text and showText then
                     KUIARCreateHitOverlay(pIcon.frame._text, "showText", overlayLevel)
@@ -1231,7 +1416,7 @@ initFrame:SetScript("OnEvent", function(self)
             if not _previewHintFS then
                 _previewHintFS = KT.MakeFont(container, 11, nil, 1, 1, 1)
                 _previewHintFS:SetAlpha(0.45)
-                _previewHintFS:SetText(LText("Click an icon to open its settings"))
+                _previewHintFS:SetText(LText("Drag icons to change their order • Click an icon to open its settings"))
             end
             _previewHintFS:SetParent(container)
             _previewHintFS:ClearAllPoints()

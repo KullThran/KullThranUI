@@ -1138,6 +1138,144 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     canvas:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -38)
     canvas:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
 
+    local dragButton, dragTrackerKey, dragIndex, dragTarget, dragGhost
+    local dragStartX, dragStartY, dragActive
+    local dragEndTime = 0
+
+    local function FindTrackerDropTarget(group, cursorX, cursorY)
+        local bestIndex, bestDistance
+        for index = 1, (group._trackerSlotCount or 0) do
+            local button = group._trackerSlots and group._trackerSlots[index]
+            if button and button:IsShown() then
+                local left, right = button:GetLeft(), button:GetRight()
+                local bottom, top = button:GetBottom(), button:GetTop()
+                if left and right and bottom and top then
+                    if cursorX >= left and cursorX <= right and cursorY >= bottom and cursorY <= top then
+                        return index
+                    end
+                    local centerX = (left + right) * 0.5
+                    local centerY = (bottom + top) * 0.5
+                    local distance = (cursorX - centerX) ^ 2 + (cursorY - centerY) ^ 2
+                    if not bestDistance or distance < bestDistance then
+                        bestDistance = distance
+                        bestIndex = index
+                    end
+                end
+            end
+        end
+        return bestIndex
+    end
+
+    local function EnsureTrackerDragGhost()
+        if dragGhost then return dragGhost end
+        dragGhost = CreateFrame("Frame", nil, frame)
+        dragGhost:SetFrameStrata("TOOLTIP")
+        dragGhost:SetSize(36, 36)
+        dragGhost:SetAlpha(0.75)
+        dragGhost._icon = dragGhost:CreateTexture(nil, "ARTWORK")
+        dragGhost._icon:SetAllPoints()
+        dragGhost:Hide()
+        return dragGhost
+    end
+
+    local function ClearTrackerDrag()
+        if dragButton then
+            dragButton:SetAlpha(1)
+            local group = dragButton:GetParent()
+            local targetButton = group and group._trackerSlots and dragTarget
+                and group._trackerSlots[dragTarget]
+            if targetButton and targetButton ~= dragButton then
+                targetButton:SetAlpha(1)
+            end
+        end
+        if dragGhost then dragGhost:Hide() end
+        frame:SetScript("OnUpdate", nil)
+        dragButton, dragTrackerKey, dragIndex, dragTarget = nil, nil, nil, nil
+        dragStartX, dragStartY, dragActive = nil, nil, nil
+    end
+
+    local function FinishTrackerDrag()
+        if not dragButton then return end
+
+        local changed = false
+        local barKey = "kui_" .. tostring(dragTrackerKey)
+        if dragActive and dragTarget and dragIndex ~= dragTarget and ns.SwapTrackedSpells then
+            changed = ns.SwapTrackedSpells(barKey, dragIndex, dragTarget) == true
+        end
+
+        local wasDragged = dragActive == true
+        if wasDragged then
+            dragEndTime = GetTime()
+        end
+        ClearTrackerDrag()
+
+        if changed then
+            Refresh()
+            RefreshCDMRuntime(barKey)
+            if KT and KT.RefreshPage then
+                C_Timer.After(0, function() KT:RefreshPage(true) end)
+            end
+        end
+    end
+
+    local function BeginTrackerDrag(button, trackerKey, index, group)
+        if dragButton then return end
+
+        local cursorX, cursorY = GetCursorPosition()
+        local scale = UIParent:GetEffectiveScale()
+        dragButton = button
+        dragTrackerKey = trackerKey
+        dragIndex = index
+        dragTarget = index
+        dragStartX = cursorX
+        dragStartY = cursorY
+        dragActive = false
+
+        button:SetScript("OnUpdate", function(self)
+            if not IsMouseButtonDown("LeftButton") then
+                self:SetScript("OnUpdate", nil)
+                FinishTrackerDrag()
+                return
+            end
+
+            local nextX, nextY = GetCursorPosition()
+            if not dragActive and (nextX - dragStartX) ^ 2 + (nextY - dragStartY) ^ 2 >= 25 then
+                self:SetScript("OnUpdate", nil)
+                dragActive = true
+                local ghost = EnsureTrackerDragGhost()
+                ghost:SetSize(button:GetWidth(), button:GetHeight())
+                ghost._icon:SetTexture(button._trackerIconTexture)
+                ghost._icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                ghost:Show()
+                button:SetAlpha(0.3)
+                GameTooltip:Hide()
+
+                frame:SetScript("OnUpdate", function()
+                    if not IsMouseButtonDown("LeftButton") then
+                        FinishTrackerDrag()
+                        return
+                    end
+
+                    local gx, gy = GetCursorPosition()
+                    local cursorUIX, cursorUIY = gx / scale, gy / scale
+                    ghost:ClearAllPoints()
+                    ghost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cursorUIX / (ghost:GetScale() or 1), cursorUIY / (ghost:GetScale() or 1))
+
+                    local nextTarget = FindTrackerDropTarget(group, cursorUIX, cursorUIY)
+                    if nextTarget and nextTarget ~= dragTarget then
+                        if dragTarget and group._trackerSlots[dragTarget] and group._trackerSlots[dragTarget] ~= dragButton then
+                            group._trackerSlots[dragTarget]:SetAlpha(1)
+                        end
+                        dragTarget = nextTarget
+                        if group._trackerSlots[dragTarget] and group._trackerSlots[dragTarget] ~= dragButton then
+                            group._trackerSlots[dragTarget]:SetAlpha(0.65)
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+
     local previewInfo = GetTrackerPreviewFrameInfo()
     local hasKUIUF = _G["KullThranUI_UF_Player"] or (KT and KT.db and KT.db.profile and KT.db.profile.unitFrames
         and KT.db.profile.unitFrames.enable ~= false
@@ -1229,23 +1367,26 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     sourceText:SetJustifyH("RIGHT")
     sourceText:SetText(previewInfo.sourceName or "PlayerFrame")
 
-    local function CreateTrackerPreviewIcon(parent, trackerKey, identifier, size, showCooldownText)
+    local function CreateTrackerPreviewIcon(parent, trackerKey, identifier, size, showCooldownText, index)
         local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
         button:SetSize(size, size)
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        local tint = KUI_TRACKER_PREVIEW_COLORS[trackerKey] or { ACCENT.r, ACCENT.g, ACCENT.b }
         if KT.AddBackdrop then
             KT:AddBackdrop(button, 0.06, 0.06, 0.08, 1)
         end
-        if KT.AddBorder then
-            KT:AddBorder(button, tint[1], tint[2], tint[3], 0.95)
-        end
-
+        -- The live preview uses the icon artwork directly; tracker-color
+        -- borders make the preview look like the runtime bars and are not useful
+        -- for configuring the layout.
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
         icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         icon:SetTexture(GetTrackerPreviewTexture(identifier))
+        button._trackerIconTexture = GetTrackerPreviewTexture(identifier)
+
+        parent._trackerSlots = parent._trackerSlots or {}
+        parent._trackerSlots[index] = button
+        parent._trackerSlotCount = math.max(parent._trackerSlotCount or 0, index)
 
         local cdText = button:CreateFontString(nil, "OVERLAY")
         cdText:SetFont(FONT_PATH, math.max(9, math.floor(size * 0.26)), "OUTLINE")
@@ -1273,8 +1414,20 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
             GameTooltip:Hide()
         end)
         button:SetScript("OnClick", function()
+            if GetTime() - dragEndTime < 0.2 then return end
             if onTrackerClick then
                 onTrackerClick(trackerKey)
+            end
+        end)
+        button:SetScript("OnMouseDown", function(self, mouseButton)
+            if mouseButton == "LeftButton" then
+                BeginTrackerDrag(self, trackerKey, index, parent)
+            end
+        end)
+        button:SetScript("OnMouseUp", function(self, mouseButton)
+            if mouseButton == "LeftButton" then
+                self:SetScript("OnUpdate", nil)
+                FinishTrackerDrag()
             end
         end)
 
@@ -1318,7 +1471,7 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
 
             local alignRight = (tracker.side or ""):find("RIGHT") ~= nil
             for i = 1, count do
-                local icon = CreateTrackerPreviewIcon(group, trackerKey, identifiers[i] or 0, iconSize, tracker.showText ~= false)
+                local icon = CreateTrackerPreviewIcon(group, trackerKey, identifiers[i] or 0, iconSize, tracker.showText ~= false, i)
                 if alignRight then
                     icon:SetPoint("TOPRIGHT", group, "TOPRIGHT", -((i - 1) * (iconSize + spacing)), 0)
                 else
@@ -2244,25 +2397,7 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
     _, h = W:SectionHeader(sc, LText("KUI Custom Tracker"), -y); y = y + h
     _, h = W:Label(sc, LText("Configure KullThranUI-specific trackers (Interrupts, Defensives, Trinkets, etc)."), -y,
         11); y = y + h
-    do
-        local trackerDescTop = y - h
-        local trackerDescContainer = CreateFrame("Frame", nil, sc)
-        trackerDescContainer:SetPoint("TOPLEFT", sc, "TOPLEFT", 8, -trackerDescTop + 2)
-        trackerDescContainer:SetSize(math.max(220, GetSCSafeWidth(sc) - 24), h + 4)
 
-        local trackerDescMask = trackerDescContainer:CreateTexture(nil, "ARTWORK")
-        trackerDescMask:SetAllPoints()
-        trackerDescMask:SetColorTexture(0.05, 0.03, 0.04, 1)
-
-        local trackerDesc = trackerDescContainer:CreateFontString(nil, "OVERLAY")
-        trackerDesc:SetFont(FONT_PATH, 11, "")
-        trackerDesc:SetPoint("TOPLEFT", 2, -2)
-        trackerDesc:SetWidth(math.max(220, GetSCSafeWidth(sc) - 24))
-        trackerDesc:SetJustifyH("LEFT")
-        trackerDesc:SetJustifyV("TOP")
-        trackerDesc:SetTextColor(0.78, 0.78, 0.82, 1)
-        trackerDesc:SetText(LText("Configure KullThranUI-specific trackers (Interrupts, Defensives, Trinkets, etc)."))
-    end
     y = y + BuildKUITrackerUnitFramePreview(sc, y, ct, FocusTrackerSection) + 12
 
     local trackers = {
@@ -2422,6 +2557,156 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
         local scW = GetSCSafeWidth(sc)
         local sz = 36
         local rowX = 0
+
+        -- The row below is the editable order for this tracker. Keep drag state
+        -- local to each section so moving one tracker never affects another.
+        local trackerDragButtons = {}
+        local trackerDragButton
+        local trackerDragIndex
+        local trackerDragTarget
+        local trackerDragGhost
+        local trackerDragPending = false
+        local trackerDragActive = false
+        local trackerDragStartX
+        local trackerDragStartY
+
+        local function GetTrackerCursorPosition()
+            local x, y = GetCursorPosition()
+            if not x or not y then return nil, nil end
+            local scale = UIParent:GetEffectiveScale() or 1
+            return x / scale, y / scale
+        end
+
+        local function ClearTrackerDrag()
+            if trackerDragButton then
+                trackerDragButton:SetAlpha(1)
+            end
+            if trackerDragTarget and trackerDragTarget._trackerDropHighlight then
+                trackerDragTarget._trackerDropHighlight:Hide()
+            end
+            if trackerDragGhost then
+                trackerDragGhost:Hide()
+            end
+            trackerDragButton = nil
+            trackerDragIndex = nil
+            trackerDragTarget = nil
+            trackerDragPending = false
+            trackerDragActive = false
+            trackerDragStartX = nil
+            trackerDragStartY = nil
+        end
+
+        local function FindTrackerDropTarget(cursorX, cursorY)
+            local bestButton
+            local bestDistance
+            local limit = math.max(sz * 1.5, 54)
+            for _, candidate in ipairs(trackerDragButtons) do
+                local centerX, centerY = candidate:GetCenter()
+                if centerX and centerY then
+                    local dx = cursorX - centerX
+                    local dy = cursorY - centerY
+                    local distance = math.sqrt(dx * dx + dy * dy)
+                    if distance <= limit and (not bestDistance or distance < bestDistance) then
+                        bestButton = candidate
+                        bestDistance = distance
+                    end
+                end
+            end
+            return bestButton
+        end
+
+        local function EnsureTrackerDragGhost()
+            if trackerDragGhost or not trackerDragButton then return end
+            trackerDragGhost = CreateFrame("Frame", nil, sc)
+            trackerDragGhost:SetSize(sz, sz)
+            trackerDragGhost:SetFrameStrata("TOOLTIP")
+            trackerDragGhost:SetAlpha(0.9)
+            trackerDragGhost._icon = trackerDragGhost:CreateTexture(nil, "ARTWORK")
+            trackerDragGhost._icon:SetAllPoints()
+            trackerDragGhost._icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            trackerDragGhost._icon:SetTexture(trackerDragButton._trackerIconTexture:GetTexture())
+        end
+
+        local function FinishTrackerDrag()
+            if not trackerDragButton then
+                ClearTrackerDrag()
+                return
+            end
+
+            local sourceButton = trackerDragButton
+            local sourceIndex = trackerDragIndex
+            local targetButton = trackerDragTarget
+            local targetIndex = targetButton and targetButton._trackerRowIndex
+            local changed = false
+
+            if trackerDragActive and targetIndex and sourceIndex ~= targetIndex
+                and ns.SwapTrackedSpells then
+                changed = ns.SwapTrackedSpells("kui_" .. tk, sourceIndex, targetIndex) == true
+            end
+
+            if trackerDragActive then
+                sourceButton._trackerDragSuppressUntil = GetTime() + 0.25
+            end
+            ClearTrackerDrag()
+
+            if changed then
+                Refresh()
+                RefreshCDMRuntime("kui_" .. tk)
+                if KT.RefreshPage then KT:RefreshPage(true) end
+            end
+        end
+
+        local function BeginTrackerDrag(button, index)
+            if trackerDragButton then ClearTrackerDrag() end
+            local x, y = GetTrackerCursorPosition()
+            if not x or not y then return end
+            trackerDragButton = button
+            trackerDragIndex = index
+            trackerDragPending = true
+            trackerDragStartX = x
+            trackerDragStartY = y
+        end
+
+        sc:HookScript("OnUpdate", function()
+            if not trackerDragButton then return end
+            if not IsMouseButtonDown("LeftButton") then
+                FinishTrackerDrag()
+                return
+            end
+
+            local cursorX, cursorY = GetTrackerCursorPosition()
+            if not cursorX or not cursorY then return end
+
+            if trackerDragPending then
+                local dx = cursorX - trackerDragStartX
+                local dy = cursorY - trackerDragStartY
+                if math.sqrt(dx * dx + dy * dy) >= 5 then
+                    trackerDragPending = false
+                    trackerDragActive = true
+                    trackerDragButton:SetAlpha(0.35)
+                    EnsureTrackerDragGhost()
+                    trackerDragGhost:Show()
+                end
+            end
+
+            if trackerDragActive then
+                local target = FindTrackerDropTarget(cursorX, cursorY)
+                if target ~= trackerDragTarget then
+                    if trackerDragTarget and trackerDragTarget._trackerDropHighlight then
+                        trackerDragTarget._trackerDropHighlight:Hide()
+                    end
+                    trackerDragTarget = target
+                    if trackerDragTarget and trackerDragTarget ~= trackerDragButton
+                        and trackerDragTarget._trackerDropHighlight then
+                        trackerDragTarget._trackerDropHighlight:Show()
+                    end
+                end
+                if trackerDragGhost then
+                    trackerDragGhost:ClearAllPoints()
+                    trackerDragGhost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cursorX, cursorY)
+                end
+            end
+        end)
 
         -- Normalise a tracker entry to a comparable key so the same spell/item
         -- dropped or picked twice (even with a different encoding) never ends up
@@ -2680,6 +2965,14 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
             btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             if KT.AddBackdrop then KT:AddBackdrop(btn, 0.08, 0.08, 0.10, 1) end
             if KT.AddBorder then KT:AddBorder(btn, 0.2, 0.2, 0.2, 0.8) end
+            btn._trackerRowIndex = sidx
+            trackerDragButtons[#trackerDragButtons + 1] = btn
+
+            local dropHighlight = btn:CreateTexture(nil, "OVERLAY")
+            dropHighlight:SetAllPoints()
+            dropHighlight:SetColorTexture(ACCENT.r, ACCENT.g, ACCENT.b, 0.35)
+            dropHighlight:Hide()
+            btn._trackerDropHighlight = dropHighlight
 
             local ic = btn:CreateTexture(nil, "ARTWORK")
             ic:SetPoint("TOPLEFT", 2, -2); ic:SetPoint("BOTTOMRIGHT", -2, 2); ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -2689,6 +2982,18 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
             elseif decoded then ic:SetTexture(C_Item.GetItemIconByID(decoded) or 134400)
             elseif not slotLabel then ic:SetTexture(C_Item.GetItemIconByID(-sid) or 134400)
             else ic:SetTexture(134400) end
+            btn._trackerIconTexture = ic
+
+            btn:SetScript("OnMouseDown", function(self, button)
+                if button == "LeftButton" then
+                    BeginTrackerDrag(self, sidx)
+                end
+            end)
+            btn:SetScript("OnMouseUp", function(self, button)
+                if button == "LeftButton" then
+                    FinishTrackerDrag()
+                end
+            end)
 
             local cdText = btn:CreateFontString(nil, "OVERLAY")
             cdText:SetFont(FONT_PATH, math.max(10, math.floor(sz * 0.28)), "OUTLINE")
@@ -2714,7 +3019,7 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
                 else
                     GameTooltip:SetItemByID(-sid)
                 end
-                GameTooltip:AddLine(LText("Right-click to remove"), 1, 0, 0); GameTooltip:Show()
+                GameTooltip:AddLine(LText("Right-click to remove"), 1, 0, 0); GameTooltip:AddLine(LText("Drag to reorder"), ACCENT.r, ACCENT.g, ACCENT.b); GameTooltip:Show()
                 if KT.AddBorder then KT:AddBorder(btn, 1, 0.2, 0.2, 1) end
             end)
             btn:SetScript("OnLeave",
@@ -2722,10 +3027,13 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
                     GameTooltip:Hide(); if KT.AddBorder then KT:AddBorder(btn, 0.2, 0.2, 0.2, 0.8) end
                 end)
             btn:SetScript("OnClick",
-                function(_, button)
+                function(self, button)
                     if button == "RightButton" then
                         TrackerRemoveEntry(sid)
                         Refresh(); if KT.RefreshPage then KT:RefreshPage(true) end
+                    elseif button == "LeftButton" and self._trackerDragSuppressUntil
+                        and GetTime() < self._trackerDragSuppressUntil then
+                        return
                     end
                 end)
 

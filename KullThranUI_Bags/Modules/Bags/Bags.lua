@@ -51,6 +51,34 @@ local KT_WATCH_ICON = "|TInterface\\COMMON\\Indicator-Yellow:12:12:0:0|t"
 local KT_BAGS_DEFAULT_PANEL_COLOR = { r = 0.2, g = 0.0980392157, b = 0.0, a = 0.94 }
 local KT_BAGS_WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 local KT_BAGS_BACKGROUND_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\BagsBackground.png"
+local KT_BAGS_KUI_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUISettingsSurface.png"
+
+local function KT_Bags_ApplyKuiSurface(frame, washAlpha)
+    if not (frame and frame.CreateTexture) then
+        return
+    end
+
+    -- Keep the KUI texture above BackdropTemplate backgrounds while child
+    -- controls continue to render above the surface.
+    local artwork = frame.KT_BagsKUIArtwork
+    if not artwork then
+        artwork = frame:CreateTexture(nil, "ARTWORK", nil, -8)
+        artwork:SetAllPoints(frame)
+        artwork:SetTexture(KT_BAGS_KUI_TEXTURE)
+        frame.KT_BagsKUIArtwork = artwork
+    end
+    artwork:SetAlpha(0.86)
+    artwork:Show()
+
+    local wash = frame.KT_BagsKUIWash
+    if not wash then
+        wash = frame:CreateTexture(nil, "ARTWORK", nil, -7)
+        wash:SetAllPoints(frame)
+        frame.KT_BagsKUIWash = wash
+    end
+    wash:SetColorTexture(0.008, 0.010, 0.016, washAlpha or 0.42)
+    wash:Show()
+end
 
 local function KT_Bags_GetAccentColor(alpha)
     local skin = KT and KT.db and KT.db.profile and KT.db.profile.skin or nil
@@ -2063,6 +2091,7 @@ function Mod:CreateNativeWindow()
     window:SetAlpha(1)
 
     KT:AddBackdrop(window, 0.05, 0.07, 0.09, 0.94)
+    KT_Bags_ApplyKuiSurface(window, 0.62)
     KT:AddBorder(window, 0.10, 0.10, 0.10, 1)
     KT_Bags_ApplyAccentSurface(window, {
         topAlpha = 0.03,
@@ -2085,6 +2114,7 @@ function Mod:CreateNativeWindow()
     })
     header:SetBackdropColor(0.08, 0.08, 0.09, 0.95)
     header:SetBackdropBorderColor(0.16, 0.16, 0.16, 1)
+    KT_Bags_ApplyKuiSurface(header, 0.62)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
@@ -2236,6 +2266,7 @@ function Mod:CreateNativeWindow()
     })
     toolbar:SetBackdropColor(0.05, 0.05, 0.06, 0.94)
     toolbar:SetBackdropBorderColor(0.14, 0.14, 0.14, 1)
+    KT_Bags_ApplyKuiSurface(toolbar, 0.62)
     KT_Bags_ApplyAccentSurface(toolbar, {
         topAlpha = 0.038,
         leftAlpha = 0.02,
@@ -2559,6 +2590,7 @@ function Mod:CreateNativeWindow()
     })
     sidebar:SetBackdropColor(0.018, 0.018, 0.022, 0.95)
     sidebar:SetBackdropBorderColor(0.12, 0.12, 0.12, 1)
+    KT_Bags_ApplyKuiSurface(sidebar, 0.62)
     KT_Bags_ApplyAccentSurface(sidebar, {
         topAlpha = 0.026,
         leftAlpha = 0.018,
@@ -2621,12 +2653,13 @@ function Mod:CreateNativeWindow()
     })
     gridPanel:SetBackdropColor(0.012, 0.012, 0.016, 0.94)
     gridPanel:SetBackdropBorderColor(0.12, 0.12, 0.12, 1)
+    KT_Bags_ApplyKuiSurface(gridPanel, 0.62)
     KT_Bags_ApplyAmbientGradient(gridPanel, {
         fillAlpha = 0.16,
         fillEndAlpha = 0.06,
         shadeTopAlpha = 0.10,
         shadeBottomAlpha = 0.02,
-        artAlpha = 0.82,
+        artAlpha = 0.42,
     })
     KT_Bags_ApplyAccentSurface(gridPanel, {
         topAlpha = 0.03,
@@ -2693,6 +2726,7 @@ function Mod:CreateNativeWindow()
     })
     footer:SetBackdropColor(0.06, 0.06, 0.07, 0.95)
     footer:SetBackdropBorderColor(0.14, 0.14, 0.14, 1)
+    KT_Bags_ApplyKuiSurface(footer, 0.62)
     KT_Bags_ApplyAccentSurface(footer, {
         topAlpha = 0.032,
         leftAlpha = 0.016,
@@ -2886,7 +2920,7 @@ function Mod:ApplyPanelColor()
             fillEndAlpha = 0.06,
             shadeTopAlpha = 0.10,
             shadeBottomAlpha = 0.02,
-            artAlpha = 0.82,
+            artAlpha = 0.42,
         })
         KT_Bags_ApplyAccentSurface(window.KT_GridPanel, {
             topAlpha = 0.03,

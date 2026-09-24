@@ -161,6 +161,47 @@ local function FriendlyDBVal(key, defaultValue)
     return defaultValue
 end
 
+local function FriendlyLevelValue(key)
+    local db = KullThranUINameplatesDB
+    local defaults = (ns and ns.defaults) or _G.KullThranUINameplatesDefaults or {}
+    if db and db[key] ~= nil then return db[key] end
+    return defaults[key]
+end
+
+local function HideFriendlyLevelText(level)
+    if not level then return end
+    if ns.ApplyNameplateLevelTextStyle then
+        pcall(ns.ApplyNameplateLevelTextStyle, level)
+    end
+    pcall(level.SetText, level, "")
+    level:Hide()
+end
+
+local function UpdateFriendlyLevelText(level, name, health, unit)
+    if not level then return end
+    if not unit or not ns.ShouldShowNameplateLevel or not ns.ShouldShowNameplateLevel(true) then
+        HideFriendlyLevelText(level)
+        return
+    end
+    local levelText = ns.GetNameplateLevelText and ns.GetNameplateLevelText(unit)
+    if not levelText then
+        HideFriendlyLevelText(level)
+        return
+    end
+    if ns.ApplyNameplateLevelTextStyle then ns.ApplyNameplateLevelTextStyle(level) end
+    level:SetText(levelText)
+    local width = level.GetUnboundedStringWidth and level:GetUnboundedStringWidth()
+        or level.GetStringWidth and level:GetStringWidth() or 0
+    level:SetWidth(math.max(20, tonumber(width) or 0) + 4)
+    level:SetHeight(math.max(16, (tonumber(FriendlyLevelValue("levelFontSize")) or 11) + 6))
+    if ns.PositionNameplateLevelText then
+        ns.PositionNameplateLevelText(level, name, health, true,
+            FriendlyLevelValue("levelXOffset") or 24,
+            FriendlyLevelValue("levelYOffset") or 4)
+    end
+    level:Show()
+end
+
 local function FriendlyDBColor(key, defaultR, defaultG, defaultB)
     local db = KullThranUINameplatesDB
     local c = db and db[key]
@@ -373,6 +414,43 @@ IsNameOnlyMode = function()
     return not db or (db.friendlyNameOnly ~= false)
 end
 
+local function UpdateFriendlyNameOnlyLevel(nameplate, unit)
+    local uf = nameplate and nameplate.UnitFrame
+    local name = uf and uf.name
+    if not (uf and name) or not unit or not UnitIsPlayer(unit) or not IsNameOnlyMode() then
+        HideFriendlyLevelText(uf and uf._ktFriendlyLevel)
+        return
+    end
+    local level = uf._ktFriendlyLevel
+    if not level then
+        level = uf:CreateFontString(nil, "OVERLAY")
+        if ns.ApplyNameplateLevelTextStyle then
+            ns.ApplyNameplateLevelTextStyle(level)
+        end
+        level:SetJustifyH("LEFT")
+        level:SetWordWrap(false)
+        level:SetMaxLines(1)
+        uf._ktFriendlyLevel = level
+    end
+    UpdateFriendlyLevelText(level, name, uf.healthBar or uf.HealthBar or nameplate, unit)
+end
+
+function ns.RefreshFriendlyNameOnlyLevels()
+    local plates = GetAccessibleNamePlates(true)
+    for index = 1, #plates do
+        local nameplate = plates[index]
+        local unit = nameplate and nameplate.namePlateUnitToken
+        UpdateFriendlyNameOnlyLevel(nameplate, unit)
+    end
+    if ns.RefreshFriendlyNPCLevels then
+        ns.RefreshFriendlyNPCLevels()
+    end
+end
+
+function ns.RefreshFriendlyNameOnlyLevel(nameplate, unit)
+    UpdateFriendlyNameOnlyLevel(nameplate, unit or (nameplate and nameplate.namePlateUnitToken))
+end
+
 local function IsFriendlyNPCEnabled()
     return KullThranUINameplatesDB and (KullThranUINameplatesDB.showFriendlyNPCs == true)
 end
@@ -442,6 +520,7 @@ local function ApplyFontToNameplate(nameplate)
     if not nameText then return end
     ApplyFontToNameText(nameText)
     ApplyFriendlyNameOnlyTextAnchors(nameplate)
+    UpdateFriendlyNameOnlyLevel(nameplate, nameplate.namePlateUnitToken)
 end
 ns.ApplyFontToNameplate = ApplyFontToNameplate
 
@@ -562,6 +641,12 @@ local function AcquireOverlay()
     overlay:SetSize(1, 1)
     overlay.name = overlay:CreateFontString(nil, "OVERLAY")
     SetFriendlyFSFont(overlay.name, 9, "")
+    overlay.level = overlay:CreateFontString(nil, "OVERLAY")
+    if ns.ApplyNameplateLevelTextStyle then ns.ApplyNameplateLevelTextStyle(overlay.level) end
+    overlay.level:SetJustifyH("LEFT")
+    overlay.level:SetWordWrap(false)
+    overlay.level:SetMaxLines(1)
+    overlay.level:Hide()
     ConfigureMovingFontRendering(overlay.name)
     overlay.name:SetPoint("CENTER", overlay, "CENTER", 0, 0)
     overlay.name:SetShadowOffset(1, -1)
@@ -610,6 +695,7 @@ local function ShowNPCOverlay(nameplate, unit)
     local r, g, b = GetNPCNameColor(unit)
     overlay.name:SetTextColor(r, g, b)
     ApplyFriendlyNPCOverlayTextAnchors(overlay)
+    UpdateFriendlyLevelText(overlay.level, overlay.name, nameplate, unit)
     overlay.unit = unit
     -- Listen for name updates (server may not have sent the name yet)
     overlay:RegisterUnitEvent("UNIT_NAME_UPDATE", unit)
@@ -617,6 +703,7 @@ local function ShowNPCOverlay(nameplate, unit)
         if event == "UNIT_NAME_UPDATE" then
             local updatedName = UnitName(self.unit) or ""
             self.name:SetText(updatedName)
+            UpdateFriendlyLevelText(self.level, self.name, self:GetParent(), self.unit)
         end
     end)
     npcOverlays[nameplate] = overlay
@@ -628,6 +715,7 @@ local function HideNPCOverlay(nameplate)
     -- Primero desvinculamos del registro para cortar eventos cuanto antes
     npcOverlays[nameplate] = nil
     overlay.unit = nil
+    HideFriendlyLevelText(overlay.level)
     -- Limpieza visual: ocultar, desanclar y reparentar al contenedor neutro
     overlay:UnregisterAllEvents()
     overlay:ClearAllPoints()
@@ -635,6 +723,14 @@ local function HideNPCOverlay(nameplate)
     overlay:Hide()
     -- Devolver al pool para reutilización
     npcOverlayPool[#npcOverlayPool + 1] = overlay
+end
+
+function ns.RefreshFriendlyNPCLevels()
+    for nameplate, overlay in pairs(npcOverlays) do
+        if overlay and overlay.unit then
+            UpdateFriendlyLevelText(overlay.level, overlay.name, nameplate, overlay.unit)
+        end
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -816,11 +912,13 @@ hooksecurefunc(NamePlateDriverFrame, "OnNamePlateAdded", function(_, unit)
             local showFriendly = KullThranUINameplatesDB and KullThranUINameplatesDB.showFriendlyPlayers ~= false
             if showFriendly then
                 UpdatePlayerGuildLine(nameplate, unit)
+                UpdateFriendlyNameOnlyLevel(nameplate, unit)
                 C_Timer.After(0, function()
                     local np = C_NamePlate.GetNamePlateForUnit(unit)
                     if np then
                         RestoreFriendlyPlayerNameText(np, unit)
                         EnforceFriendlyPlayerNameOnly(np, unit)
+                        UpdateFriendlyNameOnlyLevel(np, unit)
                         UpdatePlayerGuildLine(np, unit)
                     end
                 end)
@@ -829,6 +927,7 @@ hooksecurefunc(NamePlateDriverFrame, "OnNamePlateAdded", function(_, unit)
                     if np then
                         RestoreFriendlyPlayerNameText(np, unit)
                         EnforceFriendlyPlayerNameOnly(np, unit)
+                        UpdateFriendlyNameOnlyLevel(np, unit)
                         UpdatePlayerGuildLine(np, unit)
                     end
                 end)
@@ -837,6 +936,7 @@ hooksecurefunc(NamePlateDriverFrame, "OnNamePlateAdded", function(_, unit)
                     if np then
                         RestoreFriendlyPlayerNameText(np, unit)
                         EnforceFriendlyPlayerNameOnly(np, unit)
+                        UpdateFriendlyNameOnlyLevel(np, unit)
                         UpdatePlayerGuildLine(np, unit)
                     end
                 end)
@@ -948,6 +1048,15 @@ local friendlyFrameCache = CreateFramePool("Frame", UIParent, nil, nil, false, f
     plate.name:SetWordWrap(false)
     plate.name:SetMaxLines(1)
 
+    plate.level = plate:CreateFontString(nil, "OVERLAY")
+    if ns.ApplyNameplateLevelTextStyle then ns.ApplyNameplateLevelTextStyle(plate.level) end
+    plate.level:SetJustifyH("LEFT")
+    plate.level:SetWordWrap(false)
+    plate.level:SetMaxLines(1)
+    plate.level:SetWidth(24)
+    plate.level:SetHeight(18)
+    plate.level:Hide()
+
     plate.guild = plate:CreateFontString(nil, "OVERLAY")
     SetFriendlyFSFont(plate.guild, GetFriendlyGuildTextSize(),
         (ns and ns.GetNPOutline and ns.GetNPOutline()) or "OUTLINE")
@@ -1018,6 +1127,7 @@ function FriendlyFrame:SetUnit(unit, nameplate)
 
     self:RegisterUnitEvent("UNIT_HEALTH", unit)
     self:RegisterUnitEvent("UNIT_NAME_UPDATE", unit)
+    self:RegisterUnitEvent("UNIT_LEVEL", unit)
 
     local classColor
     local db = KullThranUINameplatesDB
@@ -1055,6 +1165,7 @@ function FriendlyFrame:SetUnit(unit, nameplate)
 
     self:UpdateHealth()
     self:UpdateName()
+    self:UpdateLevel()
     self:UpdateRaidIcon()
     self:ApplyTarget()
     if ns.ApplyHealthBarTexture then ns.ApplyHealthBarTexture(self) end
@@ -1063,6 +1174,7 @@ end
 function FriendlyFrame:ClearUnit()
     self:UnregisterAllEvents()
     self.name:SetText("")
+    HideFriendlyLevelText(self.level)
     if self.guild then self.guild:SetText(""); self.guild:Hide() end
     -- Restore Blizzard UF before clearing our reference
     if self.unit then RestoreBlizzardUF(self.unit) end
@@ -1175,6 +1287,11 @@ function FriendlyFrame:UpdateName()
     end
     ApplyFriendlyHealthAnchor(self)
     ApplyFriendlyBarTextAnchors(self)
+    self:UpdateLevel()
+end
+
+function FriendlyFrame:UpdateLevel()
+    UpdateFriendlyLevelText(self.level, self.name, self.health, self.unit)
 end
 
 function FriendlyFrame:UpdateRaidIcon()
@@ -1241,6 +1358,8 @@ end
 function FriendlyFrame:UNIT_HEALTH() self:UpdateHealth() end
 
 function FriendlyFrame:UNIT_NAME_UPDATE() self:UpdateName() end
+
+function FriendlyFrame:UNIT_LEVEL() self:UpdateLevel() end
 
 -------------------------------------------------------------------------------
 --  Friendly event manager (target, mouseover, raid icons)
@@ -1341,6 +1460,7 @@ function ns.RemoveFriendlyPlateNoRestore(unit)
     plate.unit = nil
     plate.nameplate = nil
     plate.name:SetText("")
+    HideFriendlyLevelText(plate.level)
     plate.glow:Hide()
     plate.highlight:Hide()
     plate.raidFrame:Hide()
@@ -1429,6 +1549,7 @@ function ns.RefreshFriendlyPlateSize()
         plate.health:SetSize(w, h)
         ApplyFriendlyHealthAnchor(plate)
         ApplyFriendlyBarTextAnchors(plate)
+        if plate.UpdateLevel then plate:UpdateLevel() end
         if plate.UpdateHealthMarkers then
             plate:UpdateHealthMarkers()
         end
@@ -1453,6 +1574,9 @@ function ns.RefreshFriendlyTextStyle()
                 (ns and ns.GetNPOutline and ns.GetNPOutline()) or "OUTLINE")
             local hr, hg, hb = GetFriendlyHealthTextColor()
             plate.hpText:SetTextColor(hr, hg, hb, 1)
+        end
+        if plate.level and ns.ApplyNameplateLevelTextStyle then
+            ns.ApplyNameplateLevelTextStyle(plate.level)
         end
         if plate.guild then
             SetFriendlyFSFont(plate.guild, GetFriendlyGuildTextSize(),

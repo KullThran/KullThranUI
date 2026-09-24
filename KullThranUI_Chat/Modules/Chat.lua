@@ -547,6 +547,22 @@ local function KT_IsRenderedMirrorDuplicate(renderedText, entry)
         and normalizedRendered:find(normalizedMessage, 1, true)
 end
 
+local function KT_IsNativeWhisperDuplicate(renderedText, entry, target)
+    if type(entry) ~= "table" or entry.preformatted or type(renderedText) ~= "string" then
+        return false
+    end
+
+    local normalizedRendered = KT_NormalizeMirrorCompareText(renderedText)
+    local normalizedMessage = KT_NormalizeMirrorCompareText(entry.rawMessage or entry.message)
+    local normalizedTarget = KT_NormalizeMirrorCompareText(target)
+    if not normalizedRendered or not normalizedMessage or not normalizedTarget then
+        return false
+    end
+
+    return normalizedRendered:find(normalizedTarget, 1, true) ~= nil
+        and normalizedRendered:find(normalizedMessage, 1, true) ~= nil
+end
+
 local function KT_IsRenderedTextDuplicate(firstText, secondText)
     local firstNormalized = KT_NormalizeMirrorCompareText(firstText)
     local secondNormalized = KT_NormalizeMirrorCompareText(secondText)
@@ -1159,9 +1175,19 @@ function Mod:RestoreBlizzardEditBoxHeader(editBox)
     self:UpdateInputPrompt(editBox)
 end
 
+function Mod:IsSharedWhisperTab(tab)
+    if not tab or tab.KT_WhisperThreadKey then
+        return false
+    end
+
+    local id = strlower(strtrim(tostring(tab.id or "")))
+    local mode = strupper(strtrim(tostring(tab.filterMode or "")))
+    return id == "whisper" or mode == "WHISPER"
+end
+
 function Mod:GetWhisperTabIndex()
     for index, tab in ipairs(self.tabs or {}) do
-        if tab and (tab.id == "whisper" or tab.filterMode == "WHISPER") then
+        if self:IsSharedWhisperTab(tab) then
             return index
         end
     end
@@ -1519,6 +1545,7 @@ function Mod:AddWhisperTarget(target, chatType, makeActive, bnetIDAccount, skipP
             bnetIDAccount = bnetIDAccount,
             threadKey = key,
         }
+        self.whisperViewThreadKey = key
         self.activeWhisperBNetAccountID = (type(bnetIDAccount) == "number") and bnetIDAccount or nil
         KT_UpdateLastTellTarget(target, chatType)
     end
@@ -1588,6 +1615,7 @@ function Mod:RemoveWhisperTarget(target, bnetIDAccount)
         local sameSelectedTarget = normalizedTarget and KT_GetWhisperThreadTargetText(self.selectedWhisperThread.target) == normalizedTarget
         if sameSelectedBNet or sameSelectedTarget then
             self.selectedWhisperThread = nil
+            self.whisperViewThreadKey = nil
             self.activeWhisperTarget = nil
             self.activeWhisperBNetAccountID = nil
         end
@@ -3064,6 +3092,7 @@ function Mod:ClearPrivateChatSession()
     self.activeWhisperTarget = nil
     self.activeWhisperBNetAccountID = nil
     self.selectedWhisperThread = nil
+    self.whisperViewThreadKey = nil
 
     if self.db then
         self.db.privateWindows = {}
@@ -3299,12 +3328,13 @@ function Mod:BuildTabFilter(config)
             end
 
             local activeTab = self:GetActiveTab()
-            if not (activeTab and activeTab.KT_WhisperThreadKey) then
-                return true
-            end
+            local selectedThread = activeTab and activeTab.KT_WhisperThreadKey
+                and activeTab.whisperThread
+                or self.selectedWhisperThread
+            local threadKey = activeTab and activeTab.KT_WhisperThreadKey
+                or self.whisperViewThreadKey
 
-            local selectedThread = self.selectedWhisperThread
-            if not selectedThread then
+            if not threadKey or not selectedThread then
                 return true
             end
 
@@ -3717,6 +3747,7 @@ function Mod:OnInitialize()
     self.whisperTargetLookup = {}
     self.activeWhisperTarget = nil
     self.selectedWhisperThread = nil
+    self.whisperViewThreadKey = nil
     self.unlockRegistered = false
     self.sidebarRegistered = false
     self.editBoxHooked = false
@@ -5187,6 +5218,7 @@ function Mod:OpenDirectWhisperTarget(target, bnetIDAccount, forceWoWWhisper)
             bnetIDAccount = ((not forceWoWWhisper) and type(bnetIDAccount) == "number" and bnetIDAccount > 0) and bnetIDAccount or nil,
             threadKey = KT_GetWhisperTargetKey(target, whisperType, ((not forceWoWWhisper) and type(bnetIDAccount) == "number" and bnetIDAccount > 0) and bnetIDAccount or nil),
         }
+        self.whisperViewThreadKey = self.selectedWhisperThread.threadKey
     end
     self.activeWhisperBNetAccountID = ((not forceWoWWhisper) and type(bnetIDAccount) == "number" and bnetIDAccount > 0) and bnetIDAccount or nil
 
@@ -5966,10 +5998,17 @@ function Mod:ActivateTab(index)
     if tabInfo then
         local idLower = tostring(tabInfo.id or ""):lower()
         local modeUpper = tostring(tabInfo.filterMode or ""):upper()
-        if not tabInfo.KT_WhisperThreadKey and (idLower:find("whisp") or modeUpper:find("WHISP")) then
+        if self:IsSharedWhisperTab(tabInfo) then
             self.selectedWhisperThread = nil
+            self.whisperViewThreadKey = nil
             self.activeWhisperTarget = nil
             self.activeWhisperBNetAccountID = nil
+            self:PersistPrivateChatState()
+        elseif tabInfo.KT_WhisperThreadKey then
+            self.selectedWhisperThread = tabInfo.whisperThread
+            self.whisperViewThreadKey = tabInfo.KT_WhisperThreadKey
+            self.activeWhisperTarget = tabInfo.whisperTarget
+            self.activeWhisperBNetAccountID = tabInfo.whisperThread and tabInfo.whisperThread.bnetIDAccount or nil
         end
     end
 
@@ -6143,17 +6182,18 @@ function Mod:RegisterChatEvents()
     -- avoids retail HistoryKeeper taint on secret party/raid payloads.
     --
     -- On secure-chat retail builds, avoid Blizzard's
-    -- ChatFrame_AddMessageEventFilter path entirely. Also avoid registering an
-    -- addon-owned frame for whisper events: touching BN_WHISPER's secret
-    -- payload before Blizzard's MessageEventHandler can taint HistoryKeeper's
-    -- protected access-ID tables.
+    -- ChatFrame_AddMessageEventFilter path entirely. The event handler below
+    -- only reads accessible whisper payloads and never mutates Blizzard's
+    -- protected chat-frame state.
     self.chatEventsRegistered = true
 
     if KT_IsSecureChatSafeMode() then
-        -- Retail keeps Battle.net whispers in the inline/toast path instead of
-        -- appending them to the native chat frames. Capture only these two
-        -- events here; the payload readers below reject inaccessible values
-        -- before doing any string or number work.
+        -- Capture whisper events directly as well as Battle.net inline/toast
+        -- events. The native frame is still left in charge of rendering, but
+        -- its message scanner is not reliable for every subsequent regular
+        -- whisper or WHISPER_INFORM line.
+        self:RegisterEvent('CHAT_MSG_WHISPER', 'OnWhisperEvent')
+        self:RegisterEvent('CHAT_MSG_WHISPER_INFORM', 'OnWhisperEvent')
         self:RegisterEvent('CHAT_MSG_BN_WHISPER', 'OnWhisperEvent')
         self:RegisterEvent('CHAT_MSG_BN_WHISPER_INFORM', 'OnWhisperEvent')
 
@@ -7088,6 +7128,17 @@ function Mod:ImportNativeWhisperMessage(renderedText, r, g, b, messageID)
     local threadKey = KT_GetWhisperTargetKey(target, chatType, bnetIDAccount)
     if not threadKey then
         return false
+    end
+
+    -- Secure-chat builds also receive the whisper events directly. If the
+    -- native frame contains the same line, do not add a second preformatted
+    -- copy to the shared or selected conversation history.
+    for index = #(self.history or {}), math.max(1, #(self.history or {}) - 31), -1 do
+        local existing = self.history[index]
+        if existing and existing.whisperThreadKey == threadKey
+            and KT_IsNativeWhisperDuplicate(renderedText, existing, target) then
+            return false
+        end
     end
 
     if chatType == 'BN_WHISPER' then

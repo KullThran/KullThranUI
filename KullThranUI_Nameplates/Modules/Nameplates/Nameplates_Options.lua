@@ -1636,7 +1636,7 @@ initFrame:SetScript("OnEvent", function(self)
                 pf._levelFS:SetHeight(math.max(16, (tonumber(DBVal("levelFontSize")) or 11) + 6))
                 pf._levelFS:ClearAllPoints()
                 pf._levelFS:SetPoint("BOTTOMLEFT", health, "TOPLEFT", tonumber(DBVal("levelXOffset")) or 24, tonumber(DBVal("levelYOffset")) or 4)
-                pf._levelFS:SetShown(DBVal("showLevel") == true)
+                pf._levelFS:SetShown(DBVal("showEnemyLevel") == true)
             end
             cast:SetValue(_previewCastFill or 0.60)
             castParts.icon:SetTexture(castParts.previewIcon or displayCastIcons[_previewCastIconIdx or 1])
@@ -1982,6 +1982,13 @@ initFrame:SetScript("OnEvent", function(self)
             else
                 PlaceHealthInBar(slotCenter, "CENTER", "CENTER", centerXOff, centerYOff, centerFontSz, centerC.r,
                     centerC.g, centerC.b)
+            end
+
+            local previewNameSlot = ns.FindSlotForElement and ns.FindSlotForElement("enemyName")
+            if ns.PositionNameplateLevelText then
+                ns.PositionNameplateLevelText(levelFS, nameFS, health, previewNameSlot,
+                    DBVal("levelXOffset") or defaults.levelXOffset,
+                    DBVal("levelYOffset") or defaults.levelYOffset)
             end
 
             -- Health bar color: always uses "enemies in combat" color
@@ -5181,8 +5188,12 @@ initFrame:SetScript("OnEvent", function(self)
         y = y - h
 
         local function RefreshNameplateLevelSettings()
-            for _, plate in pairs(plates) do
-                if plate.UpdateLevel then plate:UpdateLevel() end
+            if ns.RefreshNameplateLevels then
+                ns.RefreshNameplateLevels()
+            else
+                for _, plate in pairs(plates) do
+                    if plate.UpdateLevel then plate:UpdateLevel() end
+                end
             end
             UpdatePreview()
         end
@@ -5206,15 +5217,29 @@ initFrame:SetScript("OnEvent", function(self)
         _, h = W:SectionHeader(parent, "NAMEPLATE LEVEL", y); y = y - h
         _, h = W:DualRow(parent, y,
             {
-                type = "toggle", text = LText("Show Level"),
-                getValue = function() return DBVal("showLevel") == true end,
-                setValue = function(v) DB().showLevel = v and true or false; RefreshNameplateLevelSettings() end,
+                type = "toggle", text = LText("Show Enemy Level"),
+                getValue = function() return DBVal("showEnemyLevel") == true end,
+                setValue = function(v)
+                    DB().showEnemyLevel = v and true or false
+                    DB().showLevel = DB().showEnemyLevel
+                    RefreshNameplateLevelSettings()
+                end,
             },
             {
                 type = "dropdown", text = LText("Level Font"), values = levelFontValues, order = levelFontOrder,
                 getValue = function() return DBVal("levelFont") or defaults.levelFont end,
                 setValue = function(v) DB().levelFont = v; RefreshNameplateLevelSettings() end,
             }); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
+                type = "toggle", text = LText("Show Friendly Level"),
+                getValue = function() return DBVal("showFriendlyLevel") == true end,
+                setValue = function(v)
+                    DB().showFriendlyLevel = v and true or false
+                    RefreshNameplateLevelSettings()
+                end,
+            },
+            { type = "label", text = "" }); y = y - h
         _, h = W:DualRow(parent, y,
             {
                 type = "slider", text = LText("Level Font Size"), min = 6, max = 48, step = 1,
