@@ -26,7 +26,7 @@ local function GetModule()
 end
 
 local previewRefresh
-local PREVIEW_FONT = KT.FONT_PATH
+local PREVIEW_DEFAULT_FONT = KT.FONT_PATH or KT.FALLBACK_FONT_PATH or "Fonts\\FRIZQT__.TTF"
 local PREVIEW_FILL = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\CustomTextures\\MelliReforged.tga"
 local PREVIEW_BG = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\MelliDark.tga"
 local PREVIEW_CLASS_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
@@ -182,7 +182,7 @@ local function StyleModernPageButton(button, mode, fontSize)
     if not button then return end
     button._kuiPageLabel = button._kuiPageLabel or FindButtonLabel(button)
     if button._kuiPageLabel and fontSize then
-        button._kuiPageLabel:SetFont(PREVIEW_FONT, fontSize, "OUTLINE")
+        button._kuiPageLabel:SetFont(PREVIEW_DEFAULT_FONT, fontSize, "OUTLINE")
     end
     button._kuiPageMode = mode or "inactive"
     Apply9SliceTabButton(button, mode == "active")
@@ -231,7 +231,7 @@ local function BuildTabBar(sc, yOff)
         end
 
         local lbl = btn:CreateFontString(nil, "OVERLAY")
-        lbl:SetFont(PREVIEW_FONT, 11, "OUTLINE")
+        lbl:SetFont(PREVIEW_DEFAULT_FONT, 11, "OUTLINE")
         lbl:SetText(tab.label); lbl:SetAllPoints(); lbl:SetJustifyH("CENTER")
         btn._kuiPageLabel = lbl
         StyleModernPageButton(btn, isActive and "active" or "inactive", 11)
@@ -323,13 +323,13 @@ local function CreatePreviewUnit(parent)
     frame.power:SetStatusBarColor(0.22, 0.45, 0.95, 1)
 
     frame.name = frame.health:CreateFontString(nil, "OVERLAY")
-    frame.name:SetFont(PREVIEW_FONT, 14, "OUTLINE")
+    frame.name:SetFont(PREVIEW_DEFAULT_FONT, 14, "OUTLINE")
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetPoint("LEFT", 6, 0)
     frame.name:SetJustifyH("LEFT")
 
     frame.value = frame.health:CreateFontString(nil, "OVERLAY")
-    frame.value:SetFont(PREVIEW_FONT, 14, "OUTLINE")
+    frame.value:SetFont(PREVIEW_DEFAULT_FONT, 14, "OUTLINE")
     frame.value:SetTextColor(1, 1, 1, 1)
     frame.value:SetPoint("RIGHT", -6, 0)
     frame.value:SetJustifyH("RIGHT")
@@ -505,6 +505,24 @@ local function ResolvePreviewBarTexture(textureKey, fallbackPath)
     return fallbackPath or PREVIEW_FILL
 end
 
+local function ResolvePreviewFont(fontName)
+    if KT and KT.ResolveFontPath then
+        local resolved = KT:ResolveFontPath(fontName, PREVIEW_DEFAULT_FONT)
+        if resolved and resolved ~= "" then
+            return resolved
+        end
+    end
+
+    if LSM and fontName then
+        local resolved = LSM:Fetch("font", fontName, true)
+        if resolved and resolved ~= "" then
+            return resolved
+        end
+    end
+
+    return PREVIEW_DEFAULT_FONT
+end
+
 local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, valueText)
     local showPortrait = globalDB.portraitStyle ~= "none" and settings.showPortrait ~= false
     local powerHeight = ((settings.powerPosition or "below") ~= "none") and (settings.powerHeight or 6) or 0
@@ -653,8 +671,8 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
         frame.pvpIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\Alliance.png")
     end
     frame.pvpIcon:SetShown(globalDB.showPvPIcon == true and (unitKey == "player" or unitKey == "target"))
-    frame.name:SetFont(PREVIEW_FONT, settings.leftTextSize or settings.textSize or 14, "OUTLINE")
-    frame.value:SetFont(PREVIEW_FONT, settings.rightTextSize or settings.textSize or 14, "OUTLINE")
+    frame.name:SetFont(PREVIEW_DEFAULT_FONT, settings.leftTextSize or settings.textSize or 14, "OUTLINE")
+    frame.value:SetFont(PREVIEW_DEFAULT_FONT, settings.rightTextSize or settings.textSize or 14, "OUTLINE")
     frame.name:SetText(nameText)
     if showAbsorbPreview then
         frame.value:SetText(string.format("%d%%", previewHealthValue))
@@ -1074,7 +1092,7 @@ local function CreateUnitFramesLivePreview(parent, options)
     end
 
     local previewTitle = preview:CreateFontString(nil, "OVERLAY")
-    previewTitle:SetFont(PREVIEW_FONT, 10, "OUTLINE")
+    previewTitle:SetFont(PREVIEW_DEFAULT_FONT, 10, "OUTLINE")
     KT:SetAccentTextColor(previewTitle, 1)
     previewTitle:SetPoint("TOPLEFT", 10, -8)
     previewTitle:SetText(LText("LIVE PREVIEW"))
