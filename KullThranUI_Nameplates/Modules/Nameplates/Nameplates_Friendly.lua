@@ -1111,6 +1111,9 @@ function FriendlyFrame:SetUnit(unit, nameplate)
     self.unit = unit
     self.nameplate = nameplate
     self:SetParent(nameplate)
+    if self.SetIgnoreParentScale then
+        self:SetIgnoreParentScale(true)
+    end
     self:ClearAllPoints()
     -- Single center anchor to prevent pixel shimmer when nameplate bounces
     local yOff = KullThranUINameplatesDB and KullThranUINameplatesDB.friendlyPlateYOffset or 0
@@ -1180,6 +1183,9 @@ function FriendlyFrame:ClearUnit()
     if self.unit then RestoreBlizzardUF(self.unit) end
     self.unit = nil
     self.nameplate = nil
+    if self.SetIgnoreParentScale then
+        self:SetIgnoreParentScale(true)
+    end
     self.glow:Hide()
     self.highlight:Hide()
     self.raidFrame:Hide()

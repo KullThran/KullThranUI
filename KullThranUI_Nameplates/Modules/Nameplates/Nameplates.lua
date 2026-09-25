@@ -4406,6 +4406,9 @@ function NameplateFrame:SetUnit(unit, nameplate)
     self.nameplate = nameplate
     -- Paso 1: anclar al nameplate Blizzard
     self:SetParent(nameplate)
+    if self.SetIgnoreParentScale then
+        self:SetIgnoreParentScale(false)
+    end
     self:ClearAllPoints()
     self:SetPoint("CENTER", nameplate, "CENTER", 0, GetHitboxYShift())
     self:SetSize(1, 1)
