@@ -2389,8 +2389,7 @@ local function IsChangelogVersionStored(changelogDb, version)
         return false
     end
 
-    return NormalizeVersionKey(changelogDb.lastAutoShownVersion) == version
-        or NormalizeVersionKey(changelogDb.lastDismissedVersion) == version
+    return NormalizeVersionKey(changelogDb.lastDismissedVersion) == version
         or (type(changelogDb.dismissedVersions) == "table"
             and changelogDb.dismissedVersions[version] == true)
 end
@@ -2427,6 +2426,35 @@ function KT:IsChangelogPatchSuppressed(version)
     )
 end
 
+function KT:MarkChangelogVersionShown(version)
+    if not self.db then
+        return false
+    end
+
+    self.db.global = self.db.global or {}
+    local currentVersion = NormalizeVersionKey(version or GetCurrentKUIVersion())
+    if not currentVersion then
+        return false
+    end
+
+    self.db.global.changelog = self.db.global.changelog or {}
+    local changelogDb = self.db.global.changelog
+    local rawChangelogDb = GetRawChangelogDB(true)
+
+    local function UpdateStore(store)
+        if type(store) == "table" then
+            store.lastAutoShownVersion = currentVersion
+        end
+    end
+
+    UpdateStore(changelogDb)
+    if rawChangelogDb ~= changelogDb then
+        UpdateStore(rawChangelogDb)
+    end
+
+    return true
+end
+
 function KT:SetChangelogPatchSuppressed(version, suppressed)
     if not self.db then
         return
@@ -2451,13 +2479,9 @@ function KT:SetChangelogPatchSuppressed(version, suppressed)
         if type(store) ~= "table" then return end
         store.dismissedVersions = store.dismissedVersions or {}
         if shouldSuppress then
-            store.lastAutoShownVersion = currentVersion
             store.lastDismissedVersion = currentVersion
             store.dismissedVersions[currentVersion] = true
         else
-            if NormalizeVersionKey(store.lastAutoShownVersion) == currentVersion then
-                store.lastAutoShownVersion = nil
-            end
             if NormalizeVersionKey(store.lastDismissedVersion) == currentVersion then
                 store.lastDismissedVersion = nil
             end
@@ -2696,6 +2720,11 @@ function KT:ShowChangelogPopup(version)
     popup.body:SetText(bodyText)
     RefreshChangelogPopupTheme(popup)
     RefreshChangelogPopupLayout(popup)
+    -- Opening the changelog counts as having shown this release once.
+    -- Keep this separate from the optional "Don't show again" preference.
+    if self.MarkChangelogVersionShown then
+        self:MarkChangelogVersionShown(requestedVersion)
+    end
     popup:Show()
     popup:Raise()
 end
