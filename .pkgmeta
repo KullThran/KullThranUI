@@ -1,4 +1,5 @@
 package-as: KullThranUI
+manual-changelog: RELEASE_NOTES.md
 
 move-folders:
   KullThranUI/KullThranUI: KullThranUI
@@ -30,6 +31,7 @@ move-folders:
 enable-nolib-creation: no
 
 ignore:
+  - RELEASE_NOTES.md
   - .github
   - .agents
   - .codex
