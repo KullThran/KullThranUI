@@ -971,7 +971,7 @@ local CHANGELOG_ENTRIES = {
             "KullThranUI 5.1.1",
             "Added separate Only Name and instance-display controls for friendly players and NPCs, including KUI bars, name-only mode, and hiding friendly plates.",
             "Reduced active friendly player and NPC health-bar dimensions and stabilized their custom overlays, font handling, and Blizzard-frame suppression.",
-            "Added runtime diagnostics for comparing Blizzard, KUI, Plater, and Platynator nameplate ownership and layout.",
+            "Added runtime diagnostics for comparing nameplate ownership and layout.",
             "Added configurable elite/rare indicators, no-portrait placement, classification artwork, and refreshed level/PvP metadata for Unit Frames.",
             "Improved Unit Frames cast-bar cleanup, secret-value resource handling, dispel overlays, and metadata refresh after target or unit changes.",
             "Made Unlock Mode remember the UI reference size and rescale saved positions when UI scale or display dimensions change.",
