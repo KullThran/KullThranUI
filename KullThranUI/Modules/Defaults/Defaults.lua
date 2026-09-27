@@ -107,6 +107,7 @@ function KT:GenerateDefaults()
                 showClock = true,
                 showZone = true,
                 showCoords = true,
+                showKUISettingsIcon = true,
                 zoneFont = DEFAULT_FONT_NAME,
                 zoneFontSize = 12,
                 zoneFontOutline = "OUTLINE",

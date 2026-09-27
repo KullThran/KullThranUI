@@ -5,7 +5,20 @@ Current addon version: **@project-version@**
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
 
+## 5.1.1 (2026-09-27)
+- KullThranUI 5.1.1.
+- Added separate Only Name and instance-display controls for friendly players and NPCs, with KUI bars, name-only mode, and hidden friendly plates.
+- Reduced active friendly nameplate health-bar dimensions and stabilized custom overlays, font handling, and Blizzard-frame suppression.
+- Added a runtime /knpdebug comparison for Blizzard, KUI, Plater, and Platynator nameplate ownership and layout.
+- Added configurable elite/rare indicators, no-portrait placement, classification artwork, and refreshed level/PvP metadata for Unit Frames.
+- Improved Unit Frames cast-bar cleanup, secret-value resource handling, dispel overlays, and metadata refresh after target or unit changes.
+- Made Unlock Mode rescale saved positions when UI scale or display dimensions change.
+- Added the KUI options icon setting and translations for the new indicator controls.
+- Corrected the LFG skin right border and restored Minimap state across cinematic transitions.
+- Hardened the stable release workflow with explicit release, beta, and alpha classification and dynamic package versioning.
+
 ## 5.1.0 (2026-09-25)
+- KullThranUI 5.1.0
 - Added a dedicated gold border highlight for quest items in Bags, with container metadata and item-class fallback detection.
 - Corrected parent-scale handling for standard and friendly Nameplates so rendered plates keep the intended scale during reassignment and cleanup.
 - Updated KUI and every module to the 5.1.0 release version.

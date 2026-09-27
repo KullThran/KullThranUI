@@ -120,6 +120,10 @@ KT:RegisterPage("actionbars", "Action Bars", 16, function(sc, W)
             end
         end
 
+        if preview._ktLivePreviewLabel and KT.SetAccentTextColor then
+            KT:SetAccentTextColor(preview._ktLivePreviewLabel, 1)
+        end
+
         preview:SetParent(sc)
         preview:ClearAllPoints()
         preview:SetPoint("TOP", sc, "TOP", 0, -10)

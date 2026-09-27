@@ -889,6 +889,7 @@ function UM:EnsureDB()
     if not KT.db or not KT.db.profile then return end
     KT.db.profile.editMode = KT.db.profile.editMode or {}
     KT.db.profile.editMode.frames = KT.db.profile.editMode.frames or {}
+    KT.db.profile.editMode.positionMeta = KT.db.profile.editMode.positionMeta or {}
     KT.db.profile.editMode.snapTargets = KT.db.profile.editMode.snapTargets or {}
     if KT.db.profile.editMode.unlockGrid == nil then KT.db.profile.editMode.unlockGrid = "dimmed" end
     if KT.db.profile.editMode.unlockSnap == nil then KT.db.profile.editMode.unlockSnap = true end
@@ -941,6 +942,8 @@ function UM:OnEnable()
     self:EnsureDB()
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
+    self:RegisterEvent("UI_SCALE_CHANGED", "OnUnlockDisplayScaleChanged")
+    self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUnlockDisplayScaleChanged")
 
     KT:RegisterChatCommand("ktunlock", function()
         self:ToggleUnlockMode()
@@ -978,6 +981,90 @@ function UM:UpdateRegistry()
     end
 end
 
+function UM:GetPositionReference()
+    local width, height = GetUIRect()
+    return max(tonumber(width) or 1, 1), max(tonumber(height) or 1, 1)
+end
+
+function UM:RememberPositionReference(key)
+    if not key then return end
+    self:EnsureDB()
+    if not self.db then return end
+
+    local width, height = self:GetPositionReference()
+    self.db.positionMeta[key] = {
+        width = width,
+        height = height,
+    }
+end
+
+function UM:NormalizePositionForCurrentUI(key, pos)
+    if not pos then
+        return nil, false
+    end
+
+    self:EnsureDB()
+    local normalized = CopyPosition(pos)
+    local meta = self.db and self.db.positionMeta and self.db.positionMeta[key]
+    local oldWidth = meta and tonumber(meta.width)
+    local oldHeight = meta and tonumber(meta.height)
+    local width, height = self:GetPositionReference()
+
+    if not (oldWidth and oldWidth > 0 and oldHeight and oldHeight > 0) then
+        return normalized, false
+    end
+
+    local xRatio = width / oldWidth
+    local yRatio = height / oldHeight
+    if abs(xRatio - 1) < 0.0001 and abs(yRatio - 1) < 0.0001 then
+        return normalized, false
+    end
+
+    normalized.x = (tonumber(pos.x) or 0) * xRatio
+    normalized.y = (tonumber(pos.y) or 0) * yRatio
+    return normalized, true
+end
+
+function UM:GetRawElementPosition(key)
+    local def = self:GetElementDef(key)
+    if def and type(def.loadPosition) == "function" then
+        local ok, pos = SafeCall(def.loadPosition, key)
+        if ok and type(pos) == "table" and pos.point then
+            return CopyPosition(pos)
+        end
+    end
+
+    local saved = self:GetStoredDBPosition(key)
+    if saved and saved.point then
+        return CopyPosition(saved)
+    end
+    return nil
+end
+
+function UM:PrepareElementPositionForCurrentUI(key)
+    local raw = self:GetRawElementPosition(key)
+    if not raw then
+        self:RememberPositionReference(key)
+        return nil
+    end
+
+    local normalized, changed = self:NormalizePositionForCurrentUI(key, raw)
+    if changed then
+        self:SaveElementPosition(key, normalized)
+    else
+        self:RememberPositionReference(key)
+    end
+
+    self:ApplyStoredPositionToElement(key, normalized)
+    if changed then
+        local def = self:GetElementDef(key)
+        if def and type(def.applyPosition) == "function" then
+            SafeCall(def.applyPosition, key)
+        end
+    end
+    return normalized
+end
+
 function UM:GetStoredDBPosition(key)
     self:EnsureDB()
     return self.db and self.db.frames and self.db.frames[key]
@@ -994,6 +1081,7 @@ function UM:SaveStoredDBPosition(key, point, relativePoint, x, y, scale)
     if scale ~= nil then
         data.scale = scale
     end
+    self:RememberPositionReference(key)
 end
 
 function UM:GetElementDef(key)
@@ -1058,18 +1146,12 @@ function UM:IsElementHidden(key)
 end
 
 function UM:LoadElementPosition(key)
-    local def = self:GetElementDef(key)
-    if def and type(def.loadPosition) == "function" then
-        local ok, pos = SafeCall(def.loadPosition, key)
-        if ok and type(pos) == "table" and pos.point then
-            return CopyPosition(pos)
-        end
+    local raw = self:GetRawElementPosition(key)
+    if not raw then
+        return nil
     end
-    local saved = self:GetStoredDBPosition(key)
-    if saved and saved.point then
-        return CopyPosition(saved)
-    end
-    return nil
+    local normalized = self:NormalizePositionForCurrentUI(key, raw)
+    return normalized
 end
 
 function UM:GetElementRect(key)
@@ -1178,6 +1260,7 @@ function UM:ApplyStoredPositionToElement(key, pos)
 end
 
 function UM:SaveElementPosition(key, pos)
+    self:RememberPositionReference(key)
     local def = self:GetElementDef(key)
     if def and type(def.savePosition) == "function" then
         SafeCall(def.savePosition, key, pos.point, pos.relativePoint, pos.x, pos.y, pos.scale)
@@ -2685,6 +2768,7 @@ function UM:CreateSidebar()
             button2 = LText("No"),
             OnAccept = function()
                 wipe(UM.db.frames)
+                wipe(UM.db.positionMeta)
                 wipe(UM.db.snapTargets)
                 wipe(UM.pendingPositions)
                 for _, mover in pairs(UM.movers) do
@@ -2875,10 +2959,15 @@ function UM:ApplyTheme()
         StyleSidebarButton(self.sidebar.toggleDark, "toggle")
         StyleSidebarButton(self.sidebar.toggleCoords, "toggle")
         if self.sidebar.scrollbarTrack then
-            KT:AddBorder(self.sidebar.scrollbarTrack, theme.soft.r, theme.soft.g, theme.soft.b, 1)
+            -- Keep the scrollbar frame on the active accent after a live theme change.
+            -- Using theme.soft here left the old scrollbar edge visible until reload.
+            KT:AddBorder(self.sidebar.scrollbarTrack, theme.accent.r, theme.accent.g, theme.accent.b, 0.55)
         end
         if self.sidebar.scrollbarThumbBorder or self.sidebar.scrollbarThumb then
-            SetScrollbarThumbState(self.sidebar, self.sidebar.scrollbarDragging and "drag" or "normal")
+            local scrollbar = self.sidebar.scroll and self.sidebar.scroll.ScrollBar
+            local scrollbarState = self.sidebar.scrollbarDragging and "drag"
+                or (scrollbar and scrollbar:IsMouseOver() and "hover" or "normal")
+            SetScrollbarThumbState(self.sidebar, scrollbarState)
         end
         if self.sidebar.itemButtons then
             for _, button in ipairs(self.sidebar.itemButtons) do
@@ -3253,6 +3342,62 @@ function UM:FadeInOpenUI()
     self:AnimateSidebarIn()
 end
 
+function UM:RescaleOpenLayout()
+    if not self.isOpen then return end
+
+    local oldWidth = tonumber(self._unlockReferenceWidth)
+    local oldHeight = tonumber(self._unlockReferenceHeight)
+    local width, height = self:GetPositionReference()
+    if not (oldWidth and oldWidth > 0 and oldHeight and oldHeight > 0) then
+        self._unlockReferenceWidth = width
+        self._unlockReferenceHeight = height
+        return
+    end
+
+    local xRatio = width / oldWidth
+    local yRatio = height / oldHeight
+    if abs(xRatio - 1) < 0.0001 and abs(yRatio - 1) < 0.0001 then
+        return
+    end
+
+    local hadChanges = self.hasChanges
+    for key, mover in pairs(self.movers or {}) do
+        if mover:IsShown() then
+            local left = mover:GetLeft()
+            local top = mover:GetTop()
+            if left and top then
+                SetFrameTopLeft(mover, left * xRatio, top * yRatio)
+                self:ApplyMoverToElement(key, mover)
+            end
+        end
+    end
+
+    for _, pos in pairs(self.snapshotPositions or {}) do
+        pos.x = (tonumber(pos.x) or 0) * xRatio
+        pos.y = (tonumber(pos.y) or 0) * yRatio
+    end
+
+    self.hasChanges = hadChanges
+    self._unlockReferenceWidth = width
+    self._unlockReferenceHeight = height
+    self:RebuildGrid()
+    self:RefreshMovers()
+end
+
+function UM:OnUnlockDisplayScaleChanged()
+    if not self.isOpen or self._unlockScaleRefreshQueued then
+        return
+    end
+
+    self._unlockScaleRefreshQueued = true
+    C_Timer.After(0, function()
+        self._unlockScaleRefreshQueued = nil
+        if self.isOpen then
+            self:RescaleOpenLayout()
+        end
+    end)
+end
+
 function UM:OpenUnlockMode()
     if self.isOpen or InCombatLockdown() or (KT.IsBlizzardEditModeTransitionActive and KT:IsBlizzardEditModeTransitionActive()) then
         if InCombatLockdown() then
@@ -3272,6 +3417,7 @@ function UM:OpenUnlockMode()
     self:EnsureDB()
     self:CreateUnlockFrame()
     self:UpdateRegistry()
+    self._unlockReferenceWidth, self._unlockReferenceHeight = self:GetPositionReference()
     wipe(self.snapshotPositions)
     wipe(self.snapshotSizes)
     wipe(self.snapshotSnapTargets)
@@ -3283,6 +3429,7 @@ function UM:OpenUnlockMode()
 
     for _, key in ipairs(self.registryOrder) do
         if not self:IsElementHidden(key) then
+            self:PrepareElementPositionForCurrentUI(key)
             self.snapshotPositions[key] = self:CaptureCurrentPosition(key)
             self.snapshotSnapTargets[key] = self:GetSnapTarget(key) or false
             if self:CanEditElementSize(key) then
@@ -3368,6 +3515,8 @@ function UM:CloseUnlockMode(saveChanges, force)
 
     self.isOpen = false
     self.isSuspended = false
+    self._unlockReferenceWidth = nil
+    self._unlockReferenceHeight = nil
     KT._unlockActive = false
     -- Drop keyboard capture immediately so the fade-out window (and any
     -- interrupted close) never leaves bindings/ESC dead.

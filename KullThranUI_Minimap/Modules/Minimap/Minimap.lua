@@ -877,6 +877,7 @@ function Mod:OnInitialize()
         showClock = true,
         showZone = true,
         showCoords = true,
+        showKUISettingsIcon = true,
         showFriends = true,
         showGuild = true,
         locationOffsetX = 0, locationOffsetY = 0,
@@ -905,6 +906,7 @@ function Mod:OnInitialize()
     self.db.showClock = self.db.showClock ~= false
     self.db.showZone = self.db.showZone ~= false
     self.db.showCoords = self.db.showCoords ~= false
+    self.db.showKUISettingsIcon = self.db.showKUISettingsIcon ~= false
     self.db.showFriends = self.db.showFriends ~= false
     self.db.showGuild = self.db.showGuild ~= false
     for _, key in ipairs({ "location", "coords", "clock", "performance", "friends", "guild" }) do
@@ -2532,6 +2534,9 @@ function Mod:UpdateOverlayVisibility(force)
     end
     if self.guildMinimapButton then
         self.guildMinimapButton:SetShown(self.db.showGuild ~= false)
+    end
+    if self.kuiSettingsButton then
+        self.kuiSettingsButton:SetShown(self.db.showKUISettingsIcon ~= false)
     end
     if self.friendsMinimapButton then
         self.friendsMinimapButton:SetShown(self.db.showFriends ~= false)

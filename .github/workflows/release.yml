@@ -4,6 +4,23 @@ on:
   push:
     tags:
       - 'v*'
+  # Permite lanzar el workflow manualmente (o mediante un comando `gh workflow run`)
+  # indicando la versión y el tipo de publicación deseado.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión a publicar (sin la "v", ej: 3.2.1)'
+        required: true
+        type: string
+      release_type:
+        description: 'Tipo de publicación'
+        required: true
+        type: choice
+        options:
+          - release
+          - beta
+          - alpha
+        default: release
 
 permissions:
   contents: write
@@ -16,6 +33,64 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Solo se ejecuta cuando se lanza el workflow a mano (dispatch).
+      # Crea y empuja el tag con el sufijo correcto (-beta / -alpha) para
+      # que BigWigsMods/packager clasifique el paquete automáticamente.
+      - name: Crear y publicar el tag (solo en dispatch manual)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          version="${{ inputs.version }}"
+          type="${{ inputs.release_type }}"
+
+          case "$type" in
+            beta)  tag="v${version}-beta" ;;
+            alpha) tag="v${version}-alpha" ;;
+            *)     tag="v${version}" ;;
+          esac
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "$tag"
+
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+
+      # En un push de tag normal, el tag ya viene en GITHUB_REF_NAME.
+      - name: Detectar tag (push normal)
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      # Clasifica el tag como release / beta / alpha con la misma lógica
+      # que usa internamente BigWigsMods/packager, para que la notificación
+      # de Discord y el resto del workflow sepan qué tipo de build es.
+      - name: Determinar tipo de publicación (Release/Beta/Alpha)
+        id: release_type
+        shell: bash
+        run: |
+          tag="${RELEASE_TAG}"
+          tag_lower="${tag,,}"
+
+          if [[ "$tag_lower" == *"alpha"* ]]; then
+            type="alpha"
+            label="Alpha"
+            badge="🔬"
+          elif [[ "$tag_lower" == *"beta"* ]]; then
+            type="beta"
+            label="Beta"
+            badge="🧪"
+          else
+            type="release"
+            label="Release"
+            badge="🚀"
+          fi
+
+          echo "type=$type" >> "$GITHUB_OUTPUT"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "badge=$badge" >> "$GITHUB_OUTPUT"
+          echo "Tag: $tag -> Tipo detectado: $label"
 
       - name: Extraer la última versión del CHANGELOG
         shell: bash
@@ -62,22 +137,30 @@ jobs:
       - name: Obtener versión sin la v del tag
         id: version
         shell: bash
-        run: echo "KUI_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${RELEASE_TAG#v}"
+          version="${version%-beta}"
+          version="${version%-alpha}"
+          echo "KUI_VERSION=$version" >> "$GITHUB_OUTPUT"
 
       - name: Empaquetar y subir a Curse y Wago
         uses: BigWigsMods/packager@v2
         with:
-          args: '-n "KullThranUI ${{ steps.version.outputs.KUI_VERSION }}:KullThranUI ${{ steps.version.outputs.KUI_VERSION }}"'
+          args: '-n "KullThranUI ${{ steps.version.outputs.KUI_VERSION }} (${{ steps.release_type.outputs.label }}):KullThranUI ${{ steps.version.outputs.KUI_VERSION }}"'
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
 
+      # El aviso en Discord cambia según el tipo de publicación:
+      # - Release: aviso a todo el mundo (@everyone)
+      # - Beta/Alpha: aviso sin @everyone, marcado claramente como prueba
       - name: Notificar a Discord
         uses: Ilshidur/action-discord@master
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
-            @everyone
+            ${{ steps.release_type.outputs.type == 'release' && '@everyone' || '' }}
+            ${{ steps.release_type.outputs.badge }} **KullThranUI ${{ steps.version.outputs.KUI_VERSION }} — ${{ steps.release_type.outputs.label }}**
             ${{ env.CHANGELOG }}

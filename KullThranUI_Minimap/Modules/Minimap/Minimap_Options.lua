@@ -519,6 +519,9 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
             _, h = W:Toggle(container, "Show Guild", -by,
                 function() return db.showGuild ~= false end,
                 function(v) db.showGuild = v; RefreshMM() end); by = by + h
+            _, h = W:Toggle(container, "Show KUI Options Icon", -by,
+                function() return db.showKUISettingsIcon ~= false end,
+                function(v) db.showKUISettingsIcon = v; RefreshMM() end); by = by + h
 
             _, h = W:SectionHeader(container, "Zone Font", -by); by = by + h
             _, h = W:Dropdown(container, "Font", -by, GetFontValues,

@@ -810,6 +810,23 @@ local PORTRAIT_STYLES = {
     circular = "Circular",
 }
 
+local CLASSIFICATION_NO_PORTRAIT_STYLES = {
+    nameplate = "Nameplate Dragon",
+    unitframes = "Unit Frames Elite/Rare",
+}
+
+local CLASSIFICATION_ANCHORS = {
+    TOPLEFT = "Top Left",
+    TOP = "Top",
+    TOPRIGHT = "Top Right",
+    LEFT = "Left",
+    CENTER = "Center",
+    RIGHT = "Right",
+    BOTTOMLEFT = "Bottom Left",
+    BOTTOM = "Bottom",
+    BOTTOMRIGHT = "Bottom Right",
+}
+
 local PORTRAIT_MODES = {
     ["2d"] = "2D Portrait",
     ["3d"] = "3D Portrait",
@@ -1217,6 +1234,24 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
             _, h = W:Toggle(container, 'Show PvP Faction Icon', -by,
                 function() return db.showPvPIcon == true end,
                 function(v) SetAndRefresh(function() db.showPvPIcon = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Show Elite/Rare Indicator', -by,
+                function() return db.showClassification ~= false end,
+                function(v) SetAndRefresh(function() db.showClassification = v and true or false end) end); by = by + h
+            _, h = W:Dropdown(container, 'No-Portrait Indicator Style', -by, CLASSIFICATION_NO_PORTRAIT_STYLES,
+                function() return db.classificationNoPortraitStyle or 'nameplate' end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitStyle = v end) end); by = by + h
+            _, h = W:Slider(container, 'Indicator Size', -by,
+                function() return tonumber(db.classificationNoPortraitSize) or 52 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitSize = v end) end, 8, 128, 1); by = by + h
+            _, h = W:Dropdown(container, 'Indicator Anchor', -by, CLASSIFICATION_ANCHORS,
+                function() return db.classificationNoPortraitAnchor or 'TOPRIGHT' end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitAnchor = v end) end); by = by + h
+            _, h = W:Slider(container, 'Indicator X Offset', -by,
+                function() return tonumber(db.classificationNoPortraitX) or -8 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitX = v end) end, -300, 300, 1); by = by + h
+            _, h = W:Slider(container, 'Indicator Y Offset', -by,
+                function() return tonumber(db.classificationNoPortraitY) or 0 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitY = v end) end, -300, 300, 1); by = by + h
             local levelOutlineValues = { NONE = 'None', OUTLINE = 'Outline', THICKOUTLINE = 'Thick Outline', MONOCHROME = 'Monochrome', OUTLINEMONOCHROME = 'Monochrome Outline' }
             _, h = W:Dropdown(container, 'Level Font', -by, FontValues,
                 function() return db.levelFont or 'AAA_ITC_Avant_Garde' end,

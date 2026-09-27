@@ -117,8 +117,9 @@ local function EnsureWindowAccentBorder(frame)
         edges[3]:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         edges[3]:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         edges[3]:SetWidth(1)
-        edges[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        edges[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        -- Keep the right edge inside the shell; the outermost pixel can be clipped by PVEFrame.
+        edges[4]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, 0)
+        edges[4]:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 0)
         edges[4]:SetWidth(1)
     end
     local function RefreshWindowBorder(target, enabled, color)

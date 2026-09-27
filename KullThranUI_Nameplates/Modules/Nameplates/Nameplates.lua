@@ -10,6 +10,31 @@ local function LText(text)
 end
 local C_UnitAuras_GetAuraAppDisplayCount = C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount
 local C_UnitAuras_GetAuraDuration = C_UnitAuras and C_UnitAuras.GetAuraDuration
+
+-- Forever rejects derived target tokens and group-unit tokens such as
+-- targettarget, focustarget, party1 and raid1 in
+-- C_NamePlate.GetNamePlateForUnit. Those units can still produce UNIT_LEVEL
+-- and similar events, so resolve only supported tokens and fail safely.
+local function GetSafeNamePlateForUnit(unit)
+    if type(unit) ~= "string"
+        or unit == "targettarget"
+        or unit == "focustarget"
+        or unit:match("^party%d+$")
+        or unit:match("^raid%d+$")
+        or unit:match("^partypet%d+$")
+        or unit:match("^raidpet%d+$") then
+        return nil
+    end
+    if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then
+        return nil
+    end
+
+    local ok, nameplate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+    if not ok then
+        return nil
+    end
+    return nameplate
+end
 ns.IsAccessibleValue = ns.IsAccessibleValue or function(value)
     if issecretvalue and issecretvalue(value) then return false end
     if canaccessvalue and not canaccessvalue(value) then return false end
@@ -106,6 +131,79 @@ ns.IsInFollowerDungeon = function()
     end
     return false
 end
+local FRIENDLY_INSTANCE_MODES = {
+    name_only = true,
+    always = true,
+    never = true,
+}
+
+local function IsRelevantFriendlyInstance()
+    if ns.IsInFollowerDungeon and ns.IsInFollowerDungeon() then
+        return true
+    end
+    if type(IsInInstance) ~= "function" then
+        return false
+    end
+    local ok, inInstance, instanceType = pcall(IsInInstance)
+    if not ok or inInstance ~= true then
+        return false
+    end
+    -- Do not change friendly nameplates in battlegrounds or arenas. The
+    -- instance policy is intended for dungeons, raids and scenarios/delves.
+    return instanceType == "party"
+        or instanceType == "raid"
+        or instanceType == "scenario"
+end
+
+local function GetFriendlyInstanceMode(isPlayer)
+    local db = KullThranUINameplatesDB or {}
+    local key = isPlayer and "friendlyPlayersInInstances" or "friendlyNPCsInInstances"
+    local mode = db[key]
+    if not FRIENDLY_INSTANCE_MODES[mode] then
+        mode = "name_only"
+    end
+    if not IsRelevantFriendlyInstance() then
+        return nil
+    end
+    return mode
+end
+
+function ns.IsRelevantFriendlyInstance()
+    return IsRelevantFriendlyInstance()
+end
+
+function ns.GetFriendlyInstanceMode(isPlayer)
+    return GetFriendlyInstanceMode(isPlayer)
+end
+
+function ns.GetEffectiveFriendlyNameOnly(isPlayer)
+    local mode = GetFriendlyInstanceMode(isPlayer)
+    if mode == "name_only" then
+        return true
+    elseif mode == "always" then
+        return false
+    end
+
+    local db = KullThranUINameplatesDB or {}
+    local key = isPlayer and "friendlyPlayerNameOnly" or "friendlyNPCNameOnly"
+    if db[key] ~= nil then
+        return db[key] ~= false
+    end
+    return db.friendlyNameOnly ~= false
+end
+
+function ns.ShouldShowFriendlyNameplates(isPlayer)
+    local mode = GetFriendlyInstanceMode(isPlayer)
+    if mode == "never" then
+        return false
+    end
+
+    local db = KullThranUINameplatesDB or {}
+    if isPlayer then
+        return db.showFriendlyPlayers ~= false
+    end
+    return db.showFriendlyNPCs == true
+end
 local function SetFSFont(fs, size, flags)
     if not fs or not fs.SetFont then
         return
@@ -149,6 +247,49 @@ ns._IsSecretValue = ns._IsSecretValue or function(value)
     return false
 end
 
+local function SafeUnitLevelText(unit)
+    if not unit then return nil end
+    if type(UnitExists) == "function" then
+        local existsOK, exists = pcall(UnitExists, unit)
+        if not existsOK or exists == false then return nil end
+    end
+
+    local level
+    local levelAPIRan = false
+
+    -- Keep the same Forever-safe lookup used by UnitFrames. UnitLevel can
+    -- expose a legacy/unknown value while UnitEffectiveLevel is available.
+    if type(UnitEffectiveLevel) == "function" then
+        local ok, value = pcall(UnitEffectiveLevel, unit)
+        if ok and not ns._IsSecretValue(value) then
+            levelAPIRan = true
+            if type(value) == "number" then level = value end
+        end
+    end
+    if (type(level) ~= "number" or level <= 0) and type(UnitLevel) == "function" then
+        local ok, value = pcall(UnitLevel, unit)
+        if ok and not ns._IsSecretValue(value) then
+            levelAPIRan = true
+            if type(value) == "number" then level = value end
+        end
+    end
+
+    if type(level) == "number" and level > 0 then return tostring(level) end
+    -- Match oUF's readable fallback when the unit exists but its numeric
+    -- level is unavailable on this client.
+    if levelAPIRan then return "??" end
+    return nil
+end
+
+local function SafeUnitClassification(unit)
+    if not unit or type(UnitClassification) ~= "function" then return nil end
+    local ok, classification = pcall(UnitClassification, unit)
+    if not ok or ns._IsSecretValue(classification) or type(classification) ~= "string" then
+        return nil
+    end
+    return classification
+end
+
 -- Tabla constante de slots de texto sobre la barra de vida (elevada a file-scope
 -- para evitar asignaciones por cada llamada a UpdateHealthValues).
 local HP_BAR_SLOTS = {
@@ -158,202 +299,436 @@ local HP_BAR_SLOTS = {
 }
 
 local defaults = {
-    enable = true,
-    hostile = { r = 0.39, g = 0.11, b = 0.09 },
-    neutral = { r = 0.81, g = 0.72, b = 0.19 },
-    friendly = { r = 0.20, g = 0.55, b = 0.90 },
-    tapped  = { r = 0.50, g = 0.50, b = 0.50 },
-    enemyOutOfCombat = { r = 0.34, g = 0.34, b = 0.34 },
-    focus = { r = 0.051, g = 0.820, b = 0.620 },
-    focusColorEnabled = true,
-    focusOverlayTexture = "striped-v2",
-    focusOverlayAlpha = 0.40,
-    focusOverlayColor = { r = 1.0, g = 1.0, b = 1.0 },
-    caster  = { r = 0.231, g = 0.510, b = 0.965 },
-    miniboss = { r = 0.518, g = 0.243, b = 0.984 },
-    enemyInCombat = { r = 0.800, g = 0.137, b = 0.137 },
-    tankHasAggro = { r = 0.05, g = 0.82, b = 0.62 },
-    tankHasAggroEnabled = true,
-    classicTankAggro = false,
-    tankLosingAggro = { r = 0.81, g = 0.72, b = 0.19 },
-    tankOtherTankHasAggro = { r = 0.26, g = 0.58, b = 0.95 },
-    tankNoAggro = { r = 1.00, g = 0.22, b = 0.17 },
-    dpsNearAggro = { r = 0.81, g = 0.72, b = 0.19 },
-    dpsNoAggro = { r = 0.39, g = 0.11, b = 0.09 },
-    dpsHasAggro = { r = 1.00, g = 0.50, b = 0.00 },
-    threatModHealth = true,
-    threatModBorder = false,
-    threatModName = false,
-    threatUseSoloColor = false,
-    threatSoloColor = { r = 0.39, g = 0.11, b = 0.09 },
-    interruptReady = { r = 0.92, g = 0.35, b = 0.20 },
-    interruptCooldown = { r = 0.45, g = 0.45, b = 0.45 },
-    castBar = { r = 0.70, g = 0.40, b = 0.90 },
-    castBarUninterruptible = { r = 0.80, g = 0.18, b = 0.16 },
-    healthBarHeight = 30,
-    friendlyNameOnly = true,
-    friendlyNameOnlyYOffset = -20,
-    friendlyPlateYOffset = 0,
-    friendlyHealthBarHeight = 17,
-    friendlyHealthBarWidth = 150,
-    showFriendlyNPCs = true,
-    showFriendlyPlayers = true,
-    friendlyShowDefaultNames = false,
-    classColorFriendly = true,
-    showEnemyPets = false,
-    showShieldPrediction = true,
-    animateHealthBar = false,
-    font = ns.DEFAULT_FONT_PATH,
-    textSlotTop = "enemyName",
-    textSlotRight = "healthPercent",
-    textSlotLeft = "none",
-    textSlotCenter = "none",
-    showTargetArrows = true,
-    targetIndicatorStyle = "arrow-double",
-    targetIndicatorReversed = true,
-    targetIndicatorGlow = true,
-    targetIndicatorGlowColor = { r = 0.00, g = 0.7686, b = 1.00 }, -- #00C4FF
-    targetArrowScale = 1.0,
-    showClassPower = false,
-    classPowerPos = "bottom",
-    classPowerYOffset = 3,
-    classPowerXOffset = 0,
-    classPowerScale = 1.0,
-    classPowerClassColors = true,
-    classPowerCustomColor = { r = 1.00, g = 0.84, b = 0.30 },
-    classPowerBgColor = { r = 0.082, g = 0.082, b = 0.082, a = 1.0 },
-    classPowerEmptyColor = { r = 0.2, g = 0.2, b = 0.2, a = 1.0 },
-    classPowerGap = 2,
-    healthBarWidth = 45,
-    nameplateOverlapV = 1.05,
-    stackSpacingScale = 50,
-    stackingEnabled = true,
-    hitboxScaleX = 100,
-    hitboxScaleY = 100,
-    nameplateYOffset = 0,
-    enemyNameTextSize = 12,
-    debuffTimerColor = { r = 1, g = 1, b = 1 },
-    auraTextPosition = "topleft",
-    debuffTimerPosition = "topleft",
-    buffTimerPosition = "topleft",
-    ccTimerPosition = "topleft",
-    auraDurationTextSize = 15,
-    auraDurationTextColor = { r = 1, g = 1, b = 1 },
-    auraStackTextSize = 11,
-    auraStackTextColor = { r = 1, g = 1, b = 1 },
-    debuffSlot = "top",
-    topDebuffAlign = "center",
-    topDebuffOffsetX = 0,
-    buffSlot = "left",
-    ccSlot = "right",
-    debuffYOffset = 2,
-    sideAuraXOffset = 2,
-    nameYOffset = 0,
-    auraSpacing = 2,
-    debuffIconSize = 40,
-    buffIconSize = 36,
-    buffTextSize = 12,
-    buffTextColor = { r = 1, g = 1, b = 1 },
-    ccIconSize = 36,
-    ccTextSize = 12,
-    ccTextColor = { r = 1, g = 1, b = 1 },
-    targetGlowStyle = "kullthranui",
-    targetGlowColor = { r = 0.00, g = 0.6157, b = 1.00 }, -- #009DFF
-    raidMarkerPos = "topright",
-    raidMarkerSize = 24,
-    classificationSlot = "topleft",
-    rareEliteIconSize = 20,
-    castBarHeight = 17,
-    castNameSize = 10,
-    castNameColor = { r = 1, g = 1, b = 1 },
-    castTargetSize = 10,
-    castTargetClassColor = true,
-    castTargetColor = { r = 1, g = 1, b = 1 },
-    -- Show every debuff cast by the player on hostile nameplates. Restricting
-    -- this to Blizzard's nameplateShowPersonal flag hides many ordinary DoTs.
-    showAllDebuffs = true,
-    borderStyle = "kullthran",
-    borderColor = { r = 0.067, g = 0.067, b = 0.067 },
-    pandemicGlow = false,
-    pandemicGlowStyle = 1,
-    pandemicGlowColor = { r = 1.0, g = 0.800, b = 0.329 },
-    pandemicGlowLines = 8,
-    pandemicGlowThickness = 1,
-    pandemicGlowSpeed = 4,
-    debuffExpiryGlow = true,
-    debuffExpiryGlowThreshold = 3,
-    debuffExpiryGlowUseTypeColor = true,
-    debuffExpiryGlowColor = { r = 1.0, g = 0.82, b = 0.20 },
-    dispelGlow = false,
-    dispelGlowStyle = 2,
-    dispelGlowColor = { r = 1.0, g = 1.0, b = 1.0 },
-    dispelGlowUseTypeColor = false,
-    castScale = 100,
-    focusCastHeight = 100,
-    questMobColorEnabled = false,
-    questMobColor = { r = 0.157, g = 0.855, b = 0.475 },
-    colorOverrideEnabled = false,
-    showAggroFlash = false,
-    showAggroGlow = false,
-    unitTypeColoringEnabled = true,
-    unitTypeColoringNoOverrideThreat = true,
-    unitTypeColoringEnableElite = false,
-    unitTypeColoringEnableTrivial = false,
-    boss = { r = 0.80, g = 0.18, b = 0.16 },
-    elite = { r = 0.90, g = 0.58, b = 0.16 },
-    trivial = { r = 0.45, g = 0.45, b = 0.45 },
-    priorityTargetsEnabled = false,
-    priorityTargetsInput = "",
-    priorityTargetsCompiled = nil,
-    priorityTargetsColor = { r = 0.90, g = 0.20, b = 0.20 },
-    priorityTargetsTexture = "Melli Reforged",
-    auraPriorityEnabled = false,
-    auraPriorityInput = "",
-    auraPriorityCompiled = nil,
-    auraPriorityColor = { r = 0.55, g = 0.35, b = 1.00 },
-    auraPriorityTexture = "Melli Reforged",
-    auraPriorityMatchMode = "all",
-    showCastIcon = true,
-    castIconScale = 1,
-    hashLineEnabled = false,
-    hashLinePercent = 30,
-    hashLineColor = { r = 1, g = 1, b = 1 },
-    kickTickEnabled = true,
-    kickTickColor = { r = 1, g = 1, b = 1 },
-    -- Core Positions: slot-based size + XY offsets
-    topSlotSize = 40,        topSlotXOffset = 0,      topSlotYOffset = 0,
-    rightSlotSize = 36,      rightSlotXOffset = 0,    rightSlotYOffset = 0,
-    leftSlotSize = 36,       leftSlotXOffset = 0,     leftSlotYOffset = 0,
-    toprightSlotSize = 36,   toprightSlotXOffset = 0, toprightSlotYOffset = 0, toprightSlotGrowth = "right",
-    topleftSlotSize = 36,    topleftSlotXOffset = 0,  topleftSlotYOffset = 0,  topleftSlotGrowth = "left",
-    bottomSlotSize = 40,     bottomSlotXOffset = 0,   bottomSlotYOffset = 0,
-    -- Posiciones de texto: tamaño y offsets XY por slot
-    textSlotTopSize = 12,    textSlotTopXOffset = 0,  textSlotTopYOffset = 0,
-    textSlotRightSize = 10,  textSlotRightXOffset = 0, textSlotRightYOffset = 0,
-    textSlotLeftSize = 10,   textSlotLeftXOffset = 0,  textSlotLeftYOffset = 0,
-    textSlotCenterSize = 10, textSlotCenterXOffset = 0, textSlotCenterYOffset = 0,
-    -- Posiciones de texto: colores por slot
-    textSlotTopColor = { r = 1, g = 1, b = 1 },
-    textSlotRightColor = { r = 1, g = 1, b = 1 },
-    textSlotLeftColor = { r = 1, g = 1, b = 1 },
-    textSlotCenterColor = { r = 1, g = 1, b = 1 },
-    -- Textura overlay de barra de vida
-    healthBarTexture = "Melli Reforged",
-    castBarTexture = "Melli Reforged",
-    friendlyPlayerHealthTexture = "Melli Reforged",
-    friendlyNPCHealthTexture = "Melli Reforged",
-    -- Independent visibility for enemy and friendly nameplate levels.
-    -- showLevel remains as a legacy SavedVariables key.
-    showLevel = false,
-    showEnemyLevel = false,
-    showFriendlyLevel = false,
-    levelFont = ns.DEFAULT_FONT_PATH,
-    levelFontSize = 11,
-    levelFontOutline = "OUTLINE",
-    levelShadow = true,
-    levelColor = { r = 1, g = 0.82, b = 0.20, a = 1 },
-    levelXOffset = 24,
-    levelYOffset = 4,
+enable = true,
+threatModBorder = false,
+friendlyShowDefaultNames = false,
+textSlotRight = "healthPercent",
+topSlotSize = 30,
+focusColorEnabled = true,
+dispelGlowUseTypeColor = false,
+showFriendlyNPCs = true,
+castBarUninterruptible = {
+b = 0.16,
+g = 0.18,
+r = 0.8,
+},
+leftSlotXOffset = 0,
+toprightSlotXOffset = 0,
+castBarHeight = 17,
+textSlotTop = "enemyName",
+threatModHealth = true,
+debuffExpiryGlow = true,
+debuffTimerPosition = "topleft",
+tapped = {
+b = 0.5,
+g = 0.5,
+r = 0.5,
+},
+friendlyNameOnlyYOffset = -20,
+friendlyPlayerNameOnly = true,
+friendlyNPCNameOnly = true,
+friendlyPlayersInInstances = "name_only",
+friendlyNPCsInInstances = "name_only",
+showAggroGlow = false,
+healthBarTexture = "Melli Reforged",
+raidMarkerSize = 24,
+topDebuffAlign = "center",
+nameYOffset = 0,
+textSlotRightColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+auraDurationTextColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+elite = {
+b = 0.16,
+g = 0.58,
+r = 0.9,
+},
+priorityTargetsEnabled = false,
+classPowerCustomColor = {
+b = 0.3,
+g = 0.84,
+r = 1,
+},
+enemyOutOfCombat = {
+b = 0.34,
+g = 0.34,
+r = 0.34,
+},
+topSlotYOffset = 0,
+pandemicGlowSpeed = 4,
+buffIconSize = 36,
+caster = {
+b = 0.965,
+g = 0.51,
+r = 0.231,
+},
+_auraIconScaleMigrated_v2 = true,
+friendlyNPCHealthTexture = "Melli Reforged",
+targetGlowStyle = "kullthranui",
+levelColor = {
+b = 0.2,
+g = 0.82,
+r = 1,
+},
+_castBarStateColorsMigrated_v2 = true,
+topleftSlotXOffset = 0,
+rightSlotSize = 36,
+levelXOffset = 24,
+hitboxScaleX = 100,
+classPowerEmptyColor = {
+b = 0.2,
+g = 0.2,
+r = 0.2,
+},
+miniboss = {
+b = 0.984,
+g = 0.243,
+r = 0.518,
+},
+buffTimerPosition = "topleft",
+targetGlowColor = {
+b = 1,
+g = 0.6157,
+r = 0,
+},
+auraStackTextColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+hashLinePercent = 30,
+bottomSlotXOffset = 0,
+raidMarkerPos = "topright",
+showAggroFlash = false,
+enemyInCombat = {
+b = 0.137,
+g = 0.137,
+r = 0.8,
+},
+dispelGlowStyle = 2,
+auraStackTextSize = 11,
+topSlotXOffset = 0,
+toprightSlotSize = 36,
+_friendlyPlateDefaultsMigrated_v2 = true,
+tankHasAggro = {
+b = 0.62,
+g = 0.82,
+r = 0.05,
+},
+ccIconSize = 36,
+classicTankAggro = false,
+topleftSlotSize = 36,
+_auraIconScaleMigrated_v1 = true,
+debuffExpiryGlowUseTypeColor = true,
+dispelGlowColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+interruptReady = {
+b = 0.2,
+g = 0.35,
+r = 0.92,
+},
+textSlotRightYOffset = 0,
+textSlotLeft = "none",
+castNameSize = 10,
+bottomSlotSize = 30,
+targetIndicatorStyle = "arrow-double",
+castIconScale = 1,
+pandemicGlowStyle = 1,
+levelShadow = true,
+rareEliteIconSize = 20,
+threatModName = false,
+textSlotCenterColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+auraPriorityEnabled = false,
+ccSlot = "right",
+focusOverlayAlpha = 0.4,
+friendly = {
+b = 0.9,
+g = 0.55,
+r = 0.2,
+},
+dispelGlow = false,
+textSlotRightSize = 10,
+ccTimerPosition = "topleft",
+unitTypeColoringEnableElite = false,
+friendlyPlateYOffset = 0,
+kickTickEnabled = true,
+castNameColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+classPowerXOffset = 0,
+textSlotLeftSize = 10,
+interruptCooldown = {
+b = 0.45,
+g = 0.45,
+r = 0.45,
+},
+debuffSlot = "top",
+leftSlotSize = 36,
+showTargetArrows = true,
+_castBarStateColorsMigrated_v1 = true,
+threatUseSoloColor = false,
+targetIndicatorGlowColor = {
+b = 1,
+g = 0.7686,
+r = 0,
+},
+threatSoloColor = {
+b = 0.09,
+g = 0.11,
+r = 0.39,
+},
+castBar = {
+b = 0.9,
+g = 0.4,
+r = 0.7,
+},
+friendlyHealthBarWidth = 80,
+enemyNameTextSize = 12,
+borderColor = {
+b = 0.067,
+g = 0.067,
+r = 0.067,
+},
+classPowerBgColor = {
+b = 0.082,
+g = 0.082,
+r = 0.082,
+},
+_barSizeDefaultsMigrated_v1 = true,
+dpsNoAggro = {
+b = 0.09,
+g = 0.11,
+r = 0.39,
+},
+levelFontOutline = "OUTLINE",
+tankLosingAggro = {
+b = 0.19,
+g = 0.72,
+r = 0.81,
+},
+debuffIconSize = 30,
+unitTypeColoringNoOverrideThreat = true,
+buffSlot = "left",
+sideAuraXOffset = 2,
+friendlyNameOnly = true,
+_healthBarTextureMediaMigrated_v1 = true,
+hashLineColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+classPowerClassColors = true,
+showShieldPrediction = true,
+borderStyle = "kullthran",
+pandemicGlow = false,
+classPowerGap = 2,
+tankHasAggroEnabled = true,
+kickTickColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+animateHealthBar = false,
+debuffExpiryGlowColor = {
+b = 0.2,
+g = 0.82,
+r = 1,
+},
+buffTextSize = 12,
+auraPriorityColor = {
+b = 1,
+g = 0.35,
+r = 0.55,
+},
+rightSlotXOffset = 0,
+neutral = {
+b = 0.19,
+g = 0.72,
+r = 0.81,
+},
+castBarTexture = "Melli Reforged",
+showFriendlyPlayers = true,
+dpsNearAggro = {
+b = 0.19,
+g = 0.72,
+r = 0.81,
+},
+castTargetClassColor = true,
+auraDurationTextSize = 15,
+textSlotLeftYOffset = 0,
+focus = {
+b = 0.62,
+g = 0.82,
+r = 0.051,
+},
+toprightSlotGrowth = "right",
+_tankHasAggroEnabledMigrated_v1 = true,
+showClassPower = false,
+textSlotCenterSize = 10,
+textSlotTopYOffset = 0,
+nameplateYOffset = 0,
+levelYOffset = 4,
+classPowerPos = "bottom",
+dpsHasAggro = {
+b = 0,
+g = 0.5,
+r = 1,
+},
+pandemicGlowColor = {
+b = 0.329,
+g = 0.8,
+r = 1,
+},
+unitTypeColoringEnableTrivial = false,
+targetIndicatorGlow = true,
+topDebuffOffsetX = 0,
+textSlotTopXOffset = 0,
+buffTextColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+questMobColor = {
+b = 0.475,
+g = 0.855,
+r = 0.157,
+},
+debuffYOffset = 2,
+questMobColorEnabled = false,
+healthBarWidth = 45,
+debuffTimerColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+boss = {
+b = 0.16,
+g = 0.18,
+r = 0.8,
+},
+debuffExpiryGlowThreshold = 3,
+nameplateOverlapV = 1.05,
+classColorFriendly = true,
+ccTextColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+auraSpacing = 2,
+priorityTargetsInput = "",
+leftSlotYOffset = 0,
+classPowerYOffset = 3,
+castTargetColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+hitboxScaleY = 100,
+bottomSlotYOffset = 0,
+priorityTargetsColor = {
+b = 0.2,
+g = 0.2,
+r = 0.9,
+},
+topleftSlotYOffset = 0,
+castTargetSize = 10,
+friendlyPlayerHealthTexture = "Melli Reforged",
+classificationSlot = "topleft",
+textSlotTopSize = 12,
+textSlotLeftColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+showEnemyPets = false,
+font = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf",
+textSlotCenterXOffset = 0,
+focusOverlayColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+focusOverlayTexture = "striped-v2",
+levelFontSize = 11,
+textSlotCenter = "none",
+colorOverrideEnabled = false,
+unitTypeColoringEnabled = true,
+healthBarHeight = 30,
+trivial = {
+b = 0.45,
+g = 0.45,
+r = 0.45,
+},
+friendlyHealthBarHeight = 12,
+-- The level layout is safe to calculate by default, but level text itself
+-- remains opt-in so nameplate visuals do not gain extra text.
+showLevel = false,
+showEnemyLevel = false,
+showFriendlyLevel = false,
+useDynamicNameplateLevelLayout = true,
+tankNoAggro = {
+b = 0.17,
+g = 0.22,
+r = 1,
+},
+ccTextSize = 12,
+classPowerScale = 1,
+castScale = 100,
+enable = true,
+auraPriorityMatchMode = "all",
+hashLineEnabled = false,
+auraTextPosition = "topleft",
+auraPriorityTexture = "Melli Reforged",
+topleftSlotGrowth = "left",
+hostile = {
+b = 0.09,
+g = 0.11,
+r = 0.39,
+},
+showCastIcon = true,
+levelFont = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf",
+_showAllPlayerDebuffsMigrated_v1 = true,
+rightSlotYOffset = 0,
+pandemicGlowThickness = 1,
+targetArrowScale = 1,
+textSlotLeftXOffset = 0,
+stackingEnabled = true,
+_debuffExpiryGlowMigrated_v1 = true,
+textSlotTopColor = {
+b = 1,
+g = 1,
+r = 1,
+},
+auraPriorityInput = "",
+showAllDebuffs = true,
+toprightSlotYOffset = 0,
+tankOtherTankHasAggro = {
+b = 0.95,
+g = 0.58,
+r = 0.26,
+},
+focusCastHeight = 100,
+priorityTargetsTexture = "Melli Reforged",
+pandemicGlowLines = 8,
+textSlotRightXOffset = 0,
+stackSpacingScale = 50,
+textSlotCenterYOffset = 0,
+targetIndicatorReversed = true,
 }
 local BAR_W = 150
 ns.defaults = defaults
@@ -363,117 +738,6 @@ _G.KullThranUINameplatesDefaults = defaults
 -- Assigned in InitDB(); declared before the shared indicator helpers so they
 -- close over the same profile table as the rest of the module.
 local db
-
-local function GetLevelConfigValue(key)
-    if db and db[key] ~= nil then return db[key] end
-    return defaults[key]
-end
-
-local function ShouldShowNameplateLevel(isFriendly)
-    local key = isFriendly and "showFriendlyLevel" or "showEnemyLevel"
-    if db and db[key] ~= nil then return db[key] == true end
-    if not isFriendly and db and db.showLevel ~= nil then return db.showLevel == true end
-    return defaults[key] == true
-end
-ns.ShouldShowNameplateLevel = ShouldShowNameplateLevel
-
-local function SafeUnitLevelText(unit)
-    if not unit or type(UnitLevel) ~= "function" then return nil end
-    local ok, level = pcall(UnitLevel, unit)
-    if not ok or ns._IsSecretValue(level) or type(level) ~= "number" or level < 0 then
-        return nil
-    end
-    return tostring(level)
-end
-
-local function ApplyLevelTextStyle(fontString)
-    if not (fontString and fontString.SetFont) then return end
-    local fontPath = ns.ResolveNameplateFont(GetLevelConfigValue("levelFont") or ns.DEFAULT_FONT_PATH)
-    local size = math.max(6, math.min(48, tonumber(GetLevelConfigValue("levelFontSize")) or 11))
-    local outline = GetLevelConfigValue("levelFontOutline")
-    if outline == "NONE" then outline = "" end
-    if type(outline) ~= "string" then outline = "OUTLINE" end
-    local ok = pcall(fontString.SetFont, fontString, fontPath, size, outline)
-    if not ok then pcall(fontString.SetFont, fontString, ns.DEFAULT_FONT_PATH, size, outline) end
-    local color = GetLevelConfigValue("levelColor") or defaults.levelColor
-    fontString:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
-    if GetLevelConfigValue("levelShadow") ~= false then
-        fontString:SetShadowColor(0, 0, 0, 1)
-        fontString:SetShadowOffset(1, -1)
-    else
-        fontString:SetShadowColor(0, 0, 0, 0)
-        fontString:SetShadowOffset(0, 0)
-    end
-end
-
-ns.GetNameplateLevelText = SafeUnitLevelText
-ns.ApplyNameplateLevelTextStyle = ApplyLevelTextStyle
-local function GetRenderedFontStringWidth(fontString)
-    if not fontString then return 0 end
-    local width
-    if fontString.GetUnboundedStringWidth then
-        local ok, value = pcall(fontString.GetUnboundedStringWidth, fontString)
-        if ok then width = value end
-    elseif fontString.GetStringWidth then
-        local ok, value = pcall(fontString.GetStringWidth, fontString)
-        if ok then width = value end
-    end
-    if type(width) ~= "number" then return 0 end
-    local ok, result = pcall(math.max, 0, width)
-    return ok and type(result) == "number" and result or 0
-end
-
-local function PositionNameplateLevelText(level, name, health, nameSlot, fallbackX, fallbackY)
-    if not level then return end
-
-    level:ClearAllPoints()
-    local nameText
-    local nameTextIsSafe = false
-    local nameShown = false
-    if name and name.GetText then
-        local ok, value = pcall(name.GetText, name)
-        local isSecret = false
-        if ok and ns._IsSecretValue then
-            local secretOK, secretValue = pcall(ns._IsSecretValue, value)
-            isSecret = secretOK and secretValue == true
-        end
-        if ok and not isSecret and type(value) == "string" then
-            nameText = value
-            nameTextIsSafe = true
-        end
-    end
-    if name and name.IsShown then
-        local ok, value = pcall(name.IsShown, name)
-        local isSecret = false
-        if ok and ns._IsSecretValue then
-            local secretOK, secretValue = pcall(ns._IsSecretValue, value)
-            isSecret = secretOK and secretValue == true
-        end
-        nameShown = ok and not isSecret and type(value) == "boolean" and value
-    end
-    local nameWidth = nameShown and GetRenderedFontStringWidth(name) or 0
-    local hasName = nameSlot and nameTextIsSafe and nameText ~= "" and nameWidth > 0
-
-    if hasName then
-        local gap = 4
-        local yOffset = (tonumber(fallbackY) or 4) - 4
-        local justify = name:GetJustifyH()
-
-        if justify == "RIGHT" then
-            -- Keep the level inside the bar when the name is right-aligned.
-            level:SetPoint("BOTTOMRIGHT", name, "BOTTOMRIGHT", -nameWidth - gap, yOffset)
-        elseif justify == "LEFT" then
-            level:SetPoint("BOTTOMLEFT", name, "BOTTOMLEFT", nameWidth + gap, yOffset)
-        else
-            -- CENTER (and unknown modes): continue from the rendered right edge.
-            level:SetPoint("BOTTOMLEFT", name, "BOTTOM", nameWidth * 0.5 + gap, yOffset)
-        end
-    elseif health then
-        level:SetPoint("BOTTOMLEFT", health, "TOPLEFT", tonumber(fallbackX) or 24, tonumber(fallbackY) or 4)
-    end
-end
-
-ns.PositionNameplateLevelText = PositionNameplateLevelText
 
 -- Shared catalogue for live plates, options and previews. Imported indicators
 -- are 64x64 TGA files; their visible geometry is kept square and scaled from a
@@ -1027,6 +1291,63 @@ local function GetNameYOffset()
     return KullThranUINameplatesDB and KullThranUINameplatesDB.nameYOffset or defaults.nameYOffset
 end
 ns.GetNameYOffset = GetNameYOffset
+
+local function GetLevelConfigValue(key)
+    local live = KullThranUINameplatesDB
+    if live and live[key] ~= nil then return live[key] end
+    return defaults[key]
+end
+
+local function ShouldShowNameplateLevel(isFriendly)
+    local key = isFriendly and "showFriendlyLevel" or "showEnemyLevel"
+    local live = KullThranUINameplatesDB
+    if live and live[key] ~= nil then
+        return live[key] == true
+    end
+    -- Keep profiles that only have the legacy showLevel key working.
+    if not isFriendly and live and live.showLevel ~= nil then
+        return live.showLevel == true
+    end
+    return defaults[key] == true
+end
+ns.ShouldShowNameplateLevel = ShouldShowNameplateLevel
+
+local function UseDynamicNameplateLevelLayout()
+    return GetLevelConfigValue("useDynamicNameplateLevelLayout") == true
+end
+
+local function ApplyLevelTextStyle(fontString)
+    if not (fontString and fontString.SetFont) then return end
+
+    local fontValue = GetLevelConfigValue("levelFont") or ns.DEFAULT_FONT_PATH
+    local fontPath = ns.ResolveNameplateFont(fontValue)
+    local size = tonumber(GetLevelConfigValue("levelFontSize")) or defaults.levelFontSize or 11
+    size = math.max(6, math.min(48, size))
+
+    local outline = GetLevelConfigValue("levelFontOutline")
+    if outline == "NONE" then outline = "" end
+    if type(outline) ~= "string" then outline = "OUTLINE" end
+
+    local ok = pcall(fontString.SetFont, fontString, fontPath, size, outline)
+    if not ok then
+        pcall(fontString.SetFont, fontString, ns.DEFAULT_FONT_PATH, size, outline)
+    end
+
+    local color = GetLevelConfigValue("levelColor") or defaults.levelColor
+    fontString:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+
+    if GetLevelConfigValue("levelShadow") ~= false then
+        fontString:SetShadowColor(0, 0, 0, 1)
+        fontString:SetShadowOffset(1, -1)
+    else
+        fontString:SetShadowColor(0, 0, 0, 0)
+        fontString:SetShadowOffset(0, 0)
+    end
+end
+
+ns.GetNameplateLevelText = SafeUnitLevelText
+ns.ApplyNameplateLevelTextStyle = ApplyLevelTextStyle
+
 local textSlotKeys = { "textSlotTop", "textSlotRight", "textSlotLeft", "textSlotCenter" }
 ns.textSlotKeys = textSlotKeys
 
@@ -2062,7 +2383,13 @@ end
 
 local plateEventProfileLabels = {}
 local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(plate)
-    plate:SetFlattensRenderLayers(true)
+    -- Keep text and textures as independent regions. Flattening a 1x1
+    -- child frame can rasterize the whole nameplate and stretch it while
+    -- Blizzard changes the projected scale with camera movement.
+    plate:SetFlattensRenderLayers(false)
+    if plate.SetIgnoreParentScale then
+        plate:SetIgnoreParentScale(true)
+    end
     plate.health = CreateFrame("StatusBar", nil, plate)
     plate.health:SetFrameLevel(10)  
     plate.health:SetPoint("CENTER", plate, "CENTER", 0, GetNameplateYOffset())
@@ -2225,14 +2552,17 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     PP.Width(plate.name, math.max(GetHealthBarWidth(), 20))
     plate.name:SetWordWrap(false)
     plate.name:SetMaxLines(1)
+    -- Forever level text: independent of the four health/name text slots.
     plate.level = plate.topTextFrame:CreateFontString(nil, "OVERLAY")
     ApplyLevelTextStyle(plate.level)
-    plate.level:SetJustifyH("LEFT")
+    plate.level:SetJustifyH("RIGHT")
     plate.level:SetWordWrap(false)
     plate.level:SetMaxLines(1)
-    plate.level:SetWidth(math.max(60, GetHealthBarWidth() + 80))
-    plate.level:SetHeight(18)
-    plate.level:SetPoint("BOTTOMLEFT", plate.health, "TOPLEFT", 24, 4)
+    plate.level:SetWidth(0)
+    plate.level:SetHeight(48)
+    plate.level:SetPoint("BOTTOMLEFT", plate.health, "TOPLEFT",
+        GetLevelConfigValue("levelXOffset") or 24,
+        GetLevelConfigValue("levelYOffset") or 4)
     plate.level:Hide()
     plate.raidFrame = CreateFrame("Frame", nil, plate)
     local rmSize = GetRaidMarkerSize()
@@ -2468,13 +2798,43 @@ end)
 -- (friendly plates v2, tankHasAggro v1, healthBarTexture media v1) y rellena
 -- cualquier clave faltante con los valores de `defaults`.
 local function InitDB()
+    -- Forever can expose the declared SavedVariable after this file has
+    -- created its compatibility table. Ask Core for the on-disk table before
+    -- applying defaults, otherwise the first session would hide persisted
+    -- nameplate settings behind an empty table.
+    local rawNameplates = _G.KT_RAW_NAMEPLATES_DB
+    if type(rawNameplates) ~= "table" and type(_G.KT_RAW_READ_FUNC) == "function" then
+        pcall(_G.KT_RAW_READ_FUNC)
+        rawNameplates = _G.KT_RAW_NAMEPLATES_DB
+    end
+    if type(rawNameplates) == "table"
+        and (type(KullThranUINameplatesDB) ~= "table" or next(KullThranUINameplatesDB) == nil) then
+        KullThranUINameplatesDB = rawNameplates
+        _G.KullThranUINameplatesDB_Forever = rawNameplates
+    end
     if not KullThranUINameplatesDB then
         KullThranUINameplatesDB = {}
     end
     db = KullThranUINameplatesDB
-    if not db._kuiForeverLevelPvpOptionsReset then
-        db.showLevel = false
-        db._kuiForeverLevelPvpOptionsReset = true
+
+    -- Seed missing level-layout keys without overwriting a user's choices.
+    -- Old profiles only had showLevel, so its value becomes the enemy-level
+    -- fallback while friendly levels remain independently opt-in.
+    if not KullThranUINameplatesDB._levelLayoutDefaultsMigrated_v2 then
+        local legacyShowLevel = KullThranUINameplatesDB.showLevel
+        if KullThranUINameplatesDB.useDynamicNameplateLevelLayout == nil then
+            KullThranUINameplatesDB.useDynamicNameplateLevelLayout = true
+        end
+        if KullThranUINameplatesDB.showLevel == nil then
+            KullThranUINameplatesDB.showLevel = false
+        end
+        if KullThranUINameplatesDB.showEnemyLevel == nil then
+            KullThranUINameplatesDB.showEnemyLevel = legacyShowLevel == true
+        end
+        if KullThranUINameplatesDB.showFriendlyLevel == nil then
+            KullThranUINameplatesDB.showFriendlyLevel = false
+        end
+        KullThranUINameplatesDB._levelLayoutDefaultsMigrated_v2 = true
     end
     if not KullThranUINameplatesDB._friendlyPlateDefaultsMigrated_v2 then
         -- Normalize friendly plates to the intended default behavior:
@@ -2496,6 +2856,18 @@ local function InitDB()
         end
         KullThranUINameplatesDB._friendlyDefaultsMigrated_v1 = nil
         KullThranUINameplatesDB._friendlyPlateDefaultsMigrated_v2 = true
+    end
+    if not KullThranUINameplatesDB._friendlyNameOnlySplitMigrated_v1 then
+        -- Keep existing profiles intact while allowing players and NPCs to
+        -- switch independently between name-only and health-bar rendering.
+        local legacyNameOnly = KullThranUINameplatesDB.friendlyNameOnly ~= false
+        if KullThranUINameplatesDB.friendlyPlayerNameOnly == nil then
+            KullThranUINameplatesDB.friendlyPlayerNameOnly = legacyNameOnly
+        end
+        if KullThranUINameplatesDB.friendlyNPCNameOnly == nil then
+            KullThranUINameplatesDB.friendlyNPCNameOnly = legacyNameOnly
+        end
+        KullThranUINameplatesDB._friendlyNameOnlySplitMigrated_v1 = true
     end
     if not KullThranUINameplatesDB._showAllPlayerDebuffsMigrated_v1 then
         -- The previous default only showed auras Blizzard labels as
@@ -2521,6 +2893,15 @@ local function InitDB()
             KullThranUINameplatesDB.healthBarHeight = defaults.healthBarHeight
         end
         KullThranUINameplatesDB._barSizeDefaultsMigrated_v1 = true
+    end
+    if not KullThranUINameplatesDB._friendlyBarSizeDefaultsMigrated_v2 then
+        if KullThranUINameplatesDB.friendlyHealthBarWidth == 150 then
+            KullThranUINameplatesDB.friendlyHealthBarWidth = defaults.friendlyHealthBarWidth
+        end
+        if KullThranUINameplatesDB.friendlyHealthBarHeight == 17 then
+            KullThranUINameplatesDB.friendlyHealthBarHeight = defaults.friendlyHealthBarHeight
+        end
+        KullThranUINameplatesDB._friendlyBarSizeDefaultsMigrated_v2 = true
     end
     if not KullThranUINameplatesDB._castBarStateColorsMigrated_v1 then
         if KullThranUINameplatesDB.castBar == nil then
@@ -2583,6 +2964,15 @@ local function InitDB()
             end
         end
         KullThranUINameplatesDB._auraIconScaleMigrated_v2 = true
+    end
+    if not KullThranUINameplatesDB._classPowerDefaultMigrated_v1 then
+        -- Older Forever profiles stored the old false default explicitly,
+        -- which prevented the combo-point watcher from ever starting.
+        if KullThranUINameplatesDB.showClassPower == nil
+            or KullThranUINameplatesDB.showClassPower == false then
+            KullThranUINameplatesDB.showClassPower = true
+        end
+        KullThranUINameplatesDB._classPowerDefaultMigrated_v1 = true
     end
     if not KullThranUINameplatesDB._debuffExpiryGlowMigrated_v1 then
         if KullThranUINameplatesDB.debuffExpiryGlow == nil or KullThranUINameplatesDB.debuffExpiryGlow == false then
@@ -2806,18 +3196,8 @@ function ns.RefreshAllSettings()
         end
     end
     if ns.ApplyClassPowerSetting then ns.ApplyClassPowerSetting() end
+    if ns.RefreshFriendlyPlayerLevels then ns.RefreshFriendlyPlayerLevels() end
 end
-
-function ns.RefreshNameplateLevels()
-    for _, plate in pairs(ns.plates or {}) do
-        if plate.UpdateLevel then plate:UpdateLevel() end
-    end
-    for _, plate in pairs(ns.friendlyPlates or {}) do
-        if plate.UpdateLevel then plate:UpdateLevel() end
-    end
-    if ns.RefreshFriendlyNameOnlyLevels then ns.RefreshFriendlyNameOnlyLevels() end
-end
-
 local kickWatcher = CreateFrame("Frame")
 kickWatcher:RegisterEvent("PLAYER_LOGIN")
 kickWatcher:RegisterEvent("SPELLS_CHANGED")
@@ -2892,15 +3272,22 @@ local function SetupAuraCVars()
     -- 2) CVars: agrupados por propósito (friendly, color, geometría, distancia)
     if ns.QueueNameplateCVar then
         local db = KullThranUINameplatesDB or defaults
-        local nameOnly  = (db.friendlyNameOnly ~= false)
+        local legacyNameOnly = (db.friendlyNameOnly ~= false)
+        local playerNameOnly = db.friendlyPlayerNameOnly
+        if playerNameOnly == nil then playerNameOnly = legacyNameOnly end
         local showPly   = (db.showFriendlyPlayers ~= false)
         local showNpc   = (db.showFriendlyNPCs == true)
+        if ns.GetEffectiveFriendlyNameOnly then
+            playerNameOnly = ns.GetEffectiveFriendlyNameOnly(true)
+            showPly = ns.ShouldShowFriendlyNameplates(true)
+            showNpc = ns.ShouldShowFriendlyNameplates(false)
+        end
         local defNames  = (db.friendlyShowDefaultNames == true)
         local classCol  = (db.classColorFriendly ~= false) and 1 or 0
 
         -- Visibilidad de nameplates aliados
         local friendlyVars = {
-            nameplateShowOnlyNameForFriendlyPlayerUnits = nameOnly and 1 or 0,
+            nameplateShowOnlyNameForFriendlyPlayerUnits = playerNameOnly and 1 or 0,
             nameplateShowFriendlyPlayers = showPly and 1 or 0,
             UnitNameFriendlyPlayerName   = (showPly or defNames) and 1 or 0,
             nameplateShowFriends         = showPly and 1 or 0,
@@ -2982,7 +3369,7 @@ local function SetupAuraCVars()
         end
         hooksecurefunc(NamePlateDriverFrame, "OnNamePlateAdded", function(_, addedUnit)
             if addedUnit == "preview" then return end
-            local np = C_NamePlate.GetNamePlateForUnit(addedUnit)
+            local np = GetSafeNamePlateForUnit(addedUnit)
             if np and addedUnit and ns.IsEnemyNameplateUnit(addedUnit, np) then
                 ns.HideBlizzardFrame(np, addedUnit)
             end
@@ -3201,8 +3588,8 @@ local function UpdateClassPowerOnPlate(plate)
         local scaledW = CP_PIP_W * cpScale * 6
         local scaledH = CP_PIP_H * cpScale
         bar:ClearAllPoints()
-        bar:SetSize(scaledW, scaledH)
-        bar:SetPoint(anchorPoint, anchorFrame, anchorRelPoint, cpXOff, yDir * cpYOff)
+        PP.Size(bar, scaledW, scaledH)
+        PP.Point(bar, anchorPoint, anchorFrame, anchorRelPoint, cpXOff, yDir * cpYOff)
         bar:SetMinMaxValues(0, mx)
         bar:SetValue(cur)
 
@@ -3259,16 +3646,18 @@ local function UpdateClassPowerOnPlate(plate)
     end
 
     -- Layout de pips: calcular posiciones una vez y aplicar en un solo bucle
-    local scaledW   = PP.Scale(CP_PIP_W * cpScale)
-    local scaledH   = PP.Scale(CP_PIP_H * cpScale)
-    local scaledGap = PP.Scale(GetClassPowerGap() * cpScale)
+    local scaledW   = CP_PIP_W * cpScale
+    local scaledH   = CP_PIP_H * cpScale
+    local scaledGap = GetClassPowerGap() * cpScale
 
-    -- Precalcular borde izquierdo de cada pip en coordenadas de grupo
+    -- Precalcular borde izquierdo de cada pip en coordenadas de grupo.
+    -- PP.Point/PP.Size aplican el snap usando la escala efectiva de la
+    -- nameplate, que cambia con la distancia y el ángulo de la cámara.
     local pipPositions = {}
     for idx = 1, maxP do
-        pipPositions[idx] = PP.Scale((idx - 1) * (scaledW + scaledGap))
+        pipPositions[idx] = (idx - 1) * (scaledW + scaledGap)
     end
-    local halfGroup = PP.Scale((pipPositions[maxP] + scaledW) / 2)
+    local halfGroup = (pipPositions[maxP] + scaledW) / 2
 
     -- Resolver color de clase o personalizado
     local _, pClass = UnitClass("player")
@@ -3292,9 +3681,9 @@ local function UpdateClassPowerOnPlate(plate)
         else
             pip:ClearAllPoints()
             PP.Size(pip, scaledW, scaledH)
-            pip:SetPoint(leftAnchor, anchorFrame, anchorRelPoint,
-                PP.Scale(pipPositions[i] - halfGroup + cpXOff),
-                PP.Scale(yDir * cpYOff))
+            PP.Point(pip, leftAnchor, anchorFrame, anchorRelPoint,
+                pipPositions[i] - halfGroup + cpXOff,
+                yDir * cpYOff)
 
             -- Fondo detrás de cada pip
             local bg = pip._bg
@@ -3518,6 +3907,7 @@ local function EnableClassPowerWatcher()
     else
         -- Camino numeric-type: recurso nativo de WoW (combo points, chi, etc.)
         classPowerWatcher:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+        classPowerWatcher:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
         classPowerWatcher:RegisterUnitEvent("UNIT_MAXPOWER", "player")
         classPowerWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
         classPowerWatcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
@@ -3906,7 +4296,7 @@ local function GetReactionColor(unit)
 
     -- P7: Miniboss → elite/worldboss/rareelite de nivel alto, oscurecido fuera de combate
     local inCombat = UnitAffectingCombat(unit)
-    local classification = UnitClassification(unit)
+    local classification = SafeUnitClassification(unit)
     if classification == "elite" or classification == "worldboss" or classification == "rareelite" then
         local level = UnitLevel(unit)
         local playerLevel = UnitLevel("player")
@@ -4151,8 +4541,8 @@ function NameplateFrame:RefreshStackBounds(nameplate)
     self._stackBounds:ClearAllPoints()
 
     local totalHeight = (4 + GetEnemyNameTextSize()) + GetHealthBarHeight() + GetCastBarHeight()
-    self._stackBounds:SetPoint("CENTER", nameplate, "CENTER", 0, GetNameplateYOffset())
-    self._stackBounds:SetSize(GetHealthBarWidth(), totalHeight * (GetStackSpacingScale() / 100))
+    PP.Point(self._stackBounds, "CENTER", nameplate, "CENTER", 0, GetNameplateYOffset())
+    PP.Size(self._stackBounds, GetHealthBarWidth(), totalHeight * (GetStackSpacingScale() / 100))
     self._stackBounds:Show()
     nameplate:SetStackingBoundsFrame(self._stackBounds)
 end
@@ -4177,19 +4567,19 @@ function NameplateFrame:LayoutCoreBars(unit)
 
     -- Barra de salud y absorb: mismas dimensiones, centradas en la placa
     self.health:ClearAllPoints()
-    self.health:SetPoint("CENTER", self, "CENTER", 0, yOffset)
-    self.health:SetSize(barW, barH)
-    self.absorb:SetSize(barW, barH)
+    PP.Point(self.health, "CENTER", self, "CENTER", 0, yOffset)
+    PP.Size(self.health, barW, barH)
+    PP.Size(self.absorb, barW, barH)
 
     -- Barra de casteo: anclada debajo de la barra de salud
     self.cast:ClearAllPoints()
-    self.cast:SetSize(barW, castH)
-    self.cast:SetPoint("TOPLEFT", self.health, "BOTTOMLEFT", 0, 0)
+    PP.Size(self.cast, barW, castH)
+    PP.Point(self.cast, "TOPLEFT", self.health, "BOTTOMLEFT", 0, 0)
 
     -- Icono de hechizo: cuadrado del tamaño del casteo, a la izquierda
     self.castIconFrame:ClearAllPoints()
-    self.castIconFrame:SetSize(castH, castH)
-    self.castIconFrame:SetPoint("TOPRIGHT", self.cast, "TOPLEFT", 0, 0)
+    PP.Size(self.castIconFrame, castH, castH)
+    PP.Point(self.castIconFrame, "TOPRIGHT", self.cast, "TOPLEFT", 0, 0)
     if GetShowCastIcon() then
         self.castIconFrame:SetScale(GetCastIconScale())
         self.castIconFrame:Show()
@@ -4198,12 +4588,12 @@ function NameplateFrame:LayoutCoreBars(unit)
     end
 
     -- Elementos secundarios del casteo que dependen de castH
-    self.castLeftBorder:SetWidth(1)
-    self.castSpark:SetHeight(castH)
-    self.kickMarker:SetSize(barW, castH)
+    PP.Width(self.castLeftBorder, 1)
+    PP.Height(self.castSpark, castH)
+    PP.Size(self.kickMarker, barW, castH)
 
     if self.absorbOverflow then
-        self.absorbOverflow:SetHeight(barH)
+        PP.Height(self.absorbOverflow, barH)
     end
 end
 
@@ -4361,7 +4751,7 @@ end
 -- en una sola pasada al adquirir la placa.
 ns._TRACKED_PLATE_EVENTS = {
     "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_NAME_UPDATE",
-    "UNIT_AURA", "LOSS_OF_CONTROL_UPDATE", "LOSS_OF_CONTROL_ADDED",
+    "UNIT_LEVEL", "UNIT_AURA", "LOSS_OF_CONTROL_UPDATE", "LOSS_OF_CONTROL_ADDED",
     "UNIT_THREAT_LIST_UPDATE", "UNIT_THREAT_SITUATION_UPDATE", "UNIT_FLAGS", "UNIT_FACTION",
     "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_STOP",
     "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED",
@@ -4375,23 +4765,56 @@ function NameplateFrame:RegisterTrackedEvents(unit)
     end
 end
 
+function NameplateFrame:RefreshCastTextAnchors()
+    if not (self.castName and self.cast and self.castTarget) then
+        return
+    end
+
+    self.castName:ClearAllPoints()
+    PP.Width(self.castName, 0)
+    PP.Point(self.castName, "LEFT", self.cast, "LEFT", 5, 0)
+    PP.Point(self.castName, "RIGHT", self.castTarget, "LEFT", -5, 0)
+end
+
+function NameplateFrame:RefreshPixelPerfectLayout()
+    if not (self.unit and self.nameplate) then
+        return
+    end
+
+    local scale = self.GetEffectiveScale and self:GetEffectiveScale()
+    if type(scale) ~= "number" or scale <= 0 then
+        return
+    end
+    if self._ktPixelScale and math.abs(self._ktPixelScale - scale) < 0.0001 then
+        return
+    end
+    self._ktPixelScale = scale
+
+    -- La escala efectiva de una nameplate cambia con la distancia/angulo de
+    -- la camara. Reaplicar la geometria con esa escala evita que el texto,
+    -- barras y pips caigan entre pixeles fisicos.
+    self:LayoutCoreBars(self.unit)
+    self:RefreshStackBounds(self.nameplate)
+    self:RefreshNamePosition()
+    self:UpdateRaidIcon()
+    self:RefreshTargetClassPowerPosition()
+    if self.isCasting then
+        self:RefreshCastTextAnchors()
+    end
+end
 -- Refresca todos los datos visuales de la placa en su estado actual.
 -- Se invoca una sola vez al final de SetUnit para evitar refrescos
 -- parciales durante la inicialización.
 function NameplateFrame:RefreshPlateState()
     self:UpdateHealth()
-    self:UpdateName()
-    self:UpdateLevel()
-    self:UpdateClassification()
+    self:RefreshNamePosition()
     self:UpdateRaidIcon()
     self:ApplyTarget()
     self:ApplyMouseover()
-    self:UpdateAuras()
     self:UpdateCast()
     ApplyHealthBarTexture(self)
     ApplyCastBarTexture(self)
 end
-
 -- Vincula la placa KUI a un unit token y nameplate Blizzard. El orden
 -- de inicialización es:
 --   1. Anclar frame al nameplate
@@ -4410,8 +4833,8 @@ function NameplateFrame:SetUnit(unit, nameplate)
         self:SetIgnoreParentScale(false)
     end
     self:ClearAllPoints()
-    self:SetPoint("CENTER", nameplate, "CENTER", 0, GetHitboxYShift())
-    self:SetSize(1, 1)
+    PP.Point(self, "CENTER", nameplate, "CENTER", 0, GetHitboxYShift())
+    PP.Size(self, 1, 1)
     self:SetFrameLevel(nameplate:GetFrameLevel() + 1)
     self:Show()
 
@@ -4424,7 +4847,6 @@ function NameplateFrame:SetUnit(unit, nameplate)
     self:RefreshStackBounds(nameplate)
     self:LayoutCoreBars(unit)
     self:ApplyEnemyNameTint()
-    self:RefreshNamePosition()
     self:ApplyCastFontSettings()
     self:ApplyAuraVisualSettings(GetAuraSpacing())
 
@@ -4471,7 +4893,10 @@ function NameplateFrame:ClearUnit()
 
     -- 3. Limpiar ranuras de auras: CC primero (2 ranuras), luego debuffs+buffs (4 c/u)
     self.name:SetText("")
-    if self.level then self.level:SetText(""); self.level:Hide() end
+    if self.level then
+        self.level:SetText("")
+        self.level:Hide()
+    end
     local resetCD = ns._ResetAuraCooldown
     for i = 1, 2 do
         local slot = self.cc[i]
@@ -4499,6 +4924,13 @@ function NameplateFrame:ClearUnit()
     -- 4. Resetear estado de casteo visual
     self.unit = nil
     self.nameplate = nil
+    self._displayNameText = nil
+    self._displayLevelText = nil
+    self._dynamicLevelXOffset = nil
+    self._ktPixelScale = nil
+    if self.SetIgnoreParentScale then
+        self:SetIgnoreParentScale(false)
+    end
     self._shownAuras = nil
     self.cast:Hide()
     self.castShieldFrame:Hide()
@@ -4557,7 +4989,7 @@ function NameplateFrame:ResolveHealthUnit()
     if liveToken and liveToken ~= unit then
         self.unit = liveToken
         unit = liveToken
-        self:UpdateName()
+        self:RefreshNamePosition()
     end
 
     return unit
@@ -4821,6 +5253,12 @@ function NameplateFrame:UpdateHealthColor()
 end
 
 local INLINE_NAME_SLOTS = { "textSlotRight", "textSlotLeft", "textSlotCenter" }
+local CLASSIFICATION_TEXTURE_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\Nemapltes-RareEliteIcons\\Untitled - 18 de agosto de 2026 a las 22.39.01.png"
+local CLASSIFICATION_TEXTURES = {
+    elite = CLASSIFICATION_TEXTURE_PATH,
+    worldboss = CLASSIFICATION_TEXTURE_PATH,
+}
+
 local CLASSIFICATION_ATLASES = {
     elite = "nameplates-icon-elite-gold",
     worldboss = "nameplates-icon-elite-gold",
@@ -4872,6 +5310,25 @@ local function AnchorPlateAdornment(frame, slot, xOffset, yOffset, topPush)
     return false
 end
 
+local LEVEL_NAME_GAP = 4
+
+local function AnchorClassificationAdornment(frame, slot, xOffset, yOffset, topPush)
+    local parent = frame:GetParent()
+    if slot == "topleft"
+        and UseDynamicNameplateLevelLayout()
+        and parent.level and parent.level:IsShown() then
+        local health = parent.health
+        local iconSize = GetRareEliteIconSize()
+        local levelX = parent._dynamicLevelXOffset
+            or tonumber(GetLevelConfigValue("levelXOffset")) or 24
+        local horizontal = levelX - iconSize - LEVEL_NAME_GAP + (xOffset or 0)
+        frame:ClearAllPoints()
+        PP.Point(frame, "BOTTOMLEFT", health, "TOPLEFT", horizontal, (topPush or 0) + (yOffset or 0))
+        return true
+    end
+    -- Disabled mode deliberately uses the existing anchor unchanged.
+    return AnchorPlateAdornment(frame, slot, xOffset, yOffset, topPush)
+end
 local function GetTopNameReservedWidth(frame, barWidth)
     local reservedWidth = 0
 
@@ -4950,7 +5407,7 @@ local function ApplyNameAnchor(frame, slotKey)
         return true
     end
     if slotKey == "textSlotCenter" then
-        frame.name:SetPoint("CENTER", frame.health, "CENTER", offsetX, offsetY)
+        PP.Point(frame.name, "CENTER", frame.health, "CENTER", offsetX, offsetY)
         frame.name:SetJustifyH("CENTER")
         return true
     end
@@ -4976,34 +5433,121 @@ end
 function NameplateFrame:UpdateName()
     local unit = SyncPlateUnitToken(self)
     if not unit then
+        self._displayNameText = ""
         self.name:SetText("")
         return
     end
 
     local displayName = UnitName(unit)
-    self.name:SetText(type(displayName) == "string" and displayName or "")
-    if self.level and self.level:IsShown() then self:UpdateLevel() end
+    local nameText
+    if ns.IsAccessibleValue(displayName) and type(displayName) == "string" then
+        nameText = displayName
+    else
+        nameText = ""
+    end
+    self._displayNameText = nameText
+
+    -- Secret strings may still be displayed by FontString:SetText. Keep the
+    -- original value for rendering, while the cached layout value above stays
+    -- accessible so dynamic positioning can inspect it safely.
+    if type(displayName) == "string" then
+        self.name:SetText(displayName)
+    else
+        self.name:SetText("")
+    end
 end
+local function EstimateTextWidth(text, fontSize, barWidth)
+    if not ns.IsAccessibleValue(text) or type(text) ~= "string" or text == "" then return 0 end
+
+    local size = tonumber(fontSize) or 11
+    local width = tonumber(barWidth) or 0
+    size = math.max(6, size)
+    width = math.max(0, width)
+
+    -- Use only accessible text/configuration values. Never query rendered
+    -- FontString geometry, which can be secret or tainted in Retail.
+    local estimated = string.len(text) * size * 0.65 + 6
+    return math.min(width, math.max(0, estimated))
+end
+
+local function ResolveLevelXOffset(frame, baseX)
+    if not UseDynamicNameplateLevelLayout() then
+        return baseX, nil
+    end
+
+    local nameText = frame._displayNameText
+    local levelText = frame._displayLevelText
+    local nameSlot = FindSlotForElement("enemyName")
+    local nameTextSafe = ns.IsAccessibleValue(nameText) and type(nameText) == "string"
+    local levelTextSafe = ns.IsAccessibleValue(levelText) and type(levelText) == "string"
+    if nameSlot ~= "textSlotTop"
+        or not nameTextSafe or nameText == ""
+        or not levelTextSafe or levelText == "" then
+        return baseX, nil
+    end
+
+    local barWidth = GetHealthBarWidth()
+    local nameSize = tonumber(GetTextSlotSize("textSlotTop")) or 12
+    local levelSize = tonumber(GetLevelConfigValue("levelFontSize")) or 11
+    local estimatedNameWidth = EstimateTextWidth(nameText, nameSize, barWidth)
+    local estimatedLevelWidth = EstimateTextWidth(levelText, levelSize, barWidth)
+    local safeLevelWidth = math.max(24, math.min(barWidth, estimatedLevelWidth))
+    local nameStart = math.max(0, (barWidth - estimatedNameWidth) * 0.5)
+    local candidate = nameStart - LEVEL_NAME_GAP - safeLevelWidth
+
+    -- The base offset is retained for short names. Long names can move the
+    -- level left as far as necessary to keep the four-pixel gap.
+    -- Return the same safe estimate that UpdateLevelAnchor applies as the
+    -- FontString width. This keeps the anchor math and rendered glyph box in
+    -- agreement without querying protected FontString geometry.
+    return math.min(baseX, candidate), safeLevelWidth
+end
+
+function NameplateFrame:UpdateLevelAnchor()
+    if not self.level or not self.health then return end
+
+    local baseX = tonumber(GetLevelConfigValue("levelXOffset")) or 24
+    local y = tonumber(GetLevelConfigValue("levelYOffset")) or 4
+    local x, dynamicLevelWidth = ResolveLevelXOffset(self, baseX)
+
+    self._dynamicLevelXOffset = x
+    if UseDynamicNameplateLevelLayout() and dynamicLevelWidth then
+        PP.Width(self.level, dynamicLevelWidth)
+    else
+        -- Disabled mode keeps the previous auto-sized level layout exactly.
+        PP.Width(self.level, 0)
+    end
+    self.level:ClearAllPoints()
+    PP.Point(self.level, "BOTTOMLEFT", self.health, "TOPLEFT", x, y)
+end
+-- Muestra/oculta el nivel de la unidad con estilo y posición independientes.
 function NameplateFrame:UpdateLevel()
     if not self.level then return end
+
     local unit = SyncPlateUnitToken(self)
     if not unit or not ShouldShowNameplateLevel(false) then
+        self._displayLevelText = nil
         self.level:SetText("")
         self.level:Hide()
+        self:UpdateLevelAnchor()
         return
     end
+
     local levelText = SafeUnitLevelText(unit)
     if not levelText then
+        self._displayLevelText = nil
         self.level:SetText("")
         self.level:Hide()
+        self:UpdateLevelAnchor()
         return
     end
+
     ApplyLevelTextStyle(self.level)
+    self._displayLevelText = levelText
     self.level:SetText(levelText)
-    self.level:SetWidth(math.max(20, GetRenderedFontStringWidth(self.level) + 4))
-    self.level:SetHeight(math.max(16, (tonumber(GetLevelConfigValue("levelFontSize")) or 11) + 6))
-    PositionNameplateLevelText(self.level, self.name, self.health, FindSlotForElement("enemyName"), GetLevelConfigValue("levelXOffset"), GetLevelConfigValue("levelYOffset"))
+    PP.Height(self.level, math.max(16, (tonumber(GetLevelConfigValue("levelFontSize")) or 11) + 6))
     self.level:Show()
+    self:UpdateLevelAnchor()
 end
 -- Muestra/oculta el icono de clasificación (elite, worldboss, rareelite, rare)
 -- según el slot configurado. Dentro de instancia se oculta siempre.
@@ -5022,17 +5566,24 @@ function NameplateFrame:UpdateClassification()
         return
     end
 
-    local atlas = CLASSIFICATION_ATLASES[UnitClassification(unit)]
-    if not atlas then
+    local classification = SafeUnitClassification(unit)
+    local atlas = CLASSIFICATION_ATLASES[classification]
+    local texturePath = CLASSIFICATION_TEXTURES[classification]
+    if not atlas and not texturePath then
         self.classFrame:Hide()
         self:UpdateNameWidth()
         return
     end
 
-    self.class:SetAtlas(atlas)
+    if texturePath then
+        self.class:SetTexture(texturePath)
+        self.class:SetTexCoord(0, 1, 0, 1)
+    else
+        self.class:SetAtlas(atlas)
+    end
     PP.Size(self.classFrame, GetRareEliteIconSize(), GetRareEliteIconSize())
     local offsetX, offsetY = ns._AuraLayout.ResolveOffsets("classification")
-    AnchorPlateAdornment(self.classFrame, slot, offsetX, offsetY, GetClassPowerTopPush(self))
+    AnchorClassificationAdornment(self.classFrame, slot, offsetX, offsetY, GetClassPowerTopPush(self))
     self.classFrame:Show()
     self:UpdateNameWidth()
 end
@@ -5042,20 +5593,26 @@ function NameplateFrame:UpdateNameWidth()
 
     if nameSlot == "textSlotTop" then
         PP.Width(self.name, GetTopNameReservedWidth(self, barW))
+        if self.UpdateLevelAnchor then self:UpdateLevelAnchor() end
         return
     end
 
     if nameSlot then
         local remainingWidth = barW - GetInlineNameReservedWidth(nameSlot)
         PP.Width(self.name, math.max(remainingWidth, 20))
+        if self.UpdateLevelAnchor then self:UpdateLevelAnchor() end
         return
     end
 
     PP.Width(self.name, math.max(barW, 20))
+    if self.UpdateLevelAnchor then self:UpdateLevelAnchor() end
 end
 -- Re-ancla el nombre de la unidad según el slot actual y refresca
 -- auras y clasificación para mantener coherencia de layout.
 function NameplateFrame:RefreshNamePosition()
+    -- Keep the layout pass deterministic: acquire the accessible name first,
+    -- size the name, then resolve the level offset before classification.
+    self:UpdateName()
     local nameSlot = FindSlotForElement("enemyName")
     self:UpdateNameWidth()
     self.name:ClearAllPoints()
@@ -5068,10 +5625,18 @@ function NameplateFrame:RefreshNamePosition()
         self.name:Show()
     end
 
-    if self.level and self.level:IsShown() then self:UpdateLevel() end
-    self:UpdateAuras()
+    self:UpdateLevel()
     self:UpdateClassification()
+    self:UpdateAuras()
 end
+
+local function ValidateNameplateLevelMethods()
+    assert(type(NameplateFrame.UpdateLevel) == "function", "NameplateFrame.UpdateLevel must remain a function")
+    assert(type(NameplateFrame.UpdateLevelAnchor) == "function", "NameplateFrame.UpdateLevelAnchor must remain a function")
+    assert(type(NameplateFrame.UpdateClassification) == "function", "NameplateFrame.UpdateClassification must remain a function")
+end
+
+ValidateNameplateLevelMethods()
 -- Muestra/oculta el icono de marca de raid en la posición configurada.
 function NameplateFrame:UpdateRaidIcon()
     local unit = SyncPlateUnitToken(self)
@@ -5543,10 +6108,10 @@ function NameplateFrame:ApplyCastPresentation(castName, texture, kickProtected)
     self.castTarget:SetText(type(targetName) ~= "nil" and targetName or "")
     self:ApplyCastTargetColorFromToken(classToken)
 
-    self.castName:SetWidth(0)
+    PP.Width(self.castName, 0)
     self.castName:ClearAllPoints()
-    self.castName:SetPoint("LEFT", self.cast, "LEFT", 5, 0)
-    self.castName:SetPoint("RIGHT", self.castTarget, "LEFT", -5, 0)
+    PP.Point(self.castName, "LEFT", self.cast, "LEFT", 5, 0)
+    PP.Point(self.castName, "RIGHT", self.castTarget, "LEFT", -5, 0)
 
     if type(kickProtected) == "nil" then
         kickProtected = false
@@ -5875,10 +6440,10 @@ function NameplateFrame:ShowInterrupted(interrupterGUID)
     end
 
     -- Re-anclar nombre y objetivo de casteo para el texto de interrupción
-    self.castName:SetWidth(0)
+    PP.Width(self.castName, 0)
     self.castName:ClearAllPoints()
-    self.castName:SetPoint("LEFT", self.cast, "LEFT", 5, 0)
-    self.castName:SetPoint("RIGHT", self.castTarget, "LEFT", -5, 0)
+    PP.Point(self.castName, "LEFT", self.cast, "LEFT", 5, 0)
+    PP.Point(self.castName, "RIGHT", self.castTarget, "LEFT", -5, 0)
     self.castShieldFrame:Hide()
     self.castShieldFrame:SetAlpha(1)
     self.castBarOverlay:SetAlpha(0)
@@ -5921,6 +6486,15 @@ for _, group in ipairs(PLATE_HANDLER_GROUPS) do
         NameplateFrame[group[i]] = function(self) self[method](self) end
     end
 end
+
+-- Name and level changes must re-run the complete dependent layout pass.
+NameplateFrame.UNIT_NAME_UPDATE = function(self)
+    self:RefreshNamePosition()
+end
+NameplateFrame.UNIT_LEVEL = function(self)
+    self:UpdateLevel()
+    self:UpdateClassification()
+end
 -- Handlers con firma especial: reciben argumentos posicionales del dispatch.
 -- UNIT_AURA pasa updateInfo (arg2); UNIT_SPELLCAST_INTERRUPTED pasa
 -- interrupterGUID (arg4).
@@ -5934,6 +6508,7 @@ local manager = CreateFrame("Frame")
 manager:RegisterEvent("PLAYER_LOGIN")
 manager:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 manager:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+manager:RegisterEvent("UNIT_LEVEL")
 manager:RegisterEvent("PLAYER_TARGET_CHANGED")
 manager:RegisterEvent("PLAYER_FOCUS_CHANGED")
 manager:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
@@ -5948,6 +6523,8 @@ manager:RegisterEvent('UPDATE_BATTLEFIELD_SCORE')
 manager:RegisterEvent("PLAYER_ENTERING_WORLD")
 manager:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 manager:RegisterEvent("PLAYER_DIFFICULTY_CHANGED")
+manager:RegisterEvent("INSTANCE_GROUP_SIZE_CHANGED")
+manager:RegisterEvent("SCENARIO_UPDATE")
 manager:RegisterEvent("DISPLAY_SIZE_CHANGED")
 manager:RegisterEvent("UI_SCALE_CHANGED")
 
@@ -5976,6 +6553,14 @@ local function SafeForEachPlate(callback)
     end)
 end
 ns.SafeForEachPlate = SafeForEachPlate
+
+function ns.RefreshNameplateLevels()
+    SafeForEachPlate(function(_, plate)
+        if plate and plate.unit and plate.RefreshNamePosition then
+            plate:RefreshNamePosition()
+        end
+    end)
+end
 
 local function AcquireEnemyPlate(unit, nameplate)
     local plate = frameCache:Acquire()
@@ -6047,7 +6632,7 @@ transitionState.CreatePendingWatcher = function(unit, nameplate)
 
         -- Promoción: retirar friendly → adquirir enemiga → vigilar retorno
         RemoveFriendlyPresentation(u)
-        local np = C_NamePlate.GetNamePlateForUnit(u)
+        local np = GetSafeNamePlateForUnit(u)
         if np then AcquireEnemyPlate(u, np) end
         transitionState.enemyWatchers[u] = transitionState.CreateEnemyWatcher(u)
     end)
@@ -6069,7 +6654,7 @@ transitionState.CreateEnemyWatcher = function(unit)
         ReleaseEnemyPlate(u)
 
         -- Intentar restaurar presentación friendly y preparar el camino inverso
-        local np = C_NamePlate.GetNamePlateForUnit(u)
+        local np = GetSafeNamePlateForUnit(u)
         if not np then return end
         transitionState.pendingUnits[u] = np
         transitionState.pendingWatchers[u] = transitionState.CreatePendingWatcher(u, np)
@@ -6126,7 +6711,7 @@ local function ReconcileFactionTransitions()
     for i = 1, #staleEnemies do
         local unit = staleEnemies[i]
         ReleaseEnemyPlate(unit)
-        local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+        local nameplate = GetSafeNamePlateForUnit(unit)
         if nameplate then
             transitionState.pendingUnits[unit] = nameplate
             transitionState.pendingWatchers[unit] = transitionState.CreatePendingWatcher(unit, nameplate)
@@ -6204,7 +6789,7 @@ transitionState.factionFrame:SetScript("OnEvent", function(_, event, unit)
     end
 end)
 local function UpdateMouseover()
-    local mouseoverNameplate = UnitExists("mouseover") and C_NamePlate.GetNamePlateForUnit("mouseover")
+    local mouseoverNameplate = UnitExists("mouseover") and GetSafeNamePlateForUnit("mouseover")
     local newMouseoverPlate = mouseoverNameplate and ns.platesByNameplate[mouseoverNameplate] or nil
 
     if transitionState.currentMouseoverPlate and transitionState.currentMouseoverPlate ~= newMouseoverPlate then
@@ -6233,7 +6818,10 @@ local function UpdateMouseover()
 end
 -- Refresh Y-offset on all visible friendly name-only plates
 function ns.RefreshFriendlyNameOnlyOffset()
-    local db = KullThranUINameplatesDB or defaults
+    if ns.RefreshFriendlyNameOnlyOverlayLayout then
+        ns.RefreshFriendlyNameOnlyOverlayLayout()
+        return
+    end    local db = KullThranUINameplatesDB or defaults
     local nameOnly = (db.friendlyNameOnly ~= false)
     local yOff = nameOnly and (db.friendlyNameOnlyYOffset or 0) or 0
     for unit, nameplate in pairs(transitionState.pendingUnits) do
@@ -6310,7 +6898,7 @@ manager:SetScript("OnEvent", function(self, event, unit)
     elseif not IsNameplatesEnabled() then
         return
     elseif event == "NAME_PLATE_UNIT_ADDED" then
-        local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+        local nameplate = GetSafeNamePlateForUnit(unit)
         if not nameplate then return end
         if not ns.IsEnemyNameplateUnit(unit, nameplate) then
             transitionState.pendingUnits[unit] = nameplate
@@ -6320,44 +6908,13 @@ manager:SetScript("OnEvent", function(self, event, unit)
             if ns.TryColorFriendlyNPCName then ns.TryColorFriendlyNPCName(unit, nameplate) end
             -- Ocultar barras de vida de NPC en modo name-only
             if ns.TrySuppressNPCHealthBar then ns.TrySuppressNPCHealthBar(unit, nameplate) end
-            -- Asegurar que el UF de Blizzard esté visible para placas friendly en
-            -- modo name-only. Los frames se reciclan: un UF usado para enemigo
-            -- puede tener alpha 0 o hijos reparentados offscreen.
-            local db = KullThranUINameplatesDB or defaults
-            -- Friendly players use Blizzard's name region in name-only mode.
-            -- Friendly NPCs use KUI's overlay and their complete Blizzard UF
-            -- must remain suppressed.
-            if db.friendlyNameOnly ~= false and ns.IsPlayerNameplateUnit(unit, nameplate) then
-                local uf = nameplate.UnitFrame
-                if uf then
-                    -- Restaurar alpha si el UF reciclado estaba suprimido
-                    -- Alpha on a recycled Blizzard plate can be protected.
-                    -- Restore the intended value without reading/comparing it.
-                    uf:SetAlpha(1)
-                    -- Restaurar FontString del nombre si fue movido offscreen
-                    if uf.name and uf.name:GetParent() ~= uf then
-                        uf.name:SetParent(uf)
-                    end
-                    -- Asegurar que el UF esté parented al nameplate (no al frame oculto)
-                    if uf:GetParent() ~= nameplate then
-                        uf:SetParent(nameplate)
-                        uf:SetAlpha(1)
-                        uf:Show()
-                    end
-                    if ns.EnforceFriendlyPlayerNameOnly then
-                        ns.EnforceFriendlyPlayerNameOnly(nameplate, unit)
-                    end
-                end
-                -- Aplicar offset Y
-                local yOff = db.friendlyNameOnlyYOffset or 0
-                if yOff ~= 0 and nameplate.UnitFrame then
-                    nameplate.UnitFrame:SetPoint("TOPLEFT", nameplate, "TOPLEFT", 0, yOff)
-                    nameplate.UnitFrame:SetPoint("BOTTOMRIGHT", nameplate, "BOTTOMRIGHT", 0, yOff)
-                    nameplate._enoYOffset = true
-                end
-                -- La fuente se aplica globalmente vía SystemFont_NamePlate override
-            end
-            return
+            -- Friendly players now use the same stable addon-owned overlay as
+            -- friendly NPCs. Do not restore Blizzard's native name FontString:
+            -- mixing both layout trees is what causes camera-dependent text
+            -- deformation.
+            if ns.TrySuppressFriendlyPlayerNameplate then
+                ns.TrySuppressFriendlyPlayerNameplate(unit, nameplate)
+            end            return
         end
         transitionState.pendingUnits[unit] = nil
         if ns.plates[unit] then
@@ -6374,8 +6931,11 @@ manager:SetScript("OnEvent", function(self, event, unit)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         questMobCache[unit] = nil
         -- Restaurar elementos del UnitFrame de Blizzard para que el nameplate reciclado quede limpio
-        local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+        local nameplate = GetSafeNamePlateForUnit(unit)
         if nameplate then
+            if ns.UpdateFriendlyPlayerLevel then
+                ns.UpdateFriendlyPlayerLevel(nameplate, nil)
+            end
             RestoreBlizzardFrame(nameplate)
         end
         -- Restaurar color de nombre de NPC si lo teñimos
@@ -6428,7 +6988,7 @@ manager:SetScript("OnEvent", function(self, event, unit)
         end
         if ns.RemoveFriendlyPlate then ns.RemoveFriendlyPlate(unit) end
     elseif event == "PLAYER_TARGET_CHANGED" then
-        local targetNameplate = UnitExists("target") and C_NamePlate.GetNamePlateForUnit("target")
+        local targetNameplate = UnitExists("target") and GetSafeNamePlateForUnit("target")
         local newTargetPlate = targetNameplate and ns.platesByNameplate[targetNameplate] or nil
         if ns.currentTargetPlate and ns.currentTargetPlate ~= newTargetPlate then
             ns.currentTargetPlate:ApplyTarget()
@@ -6437,9 +6997,18 @@ manager:SetScript("OnEvent", function(self, event, unit)
             newTargetPlate:ApplyTarget()
         end
         ns.currentTargetPlate = newTargetPlate
+    elseif event == "UNIT_LEVEL" then
+        local nameplate = unit and GetSafeNamePlateForUnit(unit)
+        if nameplate and ns.UpdateFriendlyPlayerLevel then
+            ns.UpdateFriendlyPlayerLevel(nameplate, unit)
+        end
+        local friendlyPlate = nameplate and ns.friendlyPlatesByNameplate and ns.friendlyPlatesByNameplate[nameplate]
+        if friendlyPlate and friendlyPlate.UpdateLevel then
+            friendlyPlate:UpdateLevel()
+        end
     elseif event == "PLAYER_FOCUS_CHANGED" then
         local focusPct = GetFocusCastHeight()
-        local focusNameplate = UnitExists("focus") and C_NamePlate.GetNamePlateForUnit("focus")
+        local focusNameplate = UnitExists("focus") and GetSafeNamePlateForUnit("focus")
         local newFocusPlate = focusNameplate and ns.platesByNameplate[focusNameplate] or nil
         local function RefreshFocusPlate(plate)
             if not plate then return end
@@ -6449,10 +7018,7 @@ manager:SetScript("OnEvent", function(self, event, unit)
                 if plate.unit and UnitIsUnit(plate.unit, "focus") then
                     castH = math.floor(castH * focusPct / 100 + 0.5)
                 end
-                plate.cast:SetHeight(castH)
-                plate.castIconFrame:SetSize(castH, castH)
-                plate.castSpark:SetHeight(castH)
-                plate.kickMarker:SetHeight(castH)
+                plate:LayoutCoreBars(plate.unit)
             end
         end
         if ns.currentFocusPlate and ns.currentFocusPlate ~= newFocusPlate then
@@ -6485,7 +7051,8 @@ manager:SetScript("OnEvent", function(self, event, unit)
             end
         end)
         RefreshThreatCache()
-    elseif event == 'ZONE_CHANGED_NEW_AREA' or event == 'PLAYER_DIFFICULTY_CHANGED' then
+    elseif event == 'ZONE_CHANGED_NEW_AREA' or event == 'PLAYER_DIFFICULTY_CHANGED'
+        or event == 'INSTANCE_GROUP_SIZE_CHANGED' or event == 'SCENARIO_UPDATE' then
         SetupAuraCVars()
         if ns.UpdateFriendlyNameplateSystem then
             ns.UpdateFriendlyNameplateSystem()
@@ -6524,6 +7091,33 @@ do
     end)
 end
 
+-- La escala efectiva de una nameplate cambia continuamente con la perspectiva.
+-- Reaplicar el layout sólo al detectar un cambio evita tanto la deformacion
+-- como un OnUpdate costoso por placa.
+do
+    local elapsedSinceRefresh = 0
+    manager:SetScript("OnUpdate", function(_, elapsed)
+        elapsedSinceRefresh = elapsedSinceRefresh + (elapsed or 0)
+        if elapsedSinceRefresh < 0.05 then
+            return
+        end
+        elapsedSinceRefresh = 0
+
+        if not IsNameplatesEnabled() then
+            return
+        end
+
+        SafeForEachPlate(function(_, plate)
+            if plate and plate.RefreshPixelPerfectLayout then
+                plate:RefreshPixelPerfectLayout()
+            end
+        end)
+
+        if ns.RefreshFriendlyPixelPerfectLayout then
+            pcall(ns.RefreshFriendlyPixelPerfectLayout)
+        end
+    end)
+end
 -------------------------------------------------------------------------------
 --  SPEC PRESET LOGIN HANDLER
 --  Applies the correct spec-assigned preset on login and on spec change,
@@ -6641,6 +7235,8 @@ do
         AddPresetKeys(
             "textSlotTop", "textSlotRight", "textSlotLeft", "textSlotCenter",
             "nameYOffset",
+            "showLevel", "levelFont", "levelFontSize", "levelFontOutline", "levelShadow",
+            "levelColor", "levelXOffset", "levelYOffset", "useDynamicNameplateLevelLayout",
             "healthBarHeight", "healthBarWidth", "castBarHeight",
             "castNameSize", "castNameColor", "castTargetSize", "castTargetClassColor", "castTargetColor"
         )

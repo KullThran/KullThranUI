@@ -2794,7 +2794,9 @@ initFrame:SetScript("OnEvent", function(self)
             local width = DBVal("friendlyHealthBarWidth") or defaults.friendlyHealthBarWidth
             local barH = DBVal("friendlyHealthBarHeight") or defaults.friendlyHealthBarHeight
             local px = math.max(1 / previewScale, 1)
-            local nameOnly = DBVal("friendlyNameOnly") ~= false
+            local playerNameOnly = DBVal("friendlyPlayerNameOnly") ~= false
+            local npcNameOnly = DBVal("friendlyNPCNameOnly") ~= false
+            local nameOnly = playerNameOnly and npcNameOnly
             local playerAlign = DBVal("friendlyPlayerNameAlignment") or defaults.friendlyPlayerNameAlignment
             local npcAlign = DBVal("friendlyNPCNameAlignment") or defaults.friendlyNPCNameAlignment
             local playerNameColor = FriendlyColor("friendlyPlayerNameColor", 1, 1, 1)
@@ -2898,6 +2900,17 @@ initFrame:SetScript("OnEvent", function(self)
                 npc.health:SetStatusBarColor(0, 0.82, 0.62, 1)
                 LayoutBorder(npc.health, px)
                 self:SetSize(localParentW, playerTopBlockH + npcNameH + (barH * 2) + 70)
+            end
+
+            -- The preview supports mixed modes too: only the unit type
+            -- configured as Name Only loses its health bar and percentage.
+            if playerNameOnly then
+                player.health:Hide()
+                player.hpText:Hide()
+            end
+            if npcNameOnly then
+                npc.health:Hide()
+                npc.hpText:Hide()
             end
         end
 
@@ -3055,8 +3068,10 @@ initFrame:SetScript("OnEvent", function(self)
 
         local function friendlyPlayersOff() return DBVal("showFriendlyPlayers") == false and
             DBVal("friendlyShowDefaultNames") ~= true end
-        local function friendlyPlateOff() return friendlyPlayersOff() or DBVal("friendlyNameOnly") ~= false end
-        local function nameOnlyOff() return friendlyPlayersOff() or DBVal("friendlyNameOnly") == false end
+        local function friendlyPlayerNameOnlyOff() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") == false end
+        local function friendlyNPCsOff() return DBVal("showFriendlyNPCs") ~= true end
+        local function friendlyPlateOff() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") ~= false end
+        local function nameOnlyOff() return friendlyPlayerNameOnlyOff() end
 
         local friendlyRow
         _, h = W:DualRow(parent, y,
@@ -3080,12 +3095,12 @@ initFrame:SetScript("OnEvent", function(self)
             },
             {
                 type = "toggle",
-                text = LText("Make Friendly Nameplates Name Only"),
+                text = LText("Only Name - Friendly Players"),
                 tooltip =
                 "Hide friendly player health bars and instead only see their names.\n\nRequires 'Simplified Friendly Nameplates' to be disabled in Blizzard's Nameplate settings (Esc > Options > Nameplates).",
-                getValue = function() return DBVal("friendlyNameOnly") ~= false end,
+                getValue = function() return DBVal("friendlyPlayerNameOnly") ~= false end,
                 setValue = function(v)
-                    DB().friendlyNameOnly = v
+                    DB().friendlyPlayerNameOnly = v
                     if SetCVar then pcall(SetCVar, "nameplateShowOnlyNameForFriendlyPlayerUnits", v and 1 or 0) end
                     if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
                     KT:RefreshPage()
@@ -3093,493 +3108,6 @@ initFrame:SetScript("OnEvent", function(self)
                 disabled = friendlyPlayersOff,
                 disabledTooltip = "Show Friendly Player Nameplates"
             }); friendlyRow = _; y = y - h
-
-        _, h = W:DualRow(parent, y,
-            {
-                type = "toggle",
-                text = LText("Show Guild Under Friendly Players"),
-                tooltip = "Shows the player's guild name under friendly player nameplates (white text).",
-                getValue = function() return DBVal("friendlyShowGuild") ~= false end,
-                setValue = function(v)
-                    DB().friendlyShowGuild = v
-                    if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
-                    if ns.friendlyPlates then
-                        for _, plate in pairs(ns.friendlyPlates) do
-                            if plate.UpdateName then plate:UpdateName() end
-                        end
-                    end
-                end,
-                disabled = friendlyPlayersOff,
-                disabledTooltip = "Show Friendly Player Nameplates"
-            },
-            { type = "label", text = "" }); y = y - h
-
-        ---------------------------------------------------------------
-        --  Friendly Player cog popup (Distance, Height, Width, Show Health %)
-        ---------------------------------------------------------------
-        do
-            local fpPopup, fpPopupOwner
-            local function ShowFriendlyPlayerPopup(anchorBtn)
-                if not fpPopup then
-                    local SolidTex         = KT.SolidTex
-                    local MakeBorder       = KT.MakeBorder
-                    local MakeFont         = KT.MakeFont
-                    local BuildSliderCore  = KT.BuildSliderCore
-                    local BORDER_COLOR     = KT.NP_BORDER_COLOR
-                    local SL_INPUT_A       = KT.NP_SL_INPUT_A
-
-                    local SIDE_PAD         = 14; local TOP_PAD = 14
-                    local TITLE_H          = 11; local TITLE_GAP = 10; local GAP = 10
-                    local ROW_H            = 24; local TOGGLE_ROW_H = 28
-                    local POPUP_INPUT_A    = 0.55
-
-                    local INPUT_W          = 34; local SLIDER_INPUT_GAP = 8; local LABEL_SLIDER_GAP = 12
-                    local MIN_POPUP_W      = 180
-
-                    local totalH           = TOP_PAD + TITLE_H + TITLE_GAP + GAP
-                        + ROW_H + GAP + ROW_H + GAP + ROW_H + GAP + TOGGLE_ROW_H + GAP + TOGGLE_ROW_H
-                        + TOP_PAD
-
-                    local pf               = CreateFrame("Frame", nil, UIParent)
-                    pf:SetSize(260, totalH)
-                    pf:SetFrameStrata("FULLSCREEN_DIALOG"); pf:SetFrameLevel(math.max(1200, (KT.MenuPrincipal and KT.MenuPrincipal:GetFrameLevel() or 0) + 80))
-                    pf:EnableMouse(true); pf:Hide()
-
-                    local bg = SolidTex(pf, "BACKGROUND", 0.06, 0.08, 0.10, 0.95)
-                    bg:SetAllPoints()
-                    MakeBorder(pf, BORDER_COLOR.r, BORDER_COLOR.g, BORDER_COLOR.b, 0.15)
-
-                    local titleFS = MakeFont(pf, 11, "", 1, 1, 1)
-                    titleFS:SetAlpha(0.7)
-                    titleFS:SetPoint("TOP", pf, "TOP", 0, -TOP_PAD)
-                    titleFS:SetText(LText("Friendly Nameplate Settings"))
-
-                    -- Measure label widths to compute layout BEFORE creating sliders
-                    local tmpFS = pf:CreateFontString(nil, "OVERLAY")
-                    tmpFS:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 11, GetNPOptOutline())
-                    local labelTexts = { "Distance", "Height", "Width" }
-                    local maxLblW = 0
-                    for _, txt in ipairs(labelTexts) do
-                        tmpFS:SetText(txt)
-                        local w = tmpFS:GetStringWidth()
-                        if w > maxLblW then maxLblW = w end
-                    end
-                    tmpFS:Hide()
-                    if maxLblW < 10 then maxLblW = 60 end
-
-                    local SLIDER_LEFT = SIDE_PAD + maxLblW + LABEL_SLIDER_GAP
-                    local SLIDER_W = math.max(80, 260 - SLIDER_LEFT - SLIDER_INPUT_GAP - INPUT_W - SIDE_PAD)
-                    local POPUP_W = math.max(MIN_POPUP_W, SLIDER_LEFT + SLIDER_W + SLIDER_INPUT_GAP + INPUT_W + SIDE_PAD)
-                    pf:SetWidth(POPUP_W)
-
-                    -- Row 1: Distance from Friend
-                    local r1Y = -(TOP_PAD + TITLE_H + TITLE_GAP + GAP)
-                    local lbl1 = MakeFont(pf, 11, nil, 1, 1, 1); lbl1:SetAlpha(0.6)
-                    lbl1:SetText(LText("Distance")); lbl1:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r1Y)
-                    local t1, v1 = BuildSliderCore(pf, SLIDER_W, 4, 12, INPUT_W, ROW_H, 11, POPUP_INPUT_A,
-                        -50, 50, 1,
-                        function() return DBVal("friendlyPlateYOffset") or 0 end,
-                        function(v)
-                            DB().friendlyPlateYOffset = v; if ns.RefreshFriendlyPlateYOffset then ns
-                                    .RefreshFriendlyPlateYOffset() end
-                        end, true)
-                    t1:SetPoint("TOPLEFT", pf, "TOPLEFT", SLIDER_LEFT, r1Y - 2)
-                    v1:ClearAllPoints(); v1:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r1Y)
-
-                    -- Row 2: Height
-                    local r2Y = r1Y - ROW_H - GAP
-                    local lbl2 = MakeFont(pf, 11, nil, 1, 1, 1); lbl2:SetAlpha(0.6)
-                    lbl2:SetText(LText("Height")); lbl2:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r2Y)
-                    local t2, v2 = BuildSliderCore(pf, SLIDER_W, 4, 12, INPUT_W, ROW_H, 11, POPUP_INPUT_A,
-                        6, 40, 1,
-                        function() return DBVal("friendlyHealthBarHeight") or defaults.friendlyHealthBarHeight end,
-                        function(v)
-                            DB().friendlyHealthBarHeight = v; if ns.RefreshFriendlyPlateSize then ns
-                                    .RefreshFriendlyPlateSize() end
-                        end, true)
-                    t2:SetPoint("TOPLEFT", pf, "TOPLEFT", SLIDER_LEFT, r2Y - 2)
-                    v2:ClearAllPoints(); v2:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r2Y)
-
-                    -- Row 3: Width
-                    local r3Y = r2Y - ROW_H - GAP
-                    local lbl3 = MakeFont(pf, 11, nil, 1, 1, 1); lbl3:SetAlpha(0.6)
-                    lbl3:SetText(LText("Width")); lbl3:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r3Y)
-                    local t3, v3 = BuildSliderCore(pf, SLIDER_W, 4, 12, INPUT_W, ROW_H, 11, POPUP_INPUT_A,
-                        80, 250, 1,
-                        function() return DBVal("friendlyHealthBarWidth") or defaults.friendlyHealthBarWidth end,
-                        function(v)
-                            DB().friendlyHealthBarWidth = v; if ns.RefreshFriendlyPlateSize then ns
-                                    .RefreshFriendlyPlateSize() end
-                        end, true)
-                    t3:SetPoint("TOPLEFT", pf, "TOPLEFT", SLIDER_LEFT, r3Y - 2)
-                    v3:ClearAllPoints(); v3:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r3Y)
-
-                    -- Row 4: Show Health Percent (toggle inverted from friendlyHideHealthText)
-                    local r4Y = r3Y - ROW_H - GAP
-                    local lbl4 = MakeFont(pf, 11, nil, 1, 1, 1); lbl4:SetAlpha(0.6)
-                    lbl4:SetText(LText("Show Health Percent")); lbl4:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r4Y)
-
-                    local TG_W, TG_H, KNOB_SZ, KNOB_PAD = 32, 16, 12, 2
-                    local tgBtn = CreateFrame("Button", nil, pf)
-                    tgBtn:SetSize(TG_W, TG_H)
-                    tgBtn:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r4Y)
-
-                    local tgBg = SolidTex(tgBtn, "BACKGROUND", 0.18, 0.18, 0.18, 0.85)
-                    tgBg:SetAllPoints()
-                    local tgKnob = tgBtn:CreateTexture(nil, "ARTWORK")
-                    tgKnob:SetColorTexture(0.55, 0.55, 0.55, 1)
-                    tgKnob:SetSize(KNOB_SZ, KNOB_SZ)
-
-                    local function UpdateToggle4()
-                        local on = not (KullThranUINameplatesDB and KullThranUINameplatesDB.friendlyHideHealthText)
-                        if on then
-                            local g = KT.NP_GREEN
-                            tgBg:SetColorTexture(g.r, g.g, g.b, 0.45)
-                            tgKnob:SetColorTexture(1, 1, 1, 0.95)
-                            tgKnob:ClearAllPoints(); tgKnob:SetPoint("RIGHT", tgBtn, "RIGHT", -KNOB_PAD, 0)
-                        else
-                            tgBg:SetColorTexture(0.18, 0.18, 0.18, 0.85)
-                            tgKnob:SetColorTexture(0.55, 0.55, 0.55, 1)
-                            tgKnob:ClearAllPoints(); tgKnob:SetPoint("LEFT", tgBtn, "LEFT", KNOB_PAD, 0)
-                        end
-                    end
-                    UpdateToggle4()
-                    tgBtn:SetScript("OnClick", function()
-                        local cur = KullThranUINameplatesDB and KullThranUINameplatesDB.friendlyHideHealthText or false
-                        DB().friendlyHideHealthText = not cur
-                        if ns.RefreshFriendlyHealthText then ns.RefreshFriendlyHealthText() end
-                        UpdateToggle4()
-                    end)
-                    pf._updateToggle = UpdateToggle4
-
-                    -- Row 5: Show Default Names
-                    local r5Y = r4Y - TOGGLE_ROW_H - GAP
-                    local lbl5 = MakeFont(pf, 11, nil, 1, 1, 1); lbl5:SetAlpha(0.6)
-                    lbl5:SetText(LText("Show Default Names")); lbl5:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r5Y)
-
-                    local tgBtn5 = CreateFrame("Button", nil, pf)
-                    tgBtn5:SetSize(TG_W, TG_H)
-                    tgBtn5:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r5Y)
-
-                    local tgBg5 = SolidTex(tgBtn5, "BACKGROUND", 0.18, 0.18, 0.18, 0.85)
-                    tgBg5:SetAllPoints()
-                    local tgKnob5 = tgBtn5:CreateTexture(nil, "ARTWORK")
-                    tgKnob5:SetColorTexture(0.55, 0.55, 0.55, 1)
-                    tgKnob5:SetSize(KNOB_SZ, KNOB_SZ)
-
-                    local function UpdateToggle5()
-                        local on = (KullThranUINameplatesDB and KullThranUINameplatesDB.friendlyShowDefaultNames == true)
-                        if on then
-                            local g = KT.NP_GREEN
-                            tgBg5:SetColorTexture(g.r, g.g, g.b, 0.45)
-                            tgKnob5:SetColorTexture(1, 1, 1, 0.95)
-                            tgKnob5:ClearAllPoints(); tgKnob5:SetPoint("RIGHT", tgBtn5, "RIGHT", -KNOB_PAD, 0)
-                        else
-                            tgBg5:SetColorTexture(0.18, 0.18, 0.18, 0.85)
-                            tgKnob5:SetColorTexture(0.55, 0.55, 0.55, 1)
-                            tgKnob5:ClearAllPoints(); tgKnob5:SetPoint("LEFT", tgBtn5, "LEFT", KNOB_PAD, 0)
-                        end
-                    end
-                    UpdateToggle5()
-                    tgBtn5:SetScript("OnClick", function()
-                        local cur = KullThranUINameplatesDB and KullThranUINameplatesDB.friendlyShowDefaultNames or false
-                        local newVal = not cur
-                        DB().friendlyShowDefaultNames = newVal
-                        if newVal then
-                            -- Turn off friendly nameplates, keep names on
-                            DB().showFriendlyPlayers = false
-                            if SetCVar then
-                                pcall(SetCVar, "nameplateShowFriendlyPlayers", 0)
-                                pcall(SetCVar, "nameplateShowFriends", 0)
-                                pcall(SetCVar, "UnitNameFriendlyPlayerName", 1)
-                            end
-                        else
-                            if SetCVar then
-                                pcall(SetCVar, "UnitNameFriendlyPlayerName", 0)
-                            end
-                        end
-                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
-                        if KT and KT.RefreshPage then KT:RefreshPage() end
-                        UpdateToggle5()
-                    end)
-
-                    pf._updateToggle = function()
-                        UpdateToggle4()
-                        UpdateToggle5()
-                    end
-
-                    -- Close on click outside
-                    local wasDown = false
-                    pf:SetScript("OnHide", function(self)
-                        self:SetScript("OnUpdate", nil)
-                        if fpPopupOwner then fpPopupOwner:SetAlpha(0.4) end
-                        fpPopupOwner = nil
-                    end)
-                    pf._clickOutside = function(self, dt)
-                        local down = IsMouseButtonDown("LeftButton")
-                        if down and not wasDown then
-                            if not self:IsMouseOver() and not (fpPopupOwner and fpPopupOwner:IsMouseOver()) then
-                                self:Hide()
-                            end
-                        end
-                        wasDown = down
-                    end
-
-                    if KT.MenuPrincipal then
-                        KT.MenuPrincipal:HookScript("OnHide", function()
-                            if pf:IsShown() then pf:Hide() end
-                        end)
-                    end
-
-                    fpPopup = pf
-                end
-
-                -- Toggle off if same icon clicked again
-                if fpPopupOwner == anchorBtn and fpPopup:IsShown() then
-                    fpPopup:Hide(); return
-                end
-                fpPopupOwner = anchorBtn
-                if fpPopup._updateToggle then fpPopup._updateToggle() end
-
-                fpPopup:ClearAllPoints()
-                fpPopup:SetPoint("BOTTOM", anchorBtn, "TOP", 0, 6)
-                fpPopup:SetAlpha(0)
-                fpPopup:Show()
-                local elapsed = 0
-                fpPopup:SetScript("OnUpdate", function(self, dt)
-                    elapsed = elapsed + dt
-                    local t = math.min(elapsed / 0.15, 1)
-                    self:SetAlpha(t)
-                    self:ClearAllPoints()
-                    self:SetPoint("BOTTOM", anchorBtn, "TOP", 0, 6 + (-8 * (1 - t)))
-                    if t >= 1 then self:SetScript("OnUpdate", self._clickOutside) end
-                end)
-            end
-
-            local rgn = friendlyRow._leftRegion
-            local btn = CreateFrame("Button", nil, rgn)
-            btn:SetSize(26, 26)
-            if rgn._control and rgn._control.SetReservedRightSpace then
-                rgn._control:SetReservedRightSpace(40)
-            end
-            btn:SetPoint("RIGHT", rgn, "RIGHT", -12, 0)
-            btn:SetFrameLevel(rgn:GetFrameLevel() + 5)
-            btn:SetAlpha(friendlyPlateOff() and 0.15 or 0.4)
-            local tex = btn:CreateTexture(nil, "OVERLAY")
-            tex:SetAllPoints(); tex:SetTexture(COGS_ICON); ApplyNPAccentToIcon(tex)
-            btn:SetScript("OnEnter", function(self)
-                if friendlyPlateOff() then
-                    KT_ShowWidgetTooltip(self, "Requires Name Only setting to be disabled")
-                else
-                    self:SetAlpha(0.7)
-                end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                KT_HideWidgetTooltip()
-                if fpPopupOwner ~= self then self:SetAlpha(friendlyPlateOff() and 0.15 or 0.4) end
-            end)
-            btn:SetScript("OnClick", function(self)
-                if friendlyPlateOff() then return end
-                ShowFriendlyPlayerPopup(self)
-            end)
-            KT_RegisterWidgetRefresh(function()
-                if fpPopupOwner ~= btn then btn:SetAlpha(friendlyPlateOff() and 0.15 or 0.4) end
-            end)
-        end
-
-        ---------------------------------------------------------------
-        --  Name Only cog popup (Class Colored, Distance from Friend)
-        ---------------------------------------------------------------
-        do
-            local noPopup, noPopupOwner
-            local function ShowNameOnlyPopup(anchorBtn)
-                if not noPopup then
-                    local SolidTex         = KT.SolidTex
-                    local MakeBorder       = KT.MakeBorder
-                    local MakeFont         = KT.MakeFont
-                    local BuildSliderCore  = KT.BuildSliderCore
-                    local BORDER_COLOR     = KT.NP_BORDER_COLOR
-                    local SL_INPUT_A       = KT.NP_SL_INPUT_A
-
-                    local SIDE_PAD         = 14; local TOP_PAD = 14
-                    local TITLE_H          = 11; local TITLE_GAP = 10; local GAP = 10
-                    local TOGGLE_ROW_H     = 28; local ROW_H = 24
-                    local POPUP_INPUT_A    = 0.55
-
-                    local INPUT_W          = 34; local SLIDER_INPUT_GAP = 8; local LABEL_SLIDER_GAP = 12
-                    local MIN_POPUP_W      = 180
-
-                    local totalH           = TOP_PAD + TITLE_H + TITLE_GAP + GAP
-                        + TOGGLE_ROW_H + GAP + ROW_H
-                        + TOP_PAD
-
-                    local pf               = CreateFrame("Frame", nil, UIParent)
-                    pf:SetSize(260, totalH)
-                    pf:SetFrameStrata("FULLSCREEN_DIALOG"); pf:SetFrameLevel(math.max(1200, (KT.MenuPrincipal and KT.MenuPrincipal:GetFrameLevel() or 0) + 80))
-                    pf:EnableMouse(true); pf:Hide()
-
-                    local bg = SolidTex(pf, "BACKGROUND", 0.06, 0.08, 0.10, 0.95)
-                    bg:SetAllPoints()
-                    MakeBorder(pf, BORDER_COLOR.r, BORDER_COLOR.g, BORDER_COLOR.b, 0.15)
-
-                    local titleFS = MakeFont(pf, 11, "", 1, 1, 1)
-                    titleFS:SetAlpha(0.7)
-                    titleFS:SetPoint("TOP", pf, "TOP", 0, -TOP_PAD)
-                    titleFS:SetText(LText("Name Only Settings"))
-
-                    -- Row 1: Class Colored (toggle)
-                    local r1Y = -(TOP_PAD + TITLE_H + TITLE_GAP + GAP)
-                    local lbl1 = MakeFont(pf, 11, nil, 1, 1, 1); lbl1:SetAlpha(0.6)
-                    lbl1:SetText(LText("Class Colored")); lbl1:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r1Y)
-
-                    local TG_W, TG_H, KNOB_SZ, KNOB_PAD = 32, 16, 12, 2
-                    local tgBtn = CreateFrame("Button", nil, pf)
-                    tgBtn:SetSize(TG_W, TG_H)
-                    tgBtn:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r1Y)
-
-                    local tgBg = SolidTex(tgBtn, "BACKGROUND", 0.18, 0.18, 0.18, 0.85)
-                    tgBg:SetAllPoints()
-                    local tgKnob = tgBtn:CreateTexture(nil, "ARTWORK")
-                    tgKnob:SetColorTexture(0.55, 0.55, 0.55, 1)
-                    tgKnob:SetSize(KNOB_SZ, KNOB_SZ)
-
-                    local function UpdateToggleCC()
-                        local on = DBVal("classColorFriendly") ~= false
-                        if on then
-                            local g = KT.NP_GREEN
-                            tgBg:SetColorTexture(g.r, g.g, g.b, 0.45)
-                            tgKnob:SetColorTexture(1, 1, 1, 0.95)
-                            tgKnob:ClearAllPoints(); tgKnob:SetPoint("RIGHT", tgBtn, "RIGHT", -KNOB_PAD, 0)
-                        else
-                            tgBg:SetColorTexture(0.18, 0.18, 0.18, 0.85)
-                            tgKnob:SetColorTexture(0.55, 0.55, 0.55, 1)
-                            tgKnob:ClearAllPoints(); tgKnob:SetPoint("LEFT", tgBtn, "LEFT", KNOB_PAD, 0)
-                        end
-                    end
-                    UpdateToggleCC()
-                    tgBtn:SetScript("OnClick", function()
-                        local cur = DBVal("classColorFriendly") ~= false
-                        DB().classColorFriendly = not cur
-                        if SetCVar then
-                            pcall(SetCVar, "ShowClassColorInFriendlyNameplate", (not cur) and 1 or 0)
-                            pcall(SetCVar, "nameplateUseClassColorForFriendlyPlayerUnitNames", (not cur) and 1 or 0)
-                        end
-                        UpdateToggleCC()
-                    end)
-                    pf._updateToggle = UpdateToggleCC
-
-                    -- Row 2: Distance from Friend (slider)
-                    local r2Y = r1Y - TOGGLE_ROW_H - GAP
-
-                    -- Measure label widths to compute layout BEFORE creating sliders
-                    local tmpFS = pf:CreateFontString(nil, "OVERLAY")
-                    tmpFS:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 11, GetNPOptOutline())
-                    local labelTexts = { "Distance" }
-                    local maxLblW = 0
-                    for _, txt in ipairs(labelTexts) do
-                        tmpFS:SetText(txt)
-                        local w = tmpFS:GetStringWidth()
-                        if w > maxLblW then maxLblW = w end
-                    end
-                    tmpFS:Hide()
-                    if maxLblW < 10 then maxLblW = 55 end
-
-                    local SLIDER_LEFT = SIDE_PAD + maxLblW + LABEL_SLIDER_GAP
-                    local SLIDER_W = math.max(80, 260 - SLIDER_LEFT - SLIDER_INPUT_GAP - INPUT_W - SIDE_PAD)
-                    local POPUP_W = math.max(MIN_POPUP_W, SLIDER_LEFT + SLIDER_W + SLIDER_INPUT_GAP + INPUT_W + SIDE_PAD)
-                    pf:SetWidth(POPUP_W)
-
-                    local lbl2 = MakeFont(pf, 11, nil, 1, 1, 1); lbl2:SetAlpha(0.6)
-                    lbl2:SetText(LText("Distance")); lbl2:SetPoint("TOPLEFT", pf, "TOPLEFT", SIDE_PAD, r2Y)
-                    local t2, v2 = BuildSliderCore(pf, SLIDER_W, 4, 12, INPUT_W, ROW_H, 11, POPUP_INPUT_A,
-                        -50, 50, 1,
-                        function() return DBVal("friendlyNameOnlyYOffset") or defaults.friendlyNameOnlyYOffset end,
-                        function(v)
-                            DB().friendlyNameOnlyYOffset = v; if ns.RefreshFriendlyNameOnlyOffset then ns
-                                    .RefreshFriendlyNameOnlyOffset() end
-                        end, true)
-                    t2:SetPoint("TOPLEFT", pf, "TOPLEFT", SLIDER_LEFT, r2Y - 2)
-                    v2:ClearAllPoints(); v2:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -SIDE_PAD, r2Y)
-
-                    -- Close on click outside
-                    local wasDown = false
-                    pf:SetScript("OnHide", function(self)
-                        self:SetScript("OnUpdate", nil)
-                        if noPopupOwner then noPopupOwner:SetAlpha(0.4) end
-                        noPopupOwner = nil
-                    end)
-                    pf._clickOutside = function(self, dt)
-                        local down = IsMouseButtonDown("LeftButton")
-                        if down and not wasDown then
-                            if not self:IsMouseOver() and not (noPopupOwner and noPopupOwner:IsMouseOver()) then
-                                self:Hide()
-                            end
-                        end
-                        wasDown = down
-                    end
-
-                    if KT.MenuPrincipal then
-                        KT.MenuPrincipal:HookScript("OnHide", function()
-                            if pf:IsShown() then pf:Hide() end
-                        end)
-                    end
-
-                    noPopup = pf
-                end
-
-                -- Toggle off if same icon clicked again
-                if noPopupOwner == anchorBtn and noPopup:IsShown() then
-                    noPopup:Hide(); return
-                end
-                noPopupOwner = anchorBtn
-                if noPopup._updateToggle then noPopup._updateToggle() end
-
-                noPopup:ClearAllPoints()
-                noPopup:SetPoint("BOTTOM", anchorBtn, "TOP", 0, 6)
-                noPopup:SetAlpha(0)
-                noPopup:Show()
-                local elapsed = 0
-                noPopup:SetScript("OnUpdate", function(self, dt)
-                    elapsed = elapsed + dt
-                    local t = math.min(elapsed / 0.15, 1)
-                    self:SetAlpha(t)
-                    self:ClearAllPoints()
-                    self:SetPoint("BOTTOM", anchorBtn, "TOP", 0, 6 + (-8 * (1 - t)))
-                    if t >= 1 then self:SetScript("OnUpdate", self._clickOutside) end
-                end)
-            end
-
-            local rgn = friendlyRow._rightRegion
-            local btn = CreateFrame("Button", nil, rgn)
-            btn:SetSize(26, 26)
-            if rgn._control and rgn._control.SetReservedRightSpace then
-                rgn._control:SetReservedRightSpace(40)
-            end
-            btn:SetPoint("RIGHT", rgn, "RIGHT", -12, 0)
-            btn:SetFrameLevel(rgn:GetFrameLevel() + 5)
-            btn:SetAlpha(nameOnlyOff() and 0.15 or 0.4)
-            local tex = btn:CreateTexture(nil, "OVERLAY")
-            tex:SetAllPoints(); tex:SetTexture(COGS_ICON); ApplyNPAccentToIcon(tex)
-            btn:SetScript("OnEnter", function(self)
-                if nameOnlyOff() then
-                    KT_ShowWidgetTooltip(self, "Requires Name Only mode")
-                else
-                    self:SetAlpha(0.7)
-                end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                KT_HideWidgetTooltip()
-                if noPopupOwner ~= self then self:SetAlpha(nameOnlyOff() and 0.15 or 0.4) end
-            end)
-            btn:SetScript("OnClick", function(self)
-                if nameOnlyOff() then return end
-                ShowNameOnlyPopup(self)
-            end)
-            KT_RegisterWidgetRefresh(function()
-                if noPopupOwner ~= btn then btn:SetAlpha(nameOnlyOff() and 0.15 or 0.4) end
-            end)
-        end
-
         _, h = W:DualRow(parent, y,
             {
                 type = "toggle",
@@ -3592,8 +3120,25 @@ initFrame:SetScript("OnEvent", function(self)
                         pcall(SetCVar, "nameplateShowFriendlyNpcs", v and 1 or 0)
                     end
                     if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                    KT:RefreshPage()
                 end
             },
+            {
+                type = "toggle",
+                text = LText("Only Name - Friendly NPCs"),
+                tooltip = "Hide friendly NPC health bars and show only their names.",
+                getValue = function() return DBVal("friendlyNPCNameOnly") ~= false end,
+                setValue = function(v)
+                    DB().friendlyNPCNameOnly = v
+                    if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                    KT:RefreshPage()
+                end,
+                disabled = friendlyNPCsOff,
+                disabledTooltip = "Show Friendly NPC Nameplates"
+            }); y = y - h
+
+
+        _, h = W:DualRow(parent, y,
             {
                 type = "toggle",
                 text = LText("Show Enemy Pet Nameplates"),
@@ -3603,7 +3148,8 @@ initFrame:SetScript("OnEvent", function(self)
                     if SetCVar then pcall(SetCVar, "nameplateShowEnemyPets", v and 1 or 0) end
                 end,
                 tooltip = "Toggle visibility of enemy pet nameplates."
-            }); y = y - h
+            },
+            { type = "label", text = "" }); y = y - h
 
         _, h = W:Spacer(parent, y, 20); y = y - h
 
@@ -4963,6 +4509,9 @@ initFrame:SetScript("OnEvent", function(self)
 
     local function BuildDisplayStickyPreview(pageParent, yOffset, displayMode, W)
         local previewShell = EnsureDisplayStickyPreviewFrame()
+        if previewShell._title and KT.SetAccentTextColor then
+            KT:SetAccentTextColor(previewShell._title, 1)
+        end
         local previewMode = displayMode or _displayPageMode or "enemy"
         local pageW = (pageParent and pageParent.GetWidth and pageParent:GetWidth()) or 700
         if not pageW or pageW <= 0 then pageW = 700 end
@@ -5242,6 +4791,16 @@ initFrame:SetScript("OnEvent", function(self)
             { type = "label", text = "" }); y = y - h
         _, h = W:DualRow(parent, y,
             {
+                type = "toggle", text = LText("Dynamic Level Layout"),
+                getValue = function() return DBVal("useDynamicNameplateLevelLayout") == true end,
+                setValue = function(v)
+                    DB().useDynamicNameplateLevelLayout = v and true or false
+                    RefreshNameplateLevelSettings()
+                end,
+            },
+            { type = "label", text = "" }); y = y - h
+        _, h = W:DualRow(parent, y,
+            {
                 type = "slider", text = LText("Level Font Size"), min = 6, max = 48, step = 1,
                 getValue = function() return tonumber(DBVal("levelFontSize")) or 11 end,
                 setValue = function(v) DB().levelFontSize = v; RefreshNameplateLevelSettings() end,
@@ -5307,6 +4866,9 @@ initFrame:SetScript("OnEvent", function(self)
             local function friendlyPlayersOff()
                 return DBVal("showFriendlyPlayers") == false and DBVal("friendlyShowDefaultNames") ~= true
             end
+            local function friendlyNPCsOff()
+                return DBVal("showFriendlyNPCs") ~= true
+            end
             local friendlyDisplayHeader
             local friendlyPlayerModeRow
             local friendlyNPCDisplayRow
@@ -5335,10 +4897,10 @@ initFrame:SetScript("OnEvent", function(self)
                 },
                 {
                     type = "toggle",
-                    text = LText("Make Friendly Nameplates Name Only"),
-                    getValue = function() return DBVal("friendlyNameOnly") ~= false end,
+                    text = LText("Only Name - Friendly Players"),
+                    getValue = function() return DBVal("friendlyPlayerNameOnly") ~= false end,
                     setValue = function(v)
-                        DB().friendlyNameOnly = v
+                        DB().friendlyPlayerNameOnly = v
                         if SetCVar then
                             pcall(SetCVar, "nameplateShowOnlyNameForFriendlyPlayerUnits", v and 1 or 0)
                         end
@@ -5348,7 +4910,75 @@ initFrame:SetScript("OnEvent", function(self)
                     disabled = friendlyPlayersOff,
                     disabledTooltip = "Show Friendly Player Nameplates",
                 }); y = y - h
+            friendlyNPCDisplayRow, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Friendly NPC Nameplates"),
+                    getValue = function() return DBVal("showFriendlyNPCs") == true end,
+                    setValue = function(v)
+                        DB().showFriendlyNPCs = v
+                        if SetCVar then
+                            pcall(SetCVar, "nameplateShowFriendlyNPCs", v and 1 or 0)
+                            pcall(SetCVar, "nameplateShowFriendlyNpcs", v and 1 or 0)
+                        end
+                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                        KT:RefreshPage()
+                    end,
+                },
+                {
+                    type = "toggle",
+                    text = LText("Only Name - Friendly NPCs"),
+                    tooltip = "Hide friendly NPC health bars and show only their names.",
+                    getValue = function() return DBVal("friendlyNPCNameOnly") ~= false end,
+                    setValue = function(v)
+                        DB().friendlyNPCNameOnly = v
+                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                        KT:RefreshPage()
+                    end,
+                    disabled = friendlyNPCsOff,
+                    disabledTooltip = "Show Friendly NPC Nameplates",
+                }); y = y - h
 
+            local friendlyInstanceModeValues = {
+                name_only = LText("Only Name"),
+                always = LText("KUI Health Bars"),
+                never = LText("Hide Friendly Nameplates"),
+            }
+            local friendlyInstanceModeOrder = { "name_only", "always", "never" }
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "dropdown",
+                    text = LText("Friendly Players in Instances"),
+                    tooltip = LText("Choose how friendly player nameplates behave in dungeons, raids and scenarios."),
+                    values = friendlyInstanceModeValues,
+                    order = friendlyInstanceModeOrder,
+                    getValue = function()
+                        local value = DBVal("friendlyPlayersInInstances") or "name_only"
+                        return friendlyInstanceModeValues[value] and value or "name_only"
+                    end,
+                    setValue = function(v)
+                        DB().friendlyPlayersInInstances = v
+                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                        KT:RefreshPage()
+                    end,
+                },
+                {
+                    type = "dropdown",
+                    text = LText("Friendly NPCs in Instances"),
+                    tooltip = LText("Choose how friendly NPC nameplates behave in dungeons, raids and scenarios."),
+                    values = friendlyInstanceModeValues,
+                    order = friendlyInstanceModeOrder,
+                    getValue = function()
+                        local value = DBVal("friendlyNPCsInInstances") or "name_only"
+                        return friendlyInstanceModeValues[value] and value or "name_only"
+                    end,
+                    setValue = function(v)
+                        DB().friendlyNPCsInInstances = v
+                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
+                        KT:RefreshPage()
+                    end,
+                }); y = y - h
             _, h = W:DualRow(parent, y,
                 {
                     type = "slider",
@@ -5361,7 +4991,7 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().friendlyPlateYOffset = v
                         if ns.RefreshFriendlyPlateYOffset then ns.RefreshFriendlyPlateYOffset() end
                     end,
-                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyNameOnly") ~= false end,
+                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") ~= false end,
                     disabledTooltip = "Requires friendly health bars",
                 },
                 {
@@ -5375,7 +5005,7 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().friendlyNameOnlyYOffset = v
                         if ns.RefreshFriendlyNameOnlyOffset then ns.RefreshFriendlyNameOnlyOffset() end
                     end,
-                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyNameOnly") == false end,
+                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") == false end,
                     disabledTooltip = "Requires Name Only mode",
                 }); y = y - h
 
@@ -5391,7 +5021,7 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().friendlyHealthBarHeight = v
                         if ns.RefreshFriendlyPlateSize then ns.RefreshFriendlyPlateSize() end
                     end,
-                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyNameOnly") ~= false end,
+                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") ~= false end,
                     disabledTooltip = "Requires friendly health bars",
                 },
                 {
@@ -5405,24 +5035,12 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().friendlyHealthBarWidth = v
                         if ns.RefreshFriendlyPlateSize then ns.RefreshFriendlyPlateSize() end
                     end,
-                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyNameOnly") ~= false end,
+                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") ~= false end,
                     disabledTooltip = "Requires friendly health bars",
                 }); y = y - h
 
-            friendlyNPCDisplayRow, h = W:DualRow(parent, y,
-                {
-                    type = "toggle",
-                    text = LText("Show Friendly NPC Nameplates"),
-                    getValue = function() return DBVal("showFriendlyNPCs") == true end,
-                    setValue = function(v)
-                        DB().showFriendlyNPCs = v
-                        if SetCVar then
-                            pcall(SetCVar, "nameplateShowFriendlyNPCs", v and 1 or 0)
-                            pcall(SetCVar, "nameplateShowFriendlyNpcs", v and 1 or 0)
-                        end
-                        if ns.UpdateFriendlyNameplateSystem then ns.UpdateFriendlyNameplateSystem() end
-                    end,
-                },
+            _, h = W:DualRow(parent, y,
+                { type = "label", text = "" },
                 {
                     type = "toggle",
                     text = LText("Show Friendly Health Percent"),
@@ -5431,7 +5049,7 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().friendlyHideHealthText = not v
                         if ns.RefreshFriendlyHealthText then ns.RefreshFriendlyHealthText() end
                     end,
-                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyNameOnly") ~= false end,
+                    disabled = function() return friendlyPlayersOff() or DBVal("friendlyPlayerNameOnly") ~= false end,
                     disabledTooltip = "Requires friendly health bars",
                 }); y = y - h
 

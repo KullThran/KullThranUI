@@ -958,16 +958,35 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.0"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.1"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.1"] = {
+        version = "5.1.1",
+        published = "2026-09-27",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "KullThranUI 5.1.1",
+            "Added separate Only Name and instance-display controls for friendly players and NPCs, including KUI bars, name-only mode, and hiding friendly plates.",
+            "Reduced active friendly player and NPC health-bar dimensions and stabilized their custom overlays, font handling, and Blizzard-frame suppression.",
+            "Added runtime diagnostics for comparing Blizzard, KUI, Plater, and Platynator nameplate ownership and layout.",
+            "Added configurable elite/rare indicators, no-portrait placement, classification artwork, and refreshed level/PvP metadata for Unit Frames.",
+            "Improved Unit Frames cast-bar cleanup, secret-value resource handling, dispel overlays, and metadata refresh after target or unit changes.",
+            "Made Unlock Mode remember the UI reference size and rescale saved positions when UI scale or display dimensions change.",
+            "Added the KUI options icon setting, new translations for indicator controls, and improved Action Bars and Minimap option presentation.",
+            "Corrected the LFG skin right border and restored Minimap state across cinematic transitions.",
+            "Hardened the stable release workflow with explicit release, beta, and alpha classification and dynamic package versioning.",
+        },
+    },
     ["5.1.0"] = {
         version = "5.1.0",
         published = "2026-09-25",
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
+            "KullThranUI 5.1.0",
             "Added a dedicated gold border highlight for quest items in Bags, with container metadata and item-class fallback detection.",
             "Corrected parent-scale handling for standard and friendly Nameplates so rendered plates keep the intended scale during reassignment and cleanup.",
             "Updated KUI and every module to the 5.1.0 release version.",
@@ -2204,12 +2223,12 @@ local CHANGELOG_ENTRIES = {
 local function GetCurrentKUIVersion()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
         or KT.VERSION
-        or "5.1.0"
+        or "5.1.1"
     -- When loaded from the source tree without the BigWigs packager the TOC
     -- still contains the literal "@project-version@" token.  Fall back to the
     -- hardcoded release version so the changelog and options never display it.
     if ver and ver:find("@", 1, true) then
-        ver = "5.1.0"
+        ver = "5.1.1"
     end
     return ver
 end
@@ -3289,7 +3308,7 @@ local function UpdateMenuThemeVisuals(menu)
         local vr = math.floor((accent.r or 1) * 255 + 0.5)
         local vg = math.floor((accent.g or 0) * 255 + 0.5)
         local vb = math.floor((accent.b or 0.333) * 255 + 0.5)
-	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.0")))
+	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.1")))
     end
 
     for _, btn in ipairs(menu._sizePresetButtons or {}) do
@@ -4945,12 +4964,12 @@ local function CreateMenuFrame()
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
     local verColor = string.format("%02x%02x%02x", accentR*255, accentG*255, accentB*255)
-	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.0") .. "|r")
+	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.1") .. "|r")
     titleTex:SetPoint("TOPLEFT", f, "TOPLEFT", 94, -68)
     titleTex:SetWidth(190)
     titleTex:SetJustifyH("LEFT")
     f._versionText = titleTex
-	f._versionValue = KT.VERSION or "5.1.0"
+	f._versionValue = KT.VERSION or "5.1.1"
 
     -- Corrupted generated comment removed.
     local nav = CreateFrame("Frame", nil, f)
