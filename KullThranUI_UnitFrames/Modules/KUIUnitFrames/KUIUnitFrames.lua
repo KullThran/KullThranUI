@@ -2088,6 +2088,8 @@ local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
     if backdrop._3d then backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1) end
     if backdrop._shapeBorderFrame then backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3) end
     PP.SetHiddenEdge(frame.unifiedBorder, (side == "left" and 3) or (side == "right" and 4) or nil)
+    -- The power bar always sits below the circular portrait.
+    if frame.Power then frame.Power:SetFrameLevel(frame:GetFrameLevel() + 1) end
 end
 
 local function ResolveCircularPortraitColor(frame, uSettings, unitToken)
