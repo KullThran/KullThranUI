@@ -1964,8 +1964,7 @@ function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation)
     else
         yaw = lookRight and 0 or -0.9
     end
-    return yaw + math.rad(tonumber(rotation) or 0), shifted and 2 or 1,
-        shifted and (lookRight and -0.3 or 0.3) or 0
+    return yaw + math.rad(tonumber(rotation) or 0), shifted and 1.5 or 1, 0
 end
 
 local function GetDefaultPortraitFacing(unit)
