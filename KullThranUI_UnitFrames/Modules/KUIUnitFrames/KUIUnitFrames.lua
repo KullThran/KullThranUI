@@ -5368,7 +5368,9 @@ local function SetupUnitIndicators(frame, unit)
     lvlOvr:SetFrameLevel(iOvr:GetFrameLevel() + 1)
 
     if not frame._kuiLevelCircle then
-        local circle = lvlOvr:CreateTexture(nil, "OVERLAY")
+        -- Sublevel -1: the opaque disc must stay under the level number, which
+        -- shares this overlay and layer.
+        local circle = lvlOvr:CreateTexture(nil, "OVERLAY", nil, -1)
         circle:SetTexture("Interface\\Buttons\\WHITE8X8")
         -- Fully opaque, not 90%: the frame-level ordering here is already
         -- correct (63 > 62), so any residual "ring still shows through" is
@@ -5391,7 +5393,7 @@ local function SetupUnitIndicators(frame, unit)
         frame._kuiLevelCircleMask = circleMask
     end
     if not frame._kuiLevelText then
-        local levelText = lvlOvr:CreateFontString(nil, "OVERLAY")
+        local levelText = lvlOvr:CreateFontString(nil, "OVERLAY", nil, 7)
         SetFSFont(levelText, 11, "OUTLINE")
         levelText:SetJustifyH("LEFT")
         levelText:SetWordWrap(false)
