@@ -17,11 +17,7 @@ local R, G, B, A = 0.0, 0.83, 0.77, 0.95
 
 local function Enabled()
     local db = KT and KT.db and KT.db.profile and KT.db.profile.unitFrames
-    if db and db.healPrediction ~= nil then return db.healPrediction ~= false end
-    -- Unset: on for the Classic/Forever/Retail looks, off for KUI Style (Retail default).
-    local VT = KT and KT.VisualThemes
-    local theme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
-    return theme == "classic" or theme == "forever" or theme == "retail"
+    return not (db and db.healPrediction == false)
 end
 
 local function Build(frame)

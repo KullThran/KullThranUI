@@ -260,9 +260,8 @@ local defaults = {
         -- Adapters/UnitFrames.lua's seed(), falls back to the live
         -- renderedTheme check at render time when nil, and existing kui
         -- profiles are repaired by the migration below.
-        -- Smooth health/power bar value changes. Off by default so KUI Style
-        -- keeps the Retail behaviour; available as an option in every style.
-        smoothBars = false,
+        -- Smooth health/power bar value changes, on by default in every style.
+        smoothBars = true,
         -- "none" | "elite" | "rare": custom rare/elite border on the Player portrait.
         playerClassificationBorder = "none",
         levelFont = "AAA_ITC_Avant_Garde",
@@ -368,7 +367,7 @@ local defaults = {
             showPortrait = false,
             portraitMode = "2d",
             classThemeStyle = "modern",
-            portraitFacing = "normal",
+            portraitFacing = "flipped",
             portraitSide = "left",
             portraitSize = 0,
             portraitX = 0,
@@ -461,7 +460,7 @@ local defaults = {
             showBuffs = true,
             showDebuffs = true,
             onlyPlayerDebuffs = false,
-            portraitFacing = "flipped",
+            portraitFacing = "normal",
             buffAnchor = "topleft",
             buffGrowth = "auto",
             debuffAnchor = "bottomleft",
@@ -2299,8 +2298,16 @@ local function ApplyClassIconTexture(tex, classToken, style)
 end
 
 local function GetDefaultPortraitFacing(unit)
-    if unit == "target" then
+    -- Player and target still face each other ("look inward" toward their
+    -- own frame content), but swapped from the previous defaults: player
+    -- now faces the direction target used to, and vice versa. Other units
+    -- (focus/pet/boss) keep their previous "normal" default, unaffected by
+    -- this swap.
+    if unit == "player" then
         return "flipped"
+    end
+    if unit == "target" then
+        return "normal"
     end
     return "normal"
 end
@@ -2325,8 +2332,10 @@ local function GetPortraitFacing(unit, settings)
     local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
         and KT.VisualThemes:GetRenderedTheme()
     local classicKit = db and db.profile and db.profile.frameArtKit == "classic"
-    -- KUI Style keeps the Retail behaviour: the saved/default facing below.
-    if (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail" or classicKit)
+    -- KUI joins this rule: its default profile stores portraitFacing (player "flipped",
+    -- target "normal") for everyone, which made the shapeshift-aware branch below dead code
+    -- and left humanoid portraits looking outward.
+    if (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail" or renderedTheme == "kui" or classicKit)
         and (unit == "player" or unit == "target") then
         if unit == "target" then
             -- Target must always be the MIRROR IMAGE of player's own
@@ -2362,6 +2371,24 @@ local function GetPortraitFacing(unit, settings)
         end
     end
 
+    -- kui style used to always use the fixed default above
+    -- (GetDefaultPortraitFacing's "flipped" for player) regardless of
+    -- shapeshift state -- right by coincidence for a shapeshifted Druid
+    -- (the 2D form icon's baked facing is the opposite of the normal 3D
+    -- portrait's) but wrong for every ordinary humanoid portrait. Same
+    -- shapeshift-aware check the stock themes above already use, applied
+    -- here too -- but only when the user hasn't picked an explicit facing
+    -- of their own (settings.portraitFacing), since that deliberate choice
+    -- always wins.
+    if unit == "player" and not (settings and settings.portraitFacing) then
+        local shapeshifted = false
+        if type(GetShapeshiftForm) == "function" then
+            local ok, form = pcall(GetShapeshiftForm)
+            shapeshifted = ok and type(form) == "number" and form > 0
+        end
+        return shapeshifted and "flipped" or "normal"
+    end
+
     return facing
 end
 
@@ -2374,19 +2401,6 @@ end
 -- non-shapeshifted player to "normal" regardless of settings), and leaves
 -- the ring's flip mismatched with the portrait's actual visual orientation.
 local function GetClassificationTextureFlipped(unit, settings)
-    -- KUI Style keeps the Retail rule: mirror for the portrait side, then
-    -- combine with the portrait's own facing.
-    local VTc = KT.VisualThemes
-    local themeC = VTc and VTc.GetRenderedTheme and VTc:GetRenderedTheme()
-    local classicKitC = db and db.profile and db.profile.frameArtKit == "classic"
-    if not (themeC == "classic" or themeC == "forever" or themeC == "retail" or classicKitC) then
-        local facingFlipped = GetPortraitFacing(unit, settings) == "flipped"
-        local side = settings and settings.portraitSide
-        if not side then
-            side = (unit == "player" or unit == "pet") and "left" or "right"
-        end
-        return (side == "right") ~= facingFlipped
-    end
     -- Direct match to portrait facing (== "flipped"). Returning false for
     -- target puts the dragon's head top-left, snout pointing inward/left,
     -- which is the wrong side.
@@ -11023,6 +11037,36 @@ local function ApplyTargetCastbarYellowDefault()
     profile._targetCastbarYellow20260803 = true
 end
 
+-- Player/target portraitFacing defaults were swapped (player normal->flipped,
+-- target flipped->normal) -- the two still face each other, just mirrored
+-- from before. Changing the defaults table alone only affects brand-new
+-- profiles; AceDB never overwrites a key an existing profile already has
+-- saved. This migrates existing profiles once, only when the saved value
+-- still exactly matches the OLD default (an explicit custom choice is left
+-- alone).
+-- Attached to KT (not a top-level `local function`): this file is already at
+-- Lua 5.1's 200-active-local ceiling for its main chunk -- one more
+-- `local function` here fails to compile with "Only 200 active local
+-- variables and upvalues can be existed at the same time". Matches the
+-- same KT:/Mod: method pattern already used elsewhere in this file for
+-- exactly this reason.
+function KT:SwapPortraitFacingDefaults()
+    local profile = db.profile
+    if not profile or profile._portraitFacingSwap20260929 then return end
+
+    local player = profile.player
+    if player and player.portraitFacing == "normal" then
+        player.portraitFacing = "flipped"
+    end
+
+    local target = profile.target
+    if target and target.portraitFacing == "flipped" then
+        target.portraitFacing = "normal"
+    end
+
+    profile._portraitFacingSwap20260929 = true
+end
+
 -- Classic's VisualThemes seed (Adapters/UnitFrames.lua) used to set
 -- portraitStyle = "attached" -- wrong, since Classic's real stock box
 -- (ApplyClassicUnitFrameArt) assumes a round-clipped portrait like Forever's.
@@ -11409,6 +11453,7 @@ function Mod:OnInitialize()
     MigrateLegacyCrimsonAccent()
     ApplyUpdatedDefaultPreset()
     ApplyTargetCastbarYellowDefault()
+    KT:SwapPortraitFacingDefaults()
     KT:MigrateClassicPortraitCircular()
     KT:MigrateRetailPortraitCircular()
     KT:MigrateRetailHealthGreen()
