@@ -3054,14 +3054,15 @@ ns.PF_Portrait.ApplyModel = function(model, unit, force)
     return true
 end
 
--- Models cannot be masked, so a circular portrait keeps the model inside the
--- square inscribed in the ring. Other styles fill the whole portrait slot.
+-- Models cannot be masked, so a circular portrait shrinks the model until its
+-- corners end under the ring, which is drawn above it. Other styles fill the
+-- whole portrait slot.
 ns.PF_Portrait.AnchorModel = function(button, metrics)
     local model = button.portraitModel
     if not model then return end
     local inset = 0
     if metrics.style == "circular" then
-        inset = math.floor(metrics.size * 0.15 + 0.5)
+        inset = math.floor(metrics.size * 0.22 + 0.5)
     end
     model:ClearAllPoints()
     ns.PF_Portrait.Point(model, "TOPLEFT", button.portraitFrame, "TOPLEFT", inset, -inset)
@@ -3081,6 +3082,7 @@ ns.PF_Portrait.EnsureModel = function(button)
     local ok, model = pcall(CreateFrame, "PlayerModel", nil, button.portraitFrame)
     if not ok or not model then return nil end
     model:SetAllPoints(button.portraitFrame)
+    model:SetFrameLevel(button.portraitFrame:GetFrameLevel() + 1)
     ns.PF_Portrait.Call(model, "SetCamera", 0)
     model:Hide()
     button.portraitModel = model
@@ -3232,9 +3234,15 @@ ns.PF_Portrait.ApplyLayout = function(frame, db, width, height, padding)
     local portraitStrata = ns.PF_Portrait.GetStrataAbove(frame.health)
     frame.portraitFrame:SetFrameStrata(portraitStrata)
     frame.portraitFrame:SetFrameLevel(frame.health:GetFrameLevel() + 3)
+    if frame.portraitModel then
+        frame.portraitModel:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 1)
+    end
+    if frame.portraitBorderFrame then
+        frame.portraitBorderFrame:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 3)
+    end
     if frame.overlayFrame then
         frame.overlayFrame:SetFrameStrata(portraitStrata)
-        frame.overlayFrame:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 2)
+        frame.overlayFrame:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 4)
     end
 end
 
@@ -3282,7 +3290,12 @@ function Mod:CreateUnitButton(parent, name)
     button.portraitClass:SetPoint("BOTTOMRIGHT", -2, 2)
     button.portraitClass:SetAlpha(0.8)
     button.portraitClass:Hide()
-    button.portraitBorder = button.portraitFrame:CreateTexture(nil, "OVERLAY")
+    -- The ring sits on its own frame above the portrait so it also covers 3D
+    -- models, which draw above every texture of the portrait frame.
+    button.portraitBorderFrame = CreateFrame("Frame", nil, button.portraitFrame)
+    button.portraitBorderFrame:SetAllPoints(button.portraitFrame)
+    button.portraitBorderFrame:SetFrameLevel(button.portraitFrame:GetFrameLevel() + 3)
+    button.portraitBorder = button.portraitBorderFrame:CreateTexture(nil, "OVERLAY")
     button.portraitBorder:SetTexture(ns.PF_Portrait.media .. "circle_border.tga")
     button.portraitBorder:SetAllPoints()
     button.portraitBorder:Hide()

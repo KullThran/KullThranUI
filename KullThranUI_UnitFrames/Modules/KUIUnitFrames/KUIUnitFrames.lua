@@ -2038,6 +2038,9 @@ local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
         backdrop:SetPoint("LEFT", health, "RIGHT", -overlap + xOffset, yOffset)
     end
     backdrop:SetFrameLevel(frame:GetFrameLevel() + 2)
+    -- Keep the 3D model under the ring frame after the level change.
+    if backdrop._3d then backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1) end
+    if backdrop._shapeBorderFrame then backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3) end
 end
 
 local function ResolveCircularPortraitColor(frame, uSettings, unitToken)
@@ -2205,7 +2208,12 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
 
     -- === TGA BORDER OVERLAY ===
     if not backdrop._shapeBorderTex then
-        backdrop._shapeBorderTex = backdrop:CreateTexture(nil, "OVERLAY")
+        -- The ring lives on its own frame above the portrait so it also
+        -- covers 3D models, which draw above every texture of the backdrop.
+        local ringFrame = CreateFrame("Frame", nil, backdrop)
+        ringFrame:SetAllPoints(backdrop)
+        backdrop._shapeBorderFrame = ringFrame
+        backdrop._shapeBorderTex = ringFrame:CreateTexture(nil, "OVERLAY")
     end
     backdrop._shapeBorderTex:ClearAllPoints()
     PP.Point(backdrop._shapeBorderTex, "TOPLEFT", backdrop, "TOPLEFT", -bExp, bExp)
@@ -2260,10 +2268,15 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
     end
     if backdrop._3d then
         -- 3D models ignore SetClipsChildren and masks, so keep them within the
-        -- backdrop bounds. A circular portrait keeps the model inside the
-        -- square inscribed in the ring (18% free on each side). Art scale is
+        -- backdrop bounds. A circular portrait shrinks the model so its
+        -- corners end under the ring, which is drawn above it. Art scale is
         -- not applied to 3D (camera zoom is fixed).
-        local modelInset = isCircular and math.floor(bh2 * 0.18 + 0.5) or 0
+        local ringSize = bh2 + 2 * bExp
+        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.28 + 0.5)) or 0
+        backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1)
+        if backdrop._shapeBorderFrame then
+            backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3)
+        end
         backdrop._3d:ClearAllPoints()
         PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", modelInset, -modelInset)
         PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -modelInset, modelInset)
