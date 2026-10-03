@@ -238,7 +238,9 @@ end
 local function ApplyStockArtTexture(tex, atlasName, mirror)
     if not (tex and atlasName) then return false end
 
-    local info = (type(KT.ResolveRetailAtlasOverride) == "function" and KT.ResolveRetailAtlasOverride(atlasName)) or nil
+    local info = (type(KT.ResolveRetailAtlasOverride) == "function" and KT.ResolveRetailAtlasOverride(atlasName))
+        or (type(KT.ResolveForeverAtlasOverride) == "function" and KT.ResolveForeverAtlasOverride(atlasName))
+        or nil
     if info and (info.file or info.filename) and info.leftTexCoord and info.rightTexCoord
         and info.topTexCoord and info.bottomTexCoord then
         tex:SetTexture(info.file or info.filename)
