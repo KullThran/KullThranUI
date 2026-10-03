@@ -3257,16 +3257,20 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         model3D:SetCamera(0)
         model3D:Hide()
         -- The portrait element resets the camera on every model change, so the
-        -- closer framing and the facing are applied after each update. The
-        -- character looks toward the frame, like the 2D portrait does.
+        -- user's zoom, rotation and offsets are applied after each update.
+        -- The defaults leave the camera untouched.
         model3D.PostUpdate = function(self, updatedUnit)
-            local connected = UnitIsConnected(updatedUnit)
-            if not (connected and UnitIsVisible(updatedUnit)) then return end
+            if not (UnitIsConnected(updatedUnit) and UnitIsVisible(updatedUnit)) then return end
             local key = UnitToSettingsKey(updatedUnit)
-            local facing = GetPortraitFacing(updatedUnit, key and db.profile[key])
-            if self.SetCamDistanceScale then self:SetCamDistanceScale(0.72) end
-            if self.SetPosition then self:SetPosition(0, 0, -0.02) end
-            if self.SetFacing then self:SetFacing(facing == "flipped" and -0.55 or 0.55) end
+            local s3 = key and db.profile[key]
+            local zoom = math.max(0.25, ((s3 and s3.portrait3DZoom) or 100) / 100)
+            local rot = math.rad((s3 and s3.portrait3DRotation) or 0)
+            if GetPortraitFacing(updatedUnit, s3) == "flipped" then rot = -rot end
+            local offX = ((s3 and s3.portrait3DX) or 0) / 100
+            local offY = ((s3 and s3.portrait3DY) or 0) / 100
+            if self.SetCamDistanceScale then self:SetCamDistanceScale(1 / zoom) end
+            if self.SetPosition then self:SetPosition(0, offX, offY) end
+            if self.SetFacing then self:SetFacing(rot) end
         end
         backdrop._3d = model3D
         return model3D
@@ -6226,6 +6230,10 @@ local function ReloadFrames()
             -- Swap 2D/3D portrait mode if changed (no reload needed)
             if frame.Portrait then
                 SwapPortraitMode(frame)
+                -- Re-apply the 3D zoom, rotation and offsets without a reload.
+                if frame.Portrait.is2D == false and frame.Portrait.PostUpdate then
+                    frame.Portrait:PostUpdate(unit)
+                end
             end
 
             -- Refresh class art style texture (may have changed without mode change)

@@ -2349,6 +2349,26 @@ local function AddFrameLayoutControls(container, W, mode)
         function(v) ApplyValue(configMode, "portraitMode", v) end,
         PORTRAIT_MODE_ORDER
     ); by = by + h
+    _, h = W:Slider(container, "3D Portrait Zoom", -by,
+        function() return GetValue(configMode, "portrait3DZoom", 100) end,
+        function(v) ApplyValue(configMode, "portrait3DZoom", v) end,
+        50, 250, 1, "%d%%"
+    ); by = by + h
+    _, h = W:Slider(container, "3D Portrait Rotation", -by,
+        function() return GetValue(configMode, "portrait3DRotation", 0) end,
+        function(v) ApplyValue(configMode, "portrait3DRotation", v) end,
+        -90, 90, 1, "%d"
+    ); by = by + h
+    _, h = W:Slider(container, "3D Portrait X Offset", -by,
+        function() return GetValue(configMode, "portrait3DX", 0) end,
+        function(v) ApplyValue(configMode, "portrait3DX", v) end,
+        -50, 50, 1, "%d"
+    ); by = by + h
+    _, h = W:Slider(container, "3D Portrait Y Offset", -by,
+        function() return GetValue(configMode, "portrait3DY", 0) end,
+        function(v) ApplyValue(configMode, "portrait3DY", v) end,
+        -50, 50, 1, "%d"
+    ); by = by + h
     _, h = W:Dropdown(container, "Portrait Side", -by, PORTRAIT_SIDES,
         function() return GetValue(configMode, "portraitSide", "left") end,
         function(v) ApplyValue(configMode, "portraitSide", v) end
