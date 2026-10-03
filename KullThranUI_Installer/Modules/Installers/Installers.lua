@@ -3645,136 +3645,120 @@ function Mod:ShowThemeStep()
     content:SetAllPoints()
     self.content = content
 
+    -- Applying a Visual Style reloads the UI: come back to this very page.
+    local idb = KT.db.profile.installer
+    local function ClearResume()
+        if idb then idb.reopenStep, idb.resumeStep, idb.reopenOnReload = nil, nil, nil end
+    end
+    if idb and idb.dontShowAgain ~= true then
+        idb.reopenStep, idb.resumeStep, idb.reopenOnReload, idb.isOpen = 3, 3, true, true
+    end
+
     local title = content:CreateFontString(nil, "OVERLAY")
     content.titleFS = title
-    title:SetPoint("TOP", 0, -30)
+    title:SetPoint("TOP", 0, -26)
     title:SetFont(GetKTFont(), 24, "OUTLINE")
-    title:SetText(L["Color Theme"] or "Color Theme")
+    title:SetText(L["Visual Style & Color"] or "Visual Style & Color")
     title:SetTextColor(unpack(KT_COLOR))
 
     local desc = content:CreateFontString(nil, "OVERLAY")
-    desc:SetPoint("TOP", title, "BOTTOM", 0, -10)
-    desc:SetWidth(600)
-    desc:SetFont(GetKTFont(), 14)
-    desc:SetText(L["Pick the main color behavior for the entire interface."] or "Pick the main color behavior for the entire interface.")
+    desc:SetPoint("TOP", title, "BOTTOM", 0, -8)
+    desc:SetWidth(700)
+    desc:SetFont(GetKTFont(), 13)
+    desc:SetText(L["Pick the look of your interface and its accent color."] or "Pick the look of your interface and its accent color.")
     desc:SetTextColor(0.9, 0.9, 0.9)
     desc:SetJustifyH("CENTER")
-    
-    local presetContainer = CreateFrame("Frame", nil, content)
-    presetContainer:SetSize(600, 300)
-    presetContainer:SetPoint("TOP", desc, "BOTTOM", 0, -30)
-    
-    local presetOrder = {
-        "kui_crimson", "frost_blue", "emerald_night", "royal_violet",
-        "ember_gold", "obsidian_teal", "blood_moon", "sunforge",
-        "arcwine", "stormsteel", "plague_green", "sakura_fall"
-    }
-    
-    local currentPreset = KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson"
-    local isClass = KT.db.profile.skin and KT.db.profile.skin.kullthranUIColorByClass
-    local isCustom = KT.db.profile.skin and not KT.db.profile.skin.kullthranUIColorByClass and KT.db.profile.skin.borderTheme == "CUSTOM"
-    
+
+    local contentWidth = 750
+    local function SectionLabel(text, yOff)
+        local fs = content:CreateFontString(nil, "OVERLAY")
+        fs:SetFont(GetKTFont(), 11, "OUTLINE")
+        fs:SetPoint("TOPLEFT", content, "TOP", -(contentWidth / 2), yOff)
+        fs:SetText(string.upper(text))
+        fs:SetTextColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 1)
+        return fs
+    end
+
+    -- Visual Style cards (same cards as the options menu).
+    local stylesTop = -92
+    SectionLabel(L["Visual Style"] or "Visual Style", stylesTop)
+    local stylesHeight = 0
+    if KT.VisualThemes and KT.VisualThemes.CreateSelector then
+        local selectorContainer = CreateFrame("Frame", nil, content)
+        selectorContainer:SetSize(contentWidth, 250)
+        selectorContainer:SetPoint("TOP", content, "TOP", 0, stylesTop - 18)
+        stylesHeight = KT.VisualThemes:CreateSelector(selectorContainer, {
+            columns = 4, compact = true, width = contentWidth,
+        }) or 238
+    end
+
+    -- Accent colour cards.
+    local accentTop = stylesTop - 18 - math.max(stylesHeight, 238) - 12
+    SectionLabel(L["Accent Color"] or "Accent Color", accentTop)
+
+    local currentPreset, isClass, isCustom
+    local function ReadState()
+        local skin = KT.db.profile.skin
+        currentPreset = skin and skin.stylePreset or "kui_crimson"
+        isClass = skin and skin.kullthranUIColorByClass
+        isCustom = skin and not skin.kullthranUIColorByClass and skin.borderTheme == "CUSTOM"
+    end
+    ReadState()
+
     local buttons = {}
-    
+    local refreshGrid
     local function UpdateAllButtons()
-        currentPreset = KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson"
-        isClass = KT.db.profile.skin and KT.db.profile.skin.kullthranUIColorByClass
-        isCustom = KT.db.profile.skin and not KT.db.profile.skin.kullthranUIColorByClass and KT.db.profile.skin.borderTheme == "CUSTOM"
-        
+        ReadState()
+        if refreshGrid then refreshGrid() end
         for _, b in ipairs(buttons) do
             if b.UpdateState then b.UpdateState() end
         end
     end
     content.UpdateAllButtons = UpdateAllButtons
-    
-    local btnWidth = 180
-    local btnHeight = 36
-    local btnGapX = 10
-    local btnGapY = 8
-    local cols = 3
-    
-    local by = 0
-    for i, presetKey in ipairs(presetOrder) do
-        local preset = KT.STYLE_PRESETS and KT.STYLE_PRESETS[presetKey]
-        if preset then
-            local row = math.floor((i - 1) / cols)
-            local col = (i - 1) % cols
-            local x = (col - 1) * (btnWidth + btnGapX)
-            local yOff = by + (row * (btnHeight + btnGapY))
-            
-            local btn = CreateFrame("Button", nil, presetContainer, "BackdropTemplate")
-            btn:SetSize(btnWidth, btnHeight)
-            btn:SetPoint("TOP", presetContainer, "TOP", x, -yOff)
-            if KT.AddBackdrop then
-                KT:AddBackdrop(btn, preset.background.r, preset.background.g, preset.background.b, 0.96)
+
+    local accentContainer = CreateFrame("Frame", nil, content)
+    accentContainer:SetSize(contentWidth, 100)
+    accentContainer:SetPoint("TOP", content, "TOP", 0, accentTop - 18)
+    local accentHeight
+    accentHeight, refreshGrid = KT:CreateAccentPresetGrid(accentContainer, {
+        columns = 6, width = contentWidth, cardHeight = 38, gap = 8,
+        fontPath = GetKTFont(), fontSize = 10,
+        isSelected = function(presetKey)
+            return (not isClass) and (not isCustom) and (currentPreset == presetKey)
+        end,
+        onSelect = function(presetKey)
+            KT.db.profile.skin = KT.db.profile.skin or {}
+            KT.db.profile.castbar = KT.db.profile.castbar or {}
+            KT.db.profile.castbar.colorMode = "THEME"
+            KT.db.profile.skin.kullthranUIColorByClass = false
+            KT.db.profile.skin.borderTheme = "KULLTHRAN"
+            if KT.ApplySmartStylePreset then KT.ApplySmartStylePreset(presetKey) end
+            UpdateAllButtons()
+            if KT.SyncSmartStyleDerivedTargets then KT.SyncSmartStyleDerivedTargets() end
+            if KT.RefreshStylePalette then KT:RefreshStylePalette() end
+            if KT.GetModule then
+                local cb = KT:GetModule("CastBar", true)
+                if cb and cb.Refresh then cb:Refresh("ApplySettings") end
             end
-            
-            local function UpdateState()
-                local selected = (not isClass) and (not isCustom) and (currentPreset == presetKey)
-                if KT.AddBorder then
-                    KT:AddBorder(btn, preset.accent.r, preset.accent.g, preset.accent.b, selected and 0.95 or 0.45)
-                end
-            end
-            btn.UpdateState = UpdateState
-            UpdateState()
+            Mod:UpdateKTColor()
+        end,
+    })
 
-            local titleFS = btn:CreateFontString(nil, "OVERLAY")
-            titleFS:SetFont(GetKTFont(), 10, "OUTLINE")
-            titleFS:SetPoint("CENTER")
-            titleFS:SetText(preset.label)
-            titleFS:SetTextColor(preset.text.r, preset.text.g, preset.text.b, 1)
+    local btnWidth, btnHeight = 180, 30
+    local extraTop = accentTop - 18 - (accentHeight or 84) - 12
 
-            local accentLine = btn:CreateTexture(nil, "ARTWORK")
-            accentLine:SetHeight(2)
-            accentLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 3, 3)
-            accentLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
-            accentLine:SetColorTexture(preset.accent.r, preset.accent.g, preset.accent.b, 1)
-
-            btn:SetScript("OnClick", function()
-                KT.db.profile.skin = KT.db.profile.skin or {}
-                KT.db.profile.castbar = KT.db.profile.castbar or {}
-                KT.db.profile.castbar.colorMode = "THEME"
-                KT.db.profile.skin.kullthranUIColorByClass = false
-                KT.db.profile.skin.borderTheme = "KULLTHRAN"
-                if KT.ApplySmartStylePreset then
-                    KT.ApplySmartStylePreset(presetKey)
-                end
-                UpdateAllButtons()
-                if KT.SyncSmartStyleDerivedTargets then KT.SyncSmartStyleDerivedTargets() end
-                if KT.RefreshStylePalette then KT:RefreshStylePalette() end
-                if KT.GetModule then
-                    local cb = KT:GetModule("CastBar", true)
-                    if cb and cb.Refresh then cb:Refresh("ApplySettings") end
-                end
-                Mod:UpdateKTColor()
-            end)
-            btn:SetScript("OnEnter", function(self)
-                if KT.AddBorder then KT:AddBorder(self, 1, 1, 1, 0.95) end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                UpdateState()
-            end)
-            
-            table.insert(buttons, btn)
-        end
-    end
-    
-    local numPresets = #presetOrder
-    local extraRow = math.floor((numPresets - 1) / cols) + 1
-    local yOffExtra = by + (extraRow * (btnHeight + btnGapY)) + 15
-    
     local function CreateExtraButton(label, isClassBtn, colOffset)
-        local btn = CreateFrame("Button", nil, presetContainer, "BackdropTemplate")
+        local btn = CreateFrame("Button", nil, content, "BackdropTemplate")
         btn:SetSize(btnWidth, btnHeight)
-        btn:SetPoint("TOP", presetContainer, "TOP", colOffset * (btnWidth + btnGapX), -yOffExtra)
+        btn:SetPoint("TOP", content, "TOP", colOffset * (btnWidth + 10), extraTop)
         CreateBackdrop(btn)
         btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
-        
+
         local fs = btn:CreateFontString(nil, "OVERLAY")
         fs:SetFont(GetKTFont(), 12, "OUTLINE")
         fs:SetPoint("CENTER")
         fs:SetText(label)
-        
+
         local function UpdateState()
             local selected = isClassBtn and isClass or (not isClassBtn and isCustom)
             if selected then
@@ -3785,7 +3769,7 @@ function Mod:ShowThemeStep()
         end
         btn.UpdateState = UpdateState
         UpdateState()
-        
+
         btn:SetScript("OnClick", function()
             local skin = KT.db.profile.skin
             KT.db.profile.castbar = KT.db.profile.castbar or {}
@@ -3822,7 +3806,7 @@ function Mod:ShowThemeStep()
         end)
         table.insert(buttons, btn)
     end
-    
+
     CreateExtraButton(L["Class Color"] or "Class Color", true, -0.5)
     CreateExtraButton(L["Custom Color"] or "Custom Color", false, 0.5)
 
@@ -3831,14 +3815,14 @@ function Mod:ShowThemeStep()
     btnNext:SetPoint("BOTTOMRIGHT", -30, 30)
     btnNext:SetText(L["Next Step"])
     SkinButton(btnNext)
-    btnNext:SetScript("OnClick", function() self:ShowGlobalFontStep() end)
+    btnNext:SetScript("OnClick", function() ClearResume(); self:ShowGlobalFontStep() end)
 
     local btnBack = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnBack:SetSize(120, 30)
     btnBack:SetPoint("RIGHT", btnNext, "LEFT", -10, 0)
     btnBack:SetText(L["Previous"])
     SkinButton(btnBack)
-    btnBack:SetScript("OnClick", function() self:ShowLanguageStep() end)
+    btnBack:SetScript("OnClick", function() ClearResume(); self:ShowLanguageStep() end)
 
     local btnSkip = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnSkip:SetSize(120, 30)
@@ -3848,7 +3832,11 @@ function Mod:ShowThemeStep()
 
     local chk = CreateSkipCheckbox(content, btnSkip)
     content.skipChk = chk
-    btnSkip:SetScript("OnClick", function() if chk:GetChecked() then KT.db.profile.installer.showOnLogin = false end self.frame:Hide() end)
+    btnSkip:SetScript("OnClick", function()
+        ClearResume()
+        if chk:GetChecked() then KT.db.profile.installer.showOnLogin = false end
+        self.frame:Hide()
+    end)
 end
 
 function Mod:ShowGlobalFontStep()
@@ -6633,7 +6621,10 @@ function Mod:ShowModuleSelectionStep()
     btnDiscord:SetScript("OnClick", function()
         StaticPopup_Show("KT_INSTALLER_URL", nil, nil, DISCORD_INVITE_URL)
     end)
+
+
 end
+
 
 function Mod:ApplyScaleOnly(resolution, opts)
     local res = tostring(resolution or "AUTO"):upper()

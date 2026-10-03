@@ -253,6 +253,27 @@ function M:ApplyWidthToFrame(frame, unitKey)
 
     local isKUIFrame = IsKUIManagedUnitFrame(frame)
 
+    -- KUIUnitFrames.lua/ThemeClientAssets.lua fully own player/target's own
+    -- geometry, including Forever/Classic's real stock art where Health is
+    -- deliberately narrower than the frame (a portrait occupies the rest of
+    -- the box). This module exists to patch legacy/third-party frames (see
+    -- LEGACY_DEFAULT_WIDTHS, PLAYER_FRAME_GLOBALS/TARGET_FRAME_GLOBALS), not
+    -- to second-guess KUI's own. Without this, ApplyBarWidths ran on every
+    -- PLAYER_TARGET_CHANGED (this module's own OnEnable registers that
+    -- event, below) and force-reset frame.Health to the frame's full width,
+    -- permanently undoing Forever's real geometry with nothing left to
+    -- correct it, so the health text and status icon moved and stayed
+    -- misplaced. The frame-level skip below already existed for
+    -- isKUIFrame; this extends it to bars and the reentrant SetWidth/
+    -- SetSize hook too, so KUI's own frames are left alone entirely.
+    if isKUIFrame then
+        local VT = KT and KT.VisualThemes
+        local theme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+        if theme and theme ~= "kui" then
+            return true
+        end
+    end
+
     if InCombatLockdown and InCombatLockdown() and not isKUIFrame then
         self._pendingApply = true
         self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")

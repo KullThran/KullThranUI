@@ -448,7 +448,12 @@ function Mod:OnInitialize()
             showIcon      = true,
             iconPosition  = "LEFT",
             iconShape     = "SQUARE",
+            frameArtKit   = "default",
         }
+    end
+
+    if KT.VisualThemes and KT.VisualThemes.ApplyCurrentThemeToModule then
+        KT.VisualThemes:ApplyCurrentThemeToModule("castbar")
     end
 
     self.db = KT.db.profile.castbar
@@ -456,6 +461,7 @@ function Mod:OnInitialize()
     if self.db.autoWidth    == nil then self.db.autoWidth    = true end
     if self.db.classColor   == nil then self.db.classColor   = false end
     if self.db.colorMode    == nil then self.db.colorMode    = "THEME" end
+    if self.db.frameArtKit  == nil then self.db.frameArtKit  = "default" end
     self.isDummy = false
 end
 
@@ -986,6 +992,72 @@ function Mod:ScheduleBarFailsafe(endTime, castID)
     end)
 end
 
+-- VisualThemes: aplica o retira el marco clasico opcional del tema
+-- "classic". Es puramente decorativo: se ancla justo fuera de la propia barra
+-- (sin tocar backdrop/tamano/anclajes existentes). db.frameArtKit es un valor
+-- de perfil normal (mismo patron que unitFrames.frameArtKit).
+--
+-- Geometria (ver ApplySettings/SnapToTop): el icono (db.height x db.height)
+-- esta a 2px del borde de la barra (bar.Icon SetPoint) y su fondo (IconBg)
+-- sobresale CASTBAR_ICON_BG_PAD px mas; con autoPosition la barra se coloca
+-- CASTBAR_ANCHOR_GAP px encima del stack de recursos. ThemeBorderKit.lua
+-- dibuja 16px hacia FUERA del rect a scale = 1 (BASE_RING_SIZE, local privado
+-- alli; reflejado aqui a proposito, mantener sincronizado), lo que taparia
+-- casi todo el icono y el anillo de la barra de recursos de abajo. Por eso:
+--   1) el anillo rodea un rect que une barra + icono (bar.classicBorderRect),
+--      asi el icono queda DENTRO del marco en vez de debajo del anillo;
+--   2) su alcance se limita a la mitad del hueco de auto-posicion (igual que
+--      ComputeClassicBorderScale de KUICooldownManager.lua), de modo que no
+--      llega al anillo de la barra de recursos (que a su vez usa como maximo
+--      la otra mitad).
+local CASTBAR_CLASSIC_BORDER_BASE_RING_SIZE = 16
+local CASTBAR_ANCHOR_GAP = 5
+local CASTBAR_ICON_BG_PAD = 1
+
+local function ComputeClassicBorderScale()
+    return (CASTBAR_ANCHOR_GAP / 2) / CASTBAR_CLASSIC_BORDER_BASE_RING_SIZE
+end
+
+local function SeatClassicBorderRect(bar, db)
+    local rect = bar.classicBorderRect
+    if not rect then
+        rect = CreateFrame("Frame", nil, bar)
+        bar.classicBorderRect = rect
+    end
+    rect:ClearAllPoints()
+    if db.showIcon and bar.Icon then
+        -- Icon has the bar's own height and is vertically centred on it, so
+        -- the union only grows horizontally (icon + gap + IconBg padding).
+        if db.iconPosition == "RIGHT" then
+            rect:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+            rect:SetPoint("BOTTOMRIGHT", bar.Icon, "BOTTOMRIGHT", CASTBAR_ICON_BG_PAD, 0)
+        else
+            rect:SetPoint("TOPLEFT", bar.Icon, "TOPLEFT", -CASTBAR_ICON_BG_PAD, 0)
+            rect:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+        end
+    else
+        rect:SetAllPoints(bar)
+    end
+    return rect
+end
+
+local function ApplyClassicFrameArt(bar, db)
+    local VT = KT.VisualThemes
+    if not (VT and VT.CreateClassicBorder and VT.SeatClassicBorder and VT.ShowClassicBorder) then
+        return
+    end
+    local wantClassic = db and db.frameArtKit == "classic"
+    if wantClassic then
+        bar.classicBorder = bar.classicBorder or VT:CreateClassicBorder(bar)
+        if bar.classicBorder then
+            VT:SeatClassicBorder(bar.classicBorder, SeatClassicBorderRect(bar, db), ComputeClassicBorderScale())
+            VT:ShowClassicBorder(bar.classicBorder, true)
+        end
+    elseif bar.classicBorder then
+        VT:ShowClassicBorder(bar.classicBorder, false)
+    end
+end
+
 -- ============================================================================
 -- ApplySettings
 -- ============================================================================
@@ -1069,6 +1141,8 @@ function Mod:ApplySettings()
     else
         self:ClearChannelTicks()
     end
+
+    ApplyClassicFrameArt(bar, db)
 end
 
 -- ============================================================================
@@ -1408,6 +1482,7 @@ function Mod:Refresh()
             font = KT and KT.DEFAULT_FONT_NAME or "AAA_ITC_Avant_Garde",
             fontSize = 16, fontOutline = "OUTLINE",
             showIcon = true, iconPosition = "LEFT", iconShape = "SQUARE",
+            frameArtKit = "default",
         }
     end
     self.db = KT.db.profile.castbar
@@ -1416,6 +1491,9 @@ function Mod:Refresh()
     end
     if self.db.colorMode == nil then
         self.db.colorMode = "THEME"
+    end
+    if self.db.frameArtKit == nil then
+        self.db.frameArtKit = "default"
     end
     if type(self.db.color) ~= "table" then
         local r, g, b = GetThemeAccentColor()

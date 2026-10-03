@@ -1109,6 +1109,24 @@ local function GetTrackerPreviewFrameInfo()
     }
 end
 
+-- Player-frame stock boxes (232x100) per Visual Style, for the tracker preview.
+-- Mirrors FOREVER/CLASSIC_FRAME_GEOMETRY.player in ThemeClientAssets.lua; `buffs`
+-- is where the stock layout seats the aura row (x from the box's left, y of the
+-- row's bottom edge relative to the box's top; size = icon size).
+ns.TRACKER_PREVIEW_STOCK = {
+    forever = {
+        atlas = "UI-HUD-UnitFrame-Player-PortraitOn",
+        portrait = { 24, 19, 60 }, health = { 85, 40, 124, 20 }, power = { 85, 61, 124, 10 },
+        name = { 88, -27 }, buffs = { x = 88, y = -24, size = 20, w = 124 },
+    },
+    classic = {
+        raw = [[Interface\TargetingFrame\UI-TargetingFrame]], texCoord = { 1, 0.09375, 0, 0.78125 },
+        portrait = { 42, 12, 64 }, health = { 106, 41, 119, 12 }, power = { 106, 52, 119, 12 },
+        name = { 106, -30 }, buffs = { x = 116, y = 4, size = 20, w = 100 },
+    },
+}
+ns.TRACKER_PREVIEW_STOCK.retail = ns.TRACKER_PREVIEW_STOCK.forever
+
 local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     local width = math.max(320, GetSCSafeWidth(sc) - 20)
     local frame = CreateFrame("Frame", nil, sc, "BackdropTemplate")
@@ -1284,6 +1302,22 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     local unitWidth = ClampTrackerPreviewNumber(previewInfo.width, 150, math.max(150, width - 96))
     local unitHeight = ClampTrackerPreviewNumber(previewInfo.height, 48, 96)
 
+    -- Classic / Forever / Retail render the player as a stock 232x100 box with
+    -- its own art, bars and aura row: draw that instead of KUI's plain layout.
+    local themeNow = (KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()) or "kui"
+    local stock = ns.TRACKER_PREVIEW_STOCK[themeNow]
+    local stockScale = 1
+    if stock then
+        stockScale = math.min(0.85, math.max(150, width - 96) / 232)
+        unitWidth, unitHeight = 232 * stockScale, 100 * stockScale
+        local function R(t) return { x = t[1] / 232, y = t[2] / 100, width = t[3] / 232, height = t[4] / 100 } end
+        previewInfo.healthRect = R(stock.health)
+        previewInfo.powerRect = R(stock.power)
+        previewInfo.portraitRect = { x = stock.portrait[1] / 232, y = stock.portrait[2] / 100,
+            width = stock.portrait[3] / 232, height = stock.portrait[3] / 100 }
+        previewInfo.hasPortrait = true
+    end
+
     local unitFrame = CreateFrame("Frame", nil, canvas, "BackdropTemplate")
     unitFrame:SetSize(unitWidth, unitHeight)
     unitFrame:SetPoint("CENTER", canvas, "CENTER", 0, 8)
@@ -1292,6 +1326,11 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     end
     if KT.AddBorder then
         KT:AddBorder(unitFrame, 0.23, 0.23, 0.24, 1)
+    end
+
+    if stock then
+        if unitFrame.SetBackdropColor then unitFrame:SetBackdropColor(0, 0, 0, 0) end
+        if unitFrame.SetBackdropBorderColor then unitFrame:SetBackdropBorderColor(0, 0, 0, 0) end
     end
 
     local function ApplyPreviewRect(region, rect, r, g, b, a)
@@ -1329,6 +1368,16 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
         portrait:Hide()
     end
 
+    if stock and previewInfo.hasPortrait then
+        local mask = unitFrame:CreateMaskTexture()
+        mask:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga",
+            "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        local expand = stock.portrait[3] * stockScale * (themeNow == "classic" and 0.275 or 0.08)
+        mask:SetPoint("TOPLEFT", portrait, "TOPLEFT", -expand, expand)
+        mask:SetPoint("BOTTOMRIGHT", portrait, "BOTTOMRIGHT", expand, -expand)
+        portrait:AddMaskTexture(mask)
+    end
+
     local hpBar = unitFrame:CreateTexture(nil, "ARTWORK")
     ApplyPreviewRect(hpBar, previewInfo.healthRect, previewInfo.healthColor[1], previewInfo.healthColor[2], previewInfo.healthColor[3], 0.95)
 
@@ -1358,6 +1407,59 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     valueText:SetText(previewInfo.playerHealthText or "")
     if textSettings.rightTextContent == "none" or not previewInfo.playerHealthText then
         valueText:Hide()
+    end
+
+    local previewAuraLift = 0
+    if stock then
+        local art = unitFrame:CreateTexture(nil, "OVERLAY", nil, -8)
+        art:SetAllPoints(unitFrame)
+        if stock.raw then
+            art:SetTexture(stock.raw)
+            art:SetTexCoord(stock.texCoord[1], stock.texCoord[2], stock.texCoord[3], stock.texCoord[4])
+        else
+            local info = (themeNow == "retail" and type(KT.ResolveRetailAtlasOverride) == "function"
+                and KT.ResolveRetailAtlasOverride(stock.atlas)) or nil
+            local aw, ah
+            if info and info.file and info.leftTexCoord then
+                art:SetTexture(info.file)
+                art:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+                aw, ah = info.width, info.height
+            else
+                art:SetAtlas(stock.atlas, false)
+                local ai = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(stock.atlas)
+                aw, ah = ai and ai.width, ai and ai.height
+            end
+            if aw and ah then
+                art:ClearAllPoints()
+                art:SetPoint("CENTER", unitFrame, "CENTER", 0, 0)
+                art:SetSize(aw * stockScale, ah * stockScale)
+            end
+        end
+        nameText:ClearAllPoints()
+        nameText:SetPoint("TOPLEFT", unitFrame, "TOPLEFT", stock.name[1] * stockScale, stock.name[2] * stockScale)
+        valueText:ClearAllPoints()
+        valueText:SetPoint("CENTER", hpBar, "CENTER", 0, 0)
+        valueText:SetJustifyH("CENTER")
+
+        -- The stock aura row (buffs) the live tracker has to stack over.
+        if textSettings.showBuffs ~= false then
+            local b = stock.buffs
+            local step = b.size + 1
+            local n = math.max(1, math.floor(b.w / step))
+            for i = 1, n do
+                local box = unitFrame:CreateTexture(nil, "OVERLAY", nil, 2)
+                box:SetSize(b.size * stockScale, b.size * stockScale)
+                box:SetPoint("BOTTOMLEFT", unitFrame, "TOPLEFT",
+                    (b.x + (i - 1) * step) * stockScale, b.y * stockScale)
+                box:SetColorTexture(0.30, 0.42, 0.62, 0.85)
+            end
+            local lbl = unitFrame:CreateFontString(nil, "OVERLAY")
+            lbl:SetFont(FONT_PATH, 8, "OUTLINE")
+            lbl:SetTextColor(0.8, 0.88, 1, 1)
+            lbl:SetText(LText("Buffs"))
+            lbl:SetPoint("BOTTOMLEFT", unitFrame, "TOPLEFT", b.x * stockScale, (b.y + b.size) * stockScale + 1)
+            previewAuraLift = math.max(0, b.y + b.size) * stockScale
+        end
     end
 
     local sourceText = frame:CreateFontString(nil, "OVERLAY")
@@ -1449,7 +1551,9 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
             if trackerKey == "interrupt" and hasIntegratedUF and previewGroups.defensive then
                 group:SetPoint("BOTTOMRIGHT", previewGroups.defensive, "TOPRIGHT", 0, 12)
             else
-                AnchorTrackerPreviewGroup(group, unitFrame, tracker.side, tracker.x, tracker.y)
+                local lift = 0
+                if tracker.side == "TOPRIGHT_OUT" or tracker.side == "TOPLEFT_OUT" then lift = previewAuraLift end
+                AnchorTrackerPreviewGroup(group, unitFrame, tracker.side, tracker.x, (tracker.y or 0) + lift)
             end
 
             local label = group:CreateFontString(nil, "OVERLAY")
@@ -1661,7 +1765,220 @@ local function GetTrackedList(bd)
 end
 
 local _spellPickerMenu
-local function ShowSpellPicker(anchorFrame, barKey, slotIndex, excludeSet, onSelect)
+local _usableVisibilityMenu
+local _cdmIconContextMenu
+local ShowSpellPicker
+
+local function StylePopup(frame)
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(320)
+    frame:SetClampedToScreen(true)
+    local r, g, b = CurrentAccentColor()
+    if KT.AddBackdrop then KT:AddBackdrop(frame, r * 0.10, g * 0.10, b * 0.10, 0.98) end
+    if KT.AddBorder then KT:AddBorder(frame, r, g, b, 0.9) end
+end
+
+local function MakePopupRow(parent, text, top, width)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetSize(width - 4, 26)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 2, -top)
+    local bg = row:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    local r, g, b = CurrentAccentColor()
+    bg:SetColorTexture(r, g, b, 0)
+    local label = row:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT_PATH, 11, "OUTLINE")
+    label:SetPoint("LEFT", 10, 0); label:SetText(LText(text) or text)
+    label:SetTextColor(0.76, 0.79, 0.81, 1)
+    row:SetScript("OnEnter", function()
+        local ar, ag, ab = CurrentAccentColor()
+        bg:SetColorTexture(ar, ag, ab, 0.28)
+        label:SetTextColor(1, 1, 1, 1)
+    end)
+    row:SetScript("OnLeave", function()
+        local ar, ag, ab = CurrentAccentColor()
+        bg:SetColorTexture(ar, ag, ab, 0)
+        if row._kuiAccentSelected then
+            label:SetTextColor(ar, ag, ab, 1)
+        else
+            label:SetTextColor(0.76, 0.79, 0.81, 1)
+        end
+    end)
+    row._label, row._bg = label, bg
+    return row
+end
+
+local function ShowUsableVisibilityMenu(anchor, barKey, spellID, category)
+    if _spellPickerMenu then _spellPickerMenu:Hide() end
+    if _usableVisibilityMenu then _usableVisibilityMenu:Hide() end
+    local menu = CreateFrame("Frame", nil, UIParent)
+    local scopeMenu
+    local stateItems = {
+        { "None", "always" },
+        { "+ Suppress GCD", "suppress_gcd", "Suppresses the global-cooldown swipe for this rule.", "modifier" },
+        { "+ Hide Charge Text", "hide_charge_text", "Hides the spell charge counter.", "modifier" },
+        { "+ Hide Swipe (Charges)", "hide_swipe_charges", "Hides the recharge swipe while at least one charge remains.", "modifier" },
+        { "+ Hide Recharge Edge", "hide_recharge_edge", "Hides the bright recharge edge.", "modifier" },
+        { "+ Hide Duration (Charges > 0)", "hide_duration_charges", "Hides recharge duration text while a charge remains.", "modifier" },
+        { "+ Stay Hidden While Charges Remain", "stay_hidden_while_charges_remain", "For CD-ready hiding, keeps the icon hidden until all available charges are spent.", "modifier" },
+        { "Lower Alpha (On CD)", "lower_alpha_on_cd", "Reduces icon opacity while the spell is on cooldown." },
+        { "Hidden on CD (Shift Icons)", "hidden_on_cd_shift", "Hidden while on cooldown. Remaining icons close the gap." },
+        { "Hidden CD Ready (Shift Icons)", "hidden_cd_ready_shift", "Hidden while off cooldown. Remaining icons close the gap." },
+        { "Hidden Until Usable (Shift Icons)", "usable_shift", "Only shown while usable and off cooldown. Low resources do not hide it." },
+        { "Hidden (On CD)", "hidden_on_cd", "Hidden while on cooldown, preserving its slot." },
+        { "Hidden (CD Ready)", "hidden_cd_ready", "Hidden while off cooldown, preserving its slot." },
+        { "Hidden (Until Usable)", "usable", "Only shown while usable and off cooldown. Low resources do not hide it." },
+        { "Glow (CD Ready)", "glow_cd_ready", "Glows while the spell is off cooldown." },
+        { "Glow (On CD)", "glow_on_cd", "Glows while the spell is on cooldown." },
+        { "Glow CD Ready (Resource Aware)", "glow_cd_ready_resource", "Glows only when off cooldown and current resources are sufficient." },
+    }
+    local saturationItems = {
+        { "None", "keep_colored_on_cd", "Uses the bar's normal cooldown saturation.", "modifier_off" },
+        { "Keep Colored (On CD)", "keep_colored_on_cd", "Prevents cooldown desaturation while preserving resource feedback.", "modifier_on" },
+    }
+    local items = category == "saturation" and saturationItems or stateItems
+    menu:SetSize(286, 4 + (#items * 26)); StylePopup(menu)
+    menu:SetPoint("TOP", anchor, "BOTTOM", 0, -2)
+    local function Apply(entry, scope)
+        if entry[4] == "modifier" then
+            local modifiers = ns.GetCDMCooldownStateModifiers(barKey, spellID)
+            ns.SetCDMCooldownStateModifier(barKey, spellID, entry[2], not modifiers[entry[2]], scope)
+        elseif entry[4] == "modifier_on" or entry[4] == "modifier_off" then
+            ns.SetCDMCooldownStateModifier(barKey, spellID, entry[2], entry[4] == "modifier_on", scope)
+        else
+            ns.SetCDMUsableVisibilityMode(barKey, spellID, entry[2], scope)
+        end
+        menu:Hide()
+        RefreshCDMRuntime(barKey)
+        UpdateCDMPreview()
+    end
+    local function ShowScopes(owner, stateEntry)
+        if scopeMenu then scopeMenu:Hide() end
+        scopeMenu = CreateFrame("Frame", nil, UIParent)
+        scopeMenu:SetSize(210, 82); StylePopup(scopeMenu)
+        scopeMenu:SetPoint("TOPLEFT", owner, "TOPRIGHT", 2, 0)
+        local scopes = {
+            { "Apply to This Spell", "spell" },
+            { "Apply to Bar", "bar" },
+            { "Apply to Bar (All Specs)", "bar_all_specs" },
+        }
+        for i, scopeEntry in ipairs(scopes) do
+            local row = MakePopupRow(scopeMenu, scopeEntry[1], 2 + (i - 1) * 26, 210)
+            local scopeValue = scopeEntry[2]
+            row:SetScript("OnClick", function() Apply(stateEntry, scopeValue) end)
+        end
+        scopeMenu:Show()
+    end
+    local current = ns.GetCDMUsableVisibilityMode(barKey, spellID)
+    local currentModifiers = ns.GetCDMCooldownStateModifiers(barKey, spellID)
+    for i, entry in ipairs(items) do
+        local item = entry
+        local row = MakePopupRow(menu, item[1], 2 + (i - 1) * 26, 286)
+        local active = current == item[2]
+            or (item[4] == "modifier" and currentModifiers[item[2]])
+            or (item[4] == "modifier_on" and currentModifiers[item[2]])
+            or (item[4] == "modifier_off" and not currentModifiers[item[2]])
+        if active then
+            row._kuiAccentSelected = true
+            row._label:SetTextColor(ACCENT.r, ACCENT.g, ACCENT.b, 1)
+        end
+        row:SetScript("OnEnter", function(self)
+            local r, g, b = CurrentAccentColor()
+            self._bg:SetColorTexture(r, g, b, 0.28)
+            ShowScopes(self, item)
+            if item[3] then
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(LText(item[3]) or item[3])
+                GameTooltip:Show()
+            end
+        end)
+        row:SetScript("OnLeave", function(self)
+            local r, g, b = CurrentAccentColor()
+            self._bg:SetColorTexture(r, g, b, 0)
+            if self._kuiAccentSelected then
+                self._label:SetTextColor(r, g, b, 1)
+            else
+                self._label:SetTextColor(0.76, 0.79, 0.81, 1)
+            end
+            GameTooltip:Hide()
+        end)
+    end
+    local closer = CreateFrame("Button", nil, UIParent)
+    closer:SetFrameStrata("FULLSCREEN_DIALOG")
+    closer:SetFrameLevel(menu:GetFrameLevel() - 1)
+    closer:SetAllPoints(UIParent)
+    closer:SetScript("OnClick", function()
+        menu:Hide()
+        if scopeMenu then scopeMenu:Hide() end
+        closer:Hide()
+    end)
+    menu:HookScript("OnHide", function()
+        if scopeMenu then scopeMenu:Hide() end
+        closer:Hide()
+    end)
+    closer:Show()
+    menu:Show()
+    _usableVisibilityMenu = menu
+end
+
+local function ShowCDMIconContextMenu(anchor, barConf, slotIndex, spellID, refreshPreview)
+    if _spellPickerMenu then _spellPickerMenu:Hide() end
+    if _usableVisibilityMenu then _usableVisibilityMenu:Hide() end
+    if _cdmIconContextMenu then _cdmIconContextMenu:Hide() end
+
+    local menu = CreateFrame("Frame", nil, UIParent)
+    menu:SetSize(250, 108); StylePopup(menu)
+    menu:SetPoint("TOP", anchor, "BOTTOM", 0, -2)
+
+    local function Close()
+        menu:Hide()
+    end
+    local function RefreshAfterChange()
+        if refreshPreview then refreshPreview() end
+        RefreshCDMRuntime(barConf.key)
+        UpdateCDMPreview()
+    end
+    local entries = {
+        { "Remove Spell", function()
+            Close()
+            ns.RemoveTrackedSpell(barConf.key, slotIndex)
+            RefreshAfterChange()
+        end },
+        { "Cooldown Saturation  >", function()
+            Close()
+            ShowUsableVisibilityMenu(anchor, barConf.key, spellID, "saturation")
+        end },
+        { "Cooldown State Effect  >", function()
+            Close()
+            ShowUsableVisibilityMenu(anchor, barConf.key, spellID, "state")
+        end },
+        { "Add Custom Icon", function()
+            Close()
+            local excluded = {}
+            for _, sid in ipairs(GetTrackedList(barConf)) do excluded[sid] = true end
+            ShowSpellPicker(anchor, barConf.key, nil, excluded, function(newSpellID, isExtra)
+                ns.AddTrackedSpell(barConf.key, newSpellID, isExtra)
+                RefreshAfterChange()
+            end)
+        end },
+    }
+    for i, entry in ipairs(entries) do
+        local row = MakePopupRow(menu, entry[1], 2 + (i - 1) * 26, 250)
+        row:SetScript("OnClick", entry[2])
+    end
+
+    local closer = CreateFrame("Button", nil, UIParent)
+    closer:SetFrameStrata("FULLSCREEN_DIALOG")
+    closer:SetFrameLevel(menu:GetFrameLevel() - 1)
+    closer:SetAllPoints(UIParent)
+    closer:SetScript("OnClick", Close)
+    menu:HookScript("OnHide", function() closer:Hide() end)
+    closer:Show()
+    menu:Show()
+    _cdmIconContextMenu = menu
+end
+
+ShowSpellPicker = function(anchorFrame, barKey, slotIndex, excludeSet, onSelect)
     if _spellPickerMenu then _spellPickerMenu:Hide() end
     local allSpells = ns.GetCDMSpellsForBar and ns.GetCDMSpellsForBar(barKey) or {}
     if not allSpells or #allSpells == 0 then return end
@@ -1994,6 +2311,8 @@ local function BuildCDMLivePreview(parent, yOff, resolvePreviewBlock)
             if barConf and barConf.showTooltip and self._spellID then
                 GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                 GameTooltip:SetSpellByID(self._spellID)
+                GameTooltip:AddLine(LText("Right-click: visibility rules") or "Right-click: visibility rules",
+                    ACCENT.r, ACCENT.g, ACCENT.b)
                 GameTooltip:Show()
             end
         end)
@@ -2015,7 +2334,13 @@ local function BuildCDMLivePreview(parent, yOff, resolvePreviewBlock)
                 if barConf.customSpells and barConf.customSpells[si] then
                     ns.RemoveTrackedSpell(barConf.key, si); Refresh(); RefreshCDMRuntime(barConf.key); UpdateCDMPreview()
                 end
-            elseif button == "RightButton" or button == "LeftButton" then
+            elseif button == "RightButton" then
+                local fullTracked = GetTrackedList(barConf)
+                local spellID = fullTracked[si]
+                if type(spellID) == "number" and spellID > 0 then
+                    ShowCDMIconContextMenu(self, barConf, si, spellID, Refresh)
+                end
+            elseif button == "LeftButton" then
                 local fullTracked = GetTrackedList(barConf)
                 local isOccupied = (fullTracked[si] ~= nil) and (fullTracked[si] ~= 0)
                 local excl = {}

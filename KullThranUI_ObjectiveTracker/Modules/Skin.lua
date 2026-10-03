@@ -26,6 +26,11 @@ end
 
 local function GetAccent()
     local db = KT.db and KT.db.profile and KT.db.profile.objectiveTracker
+    -- Forever style: fixed #DC8560 border/accent (wins over a stored custom color).
+    local VT = KT.VisualThemes
+    if VT and VT.GetRenderedTheme and VT:GetRenderedTheme() == "forever" then
+        return 0.862745, 0.521569, 0.376471
+    end
     if db and db.colorMode == "custom" and db.customColor then
         return db.customColor.r, db.customColor.g, db.customColor.b
     end
@@ -101,6 +106,32 @@ local function SkinHeader(header)
     if text then
         text:SetTextColor(r, g, b)
         StyleFontString(text, 14)
+    end
+
+    -- Accent bar under the header: accent colour fading out to the right.
+    -- Only for the Blizzard-art visual styles; KullThranUI Style keeps its look.
+    local themeVT = KT.VisualThemes
+    local themed = themeVT and themeVT.GetRenderedTheme and themeVT:GetRenderedTheme() ~= "kui"
+    if not themed and header._ktAccentBar then
+        header._ktAccentBar:Hide()
+    end
+    if themed and header.CreateTexture then
+        local bar = header._ktAccentBar
+        if not bar then
+            bar = header:CreateTexture(nil, "ARTWORK", nil, 2)
+            bar:SetTexture("Interface\\Buttons\\WHITE8x8")
+            bar:SetHeight(2)
+            bar:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
+            bar:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
+            header._ktAccentBar = bar
+        end
+        if bar.SetGradient and CreateColor then
+            bar:SetVertexColor(1, 1, 1, 1)
+            bar:SetGradient("HORIZONTAL", CreateColor(r, g, b, 1), CreateColor(r, g, b, 0))
+        else
+            bar:SetVertexColor(r, g, b, 0.8)
+        end
+        bar:Show()
     end
 
     -- Skin +/- collapse buttons

@@ -1011,6 +1011,21 @@ local function GetSecondaryResource()
     return nil
 end
 
+-- When "Combo Points Under Frame" is active the Resource Bars combo pips are hidden.
+do
+    local rawGetSecondary = GetSecondaryResource
+    GetSecondaryResource = function()
+        local res = rawGetSecondary()
+        -- Combo points drawn under the unit frames replace these pips
+        -- (default on in the Classic style, off elsewhere; see UnitFrames).
+        if res and res.power == PT.COMBO and KT.GetComboUnderFrameStyle
+            and KT.GetComboUnderFrameStyle() ~= "off" then
+            return nil
+        end
+        return res
+    end
+end
+
 -------------------------------------------------------------------------------
 --  Base de Datos: Inicialización Segura
 -------------------------------------------------------------------------------
@@ -1033,7 +1048,7 @@ local function GetSafeDB()
     if not KT.db.profile.resourceBars then
         KT.db.profile.resourceBars = {
             enabled    = true,
-            general   = { anchorGap = 4, matchCooldownWidth = true, manualWidth = 250, strata = "MEDIUM", hideOOC = false, xOffset = 0, bgA = 0.8, previewMode = "stack", texture = DEFAULT_BAR_TEXTURE, textureDefaultVersion = BAR_TEXTURE_DEFAULT_VERSION },
+            general   = { anchorGap = 4, matchCooldownWidth = true, manualWidth = 250, strata = "MEDIUM", hideOOC = false, xOffset = 0, bgA = 0.8, previewMode = "stack", texture = DEFAULT_BAR_TEXTURE, textureDefaultVersion = BAR_TEXTURE_DEFAULT_VERSION, frameArtKit = "default" },
             powerColors = {},
             health    = { enabled = false, height = 25, borderSize = 1, fillR = 0.15, fillG = 0.75, fillB = 0.30, fillA = 1, textFormat = "both", textSize = 13, barAlpha = 1, texture = DEFAULT_BAR_TEXTURE },
             primary   = { enabled = true,  height = 25, borderSize = 1, fillR = 0.00, fillG = 0.55, fillB = 1.00, fillA = 1, textFormat = "curpp", textSize = 13, barAlpha = 1, texture = DEFAULT_BAR_TEXTURE, classColor = true, colorMode = "power", specColors = {}, hideManaBySpec = {}, markers = { enabled = false, values = "", width = 2, colorR = 1, colorG = 1, colorB = 1, colorA = 0.95 } },
@@ -1043,7 +1058,7 @@ local function GetSafeDB()
 
     local db = KT.db.profile.resourceBars
     if db.enabled == nil then db.enabled = true end
-    db.general   = db.general   or { anchorGap = 4, matchCooldownWidth = true, manualWidth = 250, strata = "MEDIUM", hideOOC = false, xOffset = 0, bgA = 0.8, previewMode = "stack", texture = DEFAULT_BAR_TEXTURE, textureDefaultVersion = BAR_TEXTURE_DEFAULT_VERSION }
+    db.general   = db.general   or { anchorGap = 4, matchCooldownWidth = true, manualWidth = 250, strata = "MEDIUM", hideOOC = false, xOffset = 0, bgA = 0.8, previewMode = "stack", texture = DEFAULT_BAR_TEXTURE, textureDefaultVersion = BAR_TEXTURE_DEFAULT_VERSION, frameArtKit = "default" }
     if db.general.anchorGap == nil         then db.general.anchorGap          = 4    end
     if db.general.matchCooldownWidth == nil then db.general.matchCooldownWidth = true end
     if db.general.manualWidth == nil        then db.general.manualWidth        = 250  end
@@ -1052,6 +1067,7 @@ local function GetSafeDB()
     if db.general.xOffset == nil            then db.general.xOffset            = 0 end
     if db.general.bgA == nil                then db.general.bgA                = 0.8 end
     if db.general.previewMode == nil        then db.general.previewMode        = "stack" end
+    if db.general.frameArtKit == nil        then db.general.frameArtKit        = "default" end
 
     db.health    = db.health    or { enabled = false, height = 25, borderSize = 1, fillR = 0.15, fillG = 0.75, fillB = 0.30, fillA = 1, textFormat = "both", textSize = 13, barAlpha = 1, texture = DEFAULT_BAR_TEXTURE }
     db.primary   = db.primary   or { enabled = true,  height = 25, borderSize = 1, fillR = 0.00, fillG = 0.55, fillB = 1.00, fillA = 1, textFormat = "curpp", textSize = 13, barAlpha = 1, texture = DEFAULT_BAR_TEXTURE, classColor = true, colorMode = "power", specColors = {}, hideManaBySpec = {}, markers = { enabled = false, values = "", width = 2, colorR = 1, colorG = 1, colorB = 1, colorA = 0.95 } }
@@ -1073,6 +1089,28 @@ local function GetSafeDB()
     if not db.health.texture then db.health.texture = DEFAULT_BAR_TEXTURE end
     if not db.primary.texture then db.primary.texture = DEFAULT_BAR_TEXTURE end
     if not db.secondary.texture then db.secondary.texture = DEFAULT_BAR_TEXTURE end
+    -- Scalar backfill. The "section = section or { ... }" lines above only
+    -- inject defaults when the whole section table is missing, so a profile
+    -- saved before a field existed keeps that field nil forever. That is what
+    -- produced the runtime cascade (nil pipSpacing arithmetic, then nil
+    -- textSize reaching SetFont). Fill any missing scalar here, once, so the
+    -- saved profile converges instead of relying on per-call Site guards.
+    local SECTION_SCALAR_DEFAULTS = {
+        { db.health,    { enabled = false, height = 25, borderSize = 1, textSize = 13, barAlpha = 1, fillA = 1, fillR = 0.15, fillG = 0.75, fillB = 0.30, textFormat = "both" } },
+        -- VisualThemes can seed these section tables before Resource Bars
+        -- initializes them. Backfill only missing enable flags so a profile
+        -- reset starts with the module on, while an explicit false remains
+        -- untouched.
+        { db.primary,   { enabled = true, height = 25, borderSize = 1, textSize = 13, barAlpha = 1, fillA = 1, fillR = 0.00, fillG = 0.55, fillB = 1.00, textFormat = "curpp" } },
+        { db.secondary, { enabled = true, pipHeight = 14, pipSpacing = 2, borderSize = 1, textSize = 13, barAlpha = 1, fillA = 1, fillR = 0.95, fillG = 0.90, fillB = 0.60, showText = true } },
+    }
+    for _, entry in ipairs(SECTION_SCALAR_DEFAULTS) do
+        local section, defaults = entry[1], entry[2]
+        for key, value in pairs(defaults) do
+            if section[key] == nil then section[key] = value end
+        end
+    end
+
     if db.primary.classColor == nil then db.primary.classColor = true end
     if db.secondary.classColor == nil then db.secondary.classColor = true end
     if db.primary.colorMode == "spec" and not HasUserDefinedSpecColors(db.primary.specColors) and MatchesDefaultColor(db.primary, 0.00, 0.55, 1.00) then
@@ -1093,6 +1131,46 @@ local function GetSafeDB()
 
     return db
 end
+
+--- Restores every color/size scalar on the SAVED profile to the addon
+--- defaults. GetSafeDB only fills nil, so a profile that already carries odd
+--- values (e.g. written by an interrupted migration, or by the VisualThemes
+--- adapter seeding sparse tables) keeps them forever and the bars render
+--- "weird" even though the defaults are correct. This only touches
+--- color/size fields -- never `general.matchCooldownWidth`/`manualWidth`,
+--- never the enabled flags, never the round-pip clustering, because those are
+--- deliberate per-client differences from the Retail tree.
+function KRBRestoreProfileColorsAndSizes()
+    local db = GetSafeDB()
+    if not db then return false end
+
+    local RESET = {
+        health    = { enabled = false, fillR = 0.15, fillG = 0.75, fillB = 0.30, fillA = 1, height = 25, textSize = 13, barAlpha = 1, borderSize = 1 },
+        primary   = { fillR = 0.00, fillG = 0.55, fillB = 1.00, fillA = 1, height = 25, textSize = 13, barAlpha = 1, borderSize = 1 },
+        secondary = { fillR = 0.95, fillG = 0.90, fillB = 0.60, fillA = 1, pipHeight = 14, pipSpacing = 2, textSize = 13, barAlpha = 1, borderSize = 1 },
+    }
+    local changed = 0
+    for section, defaults in pairs(RESET) do
+        db[section] = type(db[section]) == "table" and db[section] or {}
+        for key, value in pairs(defaults) do
+            if db[section][key] ~= value then
+                db[section][key] = value
+                changed = changed + 1
+            end
+        end
+    end
+    db.health = db.health or {}
+    db.health.enabled = false
+    db.enabled = true
+    db.primary = db.primary or {}
+    db.secondary = db.secondary or {}
+    db.primary.enabled = true
+    db.secondary.enabled = true
+    KRB:BuildBars()
+    return changed
+end
+
+_G._KRB_RestoreProfileColorsAndSizes = KRBRestoreProfileColorsAndSizes
 
 _G._KRB_GetDB = function() return GetSafeDB() end
 _G._KRB_GetMarkerState = function()
@@ -1267,10 +1345,19 @@ local function CreateStatusBar(parent, name)
 
     bar._border = MakePixelBorder(bar, 0, 0, 0, 1, 1)
 
-    local text = bar:CreateFontString(nil, "OVERLAY")
+    -- Texto en un frame propio por encima de todo (borde, arte de tema, fills de
+    -- otros modulos): como OVERLAY de la barra podia quedar tapado.
+    local textFrame = CreateFrame("Frame", nil, bar)
+    textFrame:SetAllPoints(bar)
+    textFrame:SetFrameLevel(bar:GetFrameLevel() + 20)
+    textFrame:EnableMouse(false)
+    local text = textFrame:CreateFontString(nil, "OVERLAY", nil, 7)
     text:SetFont(GetRBFont(), 13, "OUTLINE")
-    text:SetPoint("CENTER")
+    text:SetPoint("CENTER", bar, "CENTER", 0, 0)
+    text:SetTextColor(1, 1, 1, 1)
+    text:SetDrawLayer("OVERLAY", 7)
     bar._text = text
+    bar._textFrame = textFrame
 
     return bar
 end
@@ -1302,6 +1389,98 @@ local function HideMarkers(bar)
         if marker and marker.Hide then
             marker:Hide()
         end
+    end
+end
+
+local RESOURCE_CIRCLE_MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
+local RESOURCE_CIRCLE_BORDER = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_border.tga"
+
+local function ResourcePipsAreRound(db)
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    return theme == "classic" or theme == "forever"
+        or (db and db.general and db.general.frameArtKit == "classic")
+end
+
+-- Red combo pips belong to the Blizzard-art visual styles; KullThranUI Style
+-- keeps its own pip colors.
+local function IsComboSecondaryResource(resource)
+    if not (resource and resource.power == PT.COMBO) then return false end
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    return theme ~= nil and theme ~= "kui"
+end
+
+--- Texture for the round (circular-masked) pips. The VisualThemes adapter
+--- seeds "Melli Dark" for the forever theme because that is the right texture
+--- for its BARS, but Melli Dark is a full-width bar strip: clipped to a small
+--- circle it renders as a mostly-empty ring with one bright edge segment,
+--- which is what made the combo pips look broken. Round pips always take
+--- Melli Reforged, which was authored for small framed shapes.
+local ROUND_PIP_TEXTURE_NAME = "Melli Reforged"
+local ROUND_PIP_TEXTURE_PATH =
+    "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\CustomTextures\\MelliReforged.tga"
+
+local function ResolvePipTexture(db, round)
+    local name = db and db.secondary and db.secondary.texture or DEFAULT_BAR_TEXTURE
+    if round then
+        local fetched = LSM and LSM:Fetch("statusbar", ROUND_PIP_TEXTURE_NAME, true)
+        if fetched then return fetched end
+        return ROUND_PIP_TEXTURE_PATH
+    end
+    local fetched = LSM and LSM:Fetch("statusbar", name)
+    return fetched or "Interface\\Buttons\\WHITE8x8"
+end
+
+local function ApplyResourcePipShape(pip, round, combo)
+    if not pip then return end
+    if round then
+        local mask = pip._circleMask
+        if not mask then
+            mask = pip:CreateMaskTexture()
+            pip._circleMask = mask
+        end
+        mask:SetTexture(RESOURCE_CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:ClearAllPoints()
+        mask:SetAllPoints(pip)
+        mask:Show()
+        for _, tex in ipairs({ pip._bg, pip._fill }) do
+            if tex and tex.AddMaskTexture then
+                if tex.RemoveMaskTexture then pcall(tex.RemoveMaskTexture, tex, mask) end
+                pcall(tex.AddMaskTexture, tex, mask)
+            end
+        end
+        if pip._secretBar and pip._secretBar.GetStatusBarTexture then
+            local fill = pip._secretBar:GetStatusBarTexture()
+            if fill and fill.AddMaskTexture then
+                if fill.RemoveMaskTexture then pcall(fill.RemoveMaskTexture, fill, mask) end
+                pcall(fill.AddMaskTexture, fill, mask)
+            end
+        end
+        if not pip._circleBorder then
+            pip._circleBorder = pip:CreateTexture(nil, "OVERLAY", nil, 4)
+            pip._circleBorder:SetTexture(RESOURCE_CIRCLE_BORDER)
+            pip._circleBorder:SetAllPoints(pip)
+        end
+        pip._circleBorder:SetVertexColor(combo and 1 or 1, combo and 0.82 or 1, combo and 0.08 or 1, 1)
+        pip._circleBorder:Show()
+        if pip._border then pip._border:SetShown(false) end
+    else
+        local mask = pip._circleMask
+        if mask then
+            mask:Hide()
+            for _, tex in ipairs({ pip._bg, pip._fill }) do
+                if tex and tex.RemoveMaskTexture then pcall(tex.RemoveMaskTexture, tex, mask) end
+            end
+        end
+        if pip._secretBar and pip._secretBar.GetStatusBarTexture then
+            local fill = pip._secretBar:GetStatusBarTexture()
+            if fill and fill.RemoveMaskTexture then pcall(fill.RemoveMaskTexture, fill, mask) end
+        end
+        if pip._circleBorder then pip._circleBorder:Hide() end
+        -- MakePixelBorder returns a plain table exposing only SetSize/SetShown,
+        -- not a real Region -- :Show() doesn't exist on it and crashed here.
+        if pip._border then pip._border:SetShown(true) end
     end
 end
 
@@ -1590,10 +1769,63 @@ function KRB:DebugDump()
 end
 
 -------------------------------------------------------------------------------
+--  VisualThemes: marco clasico opcional de 8 piezas
+-------------------------------------------------------------------------------
+-- Puramente decorativo: se ancla justo fuera del rect de cada barra/contenedor
+-- (sin tocar backdrop, pixel border, tamano o anclajes existentes). Un unico
+-- campo de perfil (db.general.frameArtKit) controla las tres barras a la vez
+-- -- salud/poder primario/recurso secundario forman una sola identidad visual
+-- apilada, no tres widgets independientes.
+--
+-- Grosor del anillo: ThemeBorderKit.lua dibuja 16px hacia FUERA del rect a
+-- scale = 1 (BASE_RING_SIZE, local privado alli; se refleja aqui a proposito,
+-- mantener sincronizado). Las tres barras se apilan a solo
+-- db.general.anchorGap px (4 por defecto, ver StackAbove), asi que un anillo
+-- de 16px por barra invadiria la barra vecina. Igual que el arreglo de CDM
+-- (ComputeClassicBorderScale en KUICooldownManager.lua): el alcance del
+-- anillo se limita a la mitad del hueco real, de modo que dos anillos
+-- vecinos se tocan en el centro del hueco sin solaparse. Tambien se limita
+-- a la mitad de los 5px con los que CastBar se auto-posiciona encima de la
+-- barra superior (CastBar.lua SnapToTop), para no invadir su anillo.
+local RB_CLASSIC_BORDER_BASE_RING_SIZE = 16
+local RB_CLASSIC_BORDER_MAX_REACH = 5 / 2
+
+local function ComputeClassicBorderScale(db)
+    local gap = tonumber(db and db.general and db.general.anchorGap) or 4
+    local reach = gap / 2
+    if reach > RB_CLASSIC_BORDER_MAX_REACH then reach = RB_CLASSIC_BORDER_MAX_REACH end
+    local scale = reach / RB_CLASSIC_BORDER_BASE_RING_SIZE
+    if scale > 1 then scale = 1 end
+    -- scale <= 0 significa "sin definir" (=1) en ThemeBorderKit.lua: se deja
+    -- una linea fina en su lugar para huecos de 0 o negativos.
+    if scale < 0.02 then scale = 0.02 end
+    return scale
+end
+
+local function ApplyClassicFrameArt(frame, db)
+    if not frame then return end
+    local VT = KT.VisualThemes
+    if not (VT and VT.CreateClassicBorder and VT.SeatClassicBorder and VT.ShowClassicBorder) then
+        return
+    end
+    local wantClassic = db and db.general and db.general.frameArtKit == "classic"
+    if wantClassic then
+        frame.classicBorder = frame.classicBorder or VT:CreateClassicBorder(frame)
+        if frame.classicBorder then
+            VT:SeatClassicBorder(frame.classicBorder, frame, ComputeClassicBorderScale(db))
+            VT:ShowClassicBorder(frame.classicBorder, true)
+        end
+    elseif frame.classicBorder then
+        VT:ShowClassicBorder(frame.classicBorder, false)
+    end
+end
+
+-------------------------------------------------------------------------------
 --  BuildBars
 -------------------------------------------------------------------------------
 function KRB:BuildBars()
     local db         = GetSafeDB()
+    local roundResourcePips = ResourcePipsAreRound(db)
     if db.enabled == false then
         if healthBar then healthBar:Hide() end
         if primaryBar then primaryBar:Hide() end
@@ -1630,6 +1862,7 @@ function KRB:BuildBars()
 
     -- ── 1. Recurso Secundario ─────────────────────────────────────────────
     local sec = GetSecondaryResource()
+    local comboResourcePips = IsComboSecondaryResource(sec)
     if db.secondary.enabled and sec then
         if not secondaryFrame then
             secondaryFrame = CreateFrame("Frame", "KUI_SecondaryFrame", UIParent)
@@ -1639,7 +1872,7 @@ function KRB:BuildBars()
         if db.general.matchCooldownWidth then secW = refWidth
         else secW = db.general.manualWidth or 250 end
 
-        secondaryFrame:SetSize(secW, db.secondary.pipHeight)
+        secondaryFrame:SetSize(secW, db.secondary.pipHeight or 14)
         StackAbove(secondaryFrame)
 
         if sec.type == "bar" then
@@ -1648,7 +1881,7 @@ function KRB:BuildBars()
             if not secondaryBar then
                 secondaryBar = CreateStatusBar(secondaryFrame, "KUI_SecondaryBar")
             end
-            secondaryBar:SetSize(secW, db.secondary.pipHeight)
+            secondaryBar:SetSize(secW, db.secondary.pipHeight or 14)
             secondaryBar:ClearAllPoints()
             secondaryBar:SetPoint("CENTER", secondaryFrame, "CENTER")
             
@@ -1668,7 +1901,7 @@ function KRB:BuildBars()
             secondaryBar:SetAlpha(db.secondary.barAlpha or 1)
             secondaryBar._border:SetSize(db.secondary.borderSize)
             secondaryBar._border:SetShown(db.secondary.borderSize > 0)
-            secondaryBar._text:SetFont(GetRBFont(), db.secondary.textSize, "OUTLINE")
+            secondaryBar._text:SetFont(GetRBFont(), SafeNum(db.secondary.textSize, 13), "OUTLINE")
             secondaryBar:Show()
             local markerMax = 0
             if sec.kind == "stagger" then
@@ -1687,7 +1920,32 @@ function KRB:BuildBars()
                 secondaryBar:Hide()
             end
             
-            local pipW = (secW - (db.secondary.pipSpacing * (sec.max - 1))) / sec.max
+            -- A profile saved before pipSpacing existed has no such key, and the
+            -- raw db.secondary.pipSpacing read then threw on arithmetic during
+            -- BuildBars. Resolve it once, defensively, and reuse it below.
+            local pipSpacing = SafeNum(db.secondary.pipSpacing, 2)
+            local pipW = (secW - (pipSpacing * (sec.max - 1))) / sec.max
+            -- Round pips (Classic/Forever) must be square, or the circular
+            -- mask stretches into an oval and the pips look squashed
+            -- sideways. pipW above divides the WHOLE bar width across every
+            -- pip regardless of pipHeight, which is correct for the normal
+            -- rectangular pip look but wrong for round ones. Themed round
+            -- pips are clustered together (centered) instead of spread
+            -- across the full bar width.
+            local pipH = db.secondary.pipHeight or 14
+            local clusterOffsetX = 0
+            if roundResourcePips then
+                -- Round pips switch off the theme's bar strip texture; see
+                -- ResolvePipTexture for why.
+                texSec = ResolvePipTexture(db, true)
+                -- +15% pip size on top of the square/cluster fix. Both
+                -- dimensions must stay equal, or the circular mask goes back
+                -- to stretching into an oval.
+                pipW = (db.secondary.pipHeight or 14) * 1.15
+                pipH = pipW
+                local clusterW = pipW * sec.max + pipSpacing * (sec.max - 1)
+                clusterOffsetX = math.max(0, (secW - clusterW) / 2)
+            end
             for i = 1, sec.max do
                 if not pips[i] then
                     pips[i] = CreateFrame("Frame", nil, secondaryFrame)
@@ -1697,14 +1955,16 @@ function KRB:BuildBars()
                     pips[i]._fill:SetAllPoints()
                     pips[i]._border = MakePixelBorder(pips[i], 0, 0, 0, 1, 1)
                 end
-                local x = (i - 1) * (pipW + db.secondary.pipSpacing)
-                pips[i]:SetSize(pipW, db.secondary.pipHeight)
+                ApplyResourcePipShape(pips[i], roundResourcePips, comboResourcePips)
+                local x = clusterOffsetX + (i - 1) * (pipW + pipSpacing)
+                pips[i]:SetSize(pipW, pipH)
                 pips[i]:ClearAllPoints()
                 pips[i]:SetPoint("LEFT", secondaryFrame, "LEFT", x, 0)
-                pips[i]._bg:SetColorTexture(0.07, 0.07, 0.07, db.general.bgA)
+                pips[i]._bg:SetColorTexture(comboResourcePips and 0.22 or 0.07, comboResourcePips and 0.02 or 0.07, comboResourcePips and 0.02 or 0.07, db.general.bgA)
                 pips[i]._fill:SetTexture(texSec)
                 
                 local r, g, b, a = ResolveSecondaryPipColor(db, sec, i, db.secondary.fillA or 1)
+                if comboResourcePips then r, g, b, a = 1.0, 0.05, 0.05, db.secondary.fillA or 1 end
                 pips[i]._fill:SetVertexColor(r, g, b, a)
                 
                 pips[i]:SetAlpha(db.secondary.barAlpha or 1)
@@ -1730,7 +1990,7 @@ function KRB:BuildBars()
         if not primaryBar then
             primaryBar = CreateStatusBar(anchorFrame, "KUI_PrimaryBar")
         end
-        primaryBar:SetSize(refWidth, db.primary.height)
+        primaryBar:SetSize(refWidth, db.primary.height or 25)
         StackAbove(primaryBar)
         primaryBar:SetStatusBarTexture(texPri)
         primaryBar._bg:SetColorTexture(0.07, 0.07, 0.07, db.general.bgA)
@@ -1741,7 +2001,7 @@ function KRB:BuildBars()
         primaryBar:SetAlpha(db.primary.barAlpha or 1)
         primaryBar._border:SetSize(db.primary.borderSize)
         primaryBar._border:SetShown(db.primary.borderSize > 0)
-        primaryBar._text:SetFont(GetRBFont(), db.primary.textSize, "OUTLINE")
+        primaryBar._text:SetFont(GetRBFont(), SafeNum(db.primary.textSize, 13), "OUTLINE")
         primaryBar:Show()
         HideMarkers(primaryBar)
     elseif primaryBar then
@@ -1754,15 +2014,17 @@ function KRB:BuildBars()
         if not healthBar then
             healthBar = CreateStatusBar(anchorFrame, "KUI_HealthBar")
         end
-        healthBar:SetSize(refWidth, db.health.height)
+        healthBar:SetSize(refWidth, db.health.height or 25)
         StackAbove(healthBar)
         healthBar:SetStatusBarTexture(texHea)
         healthBar._bg:SetColorTexture(0.07, 0.07, 0.07, db.general.bgA)
-        healthBar:GetStatusBarTexture():SetVertexColor(db.health.fillR, db.health.fillG, db.health.fillB, db.health.fillA or 1)
+        healthBar:GetStatusBarTexture():SetVertexColor(
+            SafeNum(db.health.fillR, 0.15), SafeNum(db.health.fillG, 0.75),
+            SafeNum(db.health.fillB, 0.30), SafeNum(db.health.fillA, 1))
         healthBar:SetAlpha(db.health.barAlpha or 1)
         healthBar._border:SetSize(db.health.borderSize)
         healthBar._border:SetShown(db.health.borderSize > 0)
-        healthBar._text:SetFont(GetRBFont(), db.health.textSize, "OUTLINE")
+        healthBar._text:SetFont(GetRBFont(), SafeNum(db.health.textSize, 13), "OUTLINE")
         healthBar:Show()
     elseif healthBar then
         healthBar:Hide()
@@ -1770,6 +2032,14 @@ function KRB:BuildBars()
 
     anchorFrame:SetSize(refWidth, max(totalHeight - gap, 1))
     anchorFrame:SetShown(totalHeight > gap or (EditModeManagerFrame and EditModeManagerFrame:IsEditModeActive()))
+
+    -- VisualThemes: un unico interruptor (db.general.frameArtKit)
+    -- decide el marco clasico de las tres barras. secondaryFrame es el
+    -- contenedor tanto en modo barra como en modo pips, asi que un solo
+    -- marco alrededor de el cubre ambos sin depender de cuantos pips haya.
+    ApplyClassicFrameArt(healthBar, db)
+    ApplyClassicFrameArt(primaryBar, db)
+    ApplyClassicFrameArt(secondaryFrame, db)
 
     _G.KUI_ResourceBarsTop = lastAnchorFrame
 
@@ -1806,6 +2076,8 @@ function KRB:UpdateBars(event, unit)
     local hidePrimaryMana = updatePrimary
         and (IsManaHiddenForCurrentSpec(db) and ppTypeNow == PT.MANA)
     local sec = (updatePrimary or updateSecondary) and GetSecondaryResource() or nil
+    local roundResourcePips = ResourcePipsAreRound(db)
+    local comboResourcePips = IsComboSecondaryResource(sec)
     local profiler = _G.KT and _G.KT.CombatProfiler
     local profileName = updateHealth and not updatePrimary and "resources.health.paint"
         or updatePrimary and not updateHealth and not updateSecondary and "resources.power.paint"
@@ -2028,7 +2300,9 @@ function KRB:UpdateBars(event, unit)
                 end
                 for i = 1, sec.max do
                     if pips[i] then
+                        ApplyResourcePipShape(pips[i], roundResourcePips, comboResourcePips)
                         local r, g, b, a = ResolveSecondaryPipColor(db, sec, i, db.secondary.fillA or 1)
+                        if comboResourcePips then r, g, b, a = 1.0, 0.05, 0.05, db.secondary.fillA or 1 end
                         if fullUpdate or pips[i]._ktColorR ~= r or pips[i]._ktColorG ~= g
                             or pips[i]._ktColorB ~= b or pips[i]._ktColorA ~= a then
                             pips[i]._fill:SetVertexColor(r, g, b, a)

@@ -3761,6 +3761,7 @@ local function AddOptionBlock(cols, column, title, buildFn)
     else
         cols.leftUsed = cols.leftUsed + totalH + cols.gap
     end
+    return frame, content, totalH
 end
 
 local function EndOptionBlocks(cols)
@@ -5814,7 +5815,17 @@ function KT:OpenMenu(pageId)
             end
 
         end
-    end, geterrorhandler() or debugstack)
+    -- NOTE: do NOT use geterrorhandler() here. It logs the error but returns
+    -- nil, so `error(err)` below re-raises nil and the real message is lost --
+    -- all the user ever sees is "UNKNOWN ERROR". Return a real string instead
+    -- and append the original stack, so the failure is actually diagnosable.
+    end, function(menuErr)
+        local message = (type(menuErr) == "string") and menuErr or tostring(menuErr)
+        if type(debugstack) == "function" then
+            message = message .. "\n" .. debugstack(2, 3, 3)
+        end
+        return message
+    end)
 
     self._openingMenu = nil
     if not ok then
@@ -7177,9 +7188,44 @@ local function BuildGeneralCore(sc, W, y)
     y = y + FinalizeOptionBlock(updateBlock, updateContent, updateY) + 14
     _, h = W:SectionHeader(sc, "Advanced Style System", -y); y = y + h
     _, h = W:Label(sc, "Build a complete visual preset for KUI or fine tune the palette manually. These settings affect the entire addon.", -y, 11); y = y + h
-    local styleCols = BeginOptionBlocks(sc, y, { gap = 14, columnGap = 14 })
+    -- Visual Theme sits on top, full width: it decides the geometry and assets.
+    local themeFrame, themeContent = CreateOptionBlock(sc, "Visual Theme", 10, -y, sc:GetWidth() - 22)
+    local themeY = 0
+    -- The addon's own general accent color (this tab's "Accent Color"
+    -- swatch, used for Unlock Mode/Friend List/Armory/Objective
+    -- Tracker/Bags) no longer gets silently overridden by whichever Unit
+    -- Frame visual theme happens to be active (see the removed themeAccent
+    -- block in KT:GetStylePalette) -- it's yours to pick regardless of
+    -- which style is selected here, not just on kui.
+    _, h = W:Label(themeContent, "Select the visual theme. This sets the geometry and assets for Unit Frames. The addon's own accent color below stays yours to customize regardless of which style you pick.", -themeY, 11); themeY = themeY + h
+    if KT.VisualThemes and KT.VisualThemes.CreateSelector then
+        -- The cards used to be laid out edge to edge across the whole block,
+        -- flush against its accent rail and right border, so they read as
+        -- pasted over the section instead of belonging to it. They now sit
+        -- in an inset tray with even padding, like the rest of the blocks'
+        -- content, with a clear gap under the description.
+        local trayLeft, trayRight, trayPad, trayGap = 12, 10, 10, 8
+        local trayW = (sc:GetWidth() - 22) - trayLeft - trayRight
+        local tray = CreateFrame("Frame", nil, themeContent, "BackdropTemplate")
+        tray:SetPoint("TOPLEFT", themeContent, "TOPLEFT", trayLeft, -(themeY + trayGap))
+        tray:SetWidth(trayW)
+        KT:AddBackdrop(tray, 0.012, 0.014, 0.020, 0.95)
+        KT:AddBorder(tray, 1, 1, 1, 0.07)
+        h = KT.VisualThemes:CreateSelector(tray, {
+            columns = 4, compact = true,
+            xOffset = trayPad, yOffset = trayPad,
+            width = trayW - (trayPad * 2),
+        })
+        -- CreateSelector reports its content height plus 4px of slack.
+        local trayH = trayPad + (h - 4) + trayPad
+        tray:SetHeight(trayH)
+        themeY = themeY + trayGap + trayH
+    end
+    y = y + FinalizeOptionBlock(themeFrame, themeContent, themeY) + 14
 
-    AddOptionBlock(styleCols, "left", "Preset Styles", function(container)
+    -- Colors follow, full width, enabled only for KullThranUI Style.
+    local presetFrame, presetContent = CreateOptionBlock(sc, "Preset Colors", 10, -y, sc:GetWidth() - 22)
+    local presetBuild = function(container)
         local by = 0
         _, h = W:Label(container, "Choose a preset to recolor the KullThranUI menu and sync the main profile accent values.", -by, 11); by = by + h
 
@@ -7197,55 +7243,37 @@ local function BuildGeneralCore(sc, W, y)
             "plague_green",
             "sakura_fall",
         }
-        local btnGap = 10
-        local btnHeight = 36
-        local btnWidth = math.floor((container:GetWidth() - 30 - btnGap) / 2)
-        local currentPreset = KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson"
-
-        for index, presetKey in ipairs(presetOrder) do
-            local preset = STYLE_PRESETS[presetKey]
-            local row = math.floor((index - 1) / 2)
-            local col = (index - 1) % 2
-            local x = 10 + (col * (btnWidth + btnGap))
-            local yOff = by + (row * (btnHeight + 8))
-            local btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            btn:SetSize(btnWidth, btnHeight)
-            btn:SetPoint("TOPLEFT", container, "TOPLEFT", x, -yOff)
-            KT:AddBackdrop(btn, preset.background.r, preset.background.g, preset.background.b, 0.96)
-            KT:AddBorder(btn, preset.accent.r, preset.accent.g, preset.accent.b, currentPreset == presetKey and 0.95 or 0.45)
-
-            local title = btn:CreateFontString(nil, "OVERLAY")
-            title:SetFont(KT.FONT_PATH, 10, "OUTLINE")
-            title:SetPoint("CENTER")
-            title:SetText(preset.label)
-            title:SetTextColor(preset.text.r, preset.text.g, preset.text.b, 1)
-
-            local accentLine = btn:CreateTexture(nil, "ARTWORK")
-            accentLine:SetHeight(2)
-            accentLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 3, 3)
-            accentLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
-            accentLine:SetColorTexture(preset.accent.r, preset.accent.g, preset.accent.b, 1)
-
-            btn:SetScript("OnClick", function()
+        local gridHeight = KT:CreateAccentPresetGrid(container, {
+            columns = 3,
+            width = container:GetWidth() - 20,
+            xOffset = 10,
+            yOffset = by + 4,
+            cardHeight = 46,
+            gap = 10,
+            fontPath = KT.FONT_PATH,
+            localize = LText,
+            isSelected = function(presetKey)
+                return (KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson") == presetKey
+            end,
+            onSelect = function(presetKey)
                 ApplySmartStylePreset(presetKey)
-            end)
-            btn:SetScript("OnEnter", function(self)
-                if KT.AddBorder then KT:AddBorder(self, 1, 1, 1, 0.95) end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                local selected = KT.db.profile.skin and KT.db.profile.skin.stylePreset == presetKey
-                if KT.AddBorder then
-                    KT:AddBorder(self, preset.accent.r, preset.accent.g, preset.accent.b, selected and 0.95 or 0.45)
-                end
-            end)
-        end
-
-        by = by + (math.ceil(#presetOrder / 2) * (btnHeight + 8))
+            end,
+        })
+        by = by + gridHeight + 14
         _, h = W:Label(container, LText("Preset selection also updates accent-driven fields like tracker highlights, chat highlight and castbar color."), -by, 10); by = by + h
         return by
-    end)
+    end
+    y = y + FinalizeOptionBlock(presetFrame, presetContent, presetBuild(presetContent)) + 14
 
-    AddOptionBlock(styleCols, "right", LText("Manual Colors"), function(container)
+    -- Color presets/manual colors stay fully usable regardless of which
+    -- Unit Frame visual theme is active, not just kui -- this full-section
+    -- mouse-blocking overlay (plus its twin below, for the Manual Colors
+    -- section) was the actual mechanism making the controls unselectable;
+    -- GetStylePalette no longer overrides the result anyway (see the
+    -- removed themeAccent block there), so gating input here too was
+    -- doubly wrong.
+
+    local frame, content = CreateOptionBlock(sc, LText("Manual Colors"), 10, -y, sc:GetWidth() - 22)
         local by = 0
         KT.db.profile.skin = KT.db.profile.skin or {}
         local skin = KT.db.profile.skin
@@ -7261,8 +7289,8 @@ local function BuildGeneralCore(sc, W, y)
         end
 
 
-        _, h = W:Label(container, LText("Fine tune the smart recolor palette manually if you want a custom style."), -by, 11); by = by + h
-        _, h = W:ColorSwatch(container, LText("Accent Color"), -by,
+        _, h = W:Label(content, LText("Fine tune the smart recolor palette manually if you want a custom style."), -by, 11); by = by + h
+        _, h = W:ColorSwatch(content, LText("Accent Color"), -by,
             function() local c = KT_GetActiveAccent(skin); return c.r, c.g, c.b, 1 end,
             function(r, g, b)
                 skin.accentColor = MakeStyleColor(r, g, b, 1)
@@ -7274,33 +7302,33 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Window Background"), -by,
+        _, h = W:ColorSwatch(content, LText("Window Background"), -by,
             function() local c = skin.backgroundColor or STYLE_PRESETS.kui_crimson.background; return c.r, c.g, c.b, c.a end,
             function(r, g, b, a) skin.backgroundColor = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
             true
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Main Text"), -by,
+        _, h = W:ColorSwatch(content, LText("Main Text"), -by,
             function() local c = skin.menuTextColor or STYLE_PRESETS.kui_crimson.text; return c.r, c.g, c.b, 1 end,
             function(r, g, b) skin.menuTextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Secondary Text"), -by,
+        _, h = W:ColorSwatch(content, LText("Secondary Text"), -by,
             function() local c = skin.menuSubtextColor or STYLE_PRESETS.kui_crimson.muted; return c.r, c.g, c.b, 1 end,
             function(r, g, b) skin.menuSubtextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Background Tint"), -by,
+        _, h = W:ColorSwatch(content, LText("Background Tint"), -by,
             function() local c = skin.menuBackgroundTint or STYLE_PRESETS.kui_crimson.backgroundTint; return c.r, c.g, c.b, c.a end,
             function(r, g, b, a) skin.menuBackgroundTint = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
             true
         ); by = by + h
-        _, h = W:Dropdown(container, "Unlock Mode Color", -by,
+        _, h = W:Dropdown(content, "Unlock Mode Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.unlockModeColorMode or "accent" end,
             function(v) skin.unlockModeColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Unlock Mode Accent", -by,
+        _, h = W:ColorSwatch(content, "Unlock Mode Accent", -by,
             function()
                 local mode = skin.unlockModeColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.unlockModeColor or KT_GetActiveAccent(skin))
@@ -7313,13 +7341,13 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Friend List Color", -by,
+        _, h = W:Dropdown(content, "Friend List Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.friendListColorMode or "accent" end,
             function(v) skin.friendListColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Friend List Accent", -by,
+        _, h = W:ColorSwatch(content, "Friend List Accent", -by,
             function()
                 local mode = skin.friendListColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.friendListColor or KT_GetActiveAccent(skin))
@@ -7332,7 +7360,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Armory Color", -by,
+        _, h = W:Dropdown(content, "Armory Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.armoryColorMode or "accent" end,
             function(v)
@@ -7341,7 +7369,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Armory Accent", -by,
+        _, h = W:ColorSwatch(content, "Armory Accent", -by,
             function()
                 local mode = skin.armoryColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.armoryColor or KT_GetActiveAccent(skin))
@@ -7354,7 +7382,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Objective Tracker Color", -by,
+        _, h = W:Dropdown(content, "Objective Tracker Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return KT.db.profile.objectiveTracker and KT.db.profile.objectiveTracker.colorMode or "accent" end,
             function(v)
@@ -7363,7 +7391,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Objective Tracker Accent", -by,
+        _, h = W:ColorSwatch(content, "Objective Tracker Accent", -by,
             function()
                 local obj = KT.db.profile.objectiveTracker
                 local mode = obj and obj.colorMode or "accent"
@@ -7380,13 +7408,13 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Bags Color", -by,
+        _, h = W:Dropdown(content, "Bags Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.bagsColorMode or "accent" end,
             function(v) skin.bagsColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Bags Accent", -by,
+        _, h = W:ColorSwatch(content, "Bags Accent", -by,
             function()
                 local mode = skin.bagsColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.bagsColor or KT_GetActiveAccent(skin))
@@ -7399,17 +7427,24 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Menu Icons", -by,
+        _, h = W:Dropdown(content, "Menu Icons", -by,
             { accent = "Accent", white = "White" },
             function() return skin.menuIconColorMode or "accent" end,
             function(v) skin.menuIconColorMode = v; ApplyManualStyle() end,
             { "accent", "white" }
         ); by = by + h
-        _, h = W:Label(container, "If some live module keeps the previous palette, use Reload UI after saving the style.", -by, 10); by = by + h
-        return by
-    end)
+        _, h = W:Label(content, "If some live module keeps the previous palette, use Reload UI after saving the style.", -by, 10); by = by + h
 
-    y = EndOptionBlocks(styleCols) + 8
+
+
+
+    -- Manual Colors stays fully usable regardless of theme (see the
+    -- matching removal above, for the Color Presets block).
+    content:SetAlpha(1.0)
+
+    y = y + FinalizeOptionBlock(frame, content, by) + 8
+
+
 
     return y
 end

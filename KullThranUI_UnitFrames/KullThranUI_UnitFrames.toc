@@ -9,4 +9,10 @@
 Init.lua
 ..\KullThranUI\Modules\UnitFramesWidth.lua
 Modules\KUIUnitFrames\KUIUnitFrames.lua
+Modules\KUIUnitFrames\KUI_ComboUnderFrame.lua
+Modules\KUIUnitFrames\KUI_AggroGlow.lua
+Modules\KUIUnitFrames\KUI_BarGloss.lua
+Modules\KUIUnitFrames\KUI_HitText.lua
+Modules\KUIUnitFrames\KUI_HealPrediction.lua
+Modules\KUIUnitFrames\KUI_BarFrameArt.lua
 Modules\KUIUnitFrames\KUI_UnitFrames_Options.lua
