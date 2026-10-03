@@ -3269,6 +3269,15 @@ ns.PF_Portrait.SyncLevels = function(frame)
     if frame.auraFrame and frame.auraFrame.GetFrameLevel then
         frame.auraFrame:SetFrameLevel(math.max(frame.auraFrame:GetFrameLevel() or 0, top + 3))
     end
+    -- A circular portrait overlaps the frame border on its own side: leave that
+    -- edge out so the border does not cut across the portrait.
+    local borderFrame = frame.borderKT
+    if borderFrame and borderFrame._edges then
+        local edge = frame._portraitCircular and (frame._portraitSide == "right" and 4 or 3) or nil
+        for i = 3, 4 do
+            if borderFrame._edges[i] then borderFrame._edges[i]:SetShown(i ~= edge) end
+        end
+    end
 end
 
 ns.PF_Portrait.IsBelowHealth = function()
@@ -3336,6 +3345,7 @@ ns.PF_Portrait.ApplyLayout = function(frame, db, width, height, padding)
         ns.PF_Portrait.Point(frame.portraitFrame, "RIGHT", frame.health, "LEFT", -4 + metrics.x, metrics.y)
     end
     frame._portraitSide = metrics.side
+    frame._portraitCircular = metrics.show and metrics.style == "circular" or nil
     ns.PF_Portrait.SyncLevels(frame)
 end
 

@@ -834,6 +834,18 @@ if not PP.Scale then
             edges[i]:SetColorTexture(frame._ppBorderColor.r, frame._ppBorderColor.g, frame._ppBorderColor.b, frame._ppBorderColor.a)
             edges[i]:Show()
         end
+        if frame._ppHideEdge and edges[frame._ppHideEdge] then edges[frame._ppHideEdge]:Hide() end
+    end
+
+    -- Hides one side edge (3 = left, 4 = right) so the frame border does not cut
+    -- across a circular portrait that overlaps it. The choice survives border
+    -- refreshes until it is cleared.
+    function PP.SetHiddenEdge(frame, edge)
+        if not (frame and frame._ppBorders) then return end
+        frame._ppHideEdge = edge
+        for i = 3, 4 do
+            if frame._ppBorders[i] then frame._ppBorders[i]:SetShown(i ~= edge) end
+        end
     end
 
     function PP.SetBorderSize(frame, size)
@@ -2075,6 +2087,7 @@ local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
     -- Keep the 3D model under the ring frame after the level change.
     if backdrop._3d then backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1) end
     if backdrop._shapeBorderFrame then backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3) end
+    PP.SetHiddenEdge(frame.unifiedBorder, (side == "left" and 3) or (side == "right" and 4) or nil)
 end
 
 local function ResolveCircularPortraitColor(frame, uSettings, unitToken)
@@ -7417,6 +7430,7 @@ local function ReloadFrames()
                     PP.Point(frame.unifiedBorder, "TOPLEFT", frame, "TOPLEFT", 0, 0)
                     PP.Point(frame.unifiedBorder, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
                     PP.UpdateBorder(frame.unifiedBorder, bs, bc.r, bc.g, bc.b, 1)
+                    if not (db and db.profile and db.profile.portraitStyle == "circular") then PP.SetHiddenEdge(frame.unifiedBorder, nil) end
                     frame.unifiedBorder:Show()
                 end
             end
