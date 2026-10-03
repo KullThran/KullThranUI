@@ -1586,22 +1586,27 @@ ns.StopButtonGlow      = StopButtonGlow
 ns.StartAutoCastShine  = StartAutoCastShine
 ns.StopAutoCastShine   = StopAutoCastShine
 
--- Los glows de nameplates deben quedar por encima de otros elementos de interfaz.
-local NAMEPLATE_GLOW_STRATA = "TOOLTIP"
+-- Nameplate glows share the strata of the aura slot they decorate and rise
+-- above it by frame level, so windows such as the world map still cover them.
+local function GetNameplateGlowStrata(owner)
+    local strata = owner and owner.GetFrameStrata and owner:GetFrameStrata()
+    return strata or "BACKGROUND"
+end
 local NAMEPLATE_GLOW_FRAME_LEVEL = 1000
 local function RaiseNameplateGlowLayers(glowObject)
     local wrapper = glowObject and glowObject.wrapper
     if not wrapper then return end
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    local strata = GetNameplateGlowStrata(wrapper:GetParent())
+    wrapper:SetFrameStrata(strata)
     wrapper:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL)
     local overlay = wrapper.overlay
     if overlay then
-        overlay:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+        overlay:SetFrameStrata(strata)
         overlay:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL + 1)
     end
     local autoGlow = wrapper._ktAutoCastGlow
     if autoGlow then
-        autoGlow:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+        autoGlow:SetFrameStrata(strata)
         autoGlow:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL + 1)
     end
     local flipTex = glowObject.flipTex
@@ -1644,7 +1649,7 @@ local function EnsureDebuffExpiryGlow(slot)
     wrapper:SetPoint("CENTER", slot, "CENTER", 0, 0)
     wrapper:SetSize(1, 1)
     wrapper:SetFrameLevel(slot:GetFrameLevel() + 8)
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    wrapper:SetFrameStrata(GetNameplateGlowStrata(slot))
     if wrapper.EnableMouse then
         wrapper:EnableMouse(false)
     end
@@ -1751,7 +1756,7 @@ local function BuildGlowFrameSet(slot, field, initAlpha)
     local wrapper = CreateFrame("Frame", nil, slot)
     wrapper:SetAllPoints()
     wrapper:SetFrameLevel(slot:GetFrameLevel() + 1)
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    wrapper:SetFrameStrata(GetNameplateGlowStrata(slot))
 
     local flipTex = wrapper:CreateTexture(nil, "OVERLAY", nil, 7)
     flipTex:SetPoint("CENTER")
@@ -2698,7 +2703,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.debuffs = {}
     for i = 1, 4 do
         local d = CreateFrame("Frame", nil, plate)
-        d:SetFrameStrata("MEDIUM")
         d:SetFrameLevel(800)
         PP.Size(d, 26, 26)
         PP.Point(d, "BOTTOM", plate.name, "TOP", (i - 2.5) * 30, 2)
@@ -2738,7 +2742,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.buffs = {}
     for i = 1, 4 do
         local b = CreateFrame("Frame", nil, plate)
-        b:SetFrameStrata("MEDIUM")
         b:SetFrameLevel(800)
         PP.Size(b, 24, 24)
         PP.Point(b, "RIGHT", plate.health, "LEFT", -2 - (i - 1) * 26, 0)
@@ -2778,7 +2781,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.cc = {}
     for i = 1, 2 do
         local c = CreateFrame("Frame", nil, plate)
-        c:SetFrameStrata("MEDIUM")
         c:SetFrameLevel(800)
         PP.Size(c, 24, 24)
         PP.Point(c, "LEFT", plate.health, "RIGHT", 2 + (i - 1) * 26, 0)
@@ -4972,6 +4974,9 @@ function NameplateFrame:SetUnit(unit, nameplate)
     self.nameplate = nameplate
     -- Paso 1: anclar al nameplate Blizzard
     self:SetParent(nameplate)
+    if nameplate.GetFrameStrata then
+        self:SetFrameStrata(nameplate:GetFrameStrata())
+    end
     if self.SetIgnoreParentScale then
         self:SetIgnoreParentScale(false)
     end
