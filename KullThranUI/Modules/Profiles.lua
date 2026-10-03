@@ -13,11 +13,18 @@ local EXPORT_PREFIX = "!KTUI_"
 local CDM_EXPORT_PREFIX = "!KTCDM_"
 local PROFILE_BRIDGE_VERSION = 1
 
+-- Per-display scale settings: never exported, never replaced by an import.
+local LOCAL_SCALE_KEYS = {
+    "uiScale", "autoResolutionScale", "useBlizzardUIScale", "uiScaleInitialized",
+    "uiScaleUserSet", "uiScaleOwnershipMigrated",
+}
+
 local MODULE_DEFS = {
     {
         id = "general",
         label = "General",
-        keys = { "globalFont", "language", "uiScale", "autoResolutionScale", "useBlizzardUIScale", "menuCustomWidth", "menuCustomHeight", "editMode" },
+        -- UI scale stays out of shared strings: it belongs to each player's display.
+        keys = { "globalFont", "language", "menuCustomWidth", "menuCustomHeight", "editMode" },
         -- Accept keys emitted by older General module strings, but do not put
         -- them in new exports now that they belong to their own page scopes.
         importKeys = { "skin", "objectiveTracker", "blizzframes", "externalAddons", "uufIntegration" },
@@ -1493,9 +1500,17 @@ function Mod:ApplyFullProfile(profileData)
     end
 
     local transferProfile = BuildTransferProfile(profileData)
+    -- Keep this display's scale choice; an imported profile never brings one.
+    local localScale = {}
+    for _, key in ipairs(LOCAL_SCALE_KEYS) do
+        localScale[key] = root[key]
+    end
     WipeTable(root)
     for key, value in pairs(transferProfile) do
         root[key] = DeepCopy(value)
+    end
+    for _, key in ipairs(LOCAL_SCALE_KEYS) do
+        root[key] = localScale[key]
     end
     return true
 end

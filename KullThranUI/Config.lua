@@ -36,7 +36,7 @@ function KT:GenerateDefaults()
             changelog = {},
         },
         profile = {
-            uiScale = 0.71,
+            uiScale = nil,
             language = GetDefaultLanguage(),
              
             globalFont = {
@@ -401,6 +401,10 @@ function KT:SetupOptions()
                 elseif height >= 1440 then layout = "2K" end
                 if ns.ProfileData.Layouts[layout] then ns.Handlers.Layout(KT.db:GetCurrentProfile(), ns.ProfileData.Layouts[layout]) end
             end
+            -- A reset hands the scale back to the game, like a fresh install.
+            KT.db.profile.uiScale = nil
+            KT.db.profile.uiScaleUserSet = false
+            KT.db.profile.uiScaleOwnershipMigrated = true
             ReloadUI() 
         end,
         timeout = 0,

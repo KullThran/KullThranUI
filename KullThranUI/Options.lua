@@ -5666,6 +5666,9 @@ end
 -- ============================================================================
 local function LockScaleGuard()
     if not UIParent then return end
+    if not (KT and KT.IsUIScaleManaged and KT:IsUIScaleManaged()) then
+        return
+    end
     if KT and KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale then
         return
     end
@@ -5775,7 +5778,8 @@ function KT:OpenMenu(pageId)
                 C_Timer.After(0, CloseGameMenuForKUIOptions)
             end
 
-            if UIParent and KT._scaleLockValue and not (KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale) then
+            if UIParent and KT._scaleLockValue and KT.IsUIScaleManaged and KT:IsUIScaleManaged()
+                and not (KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale) then
                 local cur = UIParent:GetScale()
                 if cur and math.abs(cur - KT._scaleLockValue) > 0.001 then
                     if KT and KT._ApplyScaleValue then
@@ -7024,6 +7028,19 @@ local function BuildGeneralCore(sc, W, y)
     AddOptionBlock(coreCols, "left", "Interface Scale", function(container)
         local by = 0
         _, h = W:Label(container, LText("Match KUI to your display first. This controls the scale used by every module."), -by, 10); by = by + h
+        _, h = W:Toggle(container, "KUI controls the UI scale", -by,
+            function()
+                return KT.IsUIScaleManaged and KT:IsUIScaleManaged() or false
+            end,
+            function(v)
+                if v then
+                    if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
+                    KT:ApplyUIScale()
+                elseif KT.ReleaseUIScale then
+                    KT:ReleaseUIScale()
+                end
+            end
+        ); by = by + h
         _, h = W:Toggle(container, "Use Blizzard UI Scale", -by,
             function()
                 return KT.db.profile.useBlizzardUIScale
@@ -7033,6 +7050,7 @@ local function BuildGeneralCore(sc, W, y)
                 if v then
                     KT.db.profile.autoResolutionScale = false
                 end
+                if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                 KT:ApplyUIScale()
             end
         ); by = by + h
@@ -7053,6 +7071,7 @@ local function BuildGeneralCore(sc, W, y)
                     else
                         KT.db.profile.autoResolutionScale = true
                         KT.db.profile.uiScale = autoScale
+                        if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                         KT:ApplyUIScale()
                     end
                 end
@@ -7061,7 +7080,9 @@ local function BuildGeneralCore(sc, W, y)
         _, h = W:Slider(container, "Manual UI Scale", -by,
             function()
                 local scale
-                if KT.db.profile.useBlizzardUIScale and KT.GetBlizzardUIScale then
+                if not (KT.IsUIScaleManaged and KT:IsUIScaleManaged()) then
+                    scale = UIParent and UIParent:GetScale() or nil
+                elseif KT.db.profile.useBlizzardUIScale and KT.GetBlizzardUIScale then
                     scale = KT:GetBlizzardUIScale()
                 else
                     scale = tonumber(KT.db.profile.uiScale)
@@ -7078,6 +7099,7 @@ local function BuildGeneralCore(sc, W, y)
                 else
                     KT.db.profile.autoResolutionScale = false
                     KT.db.profile.uiScale = v
+                    if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                     KT:ApplyUIScale()
                 end
             end,

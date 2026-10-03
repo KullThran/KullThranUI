@@ -44,6 +44,10 @@ function KT:GenerateDefaults()
             autoResolutionScale = true,
             useBlizzardUIScale = false,
             uiScaleInitialized = false,
+            -- KUI leaves UIParent's scale to the game until the user picks a
+            -- scale by hand (installer, Interface Scale options).
+            uiScaleUserSet = false,
+            uiScaleOwnershipMigrated = false,
             language = "auto",
             
             globalFont = {
@@ -806,6 +810,52 @@ local function SyncUIScaleCVar(scale)
     KT._applyingCVar = nil
 end
 
+-- Profiles saved before scale ownership existed: keep the scale only when the
+-- user had chosen it by hand (a preset, the slider or Blizzard UI Scale). The
+-- resolution auto-scale KUI applied on its own is dropped.
+function KT:MigrateUIScaleOwnership()
+    local profile = self.db and self.db.profile
+    if not profile or profile.uiScaleOwnershipMigrated then return end
+    profile.uiScaleOwnershipMigrated = true
+    if profile.uiScaleUserSet then return end
+    if profile.useBlizzardUIScale == true
+        or (profile.autoResolutionScale == false and tonumber(profile.uiScale)) then
+        profile.uiScaleUserSet = true
+    end
+end
+
+function KT:IsUIScaleManaged()
+    local profile = self.db and self.db.profile
+    if not profile then return false end
+    self:MigrateUIScaleOwnership()
+    return profile.uiScaleUserSet == true
+end
+
+-- Called from every control where the user picks a scale by hand.
+function KT:MarkUIScaleUserSet()
+    local profile = self.db and self.db.profile
+    if not profile then return end
+    profile.uiScaleOwnershipMigrated = true
+    profile.uiScaleUserSet = true
+end
+
+-- Hands the scale back to the game. UIParent keeps KUI's value until reload,
+-- because the game only recomputes it from its own settings at load.
+function KT:ReleaseUIScale()
+    local profile = self.db and self.db.profile
+    if not profile then return end
+    profile.uiScaleOwnershipMigrated = true
+    profile.uiScaleUserSet = false
+    profile.uiScale = nil
+    profile.autoResolutionScale = true
+    profile.useBlizzardUIScale = false
+    self._scaleLockValue = nil
+    self._scaleLocked = false
+    if self._kuiAppliedUIScale and StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs["KULLTHRANUI_RELOAD"] then
+        StaticPopup_Show("KULLTHRANUI_RELOAD")
+    end
+end
+
 function KT:GetBlizzardUIScale()
     local scale
     if C_CVar and C_CVar.GetCVar then
@@ -830,6 +880,7 @@ function KT:SetBlizzardUIScale(scale)
         self.db.profile.uiScale = scale
         self.db.profile.autoResolutionScale = false
     end
+    self:MarkUIScaleUserSet()
 
     self._pendingBlizzardScale = scale
     self:ApplyUIScale()
@@ -837,6 +888,7 @@ end
 
 function KT:_ApplyScaleValue(scale)
     if not (scale and scale > 0) then return end
+    if not self:IsUIScaleManaged() then return end
 
     if (InCombatLockdown and InCombatLockdown()) or not (IsLoggedIn and IsLoggedIn()) then
         QueuePendingUIScaleApply(self, scale)
@@ -851,6 +903,7 @@ function KT:_ApplyScaleValue(scale)
     self._applyingUIScale = true
     _G.UIParent:SetScale(scale)
     self._applyingUIScale = nil
+    self._kuiAppliedUIScale = true
     self._pendingUIScale = nil
     if self._pendingUIScaleEvent then
         self._pendingUIScaleEvent:UnregisterEvent("PLAYER_REGEN_ENABLED")
@@ -861,6 +914,7 @@ end
 
 function KT:EnforceUIScaleLock()
     if not (self and self.db and self.db.profile and _G.UIParent) then return end
+    if not self:IsUIScaleManaged() then return end
     if self.db.profile.useBlizzardUIScale then return end
 
     local desired = tonumber(self.db.profile.uiScale)
@@ -892,6 +946,23 @@ function KT:ApplyUIScale()
     if not (self.db and self.db.profile and _G.UIParent) then return end
 
     if self._applyScaleInProgress then return end
+
+    if not self:IsUIScaleManaged() then
+        if self._blizzardScaleWatcher then
+            self._blizzardScaleWatcher:UnregisterEvent("UI_SCALE_CHANGED")
+            self._blizzardScaleWatcher:UnregisterEvent("DISPLAY_SIZE_CHANGED")
+            self._blizzardScaleWatcher:UnregisterEvent("CVAR_UPDATE")
+        end
+        if self._pendingUIScaleEvent then
+            self._pendingUIScaleEvent:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            self._pendingUIScaleEvent:UnregisterEvent("PLAYER_ENTERING_WORLD")
+        end
+        self._pendingUIScale = nil
+        self._pendingUIScaleCVar = nil
+        self._pendingBlizzardScale = nil
+        return
+    end
+
     self._applyScaleInProgress = true
 
     if self.db.profile.uiScaleInitialized ~= true then
