@@ -2710,6 +2710,7 @@ function Mod:EnsureDB()
         fontSize = 12,
         fontOutline = "OUTLINE",
         classColorNames = true,
+        clickChannelToChat = true,
         fadeEnabled = true,
         fadeTimeVisible = 24,
         fadeDuration = 8,
@@ -2748,6 +2749,9 @@ function Mod:EnsureDB()
     KT.db.profile.chat.fontOutline = chatFontOutline
     if KT.db.profile.chat.classColorNames == nil then
         KT.db.profile.chat.classColorNames = true
+    end
+    if KT.db.profile.chat.clickChannelToChat == nil then
+        KT.db.profile.chat.clickChannelToChat = true
     end
     KT.db.profile.chat.tabConfigs = KT.db.profile.chat.tabConfigs or KT_CreateDefaultTabConfigs()
     if KT.db.profile.chat.migratedTabLayoutV16 ~= true or KT_ShouldMigrateBuiltInTabs(KT.db.profile.chat.tabConfigs) then
@@ -5280,29 +5284,82 @@ function Mod:OpenDirectWhisperTarget(target, bnetIDAccount, forceWoWWhisper)
     return false
 end
 
-function Mod:OpenDirectChannelTarget(channelTarget)
+local KT_CHANNEL_LINK_CHAT_TYPE_ALIASES = {
+    PARTY_LEADER = "PARTY",
+    PARTY_GUIDE = "PARTY",
+    RAID_LEADER = "RAID",
+    INSTANCE_CHAT_LEADER = "INSTANCE_CHAT",
+}
+
+-- Resolves the payload of a "channel:" hyperlink into the slash command that
+-- selects that chat type in the input box. Numbered channels use "/<n>";
+-- every other chat type uses Blizzard's localized SLASH_<TYPE>1 command.
+local function KT_ResolveChannelLinkCommand(linkData)
+    local chatType, chatTarget = strsplit(":", tostring(linkData or ""))
+    chatType = strupper(strtrim(tostring(chatType or "")))
+    if chatType == "" then
+        return nil
+    end
+
+    if chatType == "CHANNEL" then
+        local channelNumber = tonumber(chatTarget)
+        if not channelNumber or not _G.GetChannelName then
+            return nil
+        end
+
+        local ok, resolvedNumber = pcall(_G.GetChannelName, channelNumber)
+        if not ok or type(resolvedNumber) ~= "number" or resolvedNumber <= 0 then
+            return nil
+        end
+
+        return "/" .. resolvedNumber, true
+    end
+
+    chatType = KT_CHANNEL_LINK_CHAT_TYPE_ALIASES[chatType] or chatType
+    if not (ChatTypeInfo and ChatTypeInfo[chatType]) then
+        return nil
+    end
+
+    local slashCommand = KT_GetNonEmptyAccessibleString(_G["SLASH_" .. chatType .. "1"])
+    if not slashCommand then
+        return nil
+    end
+
+    return slashCommand, false
+end
+
+function Mod:IsChannelClickToChatEnabled()
+    return not (self.db and self.db.clickChannelToChat == false)
+end
+
+function Mod:OpenDirectChannelTarget(command, isNumberedChannel)
     local chatFrame = KT_GetReplyChatFrame()
-    local channelTabIndex = self:GetTabIndexForLiveChatType("CHANNEL")
-    local channelToken = KT_GetNonEmptyAccessibleString(channelTarget)
     local editBox = nil
-    if not channelToken then
+    command = KT_GetNonEmptyAccessibleString(command)
+    if not command then
         return false
     end
 
-    channelToken = strtrim(channelToken)
-    if channelToken == "" then
+    command = strtrim(command)
+    if command == "" then
         return false
     end
 
     self:ShowWindowForActivity()
-    if channelTabIndex then
-        self:SelectTab(channelTabIndex)
+    if isNumberedChannel then
+        local channelTabIndex = self:GetTabIndexForLiveChatType("CHANNEL")
+        if channelTabIndex then
+            self:SelectTab(channelTabIndex)
+        end
     end
     self:AttachBlizzardEditBox()
 
-    local command = "/" .. channelToken .. " "
-    if _G.ChatFrame_OpenChat and chatFrame then
-        local ok, openedEditBox = pcall(_G.ChatFrame_OpenChat, command, chatFrame)
+    -- The trailing space lets Blizzard's own parser switch the input to the
+    -- requested chat type and leave the box empty, ready to type.
+    command = command .. " "
+    local openChat = (ChatFrameUtil and ChatFrameUtil.OpenChat) or _G.ChatFrame_OpenChat
+    if openChat and chatFrame then
+        local ok, openedEditBox = pcall(openChat, command, chatFrame)
         if ok then
             editBox = openedEditBox or _G.ChatFrame1EditBox or (chatFrame and chatFrame.editBox) or nil
             if editBox then
@@ -5321,13 +5378,38 @@ function Mod:OpenDirectChannelTarget(channelTarget)
         return false
     end
 
-    editBox:SetText(command)
     KT_ActivateChat(editBox)
+    editBox:SetText(command)
     if editBox.SetFocus then
         editBox:SetFocus()
     end
     self:SyncVisibleEditBoxTarget(true, true)
     return true
+end
+
+function Mod:HandleChannelHyperlink(link, linkData)
+    if not self:IsChannelClickToChatEnabled() then
+        return false
+    end
+    if IsModifiedClick and IsModifiedClick("CHATLINK") then
+        return false
+    end
+
+    -- A single click can reach this handler through several hooks (the
+    -- frame script, SetItemRef and ChatFrame_OnHyperlinkShow); only act once.
+    local now = GetTime and GetTime() or 0
+    if self.lastChannelLink == link and self.lastChannelLinkTime and (now - self.lastChannelLinkTime) < 0.1 then
+        return true
+    end
+
+    local command, isNumberedChannel = KT_ResolveChannelLinkCommand(linkData)
+    if not command then
+        return false
+    end
+
+    self.lastChannelLink = link
+    self.lastChannelLinkTime = now
+    return self:OpenDirectChannelTarget(command, isNumberedChannel)
 end
 
 function Mod:HandleWhisperHyperlink(link)
@@ -5349,10 +5431,22 @@ function Mod:HandleWhisperHyperlink(link)
         local target = KT_ResolveBNetWhisperTarget(bnetIDAccount) or KT_GetNonEmptyAccessibleString(playerName)
         return self:OpenDirectWhisperTarget(target, bnetIDAccount)
     elseif linkType == "channel" then
-        local _, channelTarget = strsplit(":", linkData)
-        return self:OpenDirectChannelTarget(channelTarget)
+        return self:HandleChannelHyperlink(link, linkData)
     end
 
+    return false
+end
+
+-- Channel tags only open the input on a plain left-click; right-click keeps
+-- Blizzard's channel context menu.
+local function KT_ShouldSkipHookedHyperlink(link, button)
+    local linkType = strlower(tostring((type(link) == "string" and link:match("^(.-):")) or ""))
+    if linkType == "player" or linkType == "bnplayer" then
+        return true
+    end
+    if linkType == "channel" and button ~= nil and button ~= "LeftButton" then
+        return true
+    end
     return false
 end
 
@@ -5362,9 +5456,8 @@ function Mod:HookBlizzardHyperlinkClicks()
     end
 
     self.blizzardHyperlinkHooked = true
-    local function handle(_, link)
-        local linkType = strlower(tostring((type(link) == "string" and link:match("^(.-):")) or ""))
-        if linkType == "player" or linkType == "bnplayer" then
+    local function handle(_, link, _, button)
+        if KT_ShouldSkipHookedHyperlink(link, button) then
             return
         end
         if Mod and Mod.HandleWhisperHyperlink then
@@ -5384,10 +5477,9 @@ function Mod:HookItemRefWhisperLinks()
 
     self.itemRefWhisperHooked = true
 
-    hooksecurefunc("SetItemRef", function(link)
+    hooksecurefunc("SetItemRef", function(link, _, button)
         if Mod and Mod.itemRefWhisperBypass then return end
-        local linkType = strlower(tostring((type(link) == "string" and link:match("^(.-):")) or ""))
-        if linkType == "player" or linkType == "bnplayer" then
+        if KT_ShouldSkipHookedHyperlink(link, button) then
             return
         end
         if Mod and Mod.IsEnabled and Mod:IsEnabled() then
@@ -5396,10 +5488,9 @@ function Mod:HookItemRefWhisperLinks()
     end)
 
     if type(_G.ChatFrame_OnHyperlinkShow) == "function" then
-        hooksecurefunc("ChatFrame_OnHyperlinkShow", function(_, link)
+        hooksecurefunc("ChatFrame_OnHyperlinkShow", function(_, link, _, button)
             if Mod and Mod.itemRefWhisperBypass then return end
-            local linkType = strlower(tostring((type(link) == "string" and link:match("^(.-):")) or ""))
-            if linkType == "player" or linkType == "bnplayer" then
+            if KT_ShouldSkipHookedHyperlink(link, button) then
                 return
             end
             if Mod and Mod.IsEnabled and Mod:IsEnabled() then
