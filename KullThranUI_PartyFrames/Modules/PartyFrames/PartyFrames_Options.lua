@@ -1179,12 +1179,12 @@ local function RefreshLivePreview(preview)
                 unit.model3D._previewUnit = true
             end
             local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 125) / 100)
-            local rot, formZoom = KT.Portrait3DYaw("player", cfg.portraitSide == "right" and "right" or "left", nil,
+            local rot, formZoom, formShift = KT.Portrait3DYaw("player", cfg.portraitSide == "right" and "right" or "left", nil,
                 cfg.portraitFacing == "flipped", cfg.portrait3DRotation)
             if unit.model3D.SetPortraitZoom then unit.model3D:SetPortraitZoom(1) end
             if unit.model3D.SetCamDistanceScale then unit.model3D:SetCamDistanceScale(1 / (zoom * formZoom)) end
             if unit.model3D.SetPosition then
-                unit.model3D:SetPosition(0, (tonumber(cfg.portrait3DX) or 0) / 100, (tonumber(cfg.portrait3DY) or 0) / 100)
+                unit.model3D:SetPosition(0, (tonumber(cfg.portrait3DX) or 0) / 100 + formShift, (tonumber(cfg.portrait3DY) or 0) / 100)
             end
             if unit.model3D.SetFacing then unit.model3D:SetFacing(rot) end
             unit.model3D:Show()

@@ -665,14 +665,14 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
             frame.model3D._previewUnit = modelUnit
         end
         local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
-        local rot, formZoom = KT.Portrait3DYaw(modelUnit, settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
+        local rot, formZoom, formShift = KT.Portrait3DYaw(modelUnit, settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
             settings.portraitFacingMode,
             settings.portraitFacing and settings.portraitFacing ~= GetDefaultPortraitFacing(unitKey),
             settings.portrait3DRotation)
         if frame.model3D.SetPortraitZoom then frame.model3D:SetPortraitZoom(1) end
         if frame.model3D.SetCamDistanceScale then frame.model3D:SetCamDistanceScale(1 / (zoom * formZoom)) end
         if frame.model3D.SetPosition then
-            frame.model3D:SetPosition(0, (tonumber(settings.portrait3DX) or 0) / 100, (tonumber(settings.portrait3DY) or 0) / 100)
+            frame.model3D:SetPosition(0, (tonumber(settings.portrait3DX) or 0) / 100 + formShift, (tonumber(settings.portrait3DY) or 0) / 100)
         end
         if frame.model3D.SetFacing then frame.model3D:SetFacing(rot) end
         frame.model3D:Show()
