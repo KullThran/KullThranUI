@@ -116,6 +116,14 @@ function O.ApplyLevelCircle(frame)
         host:SetFrameStrata(owner:GetFrameStrata())
         host:SetFrameLevel(owner:GetFrameLevel() + 1)
         frame._kuiLevelRingHost = host
+        -- The ring's art is opaque inside: the number lives one level higher.
+        local textHost = CreateFrame("Frame", nil, owner)
+        textHost:SetAllPoints(owner)
+        textHost:SetFrameStrata(owner:GetFrameStrata())
+        textHost:SetFrameLevel(owner:GetFrameLevel() + 2)
+        if frame._kuiLevelText and frame._kuiLevelText.SetParent then
+            frame._kuiLevelText:SetParent(textHost)
+        end
         art = host:CreateTexture(nil, "OVERLAY", nil, 0)
         Unsnap(art)
         art:Hide()
