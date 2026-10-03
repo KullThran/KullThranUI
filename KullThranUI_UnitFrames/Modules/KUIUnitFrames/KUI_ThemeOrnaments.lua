@@ -52,14 +52,10 @@ local function ApplyStyleCircle(frame, theme)
     art:SetVertexColor(1, 1, 1, 1)
     if theme == "forever" then
         -- Forever's PvpBackgroundCircle (UI-HUD-UnitFrame-SmallCircle at 0.8
-        -- scale): the client atlas when present, otherwise the same sprite
-        -- from the shipped Forever unit frame sheet.
-        if HasAtlas("UI-HUD-UnitFrame-SmallCircle") then
-            art:SetAtlas("UI-HUD-UnitFrame-SmallCircle", false)
-        else
-            art:SetTexture(FOREVER_SHEET)
-            art:SetTexCoord(207 / 256, 242 / 256, 3 / 512, 38 / 512)
-        end
+        -- scale), from the shipped Forever sheet: the Retail client's own
+        -- atlas of that name is not the same art.
+        art:SetTexture(FOREVER_SHEET)
+        art:SetTexCoord(207 / 256, 242 / 256, 3 / 512, 38 / 512)
         art:SetSize(28, 28)
         art:SetPoint("CENTER", icon, "CENTER", 0, 0)
         return true
@@ -113,7 +109,7 @@ function O.ApplyLevelCircle(frame)
     if not disc then return end
     local art = frame._kuiLevelThemeCircle
     if not art then
-        art = disc:GetParent():CreateTexture(nil, "OVERLAY", nil, -1)
+        art = disc:GetParent():CreateTexture(nil, "OVERLAY", nil, 0)
         Unsnap(art)
         art:Hide()
         frame._kuiLevelThemeCircle = art
@@ -125,22 +121,32 @@ function O.ApplyLevelCircle(frame)
         disc:SetAlpha(0)
         return
     end
-    if theme ~= "forever" or not disc:IsShown() then
+    if not disc:IsShown() then
         art:Hide()
         disc:SetAlpha(1)
         return
     end
-    if HasAtlas("UI-HUD-UnitFrame-SmallCircle") then
-        art:SetAtlas("UI-HUD-UnitFrame-SmallCircle", false)
-    else
+    local size = (disc:GetWidth() or 32)
+    if theme == "forever" then
         art:SetTexture(FOREVER_SHEET)
         art:SetTexCoord(207 / 256, 242 / 256, 3 / 512, 38 / 512)
+        art:SetVertexColor(1, 1, 1, 1)
+        size = size + 2
+        disc:SetAlpha(0)
+    elseif theme == "retail" and HasAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing") then
+        -- Retail's gold icon ring over the dark disc.
+        art:SetAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing", false)
+        art:SetVertexColor(1, 1, 1, 1)
+        size = size + 2
+        disc:SetAlpha(1)
+    else
+        art:Hide()
+        disc:SetAlpha(1)
+        return
     end
-    local size = (disc:GetWidth() or 32) + 2
     art:ClearAllPoints()
     art:SetSize(size, size)
     art:SetPoint("CENTER", disc, "CENTER", 0, 0)
-    disc:SetAlpha(0)
     art:Show()
 end
 
