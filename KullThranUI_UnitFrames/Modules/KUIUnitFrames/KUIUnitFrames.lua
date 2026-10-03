@@ -3925,21 +3925,6 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         PP.Point(model3D, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
         model3D:SetCamera(0)
         model3D:Hide()
-        -- Druid animal forms are wide, low models: the head-only portrait
-        -- zoom crops them into a blur, so frame the whole body instead.
-        local function FrameForm(self)
-            local unit = self.__owner and self.__owner.unit
-            if unit ~= "player" or select(2, UnitClass("player")) ~= "DRUID" then return end
-            local form = GetShapeshiftFormID and GetShapeshiftFormID()
-            if form then
-                self:SetPortraitZoom(0)
-                self:SetCamDistanceScale(1)
-                self:SetPosition(0, 0, -0.05)
-            end
-            self:SetCamera(0)
-        end
-        model3D.PostUpdate = FrameForm
-        model3D:SetScript("OnModelLoaded", FrameForm)
         backdrop._3d = model3D
         return model3D
     end
