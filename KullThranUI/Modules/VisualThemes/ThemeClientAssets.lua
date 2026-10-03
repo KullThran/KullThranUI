@@ -1353,41 +1353,47 @@ end
 -- KullThranUI sub-addon fetches identically via LibStub.
 KT.ResolveRetailAtlasOverride = ResolveRetailAtlasOverride
 
--- Forever's bronze unit-frame art only exists on the Forever client, which
--- remaps these atlas names to its own sheet. On a genuine Retail client the
--- same names draw Retail's gold art, so the Forever theme looked exactly like
--- Retail. There, emulate Forever by desaturating the gold art and tinting it
--- bronze. Any other theme, or a client that already remaps the atlas, gets
--- the art back untinted.
-local FOREVER_EMULATED_TINT = { r = 0.95, g = 0.66, b = 0.46 }
+-- Forever's own unit-frame ring art. The Forever client remaps these atlas
+-- names to this sheet; a Retail client draws Retail's gold art for the same
+-- names, which made the Forever theme look like Retail there. Values read
+-- from C_Texture.GetAtlasInfo on the Forever client (sheet is 256x512).
+local FOREVER_ATLAS_OVERRIDES = {
+    ["ui-hud-unitframe-player-portraiton"] = {
+        file = 8036204, sheetW = 256, sheetH = 512,
+        left = 1, right = 199, top = 246, bottom = 317,
+    },
+    ["ui-hud-unitframe-target-portraiton"] = {
+        file = 8036204, sheetW = 256, sheetH = 512,
+        left = 1, right = 193, top = 388, bottom = 455,
+    },
+}
 
+--- Resolves an atlas name to Forever's own sheet while the Forever theme is
+--- rendered on a client that does not already remap it (a Retail client).
 --- @param atlasName string
---- @return table|nil tint {r,g,b} when Forever has to be emulated for this atlas
-local function GetForeverEmulationTint(atlasName)
+--- @return table|nil info shaped like C_Texture.GetAtlasInfo's own return
+local function ResolveForeverAtlasOverride(atlasName)
     local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
         and KT.VisualThemes:GetRenderedTheme()
     if renderedTheme ~= "forever" or type(atlasName) ~= "string" then return nil end
-    local entry = RETAIL_ATLAS_OVERRIDES[atlasName:lower()]
+    local entry = FOREVER_ATLAS_OVERRIDES[atlasName:lower()]
     if not entry then return nil end
     local liveInfo = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlasName)
     local liveFile = liveInfo and (liveInfo.file or liveInfo.filename)
-    if liveFile ~= entry.file then return nil end
-    return FOREVER_EMULATED_TINT
+    if liveFile == entry.file then return nil end
+    return {
+        file = entry.file,
+        width = entry.right - entry.left,
+        height = entry.bottom - entry.top,
+        leftTexCoord = entry.left / entry.sheetW,
+        rightTexCoord = entry.right / entry.sheetW,
+        topTexCoord = entry.top / entry.sheetH,
+        bottomTexCoord = entry.bottom / entry.sheetH,
+        tilesHorizontally = false,
+        tilesVertically = false,
+    }
 end
-
---- @param texture Texture
---- @param atlasName string
-local function ApplyForeverEmulationTint(texture, atlasName)
-    if not texture then return end
-    local tint = GetForeverEmulationTint(atlasName)
-    if texture.SetDesaturated then texture:SetDesaturated(tint ~= nil) end
-    if tint then
-        texture:SetVertexColor(tint.r, tint.g, tint.b, 1)
-    else
-        texture:SetVertexColor(1, 1, 1, 1)
-    end
-end
-KT.ApplyForeverEmulationTint = ApplyForeverEmulationTint
+KT.ResolveForeverAtlasOverride = ResolveForeverAtlasOverride
 
 --- Applies the Forever theme's real per-client UnitFrame art: creates
 --- (once, cached on `frame`) the real player/target frame-art box texture,
@@ -1414,6 +1420,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     end
 
     local retailOverrideInfo = ResolveRetailAtlasOverride(geom.art)
+        or ResolveForeverAtlasOverride(geom.art)
     local info = retailOverrideInfo
         or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(geom.art))
     if not info then
@@ -1630,7 +1637,6 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- own remap (~230x99), distorting the whole ring instead of just
     -- closing the small corner gap.
     art:SetSize((info.width or geom.w) * scale, (info.height or geom.h) * scale)
-    ApplyForeverEmulationTint(art, geom.art)
     if showBasePortraitArt then art:Show() else art:Hide() end
     frame._ktDebugArtCalc = string.format(
         "mirrored=%s infoW=%s infoH=%s setW=%.4f setH=%.4f postSetGetWidth=%s postSetGetHeight=%s",
