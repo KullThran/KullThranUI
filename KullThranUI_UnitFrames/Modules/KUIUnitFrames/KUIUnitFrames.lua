@@ -1189,9 +1189,6 @@ end
 
 local function ResolveActivePortraitMode(unit, settings)
     local mode = (settings and settings.portraitMode) or (db and db.profile and db.profile.portraitMode) or "2d"
-    if mode == "3d" and db and db.profile and db.profile.portraitStyle == "circular" then
-        return "2d"
-    end
     if mode == "class" and not ResolvePortraitClassToken(unit) then
         -- Pets and non-player units do not always expose a class token.
         -- Fall back to the regular portrait so the slot never renders blank.
@@ -2262,11 +2259,14 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
         PP.Point(backdrop._class, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -classInset + oR, classInset + oB)
     end
     if backdrop._3d then
-        -- 3D models ignore SetClipsChildren, so keep them within the backdrop
-        -- bounds. Art scale is not applied to 3D (camera zoom is fixed).
+        -- 3D models ignore SetClipsChildren and masks, so keep them within the
+        -- backdrop bounds. A circular portrait keeps the model inside the
+        -- square inscribed in the ring (18% free on each side). Art scale is
+        -- not applied to 3D (camera zoom is fixed).
+        local modelInset = isCircular and math.floor(bh2 * 0.18 + 0.5) or 0
         backdrop._3d:ClearAllPoints()
-        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", 0, 0)
-        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
+        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", modelInset, -modelInset)
+        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -modelInset, modelInset)
     end
 
     if isCircular then

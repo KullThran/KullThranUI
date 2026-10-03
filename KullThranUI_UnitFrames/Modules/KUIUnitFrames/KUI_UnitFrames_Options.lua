@@ -832,10 +832,6 @@ local PORTRAIT_MODES = {
     ["3d"] = "3D Portrait",
     ["class"] = "Class Theme",
 }
-local CIRCULAR_PORTRAIT_MODES = {
-    ["2d"] = "2D Portrait",
-    ["class"] = "Class Theme",
-}
 
 local PORTRAIT_FACING = {
     normal = "Normal",
@@ -969,12 +965,8 @@ local function AddCommonUnitControls(sc, unitKey, label, y, opts)
     _, h = W:Dropdown(sc, "Portrait Style", -y, PORTRAIT_STYLES,
         function() return db.portraitStyle or "attached" end,
         function(v) SetAndRefresh(function() db.portraitStyle = v end) end); y = y + h
-    local portraitModes = db.portraitStyle == "circular" and CIRCULAR_PORTRAIT_MODES or PORTRAIT_MODES
-    _, h = W:Dropdown(sc, "Portrait Mode", -y, portraitModes,
-        function()
-            local mode = s.portraitMode or "2d"
-            return (db.portraitStyle == "circular" and mode == "3d") and "2d" or mode
-        end,
+    _, h = W:Dropdown(sc, "Portrait Mode", -y, PORTRAIT_MODES,
+        function() return s.portraitMode or "2d" end,
         function(v) SetAndRefresh(function() s.portraitMode = v end) end); y = y + h
     
     -- Portrait Side (for attached and circular portraits)
