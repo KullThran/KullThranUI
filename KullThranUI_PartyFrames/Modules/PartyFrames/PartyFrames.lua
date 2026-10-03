@@ -263,7 +263,7 @@ end)
 ns.PF_RosterUnitEvents = {
     "UNIT_AURA", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_FREQUENT",
     "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER", "UNIT_CONNECTION", "UNIT_FLAGS",
-    "UNIT_NAME_UPDATE", "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE",
+    "UNIT_NAME_UPDATE", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED", "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE",
     "UNIT_ABSORB_AMOUNT_CHANGED",
 }
 
@@ -2249,6 +2249,7 @@ end
 
 function Mod:UpdateFrameRange(frame, updateAurasOnChange)
     if not (frame and frame.unit) or frame.fakeUnit then return true end
+    if frame._portraitModelActive then ns.PF_Portrait.RefreshModel(frame) end
     if SafeUnitBoolean(UnitIsDeadOrGhost, frame.unit) or SafeUnitBoolean(UnitIsConnected, frame.unit) == false then
         return true
     end
@@ -2861,6 +2862,423 @@ local function GetAuraDispelColor(unit, auraInstanceID, alpha)
     return nil
 end
 
+-- ---------------------------------------------------------------------------
+-- Portraits (2D, 3D model or class icon). Hidden unless a layout enables them.
+-- Stored on ns (not as file locals) to stay under the 200-local main-chunk cap.
+-- ---------------------------------------------------------------------------
+ns.PF_Portrait = ns.PF_Portrait or {}
+ns.PF_Portrait.media = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\"
+ns.PF_Portrait.classTexture = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+ns.PF_Portrait.classCoords = _G.CLASS_ICON_TCOORDS or {
+    WARRIOR = { 0, 0.25, 0, 0.25 }, MAGE = { 0.25, 0.496, 0, 0.25 },
+    ROGUE = { 0.496, 0.742, 0, 0.25 }, DRUID = { 0.742, 0.988, 0, 0.25 },
+    HUNTER = { 0, 0.25, 0.25, 0.496 }, SHAMAN = { 0.25, 0.496, 0.25, 0.496 },
+    PRIEST = { 0.496, 0.742, 0.25, 0.496 }, WARLOCK = { 0.742, 0.988, 0.25, 0.496 },
+    PALADIN = { 0, 0.25, 0.496, 0.742 }, DEATHKNIGHT = { 0.25, 0.496, 0.496, 0.742 },
+    MONK = { 0.496, 0.742, 0.496, 0.742 }, DEMONHUNTER = { 0.742, 0.988, 0.496, 0.742 },
+    EVOKER = { 0, 0.25, 0.742, 0.988 },
+}
+
+ns.PF_Portrait.GetClassToken = function(unit, fakeData)
+    if fakeData and type(fakeData.class) == "string" then
+        return fakeData.class
+    end
+    if not unit then return nil end
+    return GetUnitClassToken(unit)
+end
+
+ns.PF_Portrait.GetMetrics = function(db, height)
+    db = db or {}
+    local style = db.portraitStyle or "circular"
+    local show = db.showPortrait == true and style ~= "none"
+    local side = db.portraitSide == "right" and "right" or "left"
+    local size = math.max(16, (tonumber(height) or 40) + (tonumber(db.portraitSize) or 0))
+    if style == "circular" or style == "detached" then size = size + 10 end
+    local overlap = style == "circular" and (size * 0.5) or 0
+    local inset = style == "attached" and size or 0
+    return {
+        show = show,
+        style = style,
+        side = side,
+        size = size,
+        overlap = overlap,
+        inset = inset,
+        x = tonumber(db.portraitX) or 0,
+        y = tonumber(db.portraitY) or 0,
+        facing = db.portraitFacing == "flipped" and "flipped" or "normal",
+    }
+end
+
+ns.PF_Portrait.ApplyClassTexture = function(texture, classToken)
+    local coords = classToken and ns.PF_Portrait.classCoords[classToken]
+    if not (texture and coords) then return false end
+    texture:SetTexture(ns.PF_Portrait.classTexture)
+    texture:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    return true
+end
+
+ns.PF_Portrait.Point = function(region, point, relativeTo, relativePoint, x, y)
+    if KT.PP and KT.PP.Point then
+        KT.PP.Point(region, point, relativeTo, relativePoint, x, y)
+    else
+        region:SetPoint(point, relativeTo, relativePoint, x or 0, y or 0)
+    end
+end
+
+ns.PF_Portrait.Size = function(region, width, height)
+    if KT.PP and KT.PP.Size then
+        KT.PP.Size(region, width, height)
+    else
+        region:SetSize(width, height)
+    end
+end
+
+ns.PF_Portrait.strataAbove = {
+    BACKGROUND = "LOW",
+    LOW = "MEDIUM",
+    MEDIUM = "HIGH",
+    HIGH = "DIALOG",
+    DIALOG = "FULLSCREEN",
+    FULLSCREEN = "FULLSCREEN_DIALOG",
+    FULLSCREEN_DIALOG = "TOOLTIP",
+    TOOLTIP = "TOOLTIP",
+}
+
+ns.PF_Portrait.GetStrataAbove = function(frame)
+    -- Keep the portrait in the SAME strata as Health (ordered via frame level).
+    -- Bumping to HIGH made party frames draw over spellbook/map/bags.
+    local strata = frame and frame.GetFrameStrata and frame:GetFrameStrata() or "MEDIUM"
+    return strata
+end
+
+ns.PF_Portrait.GetBorderColor = function(frame, fakeData, db)
+    local custom = db and db.portraitBorderColor
+    if db and db.portraitBorderUseCustomColor == true and type(custom) == "table" then
+        return custom.r or 1, custom.g or 1, custom.b or 1, custom.a or 1
+    end
+
+    -- Circular Unit Frames use an opaque class-colored ring. Role-colored
+    -- layouts fall back to the final health color, but never inherit its alpha.
+    if db and db.colorByClass ~= false then
+        local r, g, b
+        if fakeData then
+            r, g, b = GetTestClassColor(fakeData.class, fakeData.role)
+        elseif frame and frame.unit then
+            r, g, b = GetClassColor(frame.unit)
+        end
+        if IsSecretValue(r) then return r, g, b, 1 end
+        if type(r) == "number" then return r, g, b, 1 end
+    end
+
+    local health = frame and frame.health
+    if health and health.GetStatusBarColor then
+        local r, g, b = health:GetStatusBarColor()
+        if IsSecretValue(r) then return r, g, b, 1 end
+        if type(r) == "number" then return r, g, b, 1 end
+    end
+
+    if KT.GetStyleAccentRGB then
+        local r, g, b = KT:GetStyleAccentRGB()
+        return r, g, b, 1
+    end
+    return KT.C_R or 1, KT.C_G or 0, KT.C_B or 0.3333333333, 1
+end
+
+ns.PF_Portrait.UpdateBorder = function(frame, db, fakeData)
+    if not (frame and frame.portraitBorder) then return end
+    local r, g, b, a = ns.PF_Portrait.GetBorderColor(frame, fakeData, db)
+    frame.portraitBorder:SetVertexColor(r, g, b, a)
+end
+
+-- 3D portraits use a PlayerModel. The model is only re-applied when something
+-- that changes it happens (another unit or character in the slot, a model or
+-- portrait event, the unit going offline or out of view). Routine repaints for
+-- flags, range or roster updates leave it alone so the idle animation keeps
+-- playing instead of restarting.
+ns.PF_Portrait.questionMarkModel = "Interface\\Buttons\\TalkToMeQuestionMark.m2"
+
+ns.PF_Portrait.Call = function(object, method, ...)
+    local fn = object and object[method]
+    if not fn then return false end
+    return pcall(fn, object, ...)
+end
+
+ns.PF_Portrait.SafeUnitFlag = function(fn, unit)
+    if not fn then return true end
+    local ok, value = pcall(fn, unit)
+    if not ok or IsSecretValue(value) then return true end
+    return value and true or false
+end
+
+ns.PF_Portrait.IsModelAvailable = function(unit)
+    if unit == "player" then return true end
+    return ns.PF_Portrait.SafeUnitFlag(_G.UnitIsConnected, unit)
+        and ns.PF_Portrait.SafeUnitFlag(_G.UnitIsVisible, unit)
+end
+
+ns.PF_Portrait.GetModelGUID = function(unit)
+    if not (unit and UnitGUID) then return nil end
+    local ok, guid = pcall(UnitGUID, unit)
+    if not ok or IsSecretValue(guid) or type(guid) ~= "string" then return nil end
+    return guid
+end
+
+-- Zoom, rotation and offsets come from the user's settings; the defaults leave
+-- the camera untouched. Positive rotation turns toward the right, mirrored when
+-- the portrait faces the other way.
+ns.PF_Portrait.GetModelLook = function(db, facing, unit)
+    db = db or {}
+    local rotation, formZoom, formShift = KT.Portrait3DYaw(unit, db.portraitSide == "right" and "right" or "left", nil,
+        facing == "flipped", db.portrait3DRotation)
+    return {
+        zoom = math.max(0.25, (tonumber(db.portrait3DZoom) or 125) / 100) * formZoom,
+        rotation = rotation,
+        x = (tonumber(db.portrait3DX) or 0) / 100 + formShift,
+        y = (tonumber(db.portrait3DY) or 0) / 100,
+    }
+end
+
+ns.PF_Portrait.ApplyCamera = function(model, look)
+    local call = ns.PF_Portrait.Call
+    call(model, "SetCamDistanceScale", look and (1 / look.zoom) or 1)
+    call(model, "SetPortraitZoom", 1)
+    call(model, "SetPosition", 0, look and look.x or 0, look and look.y or 0)
+    call(model, "SetFacing", look and look.rotation or 0)
+end
+
+ns.PF_Portrait.ApplyModel = function(model, unit, force, look)
+    local available = ns.PF_Portrait.IsModelAvailable(unit)
+    local guid = ns.PF_Portrait.GetModelGUID(unit)
+    local guidChanged = guid ~= nil and model._kuiGUID ~= nil and guid ~= model._kuiGUID
+    local lookKey = look and (look.zoom .. ":" .. look.rotation .. ":" .. look.x .. ":" .. look.y) or ""
+    if not force and not guidChanged and model._kuiUnit == unit and model._kuiAvailable == available
+        and model._kuiLook == lookKey then
+        return true
+    end
+
+    local call = ns.PF_Portrait.Call
+    if available then
+        call(model, "SetCamDistanceScale", look and (1 / look.zoom) or 1)
+        call(model, "SetPortraitZoom", 1)
+        call(model, "SetPosition", 0, look and look.x or 0, look and look.y or 0)
+        call(model, "ClearModel")
+        if not call(model, "SetUnit", unit) then
+            model._kuiUnit = nil
+            return false
+        end
+        model._kuiCamLook = look or false
+        ns.PF_Portrait.ApplyCamera(model, look)
+    else
+        model._kuiCamLook = nil
+        call(model, "SetCamDistanceScale", 0.25)
+        call(model, "SetPortraitZoom", 0)
+        call(model, "SetPosition", 0, 0, 0.25)
+        call(model, "ClearModel")
+        call(model, "SetModel", ns.PF_Portrait.questionMarkModel)
+    end
+    model._kuiUnit = unit
+    model._kuiGUID = guid
+    model._kuiAvailable = available
+    model._kuiLook = lookKey
+    return true
+end
+
+-- Models cannot be masked, so a circular portrait shrinks the model until its
+-- corners end under the ring, which is drawn above it. Other styles fill the
+-- whole portrait slot.
+ns.PF_Portrait.AnchorModel = function(button, metrics)
+    local model = button.portraitModel
+    if not model then return end
+    local inset = 0
+    if metrics.style == "circular" then
+        inset = math.floor(metrics.size * 0.15 + 0.5)
+    end
+    model:ClearAllPoints()
+    ns.PF_Portrait.Point(model, "TOPLEFT", button.portraitFrame, "TOPLEFT", inset, -inset)
+    ns.PF_Portrait.Point(model, "BOTTOMRIGHT", button.portraitFrame, "BOTTOMRIGHT", -inset, inset)
+end
+
+-- Cheap re-check used by range updates: a member walking into view swaps the
+-- placeholder for the real model without waiting for another repaint.
+ns.PF_Portrait.RefreshModel = function(frame)
+    local model = frame and frame.portraitModel
+    if not (model and model:IsShown() and frame.unit and not frame.fakeUnit) then return end
+    local db = Mod:GetModeDB(frame.mode or "party")
+    ns.PF_Portrait.ApplyModel(model, frame.unit, false, ns.PF_Portrait.GetModelLook(db, db and db.portraitFacing, frame.unit))
+end
+
+ns.PF_Portrait.EnsureModel = function(button)
+    if button.portraitModel then return button.portraitModel end
+    local ok, model = pcall(CreateFrame, "PlayerModel", nil, button.portraitFrame)
+    if not ok or not model then return nil end
+    model:SetAllPoints(button.portraitFrame)
+    model:SetFrameLevel(button.portraitFrame:GetFrameLevel() + 1)
+    ns.PF_Portrait.Call(model, "SetCamera", 0)
+    model:SetScript("OnModelLoaded", function(self)
+        if self._kuiCamLook ~= nil then ns.PF_Portrait.ApplyCamera(self, self._kuiCamLook or nil) end
+    end)
+    model:Hide()
+    button.portraitModel = model
+    return model
+end
+
+ns.PF_Portrait.SetMask = function(button, style)
+    local useMask = style == "circular" or style == "detached"
+    if useMask then
+        local maskName = style == "circular" and "circle_mask.tga" or "portrait_mask.tga"
+        local maskPath = ns.PF_Portrait.media .. maskName
+
+        -- Unit Frames inset the masks by one pixel so portrait art cannot leak
+        -- through the transparent edge of the border.
+        button.portraitMask:ClearAllPoints()
+        ns.PF_Portrait.Point(button.portraitMask, "TOPLEFT", button.portraitFrame, "TOPLEFT", 1, -1)
+        ns.PF_Portrait.Point(button.portraitMask, "BOTTOMRIGHT", button.portraitFrame, "BOTTOMRIGHT", -1, 1)
+        button.portraitMask:SetTexture(maskPath, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+
+        button.portraitClassMask:ClearAllPoints()
+        ns.PF_Portrait.Point(button.portraitClassMask, "TOPLEFT", button.portraitFrame, "TOPLEFT", 1, -1)
+        ns.PF_Portrait.Point(button.portraitClassMask, "BOTTOMRIGHT", button.portraitFrame, "BOTTOMRIGHT", -1, 1)
+        button.portraitClassMask:SetTexture(maskPath, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+
+        if not button._portraitMaskAdded then
+            button.portrait:AddMaskTexture(button.portraitMask)
+            if button.portraitBG then button.portraitBG:AddMaskTexture(button.portraitMask) end
+            button._portraitMaskAdded = true
+        end
+        if not button._portraitClassMaskAdded then
+            button.portraitClass:AddMaskTexture(button.portraitClassMask)
+            button._portraitClassMaskAdded = true
+        end
+    else
+        if button._portraitMaskAdded and button.portrait.RemoveMaskTexture then
+            button.portrait:RemoveMaskTexture(button.portraitMask)
+            if button.portraitBG and button.portraitBG.RemoveMaskTexture then
+                button.portraitBG:RemoveMaskTexture(button.portraitMask)
+            end
+            button._portraitMaskAdded = false
+        end
+        if button._portraitClassMaskAdded and button.portraitClass.RemoveMaskTexture then
+            button.portraitClass:RemoveMaskTexture(button.portraitClassMask)
+            button._portraitClassMaskAdded = false
+        end
+    end
+end
+
+function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
+    local portraitFrame = frame and frame.portraitFrame
+    if not portraitFrame then return end
+    local metrics = ns.PF_Portrait.GetMetrics(db, frame._layoutHeight)
+    local unit = frame.unit
+    if not metrics.show or not unit and not fakeData then
+        portraitFrame:Hide()
+        if frame.portraitModel then frame.portraitModel:Hide() end
+        frame._portraitModelActive = nil
+        return
+    end
+
+    local mode = db.portraitMode or "2d"
+    local classToken = ns.PF_Portrait.GetClassToken(unit, fakeData)
+    local portrait = frame.portrait
+    local classTexture = frame.portraitClass
+    portraitFrame:Show()
+    ns.PF_Portrait.SetMask(frame, metrics.style)
+    portrait:SetTexCoord(metrics.facing == "flipped" and 1 or 0, metrics.facing == "flipped" and 0 or 1, 0, 1)
+    classTexture:SetTexCoord(metrics.facing == "flipped" and 1 or 0, metrics.facing == "flipped" and 0 or 1, 0, 1)
+    frame.portraitBorder:SetTexture(ns.PF_Portrait.media .. (metrics.style == "circular" and "circle_border.tga" or "portrait_border.tga"))
+    frame.portraitBorder:SetShown(db.portraitBorder ~= false)
+    ns.PF_Portrait.UpdateBorder(frame, db, fakeData)
+
+    local show2D, showClass, showModel = false, false, false
+    if mode == "class" then
+        showClass = ns.PF_Portrait.ApplyClassTexture(classTexture, classToken)
+    elseif mode == "3d" then
+        -- Test frames have no real unit, so they preview the player's own model.
+        local modelUnit = fakeData and "player" or unit
+        local model = ns.PF_Portrait.EnsureModel(frame)
+        if model then
+            ns.PF_Portrait.AnchorModel(frame, metrics)
+            local wasShown = model:IsShown()
+            model:Show()
+            showModel = ns.PF_Portrait.ApplyModel(model, modelUnit, forceModel or not wasShown, ns.PF_Portrait.GetModelLook(db, metrics.facing, modelUnit))
+        end
+    end
+    if not (showClass or showModel) then
+        if fakeData then
+            showClass = ns.PF_Portrait.ApplyClassTexture(classTexture, classToken)
+        elseif unit and _G.SetPortraitTexture then
+            show2D = pcall(_G.SetPortraitTexture, portrait, unit)
+        end
+    end
+
+    portrait:SetShown(show2D)
+    classTexture:SetShown(showClass)
+    if frame.portraitModel then frame.portraitModel:SetShown(showModel) end
+    frame._portraitModelActive = showModel or nil
+    if not (show2D or showClass or showModel) then
+        portraitFrame:Hide()
+    end
+
+    if portraitFrame:IsShown() then
+        portrait:ClearAllPoints()
+        ns.PF_Portrait.Point(portrait, "TOPLEFT", portraitFrame, "TOPLEFT", 0, 0)
+        ns.PF_Portrait.Point(portrait, "BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", 0, 0)
+        portrait:SetTexCoord(metrics.facing == "flipped" and 1 or 0, metrics.facing == "flipped" and 0 or 1, 0, 1)
+        if KT.PP and KT.PP.DisablePixelSnap then KT.PP.DisablePixelSnap(portrait) end
+
+        local classInset = math.floor((portraitFrame:GetHeight() or metrics.size) * 0.08)
+        classTexture:ClearAllPoints()
+        ns.PF_Portrait.Point(classTexture, "TOPLEFT", portraitFrame, "TOPLEFT", classInset, -classInset)
+        ns.PF_Portrait.Point(classTexture, "BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", -classInset, classInset)
+    end
+end
+
+ns.PF_Portrait.ApplyLayout = function(frame, db, width, height, padding)
+    local metrics = ns.PF_Portrait.GetMetrics(db, height)
+    frame._portraitLeftInset = metrics.show and metrics.side == "left" and metrics.inset or 0
+    frame._portraitRightInset = metrics.show and metrics.side == "right" and metrics.inset or 0
+    frame._portraitShown = metrics.show
+    if not (frame.portraitFrame and metrics.show) then
+        if frame.portraitFrame then frame.portraitFrame:Hide() end
+        return
+    end
+
+    ns.PF_Portrait.Size(frame.portraitFrame, metrics.size, metrics.size)
+    frame.portraitFrame:ClearAllPoints()
+    local overlap = math.max(0, (frame.portraitFrame:GetWidth() or metrics.size) * 0.5)
+    if metrics.style == "attached" then
+        if metrics.side == "right" then
+            ns.PF_Portrait.Point(frame.portraitFrame, "TOPRIGHT", frame, "TOPRIGHT", -padding + metrics.x, -padding + metrics.y)
+        else
+            ns.PF_Portrait.Point(frame.portraitFrame, "TOPLEFT", frame, "TOPLEFT", padding + metrics.x, -padding + metrics.y)
+        end
+    elseif metrics.style == "circular" then
+        if metrics.side == "right" then
+            ns.PF_Portrait.Point(frame.portraitFrame, "LEFT", frame.health, "RIGHT", -overlap + metrics.x, metrics.y)
+        else
+            ns.PF_Portrait.Point(frame.portraitFrame, "RIGHT", frame.health, "LEFT", overlap + metrics.x, metrics.y)
+        end
+    elseif metrics.side == "right" then
+        ns.PF_Portrait.Point(frame.portraitFrame, "LEFT", frame.health, "RIGHT", 4 + metrics.x, metrics.y)
+    else
+        ns.PF_Portrait.Point(frame.portraitFrame, "RIGHT", frame.health, "LEFT", -4 + metrics.x, metrics.y)
+    end
+    -- Match Unit Frames' relationship: the portrait lives one full strata
+    -- above Health. Frame levels alone cannot cross a strata boundary.
+    local portraitStrata = ns.PF_Portrait.GetStrataAbove(frame.health)
+    frame.portraitFrame:SetFrameStrata(portraitStrata)
+    frame.portraitFrame:SetFrameLevel(frame.health:GetFrameLevel() + 3)
+    if frame.portraitModel then
+        frame.portraitModel:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 1)
+    end
+    if frame.portraitBorderFrame then
+        frame.portraitBorderFrame:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 3)
+    end
+    if frame.overlayFrame then
+        frame.overlayFrame:SetFrameStrata(portraitStrata)
+        frame.overlayFrame:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 4)
+    end
+end
+
 function Mod:CreateUnitButton(parent, name)
     local button = CreateFrame("Button", name, parent, "SecureUnitButtonTemplate")
     button:RegisterForClicks("AnyUp")
@@ -2878,6 +3296,42 @@ function Mod:CreateUnitButton(parent, name)
     if KT.AddBorder then
         KT:AddBorder(button, 0, 0, 0, 1)
     end
+
+    button.portraitFrame = CreateFrame("Frame", nil, button)
+    button.portraitFrame:SetFrameStrata("MEDIUM")
+    button.portraitFrame:SetFrameLevel(50)
+    button.portraitFrame:EnableMouse(false)
+    if button.portraitFrame.SetIgnoreParentAlpha then
+        button.portraitFrame:SetIgnoreParentAlpha(false)
+    end
+    if button.portraitFrame.SetClipsChildren then
+        button.portraitFrame:SetClipsChildren(true)
+    end
+    button.portraitFrame:Hide()
+    button.portraitBG = button.portraitFrame:CreateTexture(nil, "BACKGROUND")
+    button.portraitBG:SetAllPoints()
+    button.portraitBG:SetColorTexture(0.10, 0.10, 0.10, 1)
+    button.portrait = button.portraitFrame:CreateTexture(nil, "ARTWORK")
+    button.portrait:SetAllPoints()
+    button.portrait:SetColorTexture(0.20, 0.20, 0.20, 1)
+    button.portraitMask = button.portraitFrame:CreateMaskTexture()
+    button.portraitMask:SetTexture(ns.PF_Portrait.media .. "circle_mask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    button.portraitClass = button.portraitFrame:CreateTexture(nil, "ARTWORK")
+    button.portraitClassMask = button.portraitFrame:CreateMaskTexture()
+    button.portraitClassMask:SetTexture(ns.PF_Portrait.media .. "circle_mask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    button.portraitClass:SetPoint("TOPLEFT", 2, -2)
+    button.portraitClass:SetPoint("BOTTOMRIGHT", -2, 2)
+    button.portraitClass:SetAlpha(0.8)
+    button.portraitClass:Hide()
+    -- The ring sits on its own frame above the portrait so it also covers 3D
+    -- models, which draw above every texture of the portrait frame.
+    button.portraitBorderFrame = CreateFrame("Frame", nil, button.portraitFrame)
+    button.portraitBorderFrame:SetAllPoints(button.portraitFrame)
+    button.portraitBorderFrame:SetFrameLevel(button.portraitFrame:GetFrameLevel() + 3)
+    button.portraitBorder = button.portraitBorderFrame:CreateTexture(nil, "OVERLAY")
+    button.portraitBorder:SetTexture(ns.PF_Portrait.media .. "circle_border.tga")
+    button.portraitBorder:SetAllPoints()
+    button.portraitBorder:Hide()
 
     button.health = CreateFrame("StatusBar", nil, button)
     button.health:SetPoint("TOPLEFT", 3, -3)
@@ -5494,17 +5948,26 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
 
     frame.health:ClearAllPoints()
     frame.power:ClearAllPoints()
-    frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -padding)
-    frame.health:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -padding, -padding)
+    local portraitLeftInset = 0
+    local portraitRightInset = 0
+    local portraitMetrics = ns.PF_Portrait.GetMetrics(db, height)
+    if portraitMetrics.show and portraitMetrics.side == "left" then
+        portraitLeftInset = portraitMetrics.inset
+    elseif portraitMetrics.show then
+        portraitRightInset = portraitMetrics.inset
+    end
+    frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", padding + portraitLeftInset, -padding)
+    frame.health:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -padding - portraitRightInset, -padding)
     if showPower then
-        frame.power:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", padding, padding)
-        frame.power:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -padding, padding)
+        frame.power:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", padding + portraitLeftInset, padding)
+        frame.power:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -padding - portraitRightInset, padding)
         frame.power:SetHeight(powerHeight)
         frame.health:SetPoint("BOTTOMRIGHT", frame.power, "TOPRIGHT", 0, 1)
     else
-        frame.health:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -padding, padding)
+        frame.health:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -padding - portraitRightInset, padding)
         frame.power:SetHeight(powerHeight)
     end
+    ns.PF_Portrait.ApplyLayout(frame, db, width, height, padding)
 
     local maxName = IsRaidMode(mode) and math.floor(height * 0.40) or nil
     local maxValue = IsRaidMode(mode) and math.floor(height * 0.35) or nil
@@ -5513,7 +5976,12 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
     ApplyTextStyle(frame.valueText, db, "healthTextFontSize", 12, maxValue)
     ApplyTextStyle(frame.statusText, db, "healthTextFontSize", 12, maxValue)
 
-    local innerWidth = math.max(1, width - (padding * 2))
+    local innerWidth = math.max(1, width - (padding * 2) - portraitLeftInset - portraitRightInset)
+    -- With a portrait active, the role icon moves to the far-right interior
+    -- slot so it never sits underneath the portrait.
+    local roleIconAtRight = portraitMetrics.show
+    local roleIconRightReserve = roleIconAtRight and 28 or 0
+    local textInnerWidth = math.max(1, innerWidth - roleIconRightReserve)
     frame.nameText:ClearAllPoints()
     frame.valueText:ClearAllPoints()
     local nx = tonumber(db.nameOffsetX) or 0
@@ -5521,16 +5989,17 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
     local hx = tonumber(db.healthOffsetX) or 0
     local hy = tonumber(db.healthOffsetY) or 0
 
-    local statusValueWidth = math.min(70, innerWidth)
+    local statusValueWidth = math.min(70, textInnerWidth)
     if height >= 70 or (width < 140 and height >= 40) then
-        frame._nameMaxChars = math.max(3, math.floor(innerWidth / ((tonumber(db.nameFontSize) or 15) * 0.58)))
+        local textCenterX = -(roleIconRightReserve * 0.5)
+        frame._nameMaxChars = math.max(3, math.floor(textInnerWidth / ((tonumber(db.nameFontSize) or 15) * 0.58)))
         frame.nameText:SetJustifyH("CENTER")
-        frame.nameText:SetPoint("CENTER", frame.health, "CENTER", 0 + nx, 10 + ny)
-        frame.nameText:SetWidth(innerWidth - 12)
+        frame.nameText:SetPoint("CENTER", frame.health, "CENTER", textCenterX + nx, 10 + ny)
+        frame.nameText:SetWidth(math.max(1, textInnerWidth - 12))
         frame.nameText:SetHeight(18)
         frame.valueText:SetJustifyH("CENTER")
-        frame.valueText:SetPoint("CENTER", frame.health, "CENTER", 0 + hx, -10 + hy)
-        frame.valueText:SetWidth(innerWidth - 12)
+        frame.valueText:SetPoint("CENTER", frame.health, "CENTER", textCenterX + hx, -10 + hy)
+        frame.valueText:SetWidth(math.max(1, textInnerWidth - 12))
         frame.valueText:SetHeight(16)
     else
         local format = db.healthTextFormat or "CURRENTMAX"
@@ -5540,22 +6009,26 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
         elseif format == "PERCENT" then
             valueWidth = 38
         else
-            valueWidth = math.min(math.max(72, math.floor(innerWidth * 0.44)), math.max(44, innerWidth - 34))
+            valueWidth = math.min(math.max(72, math.floor(textInnerWidth * 0.44)), math.max(44, textInnerWidth - 34))
         end
         statusValueWidth = valueWidth
         -- Allied and enemy arena frames use the same lower-left role icon as
         -- party frames, so reserve its full width before starting the name.
-        local reserveRoleIcon = mode == "arena" or mode == "arenaEnemy"
-            or (mode == "party" and db.growDirection == "VERTICAL")
+        -- With a portrait active, the role icon owns the far-right slot instead.
+        local reserveRoleIcon = not roleIconAtRight and (mode == "arena" or mode == "arenaEnemy"
+            or (mode == "party" and db.growDirection == "VERTICAL"))
         local nameLeftInset = reserveRoleIcon and PF_STATIC.partyVerticalNameLeftInset or 6
-        local nameWidth = math.max(24, innerWidth - valueWidth - 16 - (nameLeftInset - 6))
+        if roleIconAtRight and portraitMetrics.style == "circular" and portraitMetrics.side == "left" then
+            nameLeftInset = math.max(nameLeftInset, math.ceil(math.max(0, portraitMetrics.overlap + portraitMetrics.x)) + 4)
+        end
+        local nameWidth = math.max(24, textInnerWidth - valueWidth - 16 - (nameLeftInset - 6))
         frame._nameMaxChars = math.max(3, math.floor(nameWidth / ((tonumber(db.nameFontSize) or 15) * 0.58)))
         frame.nameText:SetJustifyH("LEFT")
         frame.nameText:SetPoint("LEFT", frame.health, "LEFT", nameLeftInset + nx, 0 + ny)
         frame.nameText:SetWidth(nameWidth)
         frame.nameText:SetHeight(math.max(12, height - (padding * 2)))
         frame.valueText:SetJustifyH("RIGHT")
-        frame.valueText:SetPoint("RIGHT", frame.health, "RIGHT", -6 + hx, 0 + hy)
+        frame.valueText:SetPoint("RIGHT", frame.health, "RIGHT", -6 - roleIconRightReserve + hx, 0 + hy)
         frame.valueText:SetWidth(valueWidth)
         frame.valueText:SetHeight(math.max(12, height - (padding * 2)))
     end
@@ -5580,20 +6053,21 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
     
     frame.statusText:ClearAllPoints()
     frame.statusText:SetJustifyH("CENTER")
+    local statusCenterX = -(roleIconRightReserve * 0.5)
     if isRaidMode and (height >= 70 or (width < 140 and height >= 40)) then
-        frame.statusText:SetWidth(innerWidth - 12)
+        frame.statusText:SetWidth(math.max(1, textInnerWidth - 12))
         frame.statusText:SetHeight(14)
-        frame.statusText:SetPoint("CENTER", frame.health, "CENTER", 0, -12)
+        frame.statusText:SetPoint("CENTER", frame.health, "CENTER", statusCenterX, -12)
     elseif isCenteredStatus then
         frame.statusText:SetJustifyH(isHorizontalCenteredStatus and "CENTER" or "LEFT")
-        frame.statusText:SetWidth(isHorizontalCenteredStatus and math.min(90, innerWidth - 12) or math.min(70, innerWidth - 24))
+        frame.statusText:SetWidth(isHorizontalCenteredStatus and math.min(90, textInnerWidth - 12) or math.min(70, textInnerWidth - 24))
         frame.statusText:SetHeight(16)
-        frame.statusText:SetPoint("CENTER", frame.health, "CENTER", isHorizontalCenteredStatus and 0 or 12, isHorizontalCenteredStatus and -3 or 0)
+        frame.statusText:SetPoint("CENTER", frame.health, "CENTER", (isHorizontalCenteredStatus and 0 or 12) + statusCenterX, isHorizontalCenteredStatus and -3 or 0)
     else
         frame.statusText:SetJustifyH("LEFT")
-        frame.statusText:SetWidth(math.max(34, math.min(statusValueWidth, innerWidth - 24)))
+        frame.statusText:SetWidth(math.max(34, math.min(statusValueWidth, textInnerWidth - 24)))
         frame.statusText:SetHeight(math.max(12, height - (padding * 2)))
-        frame.statusText:SetPoint("RIGHT", frame.health, "RIGHT", -6, 0)
+        frame.statusText:SetPoint("RIGHT", frame.health, "RIGHT", -6 - roleIconRightReserve, 0)
     end
     if not isRaidMode then
         frame.statusIcon:ClearAllPoints()
@@ -5606,7 +6080,11 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
 
     frame.roleIcon:ClearAllPoints()
     frame.roleIcon:SetSize(18, 18)
-    frame.roleIcon:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
+    if roleIconAtRight then
+        frame.roleIcon:SetPoint("RIGHT", frame, "RIGHT", -6, -4)
+    else
+        frame.roleIcon:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 2, 2)
+    end
     frame.roleIcon:SetShown(true)
 
     frame.leaderIcon:ClearAllPoints()
@@ -5615,7 +6093,7 @@ function Mod:PositionFrame(frame, parent, index, count, mode, visibleCount, layo
 
     frame.raidTargetIcon:ClearAllPoints()
     frame.raidTargetIcon:SetSize(16, 16)
-    frame.raidTargetIcon:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    frame.raidTargetIcon:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", roleIconAtRight and -28 or -2, 2)
 
     frame.readyCheckIcon:ClearAllPoints()
     frame.readyCheckIcon:SetSize(16, 16)
@@ -5654,7 +6132,10 @@ function Mod:SetFrameUnit(frame, unit)
     frame._ktAbsorbMax = nil
     frame._ktAbsorbValue = nil
     frame:SetAttribute("unit", frame.unit)
+    if not frame.unit and frame.portraitFrame then frame.portraitFrame:Hide() end
     if frame.unit ~= oldUnit then
+        -- A new unit in the slot reloads the 3D model on the next paint.
+        if frame.portraitModel then frame.portraitModel._kuiUnit = nil end
         self._auraUnitFrames = self._auraUnitFrames or {}
         local list = self._auraUnitFrames[oldUnit]
         if list then
@@ -5687,6 +6168,10 @@ end
 
 function Mod:UpdateFrameVisual(frame, refreshAuras)
     if not frame then return end
+
+    local portraitDB = self:GetModeDB(frame.mode or "party")
+    local portraitData = frame.fakeUnit and GetTestUnitData(frame.fakeUnit, frame.mode or "party") or nil
+    self:UpdatePartyPortrait(frame, portraitDB, portraitData)
 
     local showPartyLevel = self:GetRootConfigValue("showCharacterLevel", false) == true and frame.mode == "party"
     ApplyCharacterLevelTextStyle(frame.levelText, self.db, frame)
@@ -6686,6 +7171,16 @@ function Mod:OnUnitEvent(event, unit)
         if not self._healthPowerFlushQueued then
             self._healthPowerFlushQueued = true
             ns.PF_HealthPowerFlushDriver:Show()
+        end
+        return
+    end
+    if event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
+        -- Only portraits care about these; reload the 3D model when it changed.
+        for i = 1, #frames do
+            local frame = frames[i]
+            if frame and frame:IsShown() and frame._portraitShown then
+                self:UpdatePartyPortrait(frame, self:GetModeDB(frame.mode or "party"), nil, true)
+            end
         end
         return
     end
