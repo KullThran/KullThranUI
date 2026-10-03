@@ -82,7 +82,10 @@ function BA.Update(frame, unit)
             if type(sw) ~= "number" or type(sh) ~= "number" or sw <= 0 or sh <= 0 then error("nosize") end
             dst:SetSize(sw, sh)
         end
-        dst:SetVertexColor(1, 1, 1, 1)
+        -- Carry over the Forever emulation tint (ThemeClientAssets.lua) so the
+        -- clipped copy matches the ring it was cut from.
+        if dst.SetDesaturated and src.IsDesaturated then dst:SetDesaturated(src:IsDesaturated()) end
+        dst:SetVertexColor(src:GetVertexColor())
     end)
     clip:SetShown(ok)
 end

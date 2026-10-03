@@ -1353,6 +1353,42 @@ end
 -- KullThranUI sub-addon fetches identically via LibStub.
 KT.ResolveRetailAtlasOverride = ResolveRetailAtlasOverride
 
+-- Forever's bronze unit-frame art only exists on the Forever client, which
+-- remaps these atlas names to its own sheet. On a genuine Retail client the
+-- same names draw Retail's gold art, so the Forever theme looked exactly like
+-- Retail. There, emulate Forever by desaturating the gold art and tinting it
+-- bronze. Any other theme, or a client that already remaps the atlas, gets
+-- the art back untinted.
+local FOREVER_EMULATED_TINT = { r = 0.95, g = 0.66, b = 0.46 }
+
+--- @param atlasName string
+--- @return table|nil tint {r,g,b} when Forever has to be emulated for this atlas
+local function GetForeverEmulationTint(atlasName)
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if renderedTheme ~= "forever" or type(atlasName) ~= "string" then return nil end
+    local entry = RETAIL_ATLAS_OVERRIDES[atlasName:lower()]
+    if not entry then return nil end
+    local liveInfo = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlasName)
+    local liveFile = liveInfo and (liveInfo.file or liveInfo.filename)
+    if liveFile ~= entry.file then return nil end
+    return FOREVER_EMULATED_TINT
+end
+
+--- @param texture Texture
+--- @param atlasName string
+local function ApplyForeverEmulationTint(texture, atlasName)
+    if not texture then return end
+    local tint = GetForeverEmulationTint(atlasName)
+    if texture.SetDesaturated then texture:SetDesaturated(tint ~= nil) end
+    if tint then
+        texture:SetVertexColor(tint.r, tint.g, tint.b, 1)
+    else
+        texture:SetVertexColor(1, 1, 1, 1)
+    end
+end
+KT.ApplyForeverEmulationTint = ApplyForeverEmulationTint
+
 --- Applies the Forever theme's real per-client UnitFrame art: creates
 --- (once, cached on `frame`) the real player/target frame-art box texture,
 --- scaled and anchored so its own known internal portrait sub-rect lines up
@@ -1594,6 +1630,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- own remap (~230x99), distorting the whole ring instead of just
     -- closing the small corner gap.
     art:SetSize((info.width or geom.w) * scale, (info.height or geom.h) * scale)
+    ApplyForeverEmulationTint(art, geom.art)
     if showBasePortraitArt then art:Show() else art:Hide() end
     frame._ktDebugArtCalc = string.format(
         "mirrored=%s infoW=%s infoH=%s setW=%.4f setH=%.4f postSetGetWidth=%s postSetGetHeight=%s",
