@@ -1158,6 +1158,49 @@ local function RefreshLivePreview(preview)
             unit.portraitBorder:Hide()
             unit.portraitFrame:Hide()
         end
+        if portraitShow and cfg.portraitMode == "3d" then
+            if not unit.model3D then
+                unit.model3D = CreateFrame("PlayerModel", nil, unit.portraitFrame)
+                unit.ringFrame = CreateFrame("Frame", nil, unit.portraitFrame)
+                unit.ringFrame:SetAllPoints(unit.portraitFrame)
+                unit.ringTexture = unit.ringFrame:CreateTexture(nil, "OVERLAY")
+                unit.ringTexture:SetAllPoints(unit.ringFrame)
+            end
+            local level = unit.portraitFrame:GetFrameLevel()
+            unit.model3D:SetFrameLevel(level + 1)
+            unit.ringFrame:SetFrameLevel(level + 3)
+            local circular = portraitStyle == "circular"
+            local inset = circular and math.floor(portraitSize * 0.18 + 0.5) or 0
+            unit.model3D:ClearAllPoints()
+            unit.model3D:SetPoint("TOPLEFT", unit.portraitFrame, "TOPLEFT", inset, -inset)
+            unit.model3D:SetPoint("BOTTOMRIGHT", unit.portraitFrame, "BOTTOMRIGHT", -inset, inset)
+            if not unit.model3D._previewUnit then
+                unit.model3D:SetUnit("player")
+                unit.model3D._previewUnit = true
+            end
+            local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 100) / 100)
+            local rot = math.rad(tonumber(cfg.portrait3DRotation) or 0)
+            if cfg.portraitFacing == "flipped" then rot = -rot end
+            if unit.model3D.SetPortraitZoom then unit.model3D:SetPortraitZoom(1) end
+            if unit.model3D.SetCamDistanceScale then unit.model3D:SetCamDistanceScale(1 / zoom) end
+            if unit.model3D.SetPosition then
+                unit.model3D:SetPosition(0, (tonumber(cfg.portrait3DX) or 0) / 100, (tonumber(cfg.portrait3DY) or 0) / 100)
+            end
+            if unit.model3D.SetFacing then unit.model3D:SetFacing(rot) end
+            unit.model3D:Show()
+            unit.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
+            unit.portraitBorder:Hide()
+            if circular and cfg.portraitBorder ~= false then
+                unit.ringTexture:SetTexture(PREVIEW_PORTRAIT_MEDIA .. "circle_border.tga")
+                unit.ringTexture:SetVertexColor(unit.portraitBorder:GetVertexColor())
+                unit.ringFrame:Show()
+            else
+                unit.ringFrame:Hide()
+            end
+        elseif unit.model3D then
+            unit.model3D:Hide()
+            unit.ringFrame:Hide()
+        end
         unit.health:SetStatusBarTexture(ResolveStatusbarTexture(cfg.healthTexture, PREVIEW_FILL))
         unit.health:SetValue((sample.health or 0.75) * 100)
         unit.health:SetStatusBarColor(color[1], color[2], color[3], 0.9)
