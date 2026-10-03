@@ -75,6 +75,7 @@ local esES = {
     ["View Changelog"] = "Ver cambios",
     ["Resolution & Scale"] = "Resolución y escala",
     ["Use Blizzard UI Scale"] = "Usar escala de UI de Blizzard",
+    ["KUI controls the UI scale"] = "KUI controla la escala de la UI",
     ["Resolution Preset"] = "Preajuste de resolución",
     ["Manual UI Scale"] = "Escala manual de UI",
     ["Language"] = "Idioma",

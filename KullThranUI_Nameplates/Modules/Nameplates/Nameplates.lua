@@ -3293,6 +3293,9 @@ local function SetupAuraCVars()
             nameplateShowFriends         = showPly and 1 or 0,
             nameplateShowFriendlyNPCs    = showNpc and 1 or 0,
             nameplateShowFriendlyNpcs    = showNpc and 1 or 0,
+            -- Keep Blizzard's special-NPC state active so quest givers retain
+            -- their native overhead indicators while KUI draws the name.
+            UnitNameFriendlySpecialNPCName = showNpc and 1 or 0,
             ShowClassColorInFriendlyNameplate = classCol,
             nameplateUseClassColorForFriendlyPlayerUnitNames = classCol,
         }

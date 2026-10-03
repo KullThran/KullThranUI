@@ -239,7 +239,7 @@ local function ConfigureCooldownSwipe(cooldown, shape, maskTex)
         pcall(cooldown.SetDrawSwipe, cooldown, true)
     end
     if cooldown.SetUseCircularEdge then
-        pcall(cooldown.SetUseCircularEdge, cooldown, shape ~= "NONE")
+        pcall(cooldown.SetUseCircularEdge, cooldown, shape == "CIRCLE")
     end
 
     local swipeTexture = maskTex or "Interface\\Buttons\\WHITE8x8"
@@ -262,7 +262,7 @@ local function _FlushCDPatch()
                 if cdFrame.AddMaskTexture then pcall(cdFrame.AddMaskTexture, cdFrame, btn.KT_ShapeMask) end
 
                 if cdFrame.SetDrawSwipe then pcall(cdFrame.SetDrawSwipe, cdFrame, true) end
-                if cdFrame.SetUseCircularEdge then pcall(cdFrame.SetUseCircularEdge, cdFrame, shape ~= "CSQUARE") end
+                if cdFrame.SetUseCircularEdge then pcall(cdFrame.SetUseCircularEdge, cdFrame, shape == "CIRCLE") end
                 if cdFrame.SetSwipeTexture and SHAPE_MASKS[shape] and cdFrame.KT_KUISwipeTexture ~= SHAPE_MASKS[shape] then
                     pcall(cdFrame.SetSwipeTexture, cdFrame, SHAPE_MASKS[shape])
                     cdFrame.KT_KUISwipeTexture = SHAPE_MASKS[shape]
@@ -474,6 +474,44 @@ function Mod:ApplyProtectedSafeVisualStyle(btn)
     btn.KT_ShapeBorder:Show()
 end
 
+-- Blizzard secure buttons: the native cooldown is anchored to the icon with a
+-- ~3px inset and we must not touch it. Instead, grow the icon by that inset and
+-- clip it back to the wanted rect with a square mask, so the swipe fills it.
+function Mod:FitIconToNativeCooldown(btn, icon, tlFrame, tlx, tly, brFrame, brx, bry)
+    if not icon then return end
+    local inset = 0
+    if not CanMutateActionButtonCooldown(btn) then
+        local name = btn:GetName()
+        local cd = btn.cooldown or _G[name .. "Cooldown"]
+        if cd and cd.GetPoint then
+            local _, rel, _, x = cd:GetPoint(1)
+            if rel == icon and type(x) == "number" and not (issecretvalue and issecretvalue(x)) then
+                btn.KT_NativeCdInset = btn.KT_NativeCdInset or math.abs(x)
+            end
+        end
+        inset = btn.KT_NativeCdInset or 3
+    end
+    icon:ClearAllPoints()
+    icon:SetPoint("TOPLEFT", tlFrame, "TOPLEFT", tlx - inset, tly + inset)
+    icon:SetPoint("BOTTOMRIGHT", brFrame, "BOTTOMRIGHT", brx + inset, bry - inset)
+    if inset > 0 and icon.AddMaskTexture then
+        if not btn.KT_InsetMask then
+            btn.KT_InsetMask = btn:CreateMaskTexture()
+            btn.KT_InsetMask:SetTexture("Interface\\Buttons\\WHITE8x8", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        end
+        btn.KT_InsetMask:ClearAllPoints()
+        btn.KT_InsetMask:SetPoint("TOPLEFT", tlFrame, "TOPLEFT", tlx, tly)
+        btn.KT_InsetMask:SetPoint("BOTTOMRIGHT", brFrame, "BOTTOMRIGHT", brx, bry)
+        if not btn.KT_InsetMaskOn then
+            pcall(icon.AddMaskTexture, icon, btn.KT_InsetMask)
+            btn.KT_InsetMaskOn = true
+        end
+    elseif btn.KT_InsetMaskOn and btn.KT_InsetMask and icon.RemoveMaskTexture then
+        pcall(icon.RemoveMaskTexture, icon, btn.KT_InsetMask)
+        btn.KT_InsetMaskOn = nil
+    end
+end
+
 -- ============================================================================
 -- KUI STYLE
 -- ============================================================================
@@ -529,9 +567,7 @@ function Mod:ApplyModernKUIStyle(btn)
     for i = 1, 4 do bl[i]:Show() end
 
     if icon then
-        icon:ClearAllPoints()
-        icon:SetPoint("TOPLEFT", btn.KT_BG, "TOPLEFT", padding, -padding)
-        icon:SetPoint("BOTTOMRIGHT", btn.KT_BG, "BOTTOMRIGHT", -padding, padding)
+        Mod:FitIconToNativeCooldown(btn, icon, btn.KT_BG, padding, -padding, btn.KT_BG, -padding, padding)
     end
 
     if cooldown and cooldown.ClearAllPoints and cooldown.SetAllPoints then
@@ -586,8 +622,7 @@ function Mod:ApplySimplicityStyle(btn)
     if icon then
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         icon:SetDrawLayer("BACKGROUND", 1)
-        icon:ClearAllPoints()
-        icon:SetAllPoints(btn)
+        Mod:FitIconToNativeCooldown(btn, icon, btn, 0, 0, btn, 0, 0)
     end
 
     if cooldown and cooldown.ClearAllPoints and cooldown.SetAllPoints then
@@ -701,8 +736,15 @@ function Mod:ApplyShape(btn)
     local checked = btn:GetCheckedTexture()
     local highlight = btn:GetHighlightTexture()
 
+    -- Native (Blizzard secure) cooldowns: only a texture mask is ever added to them
+    -- so their square swipe follows the button shape; no hooks/anchors/fields.
+    local nativeCd = (not canMutateCooldown) and (btn.cooldown or _G[name .. "Cooldown"]) or nil
+    local nativeChargeCd = (not canMutateCooldown) and (btn.chargeCooldown or _G[name .. "ChargeCooldown"]) or nil
+
     -- 1. Limpiar máscaras anteriores
     if btn.KT_ShapeMask then
+        if nativeCd and nativeCd.RemoveMaskTexture then pcall(nativeCd.RemoveMaskTexture, nativeCd, btn.KT_ShapeMask) end
+        if nativeChargeCd and nativeChargeCd.RemoveMaskTexture then pcall(nativeChargeCd.RemoveMaskTexture, nativeChargeCd, btn.KT_ShapeMask) end
         if icon and icon.RemoveMaskTexture then pcall(icon.RemoveMaskTexture, icon, btn.KT_ShapeMask) end
         if cooldown and cooldown.RemoveMaskTexture then pcall(cooldown.RemoveMaskTexture, cooldown, btn.KT_ShapeMask) end
         if chargeCd and chargeCd.RemoveMaskTexture then pcall(chargeCd.RemoveMaskTexture, chargeCd, btn.KT_ShapeMask) end
@@ -797,7 +839,7 @@ function Mod:ApplyShape(btn)
     if cooldown and cooldown.AddMaskTexture then
         pcall(cooldown.AddMaskTexture, cooldown, mask)
         if cooldown.SetDrawSwipe then pcall(cooldown.SetDrawSwipe, cooldown, true) end
-        if cooldown.SetUseCircularEdge then pcall(cooldown.SetUseCircularEdge, cooldown, shape ~= "CSQUARE") end
+        if cooldown.SetUseCircularEdge then pcall(cooldown.SetUseCircularEdge, cooldown, shape == "CIRCLE") end
         if cooldown.SetSwipeTexture and cooldown.KT_KUISwipeTexture ~= maskTex then
             pcall(cooldown.SetSwipeTexture, cooldown, maskTex)
             cooldown.KT_KUISwipeTexture = maskTex
@@ -806,12 +848,18 @@ function Mod:ApplyShape(btn)
     if chargeCd and chargeCd.AddMaskTexture then
         pcall(chargeCd.AddMaskTexture, chargeCd, mask)
         if chargeCd.SetDrawSwipe then pcall(chargeCd.SetDrawSwipe, chargeCd, true) end
-        if chargeCd.SetUseCircularEdge then pcall(chargeCd.SetUseCircularEdge, chargeCd, shape ~= "CSQUARE") end
+        if chargeCd.SetUseCircularEdge then pcall(chargeCd.SetUseCircularEdge, chargeCd, shape == "CIRCLE") end
         if chargeCd.SetSwipeTexture and chargeCd.KT_KUISwipeTexture ~= maskTex then
             pcall(chargeCd.SetSwipeTexture, chargeCd, maskTex)
             chargeCd.KT_KUISwipeTexture = maskTex
         end
     end
+
+    if nativeCd and nativeCd.AddMaskTexture then pcall(nativeCd.AddMaskTexture, nativeCd, mask) end
+    if nativeChargeCd and nativeChargeCd.AddMaskTexture then pcall(nativeChargeCd.AddMaskTexture, nativeChargeCd, mask) end
+    -- Cooldown frames ignore texture masks: the swipe itself must use the shape texture.
+    if nativeCd then ConfigureCooldownSwipe(nativeCd, shape, maskTex) end
+    if nativeChargeCd then ConfigureCooldownSwipe(nativeChargeCd, shape, maskTex) end
 
     ConfigureCooldownSwipe(cooldown, shape, maskTex)
     ConfigureCooldownSwipe(chargeCd, shape, maskTex)
@@ -822,9 +870,7 @@ local function RefreshCooldownSwipeShape(btn)
         return
     end
 
-    if not CanMutateActionButtonCooldown(btn) then
-        return
-    end
+    local nativeOnly = not CanMutateActionButtonCooldown(btn)
 
     local name = btn:GetName()
     local db = KT.db and KT.db.profile and KT.db.profile.actionbars
@@ -834,6 +880,9 @@ local function RefreshCooldownSwipeShape(btn)
 
     local shape = GetShapeForButton(name)
     local maskTex = SHAPE_MASKS[shape]
+    if nativeOnly and shape == "NONE" then
+        return
+    end
     local frames = {
         btn.cooldown or _G[name .. "Cooldown"],
         btn.chargeCooldown or _G[name .. "ChargeCooldown"],

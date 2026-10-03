@@ -1226,7 +1226,7 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
                 function() return db.enable ~= false end,
                 function(v)
                     db.enable = v
-                    ReloadUI()
+                    StaticPopup_Show("KULLTHRANUI_RELOAD")
                 end); by = by + h
             _, h = W:Toggle(container, 'Show Character Level', -by,
                 function() return db.showCharacterLevel == true end,

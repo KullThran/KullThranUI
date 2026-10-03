@@ -260,7 +260,7 @@ KT:RegisterPage("objectivetracker", "Objective Tracker", 55, function(sc, W)
     _, h = W:SectionHeader(leftCol, LText("General"), -ly); ly = ly + h
     _, h = W:Toggle(leftCol, LText("Enable Objective Tracker Skin"), -ly,
         function() return db.enable end,
-        function(v) db.enable = v; ReloadUI() end
+        function(v) db.enable = v; StaticPopup_Show("KULLTHRANUI_RELOAD") end
     ); ly = ly + h + 10
     
     -- COLOR SECTION

@@ -10801,6 +10801,12 @@ ns.AnchorPlayerFrameToCDM = function()
         ns._playerFrameAnchorPending = true
         return false
     end
+    -- Moving frames while the player drags things in Edit Mode makes them jump.
+    local editMode = _G.EditModeManagerFrame
+    if editMode and editMode.IsEditModeActive and editMode:IsEditModeActive() then
+        ns._playerFrameAnchorPending = true
+        return false
+    end
 
     local cdmBar = cdmBarFrames and cdmBarFrames["cooldowns"]
     -- Don't require :IsShown(); we still want a stable default anchor even when
@@ -10823,32 +10829,11 @@ ns.AnchorPlayerFrameToCDM = function()
     }
 
     local p = KUI_CDM and KUI_CDM.db and KUI_CDM.db.profile
-    local function EnsureMovedFramesTable()
-        if not p or not p.cdmBars then return end
-        p.cdmBars.userMovedFrames = p.cdmBars.userMovedFrames or {}
-    end
-
     local function HasUserMovedFrame(frame)
         if not frame or not frame.GetName then return false end
         local name = frame:GetName()
         if not name or name == "" then return false end
         return p and p.cdmBars and p.cdmBars.userMovedFrames and p.cdmBars.userMovedFrames[name] or false
-    end
-
-    local function HookDetectUserMoved(frame)
-        if not frame or frame.KT_CDM_MoveDetectHooked then return end
-        if not frame.GetName then return end
-        local name = frame:GetName()
-        if not name or name == "" then return end
-
-        frame.KT_CDM_MoveDetectHooked = true
-        hooksecurefunc(frame, "SetPoint", function(self)
-            if self.KT_CDM_Anchoring then return end
-            EnsureMovedFramesTable()
-            if p and p.cdmBars and p.cdmBars.userMovedFrames then
-                p.cdmBars.userMovedFrames[name] = true
-            end
-        end)
     end
 
     local function PersistKUIUnitFramePosition(frame, unitKey)
@@ -10893,10 +10878,9 @@ ns.AnchorPlayerFrameToCDM = function()
         if not f then return false end
         if ShouldSkipManagedFrameAutoAnchor(f, unitKey) then return false end
         if HasUserMovedFrame(f) then return false end
+        -- No SetUserPlaced: the game would cache this position in its own
+        -- layout file and keep it even after KUI is disabled.
         local ok = pcall(function()
-            if f.SetUserPlaced and not InCombatLockdown() then
-                pcall(f.SetUserPlaced, f, true)
-            end
             f.KT_CDM_Anchoring = true
             f:ClearAllPoints()
             f:SetPoint(point, relFrame, relPoint, ox, oy)
@@ -10936,26 +10920,14 @@ ns.AnchorPlayerFrameToCDM = function()
             end
         end
     end
-    if not anchoredPlayer then
-        local blizzPlayer = ns.CDMGetBlizzardPlayerFrameCandidate and ns.CDMGetBlizzardPlayerFrameCandidate() or _G["PlayerFrame"]
-        if blizzPlayer then
-            HookDetectUserMoved(blizzPlayer)
-            TryAnchorFrame(blizzPlayer, "player", "RIGHT", anchorFrame, "LEFT", -offsetX, 0)
-        end
-    end
+    -- Blizzard's PlayerFrame/TargetFrame belong to Edit Mode: KUI never
+    -- re-anchors them, so Edit Mode layouts stay exactly as the player saved them.
 
     local anchoredTarget = false
     for _, name in ipairs(targetCandidates) do
         if TryAnchorFrame(name, "target", "LEFT", anchorFrame, "RIGHT", offsetX, 0) then
             anchoredTarget = true
             break
-        end
-    end
-    if not anchoredTarget then
-        local blizzTarget = _G["TargetFrame"] or _G["TargetFrameContainer"] or _G["TargetFrameContent"]
-        if blizzTarget then
-            HookDetectUserMoved(blizzTarget)
-            TryAnchorFrame(blizzTarget, "target", "LEFT", anchorFrame, "RIGHT", offsetX, 0)
         end
     end
 

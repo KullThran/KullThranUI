@@ -6663,6 +6663,8 @@ function Mod:ApplyScaleOnly(resolution, opts)
     end
 
     if scale then
+        -- Every caller is a user action (installer button, scale preset).
+        if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
         if KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale and KT.SetBlizzardUIScale then
             KT:SetBlizzardUIScale(scale)
         else
