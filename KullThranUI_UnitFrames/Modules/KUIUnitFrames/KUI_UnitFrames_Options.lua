@@ -1101,12 +1101,81 @@ local function ResolvePreviewFont(fontName)
     return PREVIEW_DEFAULT_FONT
 end
 
+-- 3D portrait in the live preview. Stock-art styles draw their own ring, so only
+-- the model is seated there.
+function ns.ApplyPreview3D(frame, unitKey, settings, isCircular, size, show, stockArt)
+    if not (show and settings.portraitMode == "3d") then
+        if frame.model3D then
+            frame.model3D:Hide()
+            frame.ringFrame:Hide()
+        end
+        return false
+    end
+    if not frame.model3D then
+        frame.model3D = CreateFrame("PlayerModel", nil, frame.portraitFrame)
+        frame.ringFrame = CreateFrame("Frame", nil, frame.portraitFrame)
+        frame.ringFrame:SetAllPoints(frame.portraitFrame)
+        frame.ringTexture = frame.ringFrame:CreateTexture(nil, "OVERLAY")
+        frame.ringTexture:SetTexture(PREVIEW_CIRCLE_BORDER)
+        frame.ringTexture:SetPoint("TOPLEFT", frame.ringFrame, "TOPLEFT", -1, 1)
+        frame.ringTexture:SetPoint("BOTTOMRIGHT", frame.ringFrame, "BOTTOMRIGHT", 1, -1)
+        frame.model3D:SetScript("OnModelLoaded", function(self)
+            if self._apply then self._apply() end
+        end)
+    end
+    local model = frame.model3D
+    local level = frame.portraitFrame:GetFrameLevel()
+    model:SetFrameLevel(level + 1)
+    frame.ringFrame:SetFrameLevel(level + 3)
+    local inset = (isCircular or stockArt) and math.floor(size * 0.15 + 0.5) or 0
+    model:ClearAllPoints()
+    model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
+    model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
+    local modelUnit = ({ pet = "pet", target = "target", focus = "focus",
+        totPet = "targettarget", focustarget = "focustarget" })[unitKey]
+    if not (modelUnit and UnitExists(modelUnit)) then modelUnit = "player" end
+    local function applyCamera()
+        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
+        local rot, formZoom, formShift = KT.Portrait3DYaw(modelUnit,
+            settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
+            settings.portraitFacingMode, false, settings.portrait3DRotation)
+        if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+        if model.SetCamDistanceScale then model:SetCamDistanceScale(1 / (zoom * formZoom)) end
+        if model.SetPosition then
+            model:SetPosition(0, (tonumber(settings.portrait3DX) or 0) / 100 + formShift, (tonumber(settings.portrait3DY) or 0) / 100)
+        end
+        if model.SetFacing then model:SetFacing(rot) end
+    end
+    model._apply = applyCamera
+    if model._previewUnit ~= modelUnit then
+        model:SetUnit(modelUnit)
+        model._previewUnit = modelUnit
+    end
+    applyCamera()
+    model:Show()
+    frame.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
+    if not stockArt then
+        frame.portraitBorder:Hide()
+        if isCircular then
+            frame.ringTexture:SetVertexColor(frame.portraitBorder:GetVertexColor())
+            frame.ringFrame:Show()
+        else
+            frame.ringFrame:Hide()
+        end
+    else
+        frame.ringFrame:Hide()
+    end
+    return true
+end
+
 local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText, valueText)
     -- A stock-art theme (retail/forever/classic) renders Blizzard's own frames,
     -- not KUI's. Seat the real artwork instead of the Melli layout, otherwise
     -- the preview would lie about what the chosen theme actually looks like.
     if ActiveThemeOwnsFrameArt() and ApplyStockLayoutToPreview(frame, unitKey, settings) then
         ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameText, valueText)
+        ns.ApplyPreview3D(frame, unitKey, settings, true, frame.portraitFrame:GetWidth(),
+            settings.showPortrait ~= false and frame.portraitFrame:IsShown(), true)
         return
     end
     frame.stockArt:Hide()
@@ -1245,6 +1314,8 @@ local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText
             frame.portraitBorder:SetVertexColor(fillR, fillG, fillB, 1)
         end
     end
+
+    ns.ApplyPreview3D(frame, unitKey, settings, isCircular, portraitWidth, showPortrait, false)
     frame.health.bg:SetTexture(PREVIEW_BG)
     frame.health.bg:SetVertexColor(bgR, bgG, bgB, 1)
     frame.power:SetStatusBarTexture(ResolvePreviewBarTexture(settings.powerBarTexture or settings.healthBarTexture, PREVIEW_FILL))
@@ -1697,10 +1768,6 @@ local PORTRAIT_MODES = {
     ["3d"] = "3D Portrait",
     ["class"] = "Class Theme",
 }
-local CIRCULAR_PORTRAIT_MODES = {
-    ["2d"] = "2D Portrait",
-    ["class"] = "Class Theme",
-}
 
 local PORTRAIT_FACING = {
     normal = "Normal",
@@ -1854,13 +1921,21 @@ local function AddCommonUnitControls(sc, unitKey, label, y, opts)
         function(v) SetAndRefresh(function() db.portraitStyle = v end) end)
     LockIfThemeOwned(widget, "portraitStyle")
     y = y + h
-    local portraitModes = db.portraitStyle == "circular" and CIRCULAR_PORTRAIT_MODES or PORTRAIT_MODES
-    _, h = W:Dropdown(sc, "Portrait Mode", -y, portraitModes,
-        function()
-            local mode = s.portraitMode or "2d"
-            return (db.portraitStyle == "circular" and mode == "3d") and "2d" or mode
-        end,
+    _, h = W:Dropdown(sc, "Portrait Mode", -y, PORTRAIT_MODES,
+        function() return s.portraitMode or "2d" end,
         function(v) SetAndRefresh(function() s.portraitMode = v end) end); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Zoom", -y,
+        function() return s.portrait3DZoom or 125 end,
+        function(v) SetAndRefresh(function() s.portrait3DZoom = v end) end, 50, 250, 1, "%d%%"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Rotation", -y,
+        function() return s.portrait3DRotation or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DRotation = v end) end, -90, 90, 1, "%d"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait X Offset", -y,
+        function() return s.portrait3DX or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DX = v end) end, -50, 50, 1, "%d"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Y Offset", -y,
+        function() return s.portrait3DY or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DY = v end) end, -50, 50, 1, "%d"); y = y + h
     
     -- Portrait Side (for attached and circular portraits)
     if db.portraitStyle ~= "none" then

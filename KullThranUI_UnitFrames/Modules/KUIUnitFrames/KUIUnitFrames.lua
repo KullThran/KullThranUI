@@ -1352,9 +1352,6 @@ end
 
 local function ResolveActivePortraitMode(unit, settings)
     local mode = (settings and settings.portraitMode) or (db and db.profile and db.profile.portraitMode) or "2d"
-    if mode == "3d" and db and db.profile and db.profile.portraitStyle == "circular" then
-        return "2d"
-    end
     if mode == "class" and not ResolvePortraitClassToken(unit) then
         -- Pets and non-player units do not always expose a class token.
         -- Fall back to the regular portrait so the slot never renders blank.
@@ -2315,6 +2312,40 @@ local function ApplyClassIconTexture(tex, classToken, style)
     return true
 end
 
+-- Direction a 3D portrait looks, as a model yaw. It looks toward its own frame
+-- unless the user picked a facing. Humanoid models start out turned to the
+-- right and shapeshifted forms (druid, ghost wolf) to the left, so each needs a
+-- different turn, and a closer camera so the tail stays out of the frame.
+-- Positive rotation turns toward the right. Returns the yaw, a zoom factor and a sideways camera shift
+-- that brings the head into view.
+function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation)
+    local lookRight
+    if facingMode == "normal" then
+        lookRight = true
+    elseif facingMode == "flipped" then
+        lookRight = false
+    else
+        side = side or ((unit == "player" or unit == "pet") and "left" or "right")
+        lookRight = side ~= "right"
+        if invert then lookRight = not lookRight end
+    end
+    local shifted = false
+    if unit and UnitIsUnit(unit, "player") and type(GetShapeshiftForm) == "function" then
+        local _, class = UnitClass("player")
+        if class == "DRUID" or class == "SHAMAN" then
+            local ok, form = pcall(GetShapeshiftForm)
+            shifted = ok and type(form) == "number" and form > 0
+        end
+    end
+    local yaw
+    if shifted then
+        yaw = lookRight and 1.75 or 0
+    else
+        yaw = lookRight and 0 or -0.9
+    end
+    return yaw + math.rad(tonumber(rotation) or 0), shifted and 1.5 or 1, 0
+end
+
 local function GetDefaultPortraitFacing(unit)
     -- Player and target still face each other ("look inward" toward their
     -- own frame content), but swapped from the previous defaults: player
@@ -2577,6 +2608,9 @@ local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
         backdrop:SetPoint("LEFT", health, "RIGHT", -overlap + xOffset, yOffset)
     end
     backdrop:SetFrameLevel(frame:GetFrameLevel() + 2)
+    -- Keep the 3D model under the ring frame after the level change.
+    if backdrop._3d then backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1) end
+    if backdrop._shapeBorderFrame then backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3) end
 end
 
 local function ResolveCircularPortraitColor(frame, uSettings, unitToken)
@@ -2747,7 +2781,12 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
 
     -- === TGA BORDER OVERLAY ===
     if not backdrop._shapeBorderTex then
-        backdrop._shapeBorderTex = backdrop:CreateTexture(nil, "OVERLAY")
+        -- The ring lives on its own frame above the portrait so it also
+        -- covers 3D models, which draw above every texture of the backdrop.
+        local ringFrame = CreateFrame("Frame", nil, backdrop)
+        ringFrame:SetAllPoints(backdrop)
+        backdrop._shapeBorderFrame = ringFrame
+        backdrop._shapeBorderTex = ringFrame:CreateTexture(nil, "OVERLAY")
     end
     backdrop._shapeBorderTex:ClearAllPoints()
     PP.Point(backdrop._shapeBorderTex, "TOPLEFT", backdrop, "TOPLEFT", -bExp, bExp)
@@ -2814,11 +2853,19 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
         PP.Point(backdrop._class, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -classInset + oR, classInset + oB)
     end
     if backdrop._3d then
-        -- 3D models ignore SetClipsChildren, so keep them within the backdrop
-        -- bounds. Art scale is not applied to 3D (camera zoom is fixed).
+        -- 3D models ignore SetClipsChildren and masks, so keep them within the
+        -- backdrop bounds. A circular portrait shrinks the model so its
+        -- corners end under the ring, which is drawn above it. Art scale is
+        -- not applied to 3D (camera zoom is fixed).
+        local ringSize = bh2 + 2 * bExp
+        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.33 + 0.5)) or 0
+        backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1)
+        if backdrop._shapeBorderFrame then
+            backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3)
+        end
         backdrop._3d:ClearAllPoints()
-        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", 0, 0)
-        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
+        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", modelInset, -modelInset)
+        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -modelInset, modelInset)
     end
 
     if backdrop._ktStockPortraitAnchor then
@@ -3925,6 +3972,34 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         PP.Point(model3D, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
         model3D:SetCamera(0)
         model3D:Hide()
+        -- The portrait element resets the camera on every model change, so the
+        -- user's zoom, rotation and offsets are applied after each update.
+        -- The defaults leave the camera untouched.
+        local function applyLook(self, updatedUnit)
+            if not (UnitIsConnected(updatedUnit) and UnitIsVisible(updatedUnit)) then return end
+            local key = UnitToSettingsKey(updatedUnit)
+            local s3 = key and db.profile[key]
+            local zoom = math.max(0.25, ((s3 and s3.portrait3DZoom) or 125) / 100)
+            local backdropFrame = self:GetParent()
+            local rot, formZoom, formShift = KT.Portrait3DYaw(updatedUnit, (s3 and s3.portraitSide) or (backdropFrame and backdropFrame._portraitSide),
+                s3 and s3.portraitFacingMode,
+                s3 and s3.portraitFacing and s3.portraitFacing ~= GetDefaultPortraitFacing(updatedUnit),
+                s3 and s3.portrait3DRotation)
+            local offX = ((s3 and s3.portrait3DX) or 0) / 100
+            local offY = ((s3 and s3.portrait3DY) or 0) / 100
+            if self.SetCamDistanceScale then self:SetCamDistanceScale(1 / (zoom * formZoom)) end
+            if self.SetPosition then self:SetPosition(0, offX + formShift, offY) end
+            if self.SetFacing then self:SetFacing(rot) end
+        end
+        -- The model loads after SetUnit returns and starts from its own camera,
+        -- so the look is applied again once it has loaded.
+        model3D.PostUpdate = function(self, updatedUnit)
+            self._camUnit = updatedUnit
+            applyLook(self, updatedUnit)
+        end
+        model3D:SetScript("OnModelLoaded", function(self)
+            if self._camUnit then applyLook(self, self._camUnit) end
+        end)
         backdrop._3d = model3D
         return model3D
     end
@@ -8295,6 +8370,10 @@ local function ReloadFrames()
             -- Swap 2D/3D portrait mode if changed (no reload needed)
             if frame.Portrait then
                 SwapPortraitMode(frame)
+                -- Re-apply the 3D zoom, rotation and offsets without a reload.
+                if frame.Portrait.is2D == false and frame.Portrait.PostUpdate then
+                    frame.Portrait:PostUpdate(unit)
+                end
             end
 
             -- Refresh class art style texture (may have changed without mode change)
