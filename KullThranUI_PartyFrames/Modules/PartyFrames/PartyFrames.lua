@@ -3028,10 +3028,11 @@ end
 -- the portrait faces the other way.
 ns.PF_Portrait.GetModelLook = function(db, facing, unit)
     db = db or {}
+    local rotation, formZoom = KT.Portrait3DYaw(unit, db.portraitSide == "right" and "right" or "left", nil,
+        facing == "flipped", db.portrait3DRotation)
     return {
-        zoom = math.max(0.25, (tonumber(db.portrait3DZoom) or 125) / 100),
-        rotation = KT.Portrait3DYaw(unit, db.portraitSide == "right" and "right" or "left", nil,
-            facing == "flipped", db.portrait3DRotation),
+        zoom = math.max(0.25, (tonumber(db.portrait3DZoom) or 125) / 100) * formZoom,
+        rotation = rotation,
         x = (tonumber(db.portrait3DX) or 0) / 100,
         y = (tonumber(db.portrait3DY) or 0) / 100,
     }
