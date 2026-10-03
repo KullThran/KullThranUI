@@ -1177,16 +1177,23 @@ local function RefreshLivePreview(preview)
             if not unit.model3D._previewUnit then
                 unit.model3D:SetUnit("player")
                 unit.model3D._previewUnit = true
+                unit.model3D:SetScript("OnModelLoaded", function(self)
+                    if self._apply then self._apply() end
+                end)
             end
-            local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 125) / 100)
-            local rot, formZoom, formShift = KT.Portrait3DYaw("player", cfg.portraitSide == "right" and "right" or "left", nil,
-                cfg.portraitFacing == "flipped", cfg.portrait3DRotation)
-            if unit.model3D.SetPortraitZoom then unit.model3D:SetPortraitZoom(1) end
-            if unit.model3D.SetCamDistanceScale then unit.model3D:SetCamDistanceScale(1 / (zoom * formZoom)) end
-            if unit.model3D.SetPosition then
-                unit.model3D:SetPosition(0, (tonumber(cfg.portrait3DX) or 0) / 100 + formShift, (tonumber(cfg.portrait3DY) or 0) / 100)
+            local function applyCamera()
+                local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 125) / 100)
+                local rot, formZoom, formShift = KT.Portrait3DYaw("player", cfg.portraitSide == "right" and "right" or "left", nil,
+                    cfg.portraitFacing == "flipped", cfg.portrait3DRotation)
+                if unit.model3D.SetPortraitZoom then unit.model3D:SetPortraitZoom(1) end
+                if unit.model3D.SetCamDistanceScale then unit.model3D:SetCamDistanceScale(1 / (zoom * formZoom)) end
+                if unit.model3D.SetPosition then
+                    unit.model3D:SetPosition(0, (tonumber(cfg.portrait3DX) or 0) / 100 + formShift, (tonumber(cfg.portrait3DY) or 0) / 100)
+                end
+                if unit.model3D.SetFacing then unit.model3D:SetFacing(rot) end
             end
-            if unit.model3D.SetFacing then unit.model3D:SetFacing(rot) end
+            unit.model3D._apply = applyCamera
+            applyCamera()
             unit.model3D:Show()
             unit.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
             unit.portraitBorder:Hide()

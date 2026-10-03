@@ -523,6 +523,73 @@ local function ResolvePreviewFont(fontName)
     return PREVIEW_DEFAULT_FONT
 end
 
+-- 3D portrait in the live preview. Stock-art styles draw their own ring, so only
+-- the model is seated there.
+function ns.ApplyPreview3D(frame, unitKey, settings, isCircular, size, show, stockArt)
+    if not (show and settings.portraitMode == "3d") then
+        if frame.model3D then
+            frame.model3D:Hide()
+            frame.ringFrame:Hide()
+        end
+        return false
+    end
+    if not frame.model3D then
+        frame.model3D = CreateFrame("PlayerModel", nil, frame.portraitFrame)
+        frame.ringFrame = CreateFrame("Frame", nil, frame.portraitFrame)
+        frame.ringFrame:SetAllPoints(frame.portraitFrame)
+        frame.ringTexture = frame.ringFrame:CreateTexture(nil, "OVERLAY")
+        frame.ringTexture:SetTexture(PREVIEW_CIRCLE_BORDER)
+        frame.ringTexture:SetPoint("TOPLEFT", frame.ringFrame, "TOPLEFT", -1, 1)
+        frame.ringTexture:SetPoint("BOTTOMRIGHT", frame.ringFrame, "BOTTOMRIGHT", 1, -1)
+        frame.model3D:SetScript("OnModelLoaded", function(self)
+            if self._apply then self._apply() end
+        end)
+    end
+    local model = frame.model3D
+    local level = frame.portraitFrame:GetFrameLevel()
+    model:SetFrameLevel(level + 1)
+    frame.ringFrame:SetFrameLevel(level + 3)
+    local inset = (isCircular or stockArt) and math.floor(size * 0.15 + 0.5) or 0
+    model:ClearAllPoints()
+    model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
+    model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
+    local modelUnit = ({ pet = "pet", target = "target", focus = "focus",
+        totPet = "targettarget", focustarget = "focustarget" })[unitKey]
+    if not (modelUnit and UnitExists(modelUnit)) then modelUnit = "player" end
+    local function applyCamera()
+        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
+        local rot, formZoom, formShift = KT.Portrait3DYaw(modelUnit,
+            settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
+            settings.portraitFacingMode, false, settings.portrait3DRotation)
+        if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+        if model.SetCamDistanceScale then model:SetCamDistanceScale(1 / (zoom * formZoom)) end
+        if model.SetPosition then
+            model:SetPosition(0, (tonumber(settings.portrait3DX) or 0) / 100 + formShift, (tonumber(settings.portrait3DY) or 0) / 100)
+        end
+        if model.SetFacing then model:SetFacing(rot) end
+    end
+    model._apply = applyCamera
+    if model._previewUnit ~= modelUnit then
+        model:SetUnit(modelUnit)
+        model._previewUnit = modelUnit
+    end
+    applyCamera()
+    model:Show()
+    frame.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
+    if not stockArt then
+        frame.portraitBorder:Hide()
+        if isCircular then
+            frame.ringTexture:SetVertexColor(frame.portraitBorder:GetVertexColor())
+            frame.ringFrame:Show()
+        else
+            frame.ringFrame:Hide()
+        end
+    else
+        frame.ringFrame:Hide()
+    end
+    return true
+end
+
 local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, valueText)
     local showPortrait = globalDB.portraitStyle ~= "none" and settings.showPortrait ~= false
     local powerHeight = ((settings.powerPosition or "below") ~= "none") and (settings.powerHeight or 6) or 0
@@ -639,55 +706,7 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
         end
     end
 
-    local want3D = showPortrait and settings.portraitMode == "3d"
-    if want3D then
-        if not frame.model3D then
-            frame.model3D = CreateFrame("PlayerModel", nil, frame.portraitFrame)
-            frame.ringFrame = CreateFrame("Frame", nil, frame.portraitFrame)
-            frame.ringFrame:SetAllPoints(frame.portraitFrame)
-            frame.ringTexture = frame.ringFrame:CreateTexture(nil, "OVERLAY")
-            frame.ringTexture:SetTexture(PREVIEW_CIRCLE_BORDER)
-            frame.ringTexture:SetPoint("TOPLEFT", frame.ringFrame, "TOPLEFT", -1, 1)
-            frame.ringTexture:SetPoint("BOTTOMRIGHT", frame.ringFrame, "BOTTOMRIGHT", 1, -1)
-        end
-        local level = frame.portraitFrame:GetFrameLevel()
-        frame.model3D:SetFrameLevel(level + 1)
-        frame.ringFrame:SetFrameLevel(level + 3)
-        local inset = isCircular and math.floor(portraitWidth * 0.15 + 0.5) or 0
-        frame.model3D:ClearAllPoints()
-        frame.model3D:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
-        frame.model3D:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
-        local modelUnit = ({ pet = "pet", target = "target", focus = "focus",
-            totPet = "targettarget", focustarget = "focustarget" })[unitKey]
-        if not (modelUnit and UnitExists(modelUnit)) then modelUnit = "player" end
-        if frame.model3D._previewUnit ~= modelUnit then
-            frame.model3D:SetUnit(modelUnit)
-            frame.model3D._previewUnit = modelUnit
-        end
-        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
-        local rot, formZoom, formShift = KT.Portrait3DYaw(modelUnit, settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
-            settings.portraitFacingMode,
-            settings.portraitFacing and settings.portraitFacing ~= GetDefaultPortraitFacing(unitKey),
-            settings.portrait3DRotation)
-        if frame.model3D.SetPortraitZoom then frame.model3D:SetPortraitZoom(1) end
-        if frame.model3D.SetCamDistanceScale then frame.model3D:SetCamDistanceScale(1 / (zoom * formZoom)) end
-        if frame.model3D.SetPosition then
-            frame.model3D:SetPosition(0, (tonumber(settings.portrait3DX) or 0) / 100 + formShift, (tonumber(settings.portrait3DY) or 0) / 100)
-        end
-        if frame.model3D.SetFacing then frame.model3D:SetFacing(rot) end
-        frame.model3D:Show()
-        frame.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
-        frame.portraitBorder:Hide()
-        if isCircular then
-            frame.ringTexture:SetVertexColor(frame.portraitBorder:GetVertexColor())
-            frame.ringFrame:Show()
-        else
-            frame.ringFrame:Hide()
-        end
-    elseif frame.model3D then
-        frame.model3D:Hide()
-        frame.ringFrame:Hide()
-    end
+    ns.ApplyPreview3D(frame, unitKey, settings, isCircular, portraitWidth, showPortrait, false)
     frame.health.bg:SetTexture(PREVIEW_BG)
     frame.health.bg:SetVertexColor(bgR, bgG, bgB, 1)
     frame.power:SetStatusBarTexture(ResolvePreviewBarTexture(settings.powerBarTexture or settings.healthBarTexture, PREVIEW_FILL))

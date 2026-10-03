@@ -3038,6 +3038,14 @@ ns.PF_Portrait.GetModelLook = function(db, facing, unit)
     }
 end
 
+ns.PF_Portrait.ApplyCamera = function(model, look)
+    local call = ns.PF_Portrait.Call
+    call(model, "SetCamDistanceScale", look and (1 / look.zoom) or 1)
+    call(model, "SetPortraitZoom", 1)
+    call(model, "SetPosition", 0, look and look.x or 0, look and look.y or 0)
+    call(model, "SetFacing", look and look.rotation or 0)
+end
+
 ns.PF_Portrait.ApplyModel = function(model, unit, force, look)
     local available = ns.PF_Portrait.IsModelAvailable(unit)
     local guid = ns.PF_Portrait.GetModelGUID(unit)
@@ -3058,8 +3066,10 @@ ns.PF_Portrait.ApplyModel = function(model, unit, force, look)
             model._kuiUnit = nil
             return false
         end
-        call(model, "SetFacing", look and look.rotation or 0)
+        model._kuiCamLook = look or false
+        ns.PF_Portrait.ApplyCamera(model, look)
     else
+        model._kuiCamLook = nil
         call(model, "SetCamDistanceScale", 0.25)
         call(model, "SetPortraitZoom", 0)
         call(model, "SetPosition", 0, 0, 0.25)
@@ -3104,6 +3114,9 @@ ns.PF_Portrait.EnsureModel = function(button)
     model:SetAllPoints(button.portraitFrame)
     model:SetFrameLevel(button.portraitFrame:GetFrameLevel() + 1)
     ns.PF_Portrait.Call(model, "SetCamera", 0)
+    model:SetScript("OnModelLoaded", function(self)
+        if self._kuiCamLook ~= nil then ns.PF_Portrait.ApplyCamera(self, self._kuiCamLook or nil) end
+    end)
     model:Hide()
     button.portraitModel = model
     return model

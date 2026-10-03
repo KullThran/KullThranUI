@@ -3294,7 +3294,7 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         -- The portrait element resets the camera on every model change, so the
         -- user's zoom, rotation and offsets are applied after each update.
         -- The defaults leave the camera untouched.
-        model3D.PostUpdate = function(self, updatedUnit)
+        local function applyLook(self, updatedUnit)
             if not (UnitIsConnected(updatedUnit) and UnitIsVisible(updatedUnit)) then return end
             local key = UnitToSettingsKey(updatedUnit)
             local s3 = key and db.profile[key]
@@ -3310,6 +3310,15 @@ local function CreatePortrait(frame, side, frameHeight, unit)
             if self.SetPosition then self:SetPosition(0, offX + formShift, offY) end
             if self.SetFacing then self:SetFacing(rot) end
         end
+        -- The model loads after SetUnit returns and starts from its own camera,
+        -- so the look is applied again once it has loaded.
+        model3D.PostUpdate = function(self, updatedUnit)
+            self._camUnit = updatedUnit
+            applyLook(self, updatedUnit)
+        end
+        model3D:SetScript("OnModelLoaded", function(self)
+            if self._camUnit then applyLook(self, self._camUnit) end
+        end)
         backdrop._3d = model3D
         return model3D
     end
