@@ -1268,7 +1268,7 @@ local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText
     local levelColor = globalDB.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }
     frame.levelText:SetTextColor(levelColor.r or 1, levelColor.g or 1, levelColor.b or 1, levelColor.a or 1)
     frame.levelText:SetText(unitKey == "player" and "80" or "70")
-    frame.levelText:SetShown(globalDB.showCharacterLevel == true)
+    frame.levelText:SetShown(globalDB.showCharacterLevel ~= false)
     frame.pvpIcon:ClearAllPoints()
     if unitKey == "target" then
         frame.pvpIcon:SetPoint("LEFT", metadataAnchor, "RIGHT", 2, 1)
@@ -2114,7 +2114,7 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
                     ReloadUI()
                 end); by = by + h
             _, h = W:Toggle(container, 'Show Character Level', -by,
-                function() return db.showCharacterLevel == true end,
+                function() return db.showCharacterLevel ~= false end,
                 function(v) SetAndRefresh(function() db.showCharacterLevel = v and true or false end) end); by = by + h
             _, h = W:Toggle(container, 'Show PvP Faction Icon', -by,
                 function() return db.showPvPIcon == true end,

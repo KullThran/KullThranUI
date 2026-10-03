@@ -11443,6 +11443,13 @@ function Mod:BindDatabase()
     Compat.CopyDefaults(KT.db.profile.unitFrames, defaults.profile)
     db = { profile = KT.db.profile.unitFrames }
     self.db = db.profile
+    -- 5.0.8 forced the character level off once (marked by
+    -- _kuiForeverLevelPvpOptionsReset) and that false stayed saved after 5.1.1
+    -- made it default on again. Give the level back once to those profiles.
+    if self.db._kuiForeverLevelPvpOptionsReset and not self.db._kuiLevelRestored then
+        self.db.showCharacterLevel = true
+        self.db._kuiLevelRestored = true
+    end
     self.db.enable = self.db.enable ~= false
 end
 
