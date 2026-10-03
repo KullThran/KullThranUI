@@ -193,6 +193,7 @@ function KT:GenerateDefaults()
             actionbars = {
                 enable = true,
                 buttonStyle = "BLIZZARD",
+                frameArtKit = "default",
                 buttonBackdropColor = { r = 0.1019607931375504, g = 0.1019607931375504, b = 0.1019607931375504, a = 0.7343736886978149 },
                 buttonSpacing = 0,
                 buttonPadding = 0,

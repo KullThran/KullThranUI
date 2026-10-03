@@ -2065,15 +2065,35 @@ end
 
 function UM:ResetMover(key)
     local mover = self.movers[key]
-    local snapshot = self.snapshotPositions[key]
-    if mover and snapshot then
-        self:ApplyStoredPositionToElement(key, snapshot)
-        mover:Sync()
-        self.pendingPositions[key] = nil
-        self.hasChanges = next(self.pendingPositions) ~= nil
-        if self.moverMenu and self.moverMenu:IsShown() and self.moverMenu.activeKey == key and self.RefreshMoverMenuFields then
-            self:RefreshMoverMenuFields()
+    if not mover then return end
+
+    local def = self:GetElementDef(key)
+    local handled = false
+
+    -- Elements that persist into their own module store (Unit Frames) expose a
+    -- resetPosition hook: it drops the user override and re-applies the shipped
+    -- default. Reading loadPosition alone would just return that same override.
+    if def and type(def.resetPosition) == "function" then
+        local ok, result = SafeCall(def.resetPosition, key)
+        handled = (ok ~= false and result ~= false)
+    end
+
+    if not handled then
+        local snapshot = self.snapshotPositions[key]
+        if snapshot then
+            self:ApplyStoredPositionToElement(key, snapshot)
         end
+    end
+
+    mover:Sync()
+    self.pendingPositions[key] = nil
+    self.hasChanges = next(self.pendingPositions) ~= nil
+
+    if self.BackupPersistedPositionsToGlobal then
+        self:BackupPersistedPositionsToGlobal()
+    end
+    if self.moverMenu and self.moverMenu:IsShown() and self.moverMenu.activeKey == key and self.RefreshMoverMenuFields then
+        self:RefreshMoverMenuFields()
     end
 end
 

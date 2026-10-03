@@ -12,4 +12,5 @@ Modules\KUICooldownManager\KUICdmHooks.lua
 Modules\KUICooldownManager\KUICooldownManager_Keybinds.lua
 Modules\KUICooldownManager\KUICdmBuffBars.lua
 Modules\KUICooldownManager\KUICdmBarGlows.lua
+Modules\KUICooldownManager\KUICdmUsableVisibility.lua
 Modules\KUICooldownManager\KUI_CooldownManager_Options.lua
