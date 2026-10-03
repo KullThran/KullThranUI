@@ -105,8 +105,9 @@ function O.ApplyPvPCircle(frame)
     art:Show()
 end
 
--- Forever's level badge is the same small circle (LevelBackgroundCircle):
--- draw it instead of the generic dark disc.
+-- Level badge: Forever draws its small circle (LevelBackgroundCircle) and
+-- Classic shows the ring from its own frame sheet, instead of the generic
+-- dark disc.
 function O.ApplyLevelCircle(frame)
     local disc = frame and frame._kuiLevelCircle
     if not disc then return end
@@ -117,7 +118,14 @@ function O.ApplyLevelCircle(frame)
         art:Hide()
         frame._kuiLevelThemeCircle = art
     end
-    if RenderedTheme() ~= "forever" or not disc:IsShown() then
+    local theme = RenderedTheme()
+    if theme == "classic" then
+        -- Classic's frame sheet already draws its own level ring at this spot.
+        art:Hide()
+        disc:SetAlpha(0)
+        return
+    end
+    if theme ~= "forever" or not disc:IsShown() then
         art:Hide()
         disc:SetAlpha(1)
         return
