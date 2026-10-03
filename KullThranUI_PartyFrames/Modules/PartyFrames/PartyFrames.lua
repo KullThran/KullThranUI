@@ -3026,13 +3026,12 @@ end
 -- Zoom, rotation and offsets come from the user's settings; the defaults leave
 -- the camera untouched. Positive rotation turns toward the right, mirrored when
 -- the portrait faces the other way.
-ns.PF_Portrait.GetModelLook = function(db, facing)
+ns.PF_Portrait.GetModelLook = function(db, facing, unit)
     db = db or {}
-    local rot = tonumber(db.portrait3DRotation) or 0
-    if facing == "flipped" then rot = -rot end
     return {
-        zoom = math.max(0.25, (tonumber(db.portrait3DZoom) or 100) / 100),
-        rotation = math.rad(rot),
+        zoom = math.max(0.25, (tonumber(db.portrait3DZoom) or 125) / 100),
+        rotation = KT.Portrait3DYaw(unit, db.portraitSide == "right" and "right" or "left", nil,
+            facing == "flipped", db.portrait3DRotation),
         x = (tonumber(db.portrait3DX) or 0) / 100,
         y = (tonumber(db.portrait3DY) or 0) / 100,
     }
@@ -3081,7 +3080,7 @@ ns.PF_Portrait.AnchorModel = function(button, metrics)
     if not model then return end
     local inset = 0
     if metrics.style == "circular" then
-        inset = math.floor(metrics.size * 0.22 + 0.5)
+        inset = math.floor(metrics.size * 0.15 + 0.5)
     end
     model:ClearAllPoints()
     ns.PF_Portrait.Point(model, "TOPLEFT", button.portraitFrame, "TOPLEFT", inset, -inset)
@@ -3094,7 +3093,7 @@ ns.PF_Portrait.RefreshModel = function(frame)
     local model = frame and frame.portraitModel
     if not (model and model:IsShown() and frame.unit and not frame.fakeUnit) then return end
     local db = Mod:GetModeDB(frame.mode or "party")
-    ns.PF_Portrait.ApplyModel(model, frame.unit, false, ns.PF_Portrait.GetModelLook(db, db and db.portraitFacing))
+    ns.PF_Portrait.ApplyModel(model, frame.unit, false, ns.PF_Portrait.GetModelLook(db, db and db.portraitFacing, frame.unit))
 end
 
 ns.PF_Portrait.EnsureModel = function(button)
@@ -3186,7 +3185,7 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
             ns.PF_Portrait.AnchorModel(frame, metrics)
             local wasShown = model:IsShown()
             model:Show()
-            showModel = ns.PF_Portrait.ApplyModel(model, modelUnit, forceModel or not wasShown, ns.PF_Portrait.GetModelLook(db, metrics.facing))
+            showModel = ns.PF_Portrait.ApplyModel(model, modelUnit, forceModel or not wasShown, ns.PF_Portrait.GetModelLook(db, metrics.facing, modelUnit))
         end
     end
     if not (showClass or showModel) then

@@ -1933,6 +1933,38 @@ local function ApplyClassIconTexture(tex, classToken, style)
     return true
 end
 
+-- Direction a 3D portrait looks, as a model yaw. It looks toward its own frame
+-- unless the user picked a facing. Humanoid models start out turned to the
+-- right and shapeshifted forms (druid, ghost wolf) to the left, so each needs a
+-- different turn. Positive rotation turns toward the right.
+function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation)
+    local lookRight
+    if facingMode == "normal" then
+        lookRight = true
+    elseif facingMode == "flipped" then
+        lookRight = false
+    else
+        side = side or ((unit == "player" or unit == "pet") and "left" or "right")
+        lookRight = side ~= "right"
+        if invert then lookRight = not lookRight end
+    end
+    local shifted = false
+    if unit and UnitIsUnit(unit, "player") and type(GetShapeshiftForm) == "function" then
+        local _, class = UnitClass("player")
+        if class == "DRUID" or class == "SHAMAN" then
+            local ok, form = pcall(GetShapeshiftForm)
+            shifted = ok and type(form) == "number" and form > 0
+        end
+    end
+    local yaw
+    if shifted then
+        yaw = lookRight and 1.75 or 0
+    else
+        yaw = lookRight and 0 or -0.9
+    end
+    return yaw + math.rad(tonumber(rotation) or 0)
+end
+
 local function GetDefaultPortraitFacing(unit)
     if unit == "target" then
         return "flipped"
@@ -2272,7 +2304,7 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
         -- corners end under the ring, which is drawn above it. Art scale is
         -- not applied to 3D (camera zoom is fixed).
         local ringSize = bh2 + 2 * bExp
-        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.28 + 0.5)) or 0
+        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.33 + 0.5)) or 0
         backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1)
         if backdrop._shapeBorderFrame then
             backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3)
@@ -3263,9 +3295,12 @@ local function CreatePortrait(frame, side, frameHeight, unit)
             if not (UnitIsConnected(updatedUnit) and UnitIsVisible(updatedUnit)) then return end
             local key = UnitToSettingsKey(updatedUnit)
             local s3 = key and db.profile[key]
-            local zoom = math.max(0.25, ((s3 and s3.portrait3DZoom) or 100) / 100)
-            local rot = math.rad((s3 and s3.portrait3DRotation) or 0)
-            if GetPortraitFacing(updatedUnit, s3) == "flipped" then rot = -rot end
+            local zoom = math.max(0.25, ((s3 and s3.portrait3DZoom) or 125) / 100)
+            local backdropFrame = self:GetParent()
+            local rot = KT.Portrait3DYaw(updatedUnit, backdropFrame and backdropFrame._portraitSide,
+                s3 and s3.portraitFacingMode,
+                s3 and s3.portraitFacing and s3.portraitFacing ~= GetDefaultPortraitFacing(updatedUnit),
+                s3 and s3.portrait3DRotation)
             local offX = ((s3 and s3.portrait3DX) or 0) / 100
             local offY = ((s3 and s3.portrait3DY) or 0) / 100
             if self.SetCamDistanceScale then self:SetCamDistanceScale(1 / zoom) end

@@ -1170,7 +1170,7 @@ local function RefreshLivePreview(preview)
             unit.model3D:SetFrameLevel(level + 1)
             unit.ringFrame:SetFrameLevel(level + 3)
             local circular = portraitStyle == "circular"
-            local inset = circular and math.floor(portraitSize * 0.18 + 0.5) or 0
+            local inset = circular and math.floor(portraitSize * 0.15 + 0.5) or 0
             unit.model3D:ClearAllPoints()
             unit.model3D:SetPoint("TOPLEFT", unit.portraitFrame, "TOPLEFT", inset, -inset)
             unit.model3D:SetPoint("BOTTOMRIGHT", unit.portraitFrame, "BOTTOMRIGHT", -inset, inset)
@@ -1178,9 +1178,9 @@ local function RefreshLivePreview(preview)
                 unit.model3D:SetUnit("player")
                 unit.model3D._previewUnit = true
             end
-            local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 100) / 100)
-            local rot = math.rad(tonumber(cfg.portrait3DRotation) or 0)
-            if cfg.portraitFacing == "flipped" then rot = -rot end
+            local zoom = math.max(0.25, (tonumber(cfg.portrait3DZoom) or 125) / 100)
+            local rot = KT.Portrait3DYaw("player", cfg.portraitSide == "right" and "right" or "left", nil,
+                cfg.portraitFacing == "flipped", cfg.portrait3DRotation)
             if unit.model3D.SetPortraitZoom then unit.model3D:SetPortraitZoom(1) end
             if unit.model3D.SetCamDistanceScale then unit.model3D:SetCamDistanceScale(1 / zoom) end
             if unit.model3D.SetPosition then
@@ -2393,7 +2393,7 @@ local function AddFrameLayoutControls(container, W, mode)
         PORTRAIT_MODE_ORDER
     ); by = by + h
     _, h = W:Slider(container, "3D Portrait Zoom", -by,
-        function() return GetValue(configMode, "portrait3DZoom", 100) end,
+        function() return GetValue(configMode, "portrait3DZoom", 125) end,
         function(v) ApplyValue(configMode, "portrait3DZoom", v) end,
         50, 250, 1, "%d%%"
     ); by = by + h

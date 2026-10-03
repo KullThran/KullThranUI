@@ -653,7 +653,7 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
         local level = frame.portraitFrame:GetFrameLevel()
         frame.model3D:SetFrameLevel(level + 1)
         frame.ringFrame:SetFrameLevel(level + 3)
-        local inset = isCircular and math.floor(portraitWidth * 0.18 + 0.5) or 0
+        local inset = isCircular and math.floor(portraitWidth * 0.15 + 0.5) or 0
         frame.model3D:ClearAllPoints()
         frame.model3D:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
         frame.model3D:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
@@ -664,9 +664,11 @@ local function ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, va
             frame.model3D:SetUnit(modelUnit)
             frame.model3D._previewUnit = modelUnit
         end
-        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 100) / 100)
-        local rot = math.rad(tonumber(settings.portrait3DRotation) or 0)
-        if (settings.portraitFacing or GetDefaultPortraitFacing(unitKey)) == "flipped" then rot = -rot end
+        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
+        local rot = KT.Portrait3DYaw(modelUnit, settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
+            settings.portraitFacingMode,
+            settings.portraitFacing and settings.portraitFacing ~= GetDefaultPortraitFacing(unitKey),
+            settings.portrait3DRotation)
         if frame.model3D.SetPortraitZoom then frame.model3D:SetPortraitZoom(1) end
         if frame.model3D.SetCamDistanceScale then frame.model3D:SetCamDistanceScale(1 / zoom) end
         if frame.model3D.SetPosition then
@@ -1017,7 +1019,7 @@ local function AddCommonUnitControls(sc, unitKey, label, y, opts)
         function() return s.portraitMode or "2d" end,
         function(v) SetAndRefresh(function() s.portraitMode = v end) end); y = y + h
     _, h = W:Slider(sc, "3D Portrait Zoom", -y,
-        function() return s.portrait3DZoom or 100 end,
+        function() return s.portrait3DZoom or 125 end,
         function(v) SetAndRefresh(function() s.portrait3DZoom = v end) end, 50, 250, 1, "%d%%"); y = y + h
     _, h = W:Slider(sc, "3D Portrait Rotation", -y,
         function() return s.portrait3DRotation or 0 end,
