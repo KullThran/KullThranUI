@@ -1171,7 +1171,7 @@ local function RefreshLivePreview(preview)
             unit.model3D:SetFrameLevel(level + 1)
             unit.ringFrame:SetFrameLevel(level + 3)
             local circular = portraitStyle == "circular"
-            local inset = circular and math.floor(portraitSize * 0.15 + 0.5) or 0
+            local inset = circular and math.floor(portraitSize * 0.18 + 0.5) or 0
             unit.model3D:ClearAllPoints()
             unit.model3D:SetPoint("TOPLEFT", unit.portraitFrame, "TOPLEFT", inset, -inset)
             unit.model3D:SetPoint("BOTTOMRIGHT", unit.portraitFrame, "BOTTOMRIGHT", -inset, inset)

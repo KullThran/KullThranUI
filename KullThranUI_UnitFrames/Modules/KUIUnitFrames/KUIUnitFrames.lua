@@ -2306,7 +2306,7 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
         -- corners end under the ring, which is drawn above it. Art scale is
         -- not applied to 3D (camera zoom is fixed).
         local ringSize = bh2 + 2 * bExp
-        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.33 + 0.5)) or 0
+        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.30 + 0.5)) or 0
         backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1)
         if backdrop._shapeBorderFrame then
             backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3)

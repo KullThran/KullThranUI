@@ -3091,7 +3091,7 @@ ns.PF_Portrait.AnchorModel = function(button, metrics)
     if not model then return end
     local inset = 0
     if metrics.style == "circular" then
-        inset = math.floor(metrics.size * 0.15 + 0.5)
+        inset = math.floor(metrics.size * 0.18 + 0.5)
     end
     model:ClearAllPoints()
     ns.PF_Portrait.Point(model, "TOPLEFT", button.portraitFrame, "TOPLEFT", inset, -inset)

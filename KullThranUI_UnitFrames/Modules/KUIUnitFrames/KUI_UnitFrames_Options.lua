@@ -549,7 +549,7 @@ function ns.ApplyPreview3D(frame, unitKey, settings, isCircular, size, show, sto
     local level = frame.portraitFrame:GetFrameLevel()
     model:SetFrameLevel(level + 1)
     frame.ringFrame:SetFrameLevel(level + 3)
-    local inset = (isCircular or stockArt) and math.floor(size * 0.15 + 0.5) or 0
+    local inset = (isCircular or stockArt) and math.floor(size * 0.18 + 0.5) or 0
     model:ClearAllPoints()
     model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
     model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
