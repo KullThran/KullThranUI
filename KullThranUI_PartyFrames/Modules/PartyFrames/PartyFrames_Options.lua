@@ -1132,9 +1132,10 @@ local function RefreshLivePreview(preview)
         else
             unit.portraitFrame:SetPoint("RIGHT", unit.health, "LEFT", -4 + portraitX, portraitY)
         end
-        local previewStrata = unit.health:GetFrameStrata()
-        unit.portraitFrame:SetFrameStrata(previewStrata)
-        unit.portraitFrame:SetFrameLevel(unit.health:GetFrameLevel() + 3)
+        unit._portraitSide = portraitSide
+        if ns.PF_Portrait and ns.PF_Portrait.SyncLevels then
+            ns.PF_Portrait.SyncLevels(unit)
+        end
         local classCoords = PREVIEW_CLASS_COORDS[sample.class or "WARRIOR"]
         if portraitShow and classCoords then
             unit.portrait:SetTexture(PREVIEW_CLASS_TEXTURE)
