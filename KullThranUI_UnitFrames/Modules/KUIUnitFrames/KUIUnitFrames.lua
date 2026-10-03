@@ -3256,6 +3256,18 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         PP.Point(model3D, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
         model3D:SetCamera(0)
         model3D:Hide()
+        -- The portrait element resets the camera on every model change, so the
+        -- closer framing and the facing are applied after each update. The
+        -- character looks toward the frame, like the 2D portrait does.
+        model3D.PostUpdate = function(self, updatedUnit)
+            local connected = UnitIsConnected(updatedUnit)
+            if not (connected and UnitIsVisible(updatedUnit)) then return end
+            local key = UnitToSettingsKey(updatedUnit)
+            local facing = GetPortraitFacing(updatedUnit, key and db.profile[key])
+            if self.SetCamDistanceScale then self:SetCamDistanceScale(0.72) end
+            if self.SetPosition then self:SetPosition(0, 0, -0.02) end
+            if self.SetFacing then self:SetFacing(facing == "flipped" and -0.55 or 0.55) end
+        end
         backdrop._3d = model3D
         return model3D
     end

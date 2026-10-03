@@ -3023,24 +3023,27 @@ ns.PF_Portrait.GetModelGUID = function(unit)
     return guid
 end
 
-ns.PF_Portrait.ApplyModel = function(model, unit, force)
+ns.PF_Portrait.ApplyModel = function(model, unit, force, facing)
     local available = ns.PF_Portrait.IsModelAvailable(unit)
     local guid = ns.PF_Portrait.GetModelGUID(unit)
     local guidChanged = guid ~= nil and model._kuiGUID ~= nil and guid ~= model._kuiGUID
-    if not force and not guidChanged and model._kuiUnit == unit and model._kuiAvailable == available then
+    if not force and not guidChanged and model._kuiUnit == unit and model._kuiAvailable == available
+        and model._kuiFacing == facing then
         return true
     end
 
     local call = ns.PF_Portrait.Call
     if available then
-        call(model, "SetCamDistanceScale", 1)
+        call(model, "SetCamDistanceScale", 0.72)
         call(model, "SetPortraitZoom", 1)
-        call(model, "SetPosition", 0, 0, 0)
+        call(model, "SetPosition", 0, 0, -0.02)
         call(model, "ClearModel")
         if not call(model, "SetUnit", unit) then
             model._kuiUnit = nil
             return false
         end
+        -- The character looks toward the frame, like the 2D portrait does.
+        call(model, "SetFacing", facing == "flipped" and -0.55 or 0.55)
     else
         call(model, "SetCamDistanceScale", 0.25)
         call(model, "SetPortraitZoom", 0)
@@ -3051,6 +3054,7 @@ ns.PF_Portrait.ApplyModel = function(model, unit, force)
     model._kuiUnit = unit
     model._kuiGUID = guid
     model._kuiAvailable = available
+    model._kuiFacing = facing
     return true
 end
 
@@ -3074,7 +3078,8 @@ end
 ns.PF_Portrait.RefreshModel = function(frame)
     local model = frame and frame.portraitModel
     if not (model and model:IsShown() and frame.unit and not frame.fakeUnit) then return end
-    ns.PF_Portrait.ApplyModel(model, frame.unit, false)
+    local db = Mod:GetModeDB(frame.mode or "party")
+    ns.PF_Portrait.ApplyModel(model, frame.unit, false, db and db.portraitFacing)
 end
 
 ns.PF_Portrait.EnsureModel = function(button)
@@ -3166,7 +3171,7 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
             ns.PF_Portrait.AnchorModel(frame, metrics)
             local wasShown = model:IsShown()
             model:Show()
-            showModel = ns.PF_Portrait.ApplyModel(model, modelUnit, forceModel or not wasShown)
+            showModel = ns.PF_Portrait.ApplyModel(model, modelUnit, forceModel or not wasShown, metrics.facing)
         end
     end
     if not (showClass or showModel) then
