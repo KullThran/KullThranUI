@@ -5555,7 +5555,7 @@ local function SetupUnitIndicators(frame, unit)
             -- issue (the two anchors are identical). Nudge the TEXT only,
             -- same absolute screen direction for both units, so it lands
             -- visually centered inside the (unmoved) circle.
-            local levelTextXNudge = 0
+            local levelTextXNudge = 1 * classicScale
             -- Pulls the level inward toward the portrait on whichever side
             -- each unit anchors from, applied to BOTH units symmetrically
             -- (same magnitude): the underlying 60/33 base otherwise sits too
