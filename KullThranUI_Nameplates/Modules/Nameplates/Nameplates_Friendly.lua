@@ -2295,6 +2295,8 @@ function ns.UpdateFriendlyNameplateSystem()
         ns.QueueNameplateCVar("nameplateShowFriends", showPlayers and 1 or 0)
         ns.QueueNameplateCVar("nameplateShowFriendlyNPCs", showNPCs and 1 or 0)
         ns.QueueNameplateCVar("nameplateShowFriendlyNpcs", showNPCs and 1 or 0)
+        -- Quest givers use Blizzard's special-NPC state for their native ? marker.
+        ns.QueueNameplateCVar("UnitNameFriendlySpecialNPCName", showNPCs and 1 or 0)
     end
 
     -- Remove custom bars for units that have just switched to name-only.
