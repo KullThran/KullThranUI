@@ -1268,7 +1268,7 @@ local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText
     local levelColor = globalDB.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }
     frame.levelText:SetTextColor(levelColor.r or 1, levelColor.g or 1, levelColor.b or 1, levelColor.a or 1)
     frame.levelText:SetText(unitKey == "player" and "80" or "70")
-    frame.levelText:SetShown(globalDB.showCharacterLevel ~= false)
+    frame.levelText:SetShown(ActiveVisualTheme() ~= "kui" and globalDB.showCharacterLevel ~= false)
     frame.pvpIcon:ClearAllPoints()
     if unitKey == "target" then
         frame.pvpIcon:SetPoint("LEFT", metadataAnchor, "RIGHT", 2, 1)

@@ -5476,7 +5476,11 @@ local function SetupUnitIndicators(frame, unit)
             portraitRing:Hide()
             frame._kuiClassificationPortraitRing = portraitRing
         end
-        local showLevel = not profile or profile.showCharacterLevel ~= false
+        -- KUI Style shows no level; only the stock-art styles
+        -- (Classic/Forever/Retail) do.
+        local levelTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme() or "kui"
+        local showLevel = levelTheme ~= "kui" and (not profile or profile.showCharacterLevel ~= false)
         local showClassification = not profile or profile.showClassification ~= false
         local noPortraitSize = math.max(8, tonumber(profile and profile.classificationNoPortraitSize) or CLASSIFICATION_NO_PORTRAIT_SIZE)
         ApplyForeverLevelTextStyle(frame._kuiLevelText, profile, portraitAnchor)
