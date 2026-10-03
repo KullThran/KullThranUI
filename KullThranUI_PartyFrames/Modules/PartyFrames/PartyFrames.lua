@@ -3238,22 +3238,44 @@ ns.PF_Portrait.SyncLevels = function(frame)
     if not (health and portrait and frame.GetFrameLevel) then return end
     -- Same strata as Health; frame levels are re-derived on every refresh
     -- because raising the parent can collapse child levels onto one value.
+    -- The KUI style keeps the portrait under the health bar, like the Unit
+    -- Frames; the other styles draw it on top.
     local strata = health:GetFrameStrata()
-    local base = math.max(health:GetFrameLevel() or 0, (frame:GetFrameLevel() or 0) + 1)
-    if frame.absorb and frame.absorb.GetFrameLevel then
-        base = math.max(base, frame.absorb:GetFrameLevel() or 0)
-    end
     portrait:SetFrameStrata(strata)
-    portrait:SetFrameLevel(base + 4)
-    if frame.portraitModel then frame.portraitModel:SetFrameLevel(base + 5) end
-    if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7) end
+    local top
+    if ns.PF_Portrait.IsBelowHealth() then
+        local root = (frame:GetFrameLevel() or 0) + 1
+        portrait:SetFrameLevel(root)
+        if frame.portraitModel then frame.portraitModel:SetFrameLevel(root + 1) end
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(root + 2) end
+        local healthLevel = math.max(health:GetFrameLevel() or 0, root + 3)
+        health:SetFrameLevel(healthLevel)
+        if frame.absorb then frame.absorb:SetFrameLevel(healthLevel + 2) end
+        top = healthLevel + 2
+    else
+        local base = math.max(health:GetFrameLevel() or 0, (frame:GetFrameLevel() or 0) + 1)
+        if frame.absorb and frame.absorb.GetFrameLevel then
+            base = math.max(base, frame.absorb:GetFrameLevel() or 0)
+        end
+        portrait:SetFrameLevel(base + 4)
+        if frame.portraitModel then frame.portraitModel:SetFrameLevel(base + 5) end
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7) end
+        top = base + 7
+    end
     if frame.overlayFrame then
         frame.overlayFrame:SetFrameStrata(strata)
-        frame.overlayFrame:SetFrameLevel(base + 8)
+        frame.overlayFrame:SetFrameLevel(top + 1)
     end
     if frame.auraFrame and frame.auraFrame.GetFrameLevel then
-        frame.auraFrame:SetFrameLevel(math.max(frame.auraFrame:GetFrameLevel() or 0, base + 10))
+        frame.auraFrame:SetFrameLevel(math.max(frame.auraFrame:GetFrameLevel() or 0, top + 3))
     end
+end
+
+ns.PF_Portrait.IsBelowHealth = function()
+    local vt = KT and KT.VisualThemes
+    if not (vt and vt.GetRenderedTheme) then return true end
+    local ok, theme = pcall(vt.GetRenderedTheme, vt)
+    return not ok or theme == nil or theme == "kui"
 end
 
 -- With a portrait shown, the level sits on the portrait's lower edge and the
