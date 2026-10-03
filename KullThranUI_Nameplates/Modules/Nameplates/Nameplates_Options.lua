@@ -3058,7 +3058,7 @@ initFrame:SetScript("OnEvent", function(self)
             function() return DBVal("enable") ~= false end,
             function(v)
                 DB().enable = v and true or false
-                ReloadUI()
+                StaticPopup_Show("KULLTHRANUI_RELOAD")
             end); y = y - h
 
         -----------------------------------------------------------------------

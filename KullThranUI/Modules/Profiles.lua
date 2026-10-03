@@ -1413,12 +1413,51 @@ local function SanitizeInterruptGlowProfile(value)
     }
 end
 
+-- Returns ok, errorMessage, crossFlavorWarning. Same rules as KullThranUI Forever:
+-- strings from the other variant import with a warning and the profile is tagged
+-- with where it came from. Pre-envelope (version 1) strings are still accepted.
+local function ValidatePayloadFlavor(payload)
+    if type(payload) ~= "table" then
+        return false, "Perfil invalido."
+    end
+
+    if payload.version == 1 and payload.client == nil then
+        return true, nil, "Aviso: esta cadena usa el formato antiguo y no indica de que variante (Retail o Forever) viene. Revisa el resultado tras recargar."
+    end
+
+    local flavor = payload.flavor
+    if payload.client ~= "KullThranUI" or (flavor ~= "forever" and flavor ~= "retail") then
+        return false, "Cadena de perfil no reconocida como de KullThranUI."
+    end
+
+    if payload.version ~= (KT.PROFILE_FORMAT_VERSION or 2) then
+        return false, "Version de perfil no soportada. Exporta el perfil de nuevo desde esta variante."
+    end
+
+    local warning
+    if flavor ~= KT:GetProfileFlavor() then
+        warning = "Aviso: este perfil viene de la variante " .. tostring(flavor) ..
+            " y se esta importando en " .. tostring(KT:GetProfileFlavorLabel()) ..
+            ". Normalmente es compatible, pero puede dar incompatibilidades."
+    end
+    return true, nil, warning
+end
+
+local function FinishImportFlavor(payload, warning)
+    if KT.StampProfileMeta then
+        KT:StampProfileMeta(GetRootProfile(), warning and payload.flavor or nil)
+    end
+    if warning and KT.Print then
+        KT:Print(warning)
+    end
+end
+
 local function BuildTransferProfile(profileData)
     local snapshot = {}
     for key, value in pairs(profileData or {}) do
         if key == "interruptsGlow" then
             snapshot[key] = SanitizeInterruptGlowProfile(value)
-        elseif key ~= "progressBars" and key ~= "kuiMove" and key ~= "blizzMove" and key ~= "BlizzMove" and key ~= "KUIMove" and key ~= "dandersIntegration" then
+        elseif key ~= "progressBars" and key ~= "kuiMove" and key ~= "blizzMove" and key ~= "BlizzMove" and key ~= "KUIMove" and key ~= "dandersIntegration" and key ~= "_flavorMeta" then
             snapshot[key] = DeepCopy(value)
         end
     end
@@ -1436,12 +1475,10 @@ function Mod:ExportCurrentProfileString()
 
     local profileSnapshot = BuildTransferProfile(root)
 
-    local payload = {
-        version = 1,
-        type = "full",
-        data = profileSnapshot,
-        savedVariables = CaptureAllExternalProfileSources(),
-    }
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "full"
+    payload.data = profileSnapshot
+    payload.savedVariables = CaptureAllExternalProfileSources()
     return EncodePayload(EXPORT_PREFIX, payload)
 end
 
@@ -1462,12 +1499,10 @@ function Mod:ExportModulesString(moduleIDs)
         return nil, "No se pudo capturar ningun modulo."
     end
 
-    local payload = {
-        version = 1,
-        type = "modules",
-        data = {
-            modules = exported,
-        },
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "modules"
+    payload.data = {
+        modules = exported,
     }
     return EncodePayload(EXPORT_PREFIX, payload)
 end
@@ -1583,8 +1618,9 @@ function Mod:ImportProfileString(importString)
         return false, err
     end
 
-    if payload.version ~= 1 then
-        return false, "Version de perfil no soportada."
+    local flavorOK, flavorError, crossWarning = ValidatePayloadFlavor(payload)
+    if not flavorOK then
+        return false, flavorError
     end
 
     if payload.type == "full" then
@@ -1608,8 +1644,9 @@ function Mod:ImportProfileString(importString)
         return false, "Tipo de importacion desconocido."
     end
 
+    FinishImportFlavor(payload, crossWarning)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("El perfil se ha importado correctamente.")
+    PromptReloadPopup("El perfil se ha importado correctamente." .. (crossWarning and (" " .. crossWarning) or ""))
     return true
 end
 
@@ -1628,8 +1665,9 @@ function Mod:ImportPageProfileString(pageID, importString)
     if not payload then
         return false, err
     end
-    if payload.version ~= 1 then
-        return false, "Version de perfil no soportada."
+    local flavorOK, flavorError, crossWarning = ValidatePayloadFlavor(payload)
+    if not flavorOK then
+        return false, flavorError
     end
     if payload.type ~= "modules" then
         return false, "Este importador solo acepta perfiles de modulos, no perfiles completos."
@@ -1661,8 +1699,9 @@ function Mod:ImportPageProfileString(pageID, importString)
     end
 
     SaveExternalProfileSnapshot(KT.db and KT.db:GetCurrentProfile())
+    FinishImportFlavor(payload, crossWarning)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("Se ha importado: " .. table.concat(importedLabels, ", ") .. ".")
+    PromptReloadPopup("Se ha importado: " .. table.concat(importedLabels, ", ") .. "." .. (crossWarning and (" " .. crossWarning) or ""))
     return true
 end
 
@@ -1913,11 +1952,9 @@ function Mod:ExportCDMSpellsString(specKeys)
         return nil, "No hay datos CDM para las especializaciones seleccionadas."
     end
 
-    local payload = {
-        version = 1,
-        type = "cdm_spells",
-        data = exported,
-    }
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "cdm_spells"
+    payload.data = exported
     return EncodePayload(CDM_EXPORT_PREFIX, payload)
 end
 
@@ -1932,8 +1969,9 @@ function Mod:ImportCDMSpellsString(importString)
         return false, err
     end
 
-    if payload.version ~= 1 or payload.type ~= "cdm_spells" then
-        return false, "Cadena CDM no valida."
+    local flavorOK, flavorError = ValidatePayloadFlavor(payload)
+    if not flavorOK or payload.type ~= "cdm_spells" then
+        return false, flavorError or "Cadena CDM no valida."
     end
 
     local cdmProfile = GetCDMProfile()

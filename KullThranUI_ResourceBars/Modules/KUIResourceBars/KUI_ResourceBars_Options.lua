@@ -1076,9 +1076,10 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
     _, h = W:Toggle(sc, LText("Enable Module"), -y,
         function()
-            return (db.primary.enabled or db.secondary.enabled or db.health.enabled) and true or false
+            return db.enabled ~= false and (db.primary.enabled or db.secondary.enabled or db.health.enabled) and true or false
         end,
         function(v)
+            db.enabled = v and true or false
             db.primary.enabled = v and true or false
             db.secondary.enabled = v and true or false
             db.health.enabled = v and true or false

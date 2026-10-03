@@ -24,6 +24,48 @@ _G.KullThranUI = KT
 _G.KT_NS = ns
 _G.KullThranUI_NS = ns
 
+-- Profile transfer identity, shared with KullThranUI Forever: every export carries
+-- client/flavor/interface/version so an import can tell which variant it came from.
+local _, _, _, kuiInterface = GetBuildInfo()
+KT.PROFILE_FLAVOR = "retail"
+KT.PROFILE_FLAVOR_LABEL = "Retail"
+KT.PROFILE_INTERFACE = tonumber(kuiInterface) or 0
+KT.PROFILE_FORMAT_VERSION = 2
+
+function KT:IsForever()
+    return false
+end
+
+function KT:GetProfileFlavor()
+    return self.PROFILE_FLAVOR
+end
+
+function KT:GetProfileFlavorLabel()
+    return self.PROFILE_FLAVOR_LABEL
+end
+
+function KT:GetProfileEnvelope()
+    return {
+        client = "KullThranUI",
+        flavor = self.PROFILE_FLAVOR,
+        interface = self.PROFILE_INTERFACE,
+        version = self.PROFILE_FORMAT_VERSION,
+    }
+end
+
+-- Records which flavor a profile belongs to and, when it was imported from the
+-- other one, where it came from. Never exported.
+function KT:StampProfileMeta(profile, importedFrom)
+    if type(profile) ~= "table" then return end
+    local meta = type(profile._flavorMeta) == "table" and profile._flavorMeta or {}
+    meta.flavor = self.PROFILE_FLAVOR
+    meta.interface = self.PROFILE_INTERFACE
+    if importedFrom and importedFrom ~= self.PROFILE_FLAVOR then
+        meta.importedFrom = importedFrom
+    end
+    profile._flavorMeta = meta
+end
+
 -- Register these aliases during the core addon load, before the optional
 -- Installer module is loaded. The handler itself loads the module on demand.
 local function KullThranUIInstallerSlash()
