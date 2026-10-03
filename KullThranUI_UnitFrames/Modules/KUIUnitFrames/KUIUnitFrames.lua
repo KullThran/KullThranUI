@@ -137,6 +137,233 @@ local function SafeUnitLevelText(unit)
     return nil
 end
 
+-------------------------------------------------------------------------------
+--  Blizzard look for the stock-art styles (Classic / Forever / Retail).
+--  Kept on ns so this chunk does not take more file-level locals.
+-------------------------------------------------------------------------------
+function ns.RenderedStyle()
+    local VT = KT.VisualThemes
+    return (VT and VT.GetRenderedTheme and VT:GetRenderedTheme()) or "kui"
+end
+
+function ns.IsStockStyle(theme)
+    theme = theme or ns.RenderedStyle()
+    return theme == "classic" or theme == "forever" or theme == "retail"
+end
+
+-- Unset toggles follow the style: on for Classic/Forever/Retail, off for KUI Style.
+function ns.StockStyleToggle(profile, key, theme)
+    local v = profile and profile[key]
+    if v ~= nil then return v ~= false end
+    return ns.IsStockStyle(theme)
+end
+
+-- Font of a Blizzard font object (path, size, flags), or the given fallback.
+function ns.BlizzardFont(objectName, fbPath, fbSize, fbFlags)
+    local obj = _G[objectName]
+    if obj and obj.GetFont then
+        local ok, path, size, flags = pcall(obj.GetFont, obj)
+        if ok and type(path) == "string" and type(size) == "number" and size > 0 then
+            return path, size, flags or ""
+        end
+    end
+    return fbPath, fbSize, fbFlags
+end
+
+function ns.SafeCall(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if ok and not IsForeverSecretValue(value) then return value end
+    return nil
+end
+
+-- Level number color, following Blizzard's PlayerFrame/TargetFrame rules:
+-- the player in yellow (green while level-scaled on modern clients), units
+-- that cannot be attacked in yellow, attackable units by difficulty
+-- (grey / green / yellow / orange / red).
+function ns.BlizzardLevelColor(unit, theme)
+    local nr, ng, nb = 1, 0.82, 0
+    local nonAttack = _G.UNIT_LEVEL_NON_ATTACKABLE
+    if theme == "classic" and type(nonAttack) == "table" and nonAttack.r then
+        nr, ng, nb = nonAttack.r, nonAttack.g, nonAttack.b
+    end
+    if not unit then return nr, ng, nb end
+    if ns.SafeCall(UnitIsUnit, unit, "player") then
+        if theme ~= "classic" then
+            local level, effective = ns.SafeCall(UnitLevel, unit), ns.SafeCall(UnitEffectiveLevel, unit)
+            if type(level) == "number" and type(effective) == "number" and level ~= effective then
+                return 0.1, 1.0, 0.1
+            end
+        end
+        return nr, ng, nb
+    end
+    if not ns.SafeCall(UnitCanAttack, "player", unit) then return nr, ng, nb end
+    local color
+    if theme ~= "classic" and C_PlayerInfo and type(GetDifficultyColor) == "function" then
+        local difficulty = ns.SafeCall(C_PlayerInfo.GetContentDifficultyCreatureForPlayer, unit)
+        if difficulty ~= nil then color = ns.SafeCall(GetDifficultyColor, difficulty) end
+    end
+    if type(color) ~= "table" then
+        local level = (theme ~= "classic" and ns.SafeCall(UnitEffectiveLevel, unit)) or ns.SafeCall(UnitLevel, unit)
+        if type(level) == "number" and level > 0 then
+            color = ns.SafeCall(GetCreatureDifficultyColor or GetQuestDifficultyColor, level)
+        elseif type(level) == "number" then
+            -- Level hidden ("??"): far above the player.
+            return 1, 0.1, 0.1
+        end
+    end
+    if type(color) == "table" and color.r then return color.r, color.g, color.b end
+    return nr, ng, nb
+end
+
+function ns.UnitInCombat(unit)
+    return ns.SafeCall(UnitAffectingCombat, unit) and true or false
+end
+
+-- Blizzard's combat (crossed swords) icon for a level circle.
+function ns.ApplyBlizzardCombatIcon(tex, theme, size)
+    if theme ~= "classic" and C_Texture and C_Texture.GetAtlasInfo
+        and C_Texture.GetAtlasInfo("UI-HUD-UnitFrame-Player-CombatIcon") then
+        tex:SetAtlas("UI-HUD-UnitFrame-Player-CombatIcon", false)
+        tex:SetSize(size * 0.7, size * 0.7)
+    else
+        tex:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+        tex:SetTexCoord(0.5, 1, 0, 0.484375)
+        tex:SetSize(size, size)
+    end
+end
+
+-- Enemies without mana (rage, energy or no power at all) get an empty power
+-- bar background instead of a filled one. A custom background color set by
+-- the user is kept.
+function ns.UpdatePowerBackground(power, unit, settings)
+    local bg = power and power.bg
+    if not bg then return end
+    local empty = false
+    if unit and unit ~= "player" and not (settings and settings.customPowerBgColor)
+        and ns.SafeCall(UnitCanAttack, "player", unit) then
+        local manaType = Enum and Enum.PowerType and Enum.PowerType.Mana or 0
+        local powerType = ns.SafeCall(UnitPowerType, unit)
+        local maxPower = ns.SafeCall(UnitPowerMax, unit)
+        empty = (powerType ~= nil and powerType ~= manaType)
+            or (type(maxPower) == "number" and maxPower <= 0)
+    end
+    if empty then
+        bg:SetAlpha(0)
+        power._ktEmptyBg = true
+    elseif power._ktEmptyBg then
+        power._ktEmptyBg = nil
+        local opacity = settings and settings.powerBarOpacity or 100
+        if opacity <= 1 then opacity = opacity * 100 end
+        bg:SetAlpha(opacity / 100)
+    end
+end
+
+-- Retail/Forever native Rare/Elite portrait overlays (Blizzard's TargetFrame
+-- atlases). Offsets are the atlas' TOPRIGHT from the 58px portrait's TOPRIGHT.
+ns.NATIVE_CLASSIFICATION = {
+    elite = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold", dx = 15, dy = 11 },
+    rare = { atlas = "ui-hud-unitframe-target-portraiton-boss-rare-silver", dx = 15, dy = 11 },
+    worldboss = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged", dx = 34, dy = 11 },
+}
+
+function ns.NativeClassificationKind(classification)
+    if classification == "worldboss" or classification == "elite" then return classification end
+    if classification == "rare" or classification == "rareelite" then return "rare" end
+    return nil
+end
+
+function ns.HasNativeClassificationArt(kind)
+    local def = kind and ns.NATIVE_CLASSIFICATION[kind]
+    return def and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(def.atlas) and true or false
+end
+
+-- Draws (or hides, kind = nil) the native overlay around `portrait`. Mirrored
+-- when the portrait sits on the left of its frame. Lives just under `above`
+-- so the level and PvP badges stay on top.
+function ns.ShowNativeClassificationRing(frame, portrait, kind, mirror, above)
+    local tex = frame._kuiNativeClassRing
+    local def = kind and ns.NATIVE_CLASSIFICATION[kind]
+    local info = def and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(def.atlas)
+    if not (info and portrait) then
+        if tex then tex:Hide() end
+        return false
+    end
+    local host = frame._kuiNativeClassHost
+    if not tex then
+        host = CreateFrame("Frame", nil, frame)
+        host:SetAllPoints(frame)
+        host:EnableMouse(false)
+        frame._kuiNativeClassHost = host
+        tex = host:CreateTexture(nil, "OVERLAY", nil, 6)
+        frame._kuiNativeClassRing = tex
+    end
+    if above then
+        host:SetFrameStrata(above:GetFrameStrata())
+        host:SetFrameLevel(math.max(1, above:GetFrameLevel() - 1))
+    end
+    local k = (portrait:GetWidth() or 58) / 58
+    if not k or k <= 0 then k = 1 end
+    tex:SetAtlas(def.atlas, false)
+    tex:SetSize((info.width or 80) * k, (info.height or 80) * k)
+    tex:ClearAllPoints()
+    if mirror then
+        local ulx, uly, llx, lly, urx, ury, lrx, lry = tex:GetTexCoord()
+        tex:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly)
+        tex:SetPoint("TOPLEFT", portrait, "TOPLEFT", -def.dx * k, def.dy * k)
+    else
+        tex:SetPoint("TOPRIGHT", portrait, "TOPRIGHT", def.dx * k, def.dy * k)
+    end
+    tex:Show()
+    return true
+end
+
+-- One time per profile: the Blizzard level and name text become the default
+-- of the Classic/Forever/Retail styles, except where the player already
+-- customised the level text or the name text by hand.
+function ns.MigrateBlizzardTextDefaults(profile)
+    if type(profile) ~= "table" or profile._blizzardTextDefaults20261003 then return end
+    local function near(a, b) return math.abs((tonumber(a) or 0) - b) < 0.01 end
+    if profile.levelBlizzardStyle == nil then
+        local c = profile.levelColor
+        local customLevel = (profile.levelFont ~= nil and profile.levelFont ~= "AAA_ITC_Avant_Garde")
+            or (profile.levelFontSize ~= nil and tonumber(profile.levelFontSize) ~= 11)
+            or (profile.levelFontOutline ~= nil and profile.levelFontOutline ~= "OUTLINE")
+            or (type(c) == "table" and not (near(c.r, 1) and near(c.g, 0.82) and near(c.b, 0.20)))
+        if customLevel then profile.levelBlizzardStyle = false end
+    end
+    if profile.blizzardNameStyle == nil then
+        for _, key in ipairs({ "player", "target", "focus" }) do
+            local u = profile[key]
+            if type(u) == "table" and (u.leftTextClassColor == true or u.centerTextClassColor == true
+                or (u.leftTextSize ~= nil and tonumber(u.leftTextSize) ~= 14)) then
+                profile.blizzardNameStyle = false
+                break
+            end
+        end
+    end
+    profile._blizzardTextDefaults20261003 = true
+end
+
+-- The Target always shows its buffs, above the frame, in every style.
+function ns.EnforceTargetBuffs(profile)
+    local t = profile and profile.target
+    if type(t) ~= "table" then return end
+    t.showBuffs = true
+    if t.buffAnchor ~= "topleft" and t.buffAnchor ~= "topright" then
+        t.buffAnchor = (t.buffAnchor == "bottomright" or t.buffAnchor == "right") and "topright" or "topleft"
+    end
+    if t.buffGrowth == "down" then t.buffGrowth = "auto" end
+    if tonumber(t.maxBuffs) and t.maxBuffs < 1 then t.maxBuffs = 20 end
+end
+
+-- Curse / Poison / Bleed / Magic overlays: on by default only in KUI Style.
+function ns.IsDispelOverlayOn(settings)
+    local v = settings and settings.dispelOverlay
+    if v ~= nil then return v ~= false end
+    return ns.RenderedStyle() == "kui"
+end
+
 -- Theme accent for small ornaments (PvP circle border, combo pips):
 -- Forever bronze, Retail yellow, Classic white (pips) / yellow (PvP circle).
 -- Classic style: cast bars look like Classic's unit-frame bars (Blizzard StatusBar texture,
@@ -3828,7 +4055,7 @@ local function CreatePowerBar(frame, unit, settings)
     -- Hide power bar for enemy NPCs that don't use power (melee mobs, etc.)
     -- Show power for: player, friendly units, enemy players, bosses, minibosses, casters
     power._grayedOut = false
-    power.PostUpdate = function(self, u, cur, min, max)
+    local function GrayOutPostUpdate(self, u, cur, min, max)
         local s = GetSettingsForUnit(u)
         if not s then return end
 
@@ -3870,6 +4097,10 @@ local function CreatePowerBar(frame, unit, settings)
                 self.bg:SetAlpha(opacity / 100)
             end
         end
+    end
+    power.PostUpdate = function(self, u, cur, min, max)
+        GrayOutPostUpdate(self, u, cur, min, max)
+        ns.UpdatePowerBackground(self, u, GetSettingsForUnit(u))
     end
 
     -- Shadow Priest: show Mana on the power bar
@@ -4864,7 +5095,7 @@ local function UpdateUnitDispelBorderEvent(self, event, unit)
     -- its dispel border on every UNIT_AURA even when the user switched it off.
     local settings = GetSettingsForUnit and GetSettingsForUnit(unit)
         or frame.db or (GetMod and GetMod().db) or {}
-    if settings and settings.dispelOverlay == false then
+    if not ns.IsDispelOverlayOn(settings) then
         SetDispelFrameBorder(frame, nil)
         return
     end
@@ -4923,7 +5154,7 @@ local function RefreshTargetDebuffDispelStyle(settings)
     local style = AK and AK.styles and AK.styles["kuiuf:target-debuffs"]
     if not style then return end
 
-    local enabled = not (settings and settings.dispelOverlay == false)
+    local enabled = ns.IsDispelOverlayOn(settings)
         and not (settings and settings.debuffDispelBorder == false)
     local thickness = tonumber(settings and settings.debuffDispelBorderSize)
         or tonumber(settings and settings.dispelBorderThickness)
@@ -5019,6 +5250,7 @@ local function CreateUnitDispelSlots(frame, unit)
         slots = auraKit.BuildDispelSlotSpecs(prefix),
     })
     container:SetFrameLevel(frame:GetFrameLevel() + 20)
+    container:SetShown(ns.IsDispelOverlayOn(GetSettingsForUnit(unit)))
     frame.KTDispelSlots = container
     frame._ktDispelPrefix = prefix
     frame._ktDispelSlotsCreated = true
@@ -5206,7 +5438,7 @@ local function CreateTargetAuras(frame, unit)
             texCoord = { 0.07, 0.93, 0.07, 0.93 },
             border = { 0, 0, 0, 1, size = 1 },
             cooldownReverse = true,
-            dispelBorder = settings.dispelOverlay ~= false
+            dispelBorder = ns.IsDispelOverlayOn(settings)
                 and settings.debuffDispelBorder ~= false,
             dispelBorderPx = tonumber(settings.debuffDispelBorderSize)
                 or tonumber(settings.dispelBorderThickness) or 2,
@@ -5731,9 +5963,46 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiPvPCircleBorder:SetVertexColor(cr, cg, cb, 1)
         end
         local levelText = showLevel and SafeUnitLevelText(u) or nil
+        -- Blizzard's own level text in the stock-art styles: GameNormalNumberFont
+        -- (scaled with the frame art) and Blizzard's level color rules.
+        local blizzardLevel = ns.StockStyleToggle(profile, "levelBlizzardStyle", renderedTheme)
+        if blizzardLevel then
+            local path, size, flags = ns.BlizzardFont("GameNormalNumberFont", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            local artScale = 1
+            if usingClassicLevelOrnament then
+                artScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+                if not artScale or artScale <= 0 then artScale = 1 end
+            end
+            frame._kuiLevelText:SetFont(path, math.max(6, size * artScale), flags)
+            frame._kuiLevelText:SetTextColor(ns.BlizzardLevelColor(u, renderedTheme))
+        end
+        -- In combat Blizzard swaps the level number for its combat icon inside
+        -- the level circle (modern icon on Retail/Forever, the old one on Classic).
+        local combatIcon = frame._kuiLevelCombatIcon
+        local showCombatIcon = levelText and usingClassicLevelOrnament
+            and ns.StockStyleToggle(profile, "levelCombatIcon", renderedTheme)
+            and ns.UnitInCombat(u)
+        if showCombatIcon then
+            -- Same host as the level number, which sits above the level ring art.
+            local iconHost = frame._kuiLevelText:GetParent() or frame
+            if not combatIcon then
+                combatIcon = iconHost:CreateTexture(nil, "OVERLAY", nil, 7)
+                frame._kuiLevelCombatIcon = combatIcon
+            elseif combatIcon:GetParent() ~= iconHost then
+                combatIcon:SetParent(iconHost)
+            end
+            local artScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+            if not artScale or artScale <= 0 then artScale = 1 end
+            ns.ApplyBlizzardCombatIcon(combatIcon, renderedTheme, 26 * artScale)
+            combatIcon:ClearAllPoints()
+            combatIcon:SetPoint("CENTER", frame._kuiLevelText, "CENTER", 0, 0)
+            combatIcon:Show()
+        elseif combatIcon then
+            combatIcon:Hide()
+        end
         if levelText then
             frame._kuiLevelText:SetText(levelText)
-            frame._kuiLevelText:Show()
+            frame._kuiLevelText:SetShown(not showCombatIcon)
             if usingClassicLevelOrnament then
                 frame._kuiLevelCircle:Show()
             else
@@ -5763,6 +6032,24 @@ local function SetupUnitIndicators(frame, unit)
             classificationTexture = portraitVisible and playerCustomBorder
                 or CLASSIFICATION_NO_PORTRAIT_TEXTURES.elite
         end
+        -- Retail/Forever native Rare/Elite overlay (Blizzard atlas), picked in Unit
+        -- Frames: the Player's border card, or the Target's overlay art option.
+        local nativeKind
+        if portraitVisible and portraitBackdrop then
+            if u == "player" then
+                if borderChoice == "nativerare" then nativeKind = "rare"
+                elseif borderChoice == "nativeelite" then nativeKind = "elite" end
+            elseif u == "target" and showClassification and profile
+                and profile.targetClassificationArt == "native" then
+                nativeKind = ns.NativeClassificationKind(SafeUnitClassification(u))
+            end
+            if nativeKind and not ns.HasNativeClassificationArt(nativeKind) then nativeKind = nil end
+        end
+        if nativeKind then
+            classificationTexture = nil
+            playerCustomBorder = nil
+            playerClassicRingKind = nil
+        end
         -- Classic style: Blizzard's own Rare/Elite sheet replaces the whole frame art
         -- (instead of drawing the custom ring), for the player's chosen border and
         -- for elite/rare targets.
@@ -5773,7 +6060,7 @@ local function SetupUnitIndicators(frame, unit)
                 -- drawing the custom ring over the Classic frame.
                 if borderChoice == "classicrare" then kind = "rare"
                 elseif borderChoice == "classicelite" then kind = "elite" end
-            elseif showClassification then
+            elseif showClassification and not nativeKind then
                 kind = ns.ClassicRing.KindForClassification(SafeUnitClassification(u))
             end
             -- Remembered on the frame so ApplyClassicUnitFrameArt (re-run on every
@@ -5829,7 +6116,8 @@ local function SetupUnitIndicators(frame, unit)
         if u == "target" and (renderedTheme == "forever" or renderedTheme == "retail") then
             local rawClassification = SafeUnitClassification(u)
             local isEliteOrRare = CLASSIFICATION_TEXTURES[rawClassification] ~= nil
-            local showBaseRing = not isEliteOrRare
+            -- The native overlay is drawn over the normal frame, like Blizzard's.
+            local showBaseRing = not isEliteOrRare or nativeKind ~= nil
             frame._ktDebugClassification = tostring(rawClassification)
             frame._ktDebugEliteOrRare = tostring(isEliteOrRare)
             frame._ktDebugArtShownField = tostring(frame._ktForeverPortraitArt ~= nil)
@@ -6076,6 +6364,11 @@ local function SetupUnitIndicators(frame, unit)
             if portraitRing then portraitRing:Hide() end
             if portraitBackdrop then portraitBackdrop:SetClipsChildren(true) end
         end
+        do
+            local side = settings and settings.portraitSide
+                or ((u == "player" or u == "pet") and "left" or "right")
+            ns.ShowNativeClassificationRing(frame, portraitBackdrop, nativeKind, side == "left", iOvr)
+        end
         -- Classic Rare/Elite ring (any style): seat the level in the sheet's own empty
         -- level circle instead of the style's normal spot, and hide our own badge.
         if playerClassicRingKind and frame._kuiClassificationPortraitActive and portraitBackdrop
@@ -6151,6 +6444,7 @@ local function SetupUnitIndicators(frame, unit)
             "PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED",
             "GROUP_ROSTER_UPDATE", "UNIT_LEVEL", "UNIT_FLAGS", "UNIT_CLASSIFICATION_CHANGED", "UNIT_FACTION", "PLAYER_FLAGS_CHANGED",
             "UNIT_POWER_UPDATE", "UNIT_POWER_FREQUENT", "UNIT_DISPLAYPOWER", "UPDATE_SHAPESHIFT_FORM", "PLAYER_SPECIALIZATION_CHANGED",
+            "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
         }) do
             frame:RegisterEvent(ev, function()
                 QueueForeverMetadataRefresh()
@@ -6641,13 +6935,22 @@ SetupPlayerStatusIndicators = function(frame, settings)
     if not frame.RestingIndicator then
         local resting = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
         resting:Hide()
-        resting:SetTexture(KUI_ICON_PATH .. "Zzz.png")
-        resting:SetTexCoord(0, 1, 0, 1)
         frame.RestingIndicator = resting
-        -- PostUpdate: oUF resetea la textura; forzamos la nuestra
+        -- KUI Style keeps its own Zzz; Classic, Forever and Retail share
+        -- Blizzard's original resting icon.
+        local function ApplyRestingTexture(self)
+            if ns.IsStockStyle() then
+                self:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+                self:SetTexCoord(0, 0.5, 0, 0.421875)
+            else
+                self:SetTexture(KUI_ICON_PATH .. "Zzz.png")
+                self:SetTexCoord(0, 1, 0, 1)
+            end
+        end
+        ApplyRestingTexture(resting)
+        -- PostUpdate: oUF resets the texture; put ours back
         frame.RestingIndicator.PostUpdate = function(self, isResting)
-            self:SetTexture(KUI_ICON_PATH .. "Zzz.png")
-            self:SetTexCoord(0, 1, 0, 1)
+            ApplyRestingTexture(self)
         end
     end
 
@@ -6714,6 +7017,9 @@ SetupPlayerStatusIndicators = function(frame, settings)
             or renderedTheme == "classic"
         local portraitAnchor = frame.Portrait and (frame.Portrait.backdrop or frame.Portrait)
         if usesPortraitAnchor and portraitAnchor then
+            -- Blizzard's icon is 31x33 on its 64px portrait.
+            local k = math.max(0.5, (portraitAnchor:GetWidth() or 46) / 64)
+            resting:SetSize(24 * k, 25 * k)
             resting:SetPoint("BOTTOM", portraitAnchor, "TOP", 0, 5)
         else
             resting:SetPoint("TOPLEFT", frame.Health, "TOPLEFT", 3, 8)
@@ -8248,7 +8554,7 @@ function ns.ApplyDispelOverlayLive()
         if type(unit) == "string" and unit:sub(1, 1) ~= "_" and type(frame) == "table" then
             local settings = GetSettingsForUnit(unit)
             if settings then
-                local show = settings.dispelOverlay ~= false
+                local show = ns.IsDispelOverlayOn(settings)
                 if frame.KTDispelSlots then frame.KTDispelSlots:SetShown(show) end
                 if frame.dispelBorderFrame then
                     frame.dispelBorderFrame:SetShown(show)
@@ -8267,6 +8573,7 @@ local function ReloadFrames()
     end
 
     ResolveFontPath()
+    ns.EnforceTargetBuffs(db.profile)
 
     -- Invalidar cache del subsistema de contexto de unidad
     ns._UnitCtx.Invalidate()
@@ -8792,7 +9099,7 @@ local function ReloadFrames()
                     end
 
                     if frame.KTDispelSlots then
-                        frame.KTDispelSlots:SetShown(settings.dispelOverlay ~= false)
+                        frame.KTDispelSlots:SetShown(ns.IsDispelOverlayOn(settings))
                         if _G.KTAuraKit and frame._ktDispelPrefix then
                             _G.KTAuraKit.ConfigureDispelSlotStyles(frame._ktDispelPrefix, frame.Health, {
                                 alpha = 1,
@@ -8802,7 +9109,7 @@ local function ReloadFrames()
                         end
                     end
                     if frame.dispelBorderFrame then
-                        frame.dispelBorderFrame:SetShown(settings.dispelOverlay ~= false)
+                        frame.dispelBorderFrame:SetShown(ns.IsDispelOverlayOn(settings))
                     end
 
                     UpdateBordersForScale(frame, unit)
@@ -9655,7 +9962,7 @@ local function ReloadFrames()
             -- player uses dedicated AuraKit slots while focus/pet/boss use a
             -- frame border; both must be hidden immediately when the option is
             -- switched off, not only after the next UNIT_AURA event.
-            local showDispelOverlay = settings.dispelOverlay ~= false
+            local showDispelOverlay = ns.IsDispelOverlayOn(settings)
             if frame.KTDispelSlots then
                 frame.KTDispelSlots:SetShown(showDispelOverlay)
             end
@@ -11584,6 +11891,8 @@ function Mod:OnInitialize()
     ApplyReferenceLayoutDefaults()
     ApplyDebuffDefaultsMigration()
     ApplyForeverUnitFrameLayoutDefaults()
+    ns.MigrateBlizzardTextDefaults(db.profile)
+    ns.EnforceTargetBuffs(db.profile)
     if RegisterUFHPDebugSlash then
         C_Timer.After(0, RegisterUFHPDebugSlash)
     end

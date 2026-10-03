@@ -509,6 +509,64 @@ local function FitTextToWidth(fs, maxWidth)
     fs:SetFont(path, math.max(6, base * (maxWidth / width)), flags)
 end
 
+--- Blizzard's own name text for the stock-art styles: GameFontNormalSmall
+--- (sized with the frame art) in Blizzard yellow. Later font or color writes
+--- from the generic text pass are held to that look while it is active, but
+--- a smaller size (fitting a long name into the tab) is still allowed.
+--- Turned off with unitFrames.blizzardNameStyle = false.
+function KT.VisualThemes:ApplyBlizzardNameText(fs, scale, maxWidth)
+    if type(fs) ~= "table" or type(fs.SetFont) ~= "function" then return end
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    if uf and uf.blizzardNameStyle == false then
+        if fs._ktBlizzName then
+            fs._ktBlizzName = nil
+            fs._ktStockBaseFontSize, fs._ktForeverFitBaseFontSize, fs._ktStockFitBaseFontSize = nil, nil, nil
+        end
+        return
+    end
+    local path, size, flags = "Fonts\\FRIZQT__.TTF", 10, ""
+    local obj = _G.GameFontNormalSmall
+    if obj and obj.GetFont then
+        local ok, p2, s2, f2 = pcall(obj.GetFont, obj)
+        if ok and type(p2) == "string" and type(s2) == "number" and s2 > 0 then
+            path, size, flags = p2, s2, f2 or ""
+        end
+    end
+    size = math.max(6, size * ((type(scale) == "number" and scale > 0) and scale or 1))
+    fs._ktBlizzName = { path = path, size = size, flags = flags }
+    if not fs._ktBlizzNameHooked and hooksecurefunc then
+        fs._ktBlizzNameHooked = true
+        hooksecurefunc(fs, "SetFont", function(self, p3, s3, f3)
+            local b = self._ktBlizzName
+            if not b or self._ktBlizzBusy then return end
+            local want = (type(s3) == "number" and s3 < b.size) and s3 or b.size
+            if p3 ~= b.path or f3 ~= b.flags or s3 ~= want then
+                self._ktBlizzBusy = true
+                self:SetFont(b.path, want, b.flags)
+                self._ktBlizzBusy = nil
+            end
+        end)
+        hooksecurefunc(fs, "SetTextColor", function(self)
+            if not self._ktBlizzName or self._ktBlizzBusy then return end
+            self._ktBlizzBusy = true
+            self:SetTextColor(1, 0.82, 0)
+            self._ktBlizzBusy = nil
+        end)
+    end
+    fs._ktBlizzBusy = true
+    fs:SetFont(path, size, flags)
+    fs:SetTextColor(1, 0.82, 0)
+    fs._ktBlizzBusy = nil
+    if fs.SetShadowOffset then
+        fs:SetShadowOffset(1, -1)
+        fs:SetShadowColor(0, 0, 0, 1)
+    end
+    if maxWidth and maxWidth > 0 then
+        fs._ktForeverFitBaseFontSize = size
+        FitTextToWidth(fs, maxWidth)
+    end
+end
+
 local function ResolveStockScale(frame, geom)
     local width = frame.GetWidth and frame:GetWidth()
     local height = frame.GetHeight and frame:GetHeight()
@@ -975,6 +1033,9 @@ function KT.VisualThemes:ApplyClassicUnitFrameArt(frame, unitRegion, unit)
     ScaleStockBarText(frame.LeftText, scale, barTextMaxHeight, CLASSIC_BAR_TEXT_HEIGHT_RATIO)
     ScaleStockBarText(frame.RightText, scale, barTextMaxHeight, CLASSIC_BAR_TEXT_HEIGHT_RATIO)
     ScaleStockBarText(frame.CenterText, scale, barTextMaxHeight, CLASSIC_BAR_TEXT_HEIGHT_RATIO)
+    if nameText and geom.name then
+        self:ApplyBlizzardNameText(nameText, scale, geom.name.w * scale)
+    end
 
     -- Classic's name tab is part of the opaque texture. Its buffs therefore
     -- need their own row above the whole stock frame; the normal aura refresh
@@ -1737,6 +1798,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- useful and leaves the actual tab text unfitted).
     if geom.name then
         FitTextToWidth(nameText, geom.name.w * scale)
+        self:ApplyBlizzardNameText(nameText, scale, geom.name.w * scale)
     end
 
     -- Buffs move into the same real name tab -- Forever-only for now
@@ -1979,6 +2041,7 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
     if nameText then
         ScaleStockBarText(nameText, scale, math.max(barMax, 11 * scale), 0.8)
         FitTextToWidth(nameText, geom.name.w * scale)
+        self:ApplyBlizzardNameText(nameText, scale, geom.name.w * scale)
     end
     for _, fs in ipairs({ frame.LeftText, frame.RightText, frame.CenterText }) do
         if fs and fs ~= nameText then ScaleStockBarText(fs, scale, barMax, ratio) end

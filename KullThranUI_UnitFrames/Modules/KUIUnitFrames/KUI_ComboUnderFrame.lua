@@ -2,8 +2,8 @@
 --  Combo points under the Player unit frame (Target keeps its portrait ring).
 --
 --  Setting: KT.db.profile.unitFrames.comboUnderFrame = "off" | "modern" | "classic"
---    * nil (never touched) resolves to "classic" when the Classic visual style
---      is rendered and to "off" for every other style/preset.
+--    * nil (never touched) resolves to "off": Classic, Forever and Retail show
+--      the points around the target portrait instead (comboTargetStyle "ring").
 --    * "modern"  : atlas pips (uf-roguecp-*).
 --    * "classic" : slim ornament plate with round slots (Classic look).
 --
@@ -43,21 +43,23 @@ CUF.ATLAS = ATLAS
 -- unit = "player" (default) or "target".
 --   player: off | modern | classic      (key comboUnderFrame)
 --   target: off | ring | modern | classic (key comboTargetStyle; "ring" = the
---           circular arc around the portrait; default off)
+--           circular arc around the portrait; default ring for Classic,
+--           Forever and Retail, off for KUI Style)
 function CUF.GetStyle(unit)
     local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    -- Classic, Forever and Retail show the points around the enemy portrait
+    -- by default (Blizzard's ring); KUI Style keeps them off.
+    local stock = theme == "classic" or theme == "forever" or theme == "retail"
     if unit == "target" then
         local v = uf and uf.comboTargetStyle
         if v == "off" or v == "ring" or v == "modern" or v == "classic" then return v end
-        return "off"
+        return stock and "ring" or "off"
     end
     local v = uf and uf.comboUnderFrame
     if v == "off" or v == "modern" or v == "classic" then return v end
-    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
-        and KT.VisualThemes:GetRenderedTheme()
-    if theme == "classic" then return "classic" end
-    if theme == "forever" then return "modern" end
-    return "off" -- retail and kui
+    return "off"
 end
 -- Exposed on the core addon so other modules (Resource Bars) can query it.
 KT.GetComboUnderFrameStyle = CUF.GetStyle
