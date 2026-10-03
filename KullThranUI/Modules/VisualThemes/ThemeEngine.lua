@@ -465,6 +465,7 @@ function KT.VisualThemes:ResetComboDefaults()
     if type(uf) ~= "table" then return end
     uf.comboUnderFrame = nil
     uf.comboTargetStyle = nil
+    uf.comboRingArt = nil
     -- Forever/Retail: health bar fill back to the theme's reference green.
     local _, st = self:EnsureInitialized()
     local th = st and st.active
@@ -481,6 +482,79 @@ function KT.VisualThemes:ResetComboDefaults()
         if type(root.visualThemeHealth) == "table" then root.visualThemeHealth[th] = nil end
     end
     if type(KT.RefreshComboUnderFrame) == "function" then pcall(KT.RefreshComboUnderFrame) end
+end
+
+-- Unit frame positions are offsets in the frame's own scaled space, so a
+-- theme that changes frameScale would move every saved position. Capture the
+-- live on-screen anchor before the switch and rewrite the saved offsets so
+-- each frame stays where the player put it.
+local UNIT_FRAME_GLOBALS = {
+    player = "KullThranUI_UF_Player",
+    target = "KullThranUI_UF_Target",
+    focus = "KullThranUI_UF_Focus",
+    pet = "KullThranUI_UF_Pet",
+}
+
+local function AnchorFactors(point)
+    point = point or "CENTER"
+    local ax = point:find("LEFT") and 0.5 or (point:find("RIGHT") and -0.5 or 0)
+    local ay = point:find("TOP") and -0.5 or (point:find("BOTTOM") and 0.5 or 0)
+    return ax, ay
+end
+
+local function CaptureUnitFramePlacement()
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    if type(uf) ~= "table" or type(uf.positions) ~= "table" then return nil end
+    local snapshot = {}
+    for key, globalName in pairs(UNIT_FRAME_GLOBALS) do
+        local frame = _G[globalName]
+        local pos = uf.positions[key]
+        local settings = type(uf[key]) == "table" and uf[key] or nil
+        if type(pos) == "table" and pos.point then
+            local scale = ((settings and settings.frameScale) or 100) / 100
+            local x, y = pos.x or 0, pos.y or 0
+            local w, h = 0, 0
+            if frame and frame.GetPoint and frame.GetScale then
+                local pt, rel, _, fx, fy = frame:GetPoint(1)
+                if pt == pos.point and (rel == nil or rel == UIParent)
+                    and type(fx) == "number" and type(fy) == "number" then
+                    x, y = fx, fy
+                end
+                local live = frame:GetScale()
+                if type(live) == "number" and live > 0 then scale = live end
+                w, h = frame:GetWidth() or 0, frame:GetHeight() or 0
+            end
+            snapshot[key] = { point = pos.point, x = x, y = y, scale = scale, w = w, h = h }
+        end
+    end
+    return snapshot
+end
+
+local function RestoreUnitFramePlacement(snapshot)
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    if type(snapshot) ~= "table" or type(uf) ~= "table" or type(uf.positions) ~= "table" then return end
+    local editFrames = KT.db.profile.editMode and KT.db.profile.editMode.frames
+    for key, old in pairs(snapshot) do
+        local settings = type(uf[key]) == "table" and uf[key] or nil
+        local newScale = ((settings and settings.frameScale) or 100) / 100
+        if newScale > 0 and math.abs(newScale - old.scale) > 0.0001 then
+            -- Keep the frame's centre on the same screen spot:
+            -- centre = scale * (offset + anchorFactor * size).
+            local ax, ay = AnchorFactors(old.point)
+            local nx = (old.x + ax * old.w) * old.scale / newScale - ax * old.w
+            local ny = (old.y + ay * old.h) * old.scale / newScale - ay * old.h
+            local pos = uf.positions[key]
+            if type(pos) == "table" then
+                pos.x, pos.y = nx, ny
+                if pos.scale then pos.scale = newScale end
+            end
+            local saved = type(editFrames) == "table" and editFrames["unitframes_" .. key]
+            if type(saved) == "table" and saved.point == old.point then
+                saved.x, saved.y = nx, ny
+                if saved.scale then saved.scale = newScale end
+            end
+        end
+    end
 end
 
 function KT.VisualThemes:ApplyAll(targetTheme)
@@ -507,6 +581,7 @@ function KT.VisualThemes:ApplyAll(targetTheme)
     local slotBackup = DeepCopy(state.slots)
     local appliedBackup = DeepCopy(state.applied)
     local rollback = {}
+    local placement = CaptureUnitFramePlacement()
 
     for _, moduleKey in ipairs(order or {}) do
         local adapter = registry[moduleKey]
@@ -561,6 +636,7 @@ function KT.VisualThemes:ApplyAll(targetTheme)
     state.requested = targetTheme
     state.active = targetTheme
     state.schemaVersion = self.SCHEMA_VERSION
+    RestoreUnitFramePlacement(placement)
     self:ResetComboDefaults()
 
     if type(_G.ReloadUI) == "function" then

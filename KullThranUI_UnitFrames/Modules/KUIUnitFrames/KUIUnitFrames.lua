@@ -800,6 +800,24 @@ local function UnitFrameStrataObjectBlocked(frame)
     return not ok or blocked == true
 end
 
+-- Indicator overlays (level, PvP, combo ring...) stay in the unit frame's
+-- LOW strata and sit above the portrait by frame level, so the world map and
+-- other windows still cover them.
+function ns.ApplyOverlayStrata(overlay, owner)
+    if not (overlay and overlay.SetFrameStrata) then return end
+    owner = owner or overlay:GetParent()
+    local bd = owner and owner.Portrait and owner.Portrait.backdrop
+    local function Apply(f, depth)
+        pcall(f.SetFrameStrata, f, "LOW")
+        if depth < 4 and f.GetChildren then
+            for _, child in ipairs({ f:GetChildren() }) do Apply(child, depth + 1) end
+        end
+    end
+    Apply(overlay, 0)
+    local floor = ((bd and bd.GetFrameLevel and bd:GetFrameLevel()) or 0) + 10
+    if (overlay:GetFrameLevel() or 0) < floor then pcall(overlay.SetFrameLevel, overlay, floor) end
+end
+
 local function SetUnitFrameTreeStrata(frame, seen)
     local frameType = type(frame)
     if (frameType ~= "table" and frameType ~= "userdata")
@@ -817,12 +835,12 @@ local function SetUnitFrameTreeStrata(frame, seen)
         return
     end
 
-    -- Portrait backdrops use MEDIUM; metadata overlays must remain above them.
+    -- Portrait backdrops keep their own level; metadata overlays stay above them.
     if frame._isPortraitBackdrop then
         return
     end
     if frame._kuiAbovePortraitOverlay then
-        pcall(frame.SetFrameStrata, frame, "HIGH")
+        ns.ApplyOverlayStrata(frame)
         return
     end
 
@@ -3860,8 +3878,10 @@ local function CreatePortrait(frame, side, frameHeight, unit)
 
     local backdrop = CreateFrame("Frame", nil, frame)
     backdrop._isPortraitBackdrop = true  -- Flag to exclude from strata reset
-    backdrop:SetFrameStrata("MEDIUM")  -- Above frame's LOW strata to render on top
-    backdrop:SetFrameLevel(50)  -- High level to be above all frame elements
+    -- Same LOW strata as the frame (MEDIUM drew it over the world map and
+    -- other windows); a high frame level keeps it above the bars.
+    backdrop:SetFrameStrata("LOW")
+    backdrop:SetFrameLevel(math.max(50, (frame:GetFrameLevel() or 0) + 20))
     backdrop:EnableMouse(false)  -- Allow clicks to pass through to unit frame
     PP.Size(backdrop, adjustedHeight, adjustedHeight)
     backdrop:SetClipsChildren(true)
@@ -3891,7 +3911,7 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         else
             backdrop:SetPoint("TOPLEFT", frame.Health or frame, "TOPRIGHT", 15 + pXOff, pYOff)
         end
-        -- Detached portrait already has MEDIUM strata and high frame level
+        -- Detached portrait already has a high frame level
     end
 
     -- Create 2D and class theme textures eagerly; 3D PlayerModel is deferred
@@ -5332,8 +5352,8 @@ local function SetupUnitIndicators(frame, unit)
         local ovr = CreateFrame("Frame", nil, frame)
         ovr:SetAllPoints(frame)
         ovr._kuiAbovePortraitOverlay = true
-        ovr:SetFrameStrata("HIGH")
         ovr:SetFrameLevel(frame:GetFrameLevel() + 60)
+        ns.ApplyOverlayStrata(ovr, frame)
         frame._kuiIndicatorOverlay = ovr
     end
     local iOvr = frame._kuiIndicatorOverlay
@@ -5807,6 +5827,7 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiPvPCircle:Hide()
             frame._kuiPvPCircleBorder:Hide()
         end
+        if ns.KUIOrnaments then ns.KUIOrnaments.ApplyPvPCircle(frame) end
         if frame._kuiClassicRingTex then frame._kuiClassicRingTex:Hide() end
         if not (renderedTheme == "classic" or classicKit) then frame._ktClassicSheetPath = nil end
         if classificationTexture then
@@ -6527,8 +6548,8 @@ SetupPlayerStatusIndicators = function(frame, settings)
         local ovr = CreateFrame("Frame", nil, frame)
         ovr:SetAllPoints(frame)
         ovr._kuiAbovePortraitOverlay = true
-        ovr:SetFrameStrata("HIGH")
         ovr:SetFrameLevel(frame:GetFrameLevel() + 60)
+        ns.ApplyOverlayStrata(ovr, frame)
         frame._kuiIndicatorOverlay = ovr
     end
     local iOvr = frame._kuiIndicatorOverlay
@@ -7507,6 +7528,11 @@ function ns.KTTargetCombo:Refresh(frame)
     local useRing = renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail"
 
     local portrait = frame.Portrait and frame.Portrait.backdrop
+    -- KUI Style with round portraits gets the same ring around the portrait.
+    if not useRing and db and db.profile and db.profile.portraitStyle == "circular"
+        and portrait and portrait:IsShown() then
+        useRing = true
+    end
     if useRing and (not portrait or not portrait:IsShown()) then
         self:_Hide(frame)
         return
@@ -7598,41 +7624,33 @@ function ns.KTTargetCombo:Refresh(frame)
     ring:SetFrameStrata(overlay:GetFrameStrata())
     ring:SetFrameLevel((overlay:GetFrameLevel() or frame:GetFrameLevel()) + 12)
 
+    -- Blizzard's ComboFrame geometry: 12px points around a 64px portrait,
+    -- on its arc, scaled to this portrait. comboPosTarget "above" turns the
+    -- arc toward the top; X/Y offset the whole ring.
     local portraitSize = portrait:GetWidth()
     if type(portraitSize) ~= "number" or portraitSize < 1 then portraitSize = 46 end
-    local pipSize = math.max(8, math.min(14, portraitSize * 0.21))
-    -- A wide arc (125 degrees, radius reaching well past the ring) overlaps
-    -- both the level badge and the target's PvP icon, which sit further out
-    -- near the top of the portrait. The pips sit close to the ring (smaller
-    -- radius) on a narrow arc so they cluster together lower on the right
-    -- side, clear of both badges. Angles in standard math convention
-    -- (0=right/3 o'clock, 90=top/12 o'clock). radius+2 still lands the pips
-    -- on top of the bronze ring art itself (which extends well past the
-    -- portrait's own edge), not on the darker background past it -- so
-    -- they're pushed further out. Adjust these constants if they overlap.
-    local radius = math.max(portraitSize * 0.5 + 14, pipSize + 4)
-    -- arcEndDeg was 5 -- nearly dead-horizontal (0 deg), the same direction
-    -- frame._kuiPvPIcon anchors to the portrait's own "RIGHT" edge at a
-    -- near-zero Y offset (+1px). The lowest pip in the arc landed almost
-    -- exactly on top of the PvP faction shield whenever the target is a PvP
-    -- ally NPC. Raised so the arc clears that corner instead of ending in it.
-    local arcStartDeg, arcEndDeg = 95, 15
-    -- comboPosTarget / comboXTarget / comboYTarget (Combo Points Position + X/Y)
-    -- were ignored by the ring. "above" centres the arc over the top of the
-    -- portrait; "below" keeps the legacy badge-safe arc. X/Y offset the ring.
+    local O = ns.KUIOrnaments
+    local art = O and O.GetComboArt() or "modern"
+    local pipSize = math.max(8, portraitSize * 12 / 64)
     local comboPos, comboX, comboY = "below", 0, 0
     if ns.ComboUnderFrame and ns.ComboUnderFrame.GetPlacement then
         comboPos, comboX, comboY = ns.ComboUnderFrame.GetPlacement("target")
     end
-    if comboPos == "above" then arcStartDeg, arcEndDeg = 140, 40 end
-    ring:SetSize((radius + pipSize) * 2, (radius + pipSize) * 2)
+    local reach = portraitSize * 0.8 + pipSize
+    ring:SetSize(reach * 2, reach * 2)
     ring:ClearAllPoints()
     ring:SetPoint("CENTER", portrait, "CENTER", comboX, comboY)
 
-    local r, g, b = 1.0, 0.05, 0.05
-    local okCurrent, current = pcall(UnitPower, "player", comboType)
-    local numericCurrent = okCurrent and not IsForeverSecretValue(current)
-        and type(current) == "number" and current or nil
+    local layout = O and O.LayoutRing(frame, portrait, maxPower, pipSize, comboPos == "above")
+    if not layout then
+        layout = {}
+        for index = 1, maxPower do
+            local t = (maxPower > 1) and ((index - 1) / (maxPower - 1)) or 0
+            local angle = math.rad(95 + (15 - 95) * t)
+            local radius = portraitSize * 0.5 + 14
+            layout[index] = { math.cos(angle) * radius, math.sin(angle) * radius }
+        end
+    end
 
     for index = 1, maxPower do
         local pip = ring.pips[index]
@@ -7640,31 +7658,41 @@ function ns.KTTargetCombo:Refresh(frame)
             pip = CreateFrame("Frame", nil, ring)
             ring.pips[index] = pip
         end
-        pip:SetSize(pipSize, pipSize)
-        local t = (maxPower > 1) and ((index - 1) / (maxPower - 1)) or 0
-        local angle = math.rad(arcStartDeg + (arcEndDeg - arcStartDeg) * t)
-        pip:ClearAllPoints()
-        pip:SetPoint("CENTER", ring, "CENTER",
-            math.cos(angle) * radius, math.sin(angle) * radius)
-        self:_StylePip(pip, r, g, b)
-        pip._fill:Hide()
-        if pip._secretBar then pip._secretBar:Hide() end
-
-        if numericCurrent then
-            pip._fill:SetShown(index <= numericCurrent)
-        elseif okCurrent and IsForeverSecretValue(current) then
-            if not pip._secretBar then
+        local spot = layout[index]
+        if not spot then
+            pip:Hide()
+        else
+            pip:SetSize(pipSize, pipSize)
+            pip:ClearAllPoints()
+            pip:SetPoint("CENTER", ring, "CENTER", spot[1], spot[2])
+            if okCurrent and IsForeverSecretValue(current) and not pip._secretBar then
                 pip._secretBar = CreateFrame("StatusBar", nil, pip)
-                pip._secretBar:SetAllPoints(pip)
-                pip._secretBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-                pip._secretBar:SetMinMaxValues(index - 1, index)
                 pip._secretBar:SetFrameLevel(pip:GetFrameLevel() + 1)
+                pip._ktArt = nil
             end
-            self:_StylePip(pip, r, g, b)
-            pip._secretBar:SetMinMaxValues(index - 1, index)
-            pip._secretBar:SetShown(pcall(pip._secretBar.SetValue, pip._secretBar, current))
+            local lit
+            if O then
+                O.StylePip(pip, art, pipSize)
+                lit = pip._lit
+            else
+                self:_StylePip(pip, r, g, b)
+                lit = pip._fill
+            end
+            if pip._secretBar then pip._secretBar:Hide() end
+            local filled = numericCurrent and index <= numericCurrent
+            if numericCurrent then
+                lit:SetShown(filled)
+            else
+                lit:Hide()
+                if okCurrent and IsForeverSecretValue(current) and pip._secretBar then
+                    pip._secretBar:SetMinMaxValues(index - 1, index)
+                    pip._secretBar:SetShown(pcall(pip._secretBar.SetValue, pip._secretBar, current))
+                end
+            end
+            -- Points past the standard row only appear while filled.
+            pip:SetShown(not spot.onlyFilled or filled or numericCurrent == nil)
+            pip:SetAlpha(spot.onlyFilled and 0.6 or 1)
         end
-        pip:Show()
     end
     for index = maxPower + 1, #ring.pips do
         ring.pips[index]:Hide()
@@ -8312,7 +8340,7 @@ local function ReloadFrames()
                 end
                 -- Live-update detached portrait shape/mask/border
                 ApplyDetachedPortraitShape(frame.Portrait.backdrop, uSettings, unit)
-                -- Portrait strata and level set at creation (MEDIUM/50) - always above LOW frame
+                -- Portrait level set at creation (50+) - always above the frame's bars
             end
 
             if unit == "player" and frame.HealthPrediction then

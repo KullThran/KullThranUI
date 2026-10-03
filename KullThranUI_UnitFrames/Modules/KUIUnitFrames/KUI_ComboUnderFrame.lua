@@ -371,40 +371,36 @@ function CUF.ApplyPreview(frame, unitKey)
     local obj = frame._ktComboPreview
     local style = (unitKey == "player" or unitKey == "target") and CUF.GetStyle(unitKey) or "off"
 
-    -- Circular ring (Target): small arc around the preview portrait.
+    -- Circular ring (Target): Blizzard's combo arc around the preview portrait.
     local ringPips = frame._ktComboRingPreview
-    if style == "ring" and frame.portraitFrame and frame.portraitFrame:IsShown() then
+    local O = ns.KUIOrnaments
+    if style == "ring" and O and frame.portraitFrame and frame.portraitFrame:IsShown() then
         if not ringPips then
             ringPips = {}
             for i = 1, 5 do
                 local holder = CreateFrame("Frame", nil, frame)
                 holder:SetFrameLevel((frame:GetFrameLevel() or 1) + 8)
-                local bg = holder:CreateTexture(nil, "ARTWORK", nil, 0)
-                bg:SetAllPoints()
-                bg:SetTexture(FALLBACK_EMPTY)
-                bg:SetVertexColor(0.05, 0.05, 0.05, 1)
-                local fill = holder:CreateTexture(nil, "ARTWORK", nil, 1)
-                fill:SetAllPoints()
-                fill:SetTexture(FALLBACK_FILL)
-                holder.fill = fill
                 ringPips[i] = holder
             end
             frame._ktComboRingPreview = ringPips
         end
         local pw = frame.portraitFrame:GetWidth() or 40
-        local size = math.max(7, math.min(12, pw * 0.21))
-        local radius = pw * 0.5 + 12
+        local size = math.max(7, pw * 12 / 64)
         local rPos, rX, rY = CUF.GetPlacement("target")
-        local a0, a1 = 95, 15
-        if rPos == "above" then a0, a1 = 140, 40 end
+        local layout = O.LayoutRing(frame, frame.portraitFrame, 5, size, rPos == "above") or {}
+        local art = O.GetComboArt()
         for i, holder in ipairs(ringPips) do
-            local angle = math.rad(a0 + (a1 - a0) * ((i - 1) / 4))
-            holder:SetSize(size, size)
-            holder:ClearAllPoints()
-            holder:SetPoint("CENTER", frame.portraitFrame, "CENTER",
-                math.cos(angle) * radius + rX, math.sin(angle) * radius + rY)
-            holder.fill:SetShown(i <= 2)
-            holder:Show()
+            local spot = layout[i]
+            if spot then
+                holder:SetSize(size, size)
+                holder:ClearAllPoints()
+                holder:SetPoint("CENTER", frame.portraitFrame, "CENTER", spot[1] + rX, spot[2] + rY)
+                O.StylePip(holder, art, size)
+                holder._lit:SetShown(i <= 2)
+                holder:Show()
+            else
+                holder:Hide()
+            end
         end
     elseif ringPips then
         for _, holder in ipairs(ringPips) do holder:Hide() end

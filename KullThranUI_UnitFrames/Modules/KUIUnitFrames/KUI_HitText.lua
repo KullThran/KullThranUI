@@ -32,8 +32,8 @@ end
 local function Build(frame)
     local host = CreateFrame("Frame", nil, frame)
     host:SetAllPoints(frame.Portrait and frame.Portrait.SetAllPoints and frame.Portrait or frame)
-    host:SetFrameStrata("HIGH")
     host:SetFrameLevel((frame:GetFrameLevel() or 1) + 40)
+    if ns.ApplyOverlayStrata then ns.ApplyOverlayStrata(host, frame) else host:SetFrameStrata("MEDIUM") end
     local fs = host:CreateFontString(nil, "OVERLAY")
     fs:SetFont(FONT, 20, "THICKOUTLINE")
     fs:SetPoint("CENTER", host, "CENTER", 0, 0)

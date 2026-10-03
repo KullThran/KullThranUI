@@ -1539,6 +1539,15 @@ function ns.BuildComboPicker(container, W, by, unitKey)
         function() return db['comboPos' .. suffix] == 'above' and 'above' or 'below' end,
         function(v) SetAndRefresh(function() db['comboPos' .. suffix] = v end) end)
     by = by + ph
+    if isTarget then
+        -- Art of the ring around the target portrait: the visual style's own
+        -- by default, or Classic / Retail-Forever points on any style.
+        local _, rh = W:Dropdown(container, 'Ring Combo Point Art', -by,
+            { auto = 'Visual Style Default', classic = 'Classic', modern = 'Retail / Forever' },
+            function() return db.comboRingArt or 'auto' end,
+            function(v) SetAndRefresh(function() db.comboRingArt = (v ~= 'auto') and v or nil end) end)
+        by = by + rh
+    end
     local _, xh = W:Slider(container, 'Combo Points X', -by,
         function() return db['comboX' .. suffix] or 0 end,
         function(v) SetAndRefresh(function() db['comboX' .. suffix] = v end) end,
