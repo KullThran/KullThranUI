@@ -5543,7 +5543,7 @@ local function SetupUnitIndicators(frame, unit)
             -- only.
             local ox, oy = 36, 30.5
             if renderedTheme == "classic" then
-                ox, oy = 60, 33
+                ox, oy = 55, 35
             end
             local classicScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
             if not classicScale or classicScale <= 0 then classicScale = 1 end
@@ -5555,12 +5555,12 @@ local function SetupUnitIndicators(frame, unit)
             -- issue (the two anchors are identical). Nudge the TEXT only,
             -- same absolute screen direction for both units, so it lands
             -- visually centered inside the (unmoved) circle.
-            local levelTextXNudge = 2 * classicScale
+            local levelTextXNudge = 0
             -- Pulls the level inward toward the portrait on whichever side
             -- each unit anchors from, applied to BOTH units symmetrically
             -- (same magnitude): the underlying 60/33 base otherwise sits too
             -- far out and overlaps the portrait on both sides.
-            local levelXNudge = 4 * classicScale
+            local levelXNudge = 0
             if u == "target" then
                 frame._kuiLevelText:SetPoint("CENTER", frame, "BOTTOMRIGHT",
                     -ox * classicScale + levelTextXNudge + levelXNudge, oy * classicScale)

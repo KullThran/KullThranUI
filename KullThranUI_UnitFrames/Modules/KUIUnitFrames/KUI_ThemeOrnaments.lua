@@ -139,11 +139,25 @@ function O.ApplyLevelCircle(frame)
         art:SetVertexColor(1, 1, 1, 1)
         size = size + 2
         disc:SetAlpha(0)
-    elseif theme == "retail" and HasAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing") then
-        -- Retail's gold icon ring over the dark disc.
-        art:SetAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing", false)
+    elseif theme == "retail" then
+        -- Retail's gold icon ring over the dark disc (Classic's round
+        -- border when the client lacks that atlas).
+        if HasAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing") then
+            art:SetAtlas("UI-HUD-UnitFrame-Target-PortraitOn-Boss-IconRing", false)
+            size = size + 2
+        else
+            art:SetTexture(CLASSIC_RING)
+            art:SetTexCoord(0, 1, 0, 1)
+            local k = (size + 2) / 31 * 0.85
+            art:ClearAllPoints()
+            art:SetSize(53 * k, 53 * k)
+            art:SetPoint("TOPLEFT", disc, "CENTER", -15.5 * k, 14.5 * k)
+            art:SetVertexColor(1, 1, 1, 1)
+            disc:SetAlpha(1)
+            art:Show()
+            return
+        end
         art:SetVertexColor(1, 1, 1, 1)
-        size = size + 2
         disc:SetAlpha(1)
     else
         art:Hide()
