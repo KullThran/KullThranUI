@@ -105,6 +105,37 @@ function O.ApplyPvPCircle(frame)
     art:Show()
 end
 
+-- Forever's level badge is the same small circle (LevelBackgroundCircle):
+-- draw it instead of the generic dark disc.
+function O.ApplyLevelCircle(frame)
+    local disc = frame and frame._kuiLevelCircle
+    if not disc then return end
+    local art = frame._kuiLevelThemeCircle
+    if not art then
+        art = disc:GetParent():CreateTexture(nil, "OVERLAY", nil, -1)
+        Unsnap(art)
+        art:Hide()
+        frame._kuiLevelThemeCircle = art
+    end
+    if RenderedTheme() ~= "forever" or not disc:IsShown() then
+        art:Hide()
+        disc:SetAlpha(1)
+        return
+    end
+    if HasAtlas("UI-HUD-UnitFrame-SmallCircle") then
+        art:SetAtlas("UI-HUD-UnitFrame-SmallCircle", false)
+    else
+        art:SetTexture(FOREVER_SHEET)
+        art:SetTexCoord(207 / 256, 242 / 256, 3 / 512, 38 / 512)
+    end
+    local size = (disc:GetWidth() or 32) + 2
+    art:ClearAllPoints()
+    art:SetSize(size, size)
+    art:SetPoint("CENTER", disc, "CENTER", 0, 0)
+    disc:SetAlpha(0)
+    art:Show()
+end
+
 -------------------------------------------------------------------------------
 --  Combo point art
 -------------------------------------------------------------------------------

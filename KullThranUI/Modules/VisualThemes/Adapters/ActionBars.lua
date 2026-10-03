@@ -28,7 +28,7 @@ KT.VisualThemes:RegisterModule("actionbars", {
             profile.frameArtKit = "classic"
         elseif themeKey == "forever" then
             profile.buttonStyle = "SIMPLICITY"
-            profile.buttonShape = "CIRCLE"
+            profile.buttonShape = "NONE"
             profile.buttonBackdropColor = { r = 0.12, g = 0.08, b = 0.03, a = 1 }
             profile.frameArtKit = "default"
         elseif themeKey == "retail" then
@@ -48,6 +48,12 @@ KT.VisualThemes:RegisterModule("actionbars", {
         local shapes = { NONE = true, CIRCLE = true, CSQUARE = true, HEXAGON = true, DIAMOND = true, SHIELD = true }
         if not styles[profile.buttonStyle] then profile.buttonStyle = "BLIZZARD" end
         if not shapes[profile.buttonShape] then profile.buttonShape = "NONE" end
+        -- Forever's icons went from circular to square (NONE): move existing
+        -- Forever setups over once; later choices are kept.
+        if themeKey == "forever" and not profile._ktForeverSquareIcons then
+            profile._ktForeverSquareIcons = true
+            if profile.buttonShape == "CIRCLE" then profile.buttonShape = "NONE" end
+        end
         -- frameArtKit is the user's choice (Action Bar Art cards); only repair invalid values.
         local kits = { default = true, classic = true, retail = true }
         if not kits[profile.frameArtKit] then

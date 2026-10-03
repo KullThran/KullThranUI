@@ -6015,6 +6015,7 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiLevelText:SetJustifyH("CENTER")
             if frame._kuiLevelCircle then frame._kuiLevelCircle:Hide() end
         end
+        if ns.KUIOrnaments then ns.KUIOrnaments.ApplyLevelCircle(frame) end
         -- KUI Style: with the Rare/Elite ring on the Player portrait, nudge the PvP
         -- icon 2px to the left (the icon was re-anchored from scratch above, so
         -- this never accumulates).
