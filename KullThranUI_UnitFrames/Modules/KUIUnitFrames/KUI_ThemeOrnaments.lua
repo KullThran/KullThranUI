@@ -108,7 +108,15 @@ function O.ApplyLevelCircle(frame)
     if not disc then return end
     local art = frame._kuiLevelThemeCircle
     if not art then
-        art = disc:GetParent():CreateTexture(nil, "OVERLAY", nil, 0)
+        -- Own child frame one level above the badge overlay, so the ring
+        -- never depends on layer ordering against the disc.
+        local owner = disc:GetParent()
+        local host = CreateFrame("Frame", nil, owner)
+        host:SetAllPoints(disc)
+        host:SetFrameStrata(owner:GetFrameStrata())
+        host:SetFrameLevel(owner:GetFrameLevel() + 1)
+        frame._kuiLevelRingHost = host
+        art = host:CreateTexture(nil, "OVERLAY", nil, 0)
         Unsnap(art)
         art:Hide()
         frame._kuiLevelThemeCircle = art
