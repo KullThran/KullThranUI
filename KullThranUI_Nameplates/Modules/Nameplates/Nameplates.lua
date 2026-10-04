@@ -1030,7 +1030,10 @@ local function GetCastScale()
 end
 ns.GetCastScale = GetCastScale
 local function GetHealthBarHeight()
-    return KullThranUINameplatesDB and KullThranUINameplatesDB.healthBarHeight or defaults.healthBarHeight
+    local v = KullThranUINameplatesDB and KullThranUINameplatesDB.healthBarHeight
+    if v and v ~= defaults.healthBarHeight then return v end
+    local th = ns.ThemeBarHeight and ns.ThemeBarHeight()
+    return th or defaults.healthBarHeight
 end
 ns.GetHealthBarHeight = GetHealthBarHeight
 local function GetFriendlyHealthBarHeight()
@@ -1352,7 +1355,18 @@ local textSlotKeys = { "textSlotTop", "textSlotRight", "textSlotLeft", "textSlot
 ns.textSlotKeys = textSlotKeys
 
 local function GetTextSlot(slotKey)
-    return (db and db[slotKey]) or defaults[slotKey]
+    local v = (db and db[slotKey]) or defaults[slotKey]
+    -- Retail/Forever: look Blizzard (nombre dentro de la barra, a la izquierda)
+    -- solo si el usuario no movio los slots (siguen en su valor por defecto).
+    if (slotKey == "textSlotTop" or slotKey == "textSlotLeft")
+        and ns.ThemeBlizzText and ns.ThemeBlizzText() then
+        local top = (db and db.textSlotTop) or defaults.textSlotTop
+        local left = (db and db.textSlotLeft) or defaults.textSlotLeft
+        if top == defaults.textSlotTop and left == defaults.textSlotLeft then
+            return (slotKey == "textSlotTop") and "none" or "enemyName"
+        end
+    end
+    return v
 end
 ns.GetTextSlot = GetTextSlot
 
@@ -1472,7 +1486,9 @@ local function GetClassPowerXOffset()
 end
 ns.GetClassPowerXOffset = GetClassPowerXOffset
 local function GetClassPowerScale()
-    return (db and db.classPowerScale) or defaults.classPowerScale
+    local sc = (db and db.classPowerScale) or defaults.classPowerScale
+    if ns.NameplateStyle and ns.NameplateStyle() == "classic" then sc = sc * 0.8 end
+    return sc
 end
 ns.GetClassPowerScale = GetClassPowerScale
 local function GetClassPowerGap()
@@ -1484,6 +1500,15 @@ local function GetClassPowerClassColors()
     return defaults.classPowerClassColors
 end
 ns.GetClassPowerClassColors = GetClassPowerClassColors
+-- "circle" (default) or "pip" (rectangular), applies to combo points.
+local function GetClassPowerShape()
+    if db and db.classPowerShape then return db.classPowerShape end
+    -- Unset: KUI Style defaults to pips, every other style to circles.
+    local theme = ns.NameplateStyle and ns.NameplateStyle()
+    if theme == "kui" then return "pip" end
+    return "circle"
+end
+ns.GetClassPowerShape = GetClassPowerShape
 local function GetClassPowerCustomColor()
     local c = (db and db.classPowerCustomColor) or defaults.classPowerCustomColor
     return c
@@ -1561,22 +1586,27 @@ ns.StopButtonGlow      = StopButtonGlow
 ns.StartAutoCastShine  = StartAutoCastShine
 ns.StopAutoCastShine   = StopAutoCastShine
 
--- Los glows de nameplates deben quedar por encima de otros elementos de interfaz.
-local NAMEPLATE_GLOW_STRATA = "TOOLTIP"
+-- Nameplate glows share the strata of the aura slot they decorate and rise
+-- above it by frame level, so windows such as the world map still cover them.
+local function GetNameplateGlowStrata(owner)
+    local strata = owner and owner.GetFrameStrata and owner:GetFrameStrata()
+    return strata or "BACKGROUND"
+end
 local NAMEPLATE_GLOW_FRAME_LEVEL = 1000
 local function RaiseNameplateGlowLayers(glowObject)
     local wrapper = glowObject and glowObject.wrapper
     if not wrapper then return end
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    local strata = GetNameplateGlowStrata(wrapper:GetParent())
+    wrapper:SetFrameStrata(strata)
     wrapper:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL)
     local overlay = wrapper.overlay
     if overlay then
-        overlay:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+        overlay:SetFrameStrata(strata)
         overlay:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL + 1)
     end
     local autoGlow = wrapper._ktAutoCastGlow
     if autoGlow then
-        autoGlow:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+        autoGlow:SetFrameStrata(strata)
         autoGlow:SetFrameLevel(NAMEPLATE_GLOW_FRAME_LEVEL + 1)
     end
     local flipTex = glowObject.flipTex
@@ -1619,7 +1649,7 @@ local function EnsureDebuffExpiryGlow(slot)
     wrapper:SetPoint("CENTER", slot, "CENTER", 0, 0)
     wrapper:SetSize(1, 1)
     wrapper:SetFrameLevel(slot:GetFrameLevel() + 8)
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    wrapper:SetFrameStrata(GetNameplateGlowStrata(slot))
     if wrapper.EnableMouse then
         wrapper:EnableMouse(false)
     end
@@ -1726,7 +1756,7 @@ local function BuildGlowFrameSet(slot, field, initAlpha)
     local wrapper = CreateFrame("Frame", nil, slot)
     wrapper:SetAllPoints()
     wrapper:SetFrameLevel(slot:GetFrameLevel() + 1)
-    wrapper:SetFrameStrata(NAMEPLATE_GLOW_STRATA)
+    wrapper:SetFrameStrata(GetNameplateGlowStrata(slot))
 
     local flipTex = wrapper:CreateTexture(nil, "OVERLAY", nil, 7)
     flipTex:SetPoint("CENTER")
@@ -2097,7 +2127,12 @@ end
 
 -- Tamaño de fuente para un slot de texto (ej: "textSlotTop")
 local function GetTextSlotSize(slotKey)
-    return (db and db[slotKey .. "Size"]) or defaults[slotKey .. "Size"] or 10
+    local v = (db and db[slotKey .. "Size"]) or defaults[slotKey .. "Size"] or 10
+    if v == (defaults[slotKey .. "Size"] or 10) and ns.ThemeBlizzText and ns.ThemeBlizzText()
+        and (slotKey == "textSlotLeft" or slotKey == "textSlotRight") then
+        return v + 2
+    end
+    return v
 end
 ns.GetTextSlotSize = GetTextSlotSize
 
@@ -2668,7 +2703,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.debuffs = {}
     for i = 1, 4 do
         local d = CreateFrame("Frame", nil, plate)
-        d:SetFrameStrata("MEDIUM")
         d:SetFrameLevel(800)
         PP.Size(d, 26, 26)
         PP.Point(d, "BOTTOM", plate.name, "TOP", (i - 2.5) * 30, 2)
@@ -2708,7 +2742,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.buffs = {}
     for i = 1, 4 do
         local b = CreateFrame("Frame", nil, plate)
-        b:SetFrameStrata("MEDIUM")
         b:SetFrameLevel(800)
         PP.Size(b, 24, 24)
         PP.Point(b, "RIGHT", plate.health, "LEFT", -2 - (i - 1) * 26, 0)
@@ -2748,7 +2781,6 @@ local frameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(
     plate.cc = {}
     for i = 1, 2 do
         local c = CreateFrame("Frame", nil, plate)
-        c:SetFrameStrata("MEDIUM")
         c:SetFrameLevel(800)
         PP.Size(c, 24, 24)
         PP.Point(c, "LEFT", plate.health, "RIGHT", 2 + (i - 1) * 26, 0)
@@ -2965,6 +2997,14 @@ local function InitDB()
         end
         KullThranUINameplatesDB._auraIconScaleMigrated_v2 = true
     end
+    if not KullThranUINameplatesDB._classPowerShapeMigrated_v2 then
+        -- v1 of the option auto-filled "circle" from the defaults table, which
+        -- blocked the per-style default (KUI Style = pips). Unset it once.
+        if KullThranUINameplatesDB.classPowerShape == "circle" then
+            KullThranUINameplatesDB.classPowerShape = nil
+        end
+        KullThranUINameplatesDB._classPowerShapeMigrated_v2 = true
+    end
     if not KullThranUINameplatesDB._classPowerDefaultMigrated_v1 then
         -- Older Forever profiles stored the old false default explicitly,
         -- which prevented the combo-point watcher from ever starting.
@@ -3054,6 +3094,7 @@ function ns.RefreshBorderStyle()
         if plate.ApplyBorderStyle then
             plate:ApplyBorderStyle()
         end
+        if ns.ApplyThemeSkin then ns.ApplyThemeSkin(plate) end
     end
 end
 function ns.RefreshBorderColor()
@@ -3388,6 +3429,8 @@ local classPowerType     -- Enum.PowerType value for the player's class resource
 local classPowerMax = 0  -- max pips for the resource
 local classPowerFormReq  -- required GetShapeshiftFormID() value, or nil if no form check needed
 local CP_PIP_W, CP_PIP_H = 8, 3  -- pip geometry
+local CP_CIRCLE_MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
+local CP_CIRCLE_BORDER = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_border.tga"
 
 -- Per-class filled pip colors (official WoW class colors)
 local CP_CLASS_COLORS = {
@@ -3424,6 +3467,74 @@ local CLASS_POWER_MAP = {
                     [255] = { "TIP_OF_THE_SPEAR", 3 } },   -- Solo Supervivencia
     WARRIOR     = { [72]  = { "WHIRLWIND_STACKS", 4 } },    -- Solo Furia
 }
+
+-- Rectangular pips: 1px black border + soft drop shadow (textures behind the pip).
+local function SetPipDecor(pip, show)
+    if not pip then return end
+    if show and not pip._border then
+        pip._border = pip._bg and pip._bg:GetParent():CreateTexture(nil, "OVERLAY", nil, 1)
+        if pip._border then
+            pip._border:SetColorTexture(0, 0, 0, 1)
+            pip._border:SetPoint("TOPLEFT", pip, "TOPLEFT", -1, 1)
+            pip._border:SetPoint("BOTTOMRIGHT", pip, "BOTTOMRIGHT", 1, -1)
+        end
+        pip._shadow = pip._bg:GetParent():CreateTexture(nil, "OVERLAY", nil, 0)
+        pip._shadow:SetColorTexture(0, 0, 0, 0.5)
+        pip._shadow:SetPoint("TOPLEFT", pip, "TOPLEFT", -2, 1)
+        pip._shadow:SetPoint("BOTTOMRIGHT", pip, "BOTTOMRIGHT", 2, -3)
+    end
+    if pip._border then pip._border:SetShown(show and true or false) end
+    if pip._shadow then pip._shadow:SetShown(show and true or false) end
+end
+
+-- Applies the circular combo-point treatment while keeping other class resources rectangular.
+local function ApplyClassPowerPipShape(pip, round)
+    if not pip then return end
+    local mask = pip._circleMask
+    if round then
+        if not mask then
+            mask = pip:GetParent():CreateMaskTexture()
+            pip._circleMask = mask
+        end
+        mask:SetTexture(CP_CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:ClearAllPoints()
+        mask:SetAllPoints(pip)
+        mask:Show()
+        if pip._bg then
+            if pip._bg.RemoveMaskTexture then pcall(pip._bg.RemoveMaskTexture, pip._bg, mask) end
+            if pip._bg.AddMaskTexture then pcall(pip._bg.AddMaskTexture, pip._bg, mask) end
+        end
+        if pip.RemoveMaskTexture then pcall(pip.RemoveMaskTexture, pip, mask) end
+        if pip.AddMaskTexture then pcall(pip.AddMaskTexture, pip, mask) end
+        if pip._secretBar and pip._secretBar.GetStatusBarTexture then
+            local sbTex = pip._secretBar:GetStatusBarTexture()
+            if sbTex and sbTex.AddMaskTexture then pcall(sbTex.AddMaskTexture, sbTex, mask) end
+        end
+        if not pip._circleBorder then
+            pip._circleBorder = pip:GetParent():CreateTexture(nil, "OVERLAY", nil, 4)
+            pip._circleBorder:SetTexture(CP_CIRCLE_BORDER)
+            pip._circleBorder:SetAllPoints(pip)
+        end
+        pip._circleBorder:SetVertexColor(1, 0.82, 0.08, 1)
+        pip._circleBorder:Show()
+        SetPipDecor(pip, false)
+    else
+        if mask then
+            mask:Hide()
+            if pip._bg and pip._bg.RemoveMaskTexture then pcall(pip._bg.RemoveMaskTexture, pip._bg, mask) end
+            if pip.RemoveMaskTexture then pcall(pip.RemoveMaskTexture, pip, mask) end
+            if pip._secretBar and pip._secretBar.GetStatusBarTexture then
+                local sbTex = pip._secretBar:GetStatusBarTexture()
+                if sbTex and sbTex.RemoveMaskTexture then pcall(sbTex.RemoveMaskTexture, sbTex, mask) end
+            end
+        end
+        if pip._circleBorder then pip._circleBorder:Hide() end
+        -- KUI Style keeps its flat pips (no border/shadow); the decor is for
+        -- the Classic/Forever/Retail looks only.
+        local style = ns.NameplateStyle and ns.NameplateStyle()
+        SetPipDecor(pip, style ~= nil and style ~= "kui")
+    end
+end
 
 -- Lazy-create pip textures on a plate (done once, then reused via show/hide)
 local function CreateClassPowerPip(plate)
@@ -3549,6 +3660,8 @@ local function UpdateClassPowerOnPlate(plate)
         for i = 1, #plate._cpPips do
             plate._cpPips[i]:Hide()
             if plate._cpPips[i]._bg then plate._cpPips[i]._bg:Hide() end
+            if plate._cpPips[i]._circleBorder then plate._cpPips[i]._circleBorder:Hide() end
+            SetPipDecor(plate._cpPips[i], false)
         end
         if plate._cpBar then plate._cpBar:Hide() end
         return
@@ -3559,6 +3672,11 @@ local function UpdateClassPowerOnPlate(plate)
     local cpXOff  = GetClassPowerXOffset()
     local cpPos   = GetClassPowerPos()
     local bgCol   = GetClassPowerBgColor()
+    local npStyle = ns.NameplateStyle and ns.NameplateStyle()
+    local styledPips = npStyle ~= nil and npStyle ~= "kui"
+    local comboRound = classPowerType == Enum.PowerType.ComboPoints and GetClassPowerShape() ~= "pip"
+    -- Red combo colours belong to the Classic/Forever/Retail looks; KUI Style keeps its own.
+    local comboPips = styledPips and classPowerType == Enum.PowerType.ComboPoints
 
     -- Resolver anclaje: encima o debajo de la barra de salud,
     -- evitando solapamiento con la barra de casteo si está activa
@@ -3578,6 +3696,8 @@ local function UpdateClassPowerOnPlate(plate)
         for i = 1, #plate._cpPips do
             plate._cpPips[i]:Hide()
             if plate._cpPips[i]._bg then plate._cpPips[i]._bg:Hide() end
+            if plate._cpPips[i]._circleBorder then plate._cpPips[i]._circleBorder:Hide() end
+            SetPipDecor(plate._cpPips[i], false)
             if plate._cpPips[i]._secretBar then plate._cpPips[i]._secretBar:Hide() end
         end
         EnsureClassPowerBar(plate)
@@ -3627,6 +3747,8 @@ local function UpdateClassPowerOnPlate(plate)
             for i = 1, #plate._cpPips do
                 plate._cpPips[i]:Hide()
                 if plate._cpPips[i]._bg then plate._cpPips[i]._bg:Hide() end
+                if plate._cpPips[i]._circleBorder then plate._cpPips[i]._circleBorder:Hide() end
+                SetPipDecor(plate._cpPips[i], false)
             end
             return
         end
@@ -3646,9 +3768,21 @@ local function UpdateClassPowerOnPlate(plate)
     end
 
     -- Layout de pips: calcular posiciones una vez y aplicar en un solo bucle
-    local scaledW   = CP_PIP_W * cpScale
+    local scaledW   = CP_PIP_W * cpScale * (styledPips and 1.4 or 1)  -- wider pips (styled looks)
     local scaledH   = CP_PIP_H * cpScale
-    local scaledGap = GetClassPowerGap() * cpScale
+    -- CP_PIP_W/H (8x3) is a thin flat bar-segment shape, meant for the
+    -- rectangular look -- a circular mask on an 8:3 box clips down to the
+    -- smaller dimension (3), producing an almost invisible sliver, so combo
+    -- points on nameplates barely showed at all. Round pips use a square
+    -- sized to the width (8), a far more visible circle than the flat
+    -- height would give.
+    if comboRound then
+        -- The initial +25% still looked too small on a real nameplate --
+        -- bumped further.
+        scaledW = scaledW * 2.5
+        scaledH = scaledW
+    end
+    local scaledGap = (GetClassPowerGap() + ((comboRound or not styledPips) and 0 or 2)) * cpScale
 
     -- Precalcular borde izquierdo de cada pip en coordenadas de grupo.
     -- PP.Point/PP.Size aplican el snap usando la escala efectiva de la
@@ -3677,10 +3811,13 @@ local function UpdateClassPowerOnPlate(plate)
         if i > maxP then
             pip:Hide()
             if pip._bg then pip._bg:Hide() end
+            if pip._circleBorder then pip._circleBorder:Hide() end
+            SetPipDecor(pip, false)
             if pip._secretBar then pip._secretBar:Hide() end
         else
             pip:ClearAllPoints()
             PP.Size(pip, scaledW, scaledH)
+            ApplyClassPowerPipShape(pip, comboRound)
             PP.Point(pip, leftAnchor, anchorFrame, anchorRelPoint,
                 pipPositions[i] - halfGroup + cpXOff,
                 yDir * cpYOff)
@@ -3690,7 +3827,7 @@ local function UpdateClassPowerOnPlate(plate)
             if bg then
                 bg:ClearAllPoints()
                 bg:SetAllPoints(pip)
-                bg:SetColorTexture(bgCol.r, bgCol.g, bgCol.b, bgCol.a)
+                bg:SetColorTexture(comboPips and 0.22 or bgCol.r, comboPips and 0.02 or bgCol.g, comboPips and 0.02 or bgCol.b, bgCol.a)
                 bg:Show()
             end
 
@@ -3708,15 +3845,16 @@ local function UpdateClassPowerOnPlate(plate)
                 sb:SetAllPoints(pip)
                 sb:SetMinMaxValues(i - 1, i)
                 sb:SetValue(cur)
-                sb:SetStatusBarColor(cpColor[1], cpColor[2], cpColor[3], 1)
+                sb:SetStatusBarColor(comboPips and 1.0 or cpColor[1], comboPips and 0.05 or cpColor[2], comboPips and 0.05 or cpColor[3], 1)
+                ApplyClassPowerPipShape(pip, comboRound)
                 sb:Show()
-                pip:SetColorTexture(emptyCol.r, emptyCol.g, emptyCol.b, emptyCol.a)
+                pip:SetColorTexture(comboPips and 0.22 or emptyCol.r, comboPips and 0.02 or emptyCol.g, comboPips and 0.02 or emptyCol.b, emptyCol.a)
             else
                 if pip._secretBar then pip._secretBar:Hide() end
                 if i <= cur then
-                    pip:SetColorTexture(cpColor[1], cpColor[2], cpColor[3], 1)
+                    pip:SetColorTexture(comboPips and 1.0 or cpColor[1], comboPips and 0.05 or cpColor[2], comboPips and 0.05 or cpColor[3], 1)
                 else
-                    pip:SetColorTexture(emptyCol.r, emptyCol.g, emptyCol.b, emptyCol.a)
+                    pip:SetColorTexture(comboPips and 0.22 or emptyCol.r, comboPips and 0.02 or emptyCol.g, comboPips and 0.02 or emptyCol.b, emptyCol.a)
                 end
             end
             pip:Show()
@@ -3732,6 +3870,8 @@ local function HideClassPowerOnPlate(plate)
     for _, pip in ipairs(plate._cpPips) do
         pip:Hide()
         if pip._bg then pip._bg:Hide() end
+        if pip._circleBorder then pip._circleBorder:Hide() end
+        SetPipDecor(pip, false)
         if pip._secretBar then pip._secretBar:Hide()
         end
     end
@@ -4329,6 +4469,10 @@ local function GetReactionColor(unit)
     if type(inCombat) == "boolean" and inCombat then
         return eic.r, eic.g, eic.b
     end
+    -- Classic style keeps the saturated colour out of combat (no darkening)
+    if ns.NameplateStyle and ns.NameplateStyle() == "classic" then
+        return eic.r, eic.g, eic.b
+    end
     return DarkenColor(eic.r, eic.g, eic.b)
 end
 local hookedUFs = {}
@@ -4814,6 +4958,7 @@ function NameplateFrame:RefreshPlateState()
     self:UpdateCast()
     ApplyHealthBarTexture(self)
     ApplyCastBarTexture(self)
+    if ns.ApplyThemeSkin then ns.ApplyThemeSkin(self) end
 end
 -- Vincula la placa KUI a un unit token y nameplate Blizzard. El orden
 -- de inicialización es:
@@ -4829,6 +4974,9 @@ function NameplateFrame:SetUnit(unit, nameplate)
     self.nameplate = nameplate
     -- Paso 1: anclar al nameplate Blizzard
     self:SetParent(nameplate)
+    if nameplate.GetFrameStrata then
+        self:SetFrameStrata(nameplate:GetFrameStrata())
+    end
     if self.SetIgnoreParentScale then
         self:SetIgnoreParentScale(false)
     end
@@ -5221,13 +5369,26 @@ function NameplateFrame:UpdateHealthBounds()
     self._healthMax = nil
     self:UpdateHealthValues()
 end
+-- Brightens the final resolved color without changing its semantic state.
+local function BrightenNameplateColor(r, g, b)
+    local theme = ns.NameplateStyle and ns.NameplateStyle()
+    -- KUI Style keeps the Retail colours untouched.
+    if theme ~= "classic" and theme ~= "forever" and theme ~= "retail" then return r, g, b end
+    local gain = (theme == "classic" and 1.5) or 0.95
+    local lift = (theme == "classic") and 0.02 or 0
+    return math.min(1, (r or 0) * gain + lift),
+        math.min(1, (g or 0) * gain + lift),
+        math.min(1, (b or 0) * gain + lift)
+end
+
 -- Aplica el color de la barra de vida según GetReactionColor (8 niveles
 -- de prioridad) y gestiona el overlay de focus (rayas) si la unidad
 -- es el focus actual del jugador.
 function NameplateFrame:UpdateHealthColor()
     local unit = self.unit
     if not unit then return end
-    self.health:SetStatusBarColor(GetReactionColor(unit))
+    local hr, hg, hb = GetReactionColor(unit)
+    self.health:SetStatusBarColor(BrightenNameplateColor(hr, hg, hb))
     -- Focus overlay: show stripe textures on focus target's health bar
     -- Fill clip frame at full alpha, bg clip frame at half alpha
     local db2 = KullThranUINameplatesDB or defaults
@@ -5402,7 +5563,8 @@ local function ApplyNameAnchor(frame, slotKey)
 
     frame.name:SetParent(frame.healthTextFrame)
     if slotKey == "textSlotLeft" then
-        PP.Point(frame.name, "LEFT", frame.health, "LEFT", 4 + offsetX, offsetY)
+        local lvlInset = (ns.ThemeLevelInset and ns.ThemeLevelInset(frame)) or 0
+        PP.Point(frame.name, "LEFT", frame.health, "LEFT", 4 + offsetX + lvlInset, offsetY)
         frame.name:SetJustifyH("LEFT")
         return true
     end
@@ -5519,6 +5681,7 @@ function NameplateFrame:UpdateLevelAnchor()
     end
     self.level:ClearAllPoints()
     PP.Point(self.level, "BOTTOMLEFT", self.health, "TOPLEFT", x, y)
+    if ns.ApplyThemeLevel then ns.ApplyThemeLevel(self) end
 end
 -- Muestra/oculta el nivel de la unidad con estilo y posición independientes.
 function NameplateFrame:UpdateLevel()

@@ -36,7 +36,7 @@ local CLASSIFICATION_NO_PORTRAIT_TEXTURES = {
     rareelite = CLASSIFICATION_NAMEPLATE_ICON_PATH,
     rare = CLASSIFICATION_NAMEPLATE_ICON_PATH,
 }
-local CLASSIFICATION_NO_PORTRAIT_STYLES = {
+ns.CLASSIFICATION_NO_PORTRAIT_STYLES = {
     nameplate = CLASSIFICATION_NO_PORTRAIT_TEXTURES,
     unitframes = CLASSIFICATION_TEXTURES,
 }
@@ -44,6 +44,41 @@ local CLASSIFICATION_NO_PORTRAIT_SIZE = 52
 local CLASSIFICATION_PORTRAIT_SCALE = 1.18
 -- ELITE.png and RARE.png are square 512x512 textures.
 local CLASSIFICATION_TEXTURE_ASPECT = 1
+-- The modern Rare/Elite PNGs have transparent canvas around the visible art.
+-- Keep only a small overlap under the gold edge: following the narrow dragon
+-- silhouette too deeply makes Health/Power invade the portrait aperture.
+ns.ModernClassificationRing = ns.ModernClassificationRing or {
+    centerX = 0.06,
+    visibleRadius = 0.405,
+    barOverlap = 5,
+}
+-- Blizzard Classic's own Rare/Elite frame sheets (same 256x128 layout as
+-- UI-TargetingFrame, so they replace it 1:1 in the Classic style). Outside Classic
+-- the player can show a crop of the portrait side as an overlay ring; the crop
+-- numbers are in 232x100 art pixels of the TARGET orientation (portrait on the right)
+-- and are tunable. {unverified in game}
+ns.ClassicRing = {
+    base = "Interface\\TargetingFrame\\UI-TargetingFrame",
+    sheets = {
+        elite = "Interface\\TargetingFrame\\UI-TargetingFrame-Elite",
+        rare = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare",
+        rareelite = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite",
+    },
+    cropW = 112, cropH = 100,          -- crop size (art px)
+    portraitCX = 74, portraitCY = 44,  -- portrait centre inside the PLAYER (mirrored) crop
+    uLeft = 1, uRight = 0.5625, vTop = 0, vBottom = 0.78125, -- player (mirrored) texcoords
+    scale = 0.80,                      -- portraitSize * scale / 64
+    -- Centre of the sheet's own empty level circle, relative to the portrait centre
+    -- (art px, +x right, +y up): the stock player level ornament sits at (56, 67 from top)
+    -- in the 232x100 art while the portrait centre is (74, 44).
+    levelDX = -18, levelDY = -23,
+}
+function ns.ClassicRing.KindForClassification(c)
+    if c == "elite" or c == "worldboss" then return "elite" end
+    if c == "rareelite" then return "rareelite" end
+    if c == "rare" then return "rare" end
+    return nil
+end
 local OVERLAY_ANCHORS = {
     TOPLEFT = true, TOP = true, TOPRIGHT = true,
     LEFT = true, CENTER = true, RIGHT = true,
@@ -102,6 +137,311 @@ local function SafeUnitLevelText(unit)
     return nil
 end
 
+-------------------------------------------------------------------------------
+--  Blizzard look for the stock-art styles (Classic / Forever / Retail).
+--  Kept on ns so this chunk does not take more file-level locals.
+-------------------------------------------------------------------------------
+function ns.RenderedStyle()
+    local VT = KT.VisualThemes
+    return (VT and VT.GetRenderedTheme and VT:GetRenderedTheme()) or "kui"
+end
+
+function ns.IsStockStyle(theme)
+    theme = theme or ns.RenderedStyle()
+    return theme == "classic" or theme == "forever" or theme == "retail"
+end
+
+-- Unset toggles follow the style: on for Classic/Forever/Retail, off for KUI Style.
+function ns.StockStyleToggle(profile, key, theme)
+    local v = profile and profile[key]
+    if v ~= nil then return v ~= false end
+    return ns.IsStockStyle(theme)
+end
+
+-- Font of a Blizzard font object (path, size, flags), or the given fallback.
+function ns.BlizzardFont(objectName, fbPath, fbSize, fbFlags)
+    local obj = _G[objectName]
+    if obj and obj.GetFont then
+        local ok, path, size, flags = pcall(obj.GetFont, obj)
+        if ok and type(path) == "string" and type(size) == "number" and size > 0 then
+            return path, size, flags or ""
+        end
+    end
+    return fbPath, fbSize, fbFlags
+end
+
+function ns.SafeCall(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if ok and not IsForeverSecretValue(value) then return value end
+    return nil
+end
+
+-- Level number color, following Blizzard's PlayerFrame/TargetFrame rules:
+-- the player in yellow (green while level-scaled on modern clients), units
+-- that cannot be attacked in yellow, attackable units by difficulty
+-- (grey / green / yellow / orange / red).
+function ns.BlizzardLevelColor(unit, theme)
+    local nr, ng, nb = 1, 0.82, 0
+    local nonAttack = _G.UNIT_LEVEL_NON_ATTACKABLE
+    if theme == "classic" and type(nonAttack) == "table" and nonAttack.r then
+        nr, ng, nb = nonAttack.r, nonAttack.g, nonAttack.b
+    end
+    if not unit then return nr, ng, nb end
+    if ns.SafeCall(UnitIsUnit, unit, "player") then
+        if theme ~= "classic" then
+            local level, effective = ns.SafeCall(UnitLevel, unit), ns.SafeCall(UnitEffectiveLevel, unit)
+            if type(level) == "number" and type(effective) == "number" and level ~= effective then
+                return 0.1, 1.0, 0.1
+            end
+        end
+        return nr, ng, nb
+    end
+    if not ns.SafeCall(UnitCanAttack, "player", unit) then return nr, ng, nb end
+    local color
+    if theme ~= "classic" and C_PlayerInfo and type(GetDifficultyColor) == "function" then
+        local difficulty = ns.SafeCall(C_PlayerInfo.GetContentDifficultyCreatureForPlayer, unit)
+        if difficulty ~= nil then color = ns.SafeCall(GetDifficultyColor, difficulty) end
+    end
+    if type(color) ~= "table" then
+        local level = (theme ~= "classic" and ns.SafeCall(UnitEffectiveLevel, unit)) or ns.SafeCall(UnitLevel, unit)
+        if type(level) == "number" and level > 0 then
+            color = ns.SafeCall(GetCreatureDifficultyColor or GetQuestDifficultyColor, level)
+        elseif type(level) == "number" then
+            -- Level hidden ("??"): far above the player.
+            return 1, 0.1, 0.1
+        end
+    end
+    if type(color) == "table" and color.r then return color.r, color.g, color.b end
+    return nr, ng, nb
+end
+
+function ns.UnitInCombat(unit)
+    return ns.SafeCall(UnitAffectingCombat, unit) and true or false
+end
+
+-- Blizzard's combat (crossed swords) icon for a level circle.
+function ns.ApplyBlizzardCombatIcon(tex, theme, size)
+    if theme ~= "classic" and C_Texture and C_Texture.GetAtlasInfo
+        and C_Texture.GetAtlasInfo("UI-HUD-UnitFrame-Player-CombatIcon") then
+        tex:SetAtlas("UI-HUD-UnitFrame-Player-CombatIcon", false)
+        tex:SetSize(size * 0.7, size * 0.7)
+    else
+        tex:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+        tex:SetTexCoord(0.5, 1, 0, 0.484375)
+        tex:SetSize(size, size)
+    end
+end
+
+-- Enemies without mana (rage, energy or no power at all) get an empty power
+-- bar background instead of a filled one. A custom background color set by
+-- the user is kept.
+function ns.UpdatePowerBackground(power, unit, settings)
+    local bg = power and power.bg
+    if not bg then return end
+    local empty = false
+    if unit and unit ~= "player" and not (settings and settings.customPowerBgColor)
+        and ns.SafeCall(UnitCanAttack, "player", unit) then
+        local manaType = Enum and Enum.PowerType and Enum.PowerType.Mana or 0
+        local powerType = ns.SafeCall(UnitPowerType, unit)
+        local maxPower = ns.SafeCall(UnitPowerMax, unit)
+        empty = (powerType ~= nil and powerType ~= manaType)
+            or (type(maxPower) == "number" and maxPower <= 0)
+    end
+    if empty then
+        bg:SetAlpha(0)
+        power._ktEmptyBg = true
+    elseif power._ktEmptyBg then
+        power._ktEmptyBg = nil
+        local opacity = settings and settings.powerBarOpacity or 100
+        if opacity <= 1 then opacity = opacity * 100 end
+        bg:SetAlpha(opacity / 100)
+    end
+end
+
+-- Retail/Forever native Rare/Elite portrait overlays (Blizzard's TargetFrame
+-- atlases). Offsets are the atlas' TOPRIGHT from the 58px portrait's TOPRIGHT.
+ns.NATIVE_CLASSIFICATION = {
+    elite = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold", dx = 15, dy = 11 },
+    rare = { atlas = "ui-hud-unitframe-target-portraiton-boss-rare-silver", dx = 15, dy = 11 },
+    worldboss = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged", dx = 34, dy = 11 },
+}
+
+function ns.NativeClassificationKind(classification)
+    if classification == "worldboss" or classification == "elite" then return classification end
+    if classification == "rare" or classification == "rareelite" then return "rare" end
+    return nil
+end
+
+function ns.HasNativeClassificationArt(kind)
+    local def = kind and ns.NATIVE_CLASSIFICATION[kind]
+    return def and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(def.atlas) and true or false
+end
+
+-- Draws (or hides, kind = nil) the native overlay around `portrait`. Mirrored
+-- when the portrait sits on the left of its frame. Lives just under `above`
+-- so the level and PvP badges stay on top.
+function ns.ShowNativeClassificationRing(frame, portrait, kind, mirror, above)
+    local tex = frame._kuiNativeClassRing
+    local def = kind and ns.NATIVE_CLASSIFICATION[kind]
+    local info = def and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(def.atlas)
+    if not (info and portrait) then
+        if tex then tex:Hide() end
+        return false
+    end
+    local host = frame._kuiNativeClassHost
+    if not tex then
+        host = CreateFrame("Frame", nil, frame)
+        host:SetAllPoints(frame)
+        host:EnableMouse(false)
+        frame._kuiNativeClassHost = host
+        tex = host:CreateTexture(nil, "OVERLAY", nil, 6)
+        frame._kuiNativeClassRing = tex
+    end
+    if above then
+        host:SetFrameStrata(above:GetFrameStrata())
+        host:SetFrameLevel(math.max(1, above:GetFrameLevel() - 1))
+    end
+    local k = (portrait:GetWidth() or 58) / 58
+    if not k or k <= 0 then k = 1 end
+    tex:SetAtlas(def.atlas, false)
+    tex:SetSize((info.width or 80) * k, (info.height or 80) * k)
+    tex:ClearAllPoints()
+    if mirror then
+        local ulx, uly, llx, lly, urx, ury, lrx, lry = tex:GetTexCoord()
+        tex:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly)
+        tex:SetPoint("TOPLEFT", portrait, "TOPLEFT", -def.dx * k, def.dy * k)
+    else
+        tex:SetPoint("TOPRIGHT", portrait, "TOPRIGHT", def.dx * k, def.dy * k)
+    end
+    tex:Show()
+    return true
+end
+
+-- One time per profile: the Blizzard level and name text become the default
+-- of the Classic/Forever/Retail styles, except where the player already
+-- customised the level text or the name text by hand.
+function ns.MigrateBlizzardTextDefaults(profile)
+    if type(profile) ~= "table" or profile._blizzardTextDefaults20261003 then return end
+    local function near(a, b) return math.abs((tonumber(a) or 0) - b) < 0.01 end
+    if profile.levelBlizzardStyle == nil then
+        local c = profile.levelColor
+        local customLevel = (profile.levelFont ~= nil and profile.levelFont ~= "AAA_ITC_Avant_Garde")
+            or (profile.levelFontSize ~= nil and tonumber(profile.levelFontSize) ~= 11)
+            or (profile.levelFontOutline ~= nil and profile.levelFontOutline ~= "OUTLINE")
+            or (type(c) == "table" and not (near(c.r, 1) and near(c.g, 0.82) and near(c.b, 0.20)))
+        if customLevel then profile.levelBlizzardStyle = false end
+    end
+    if profile.blizzardNameStyle == nil then
+        for _, key in ipairs({ "player", "target", "focus" }) do
+            local u = profile[key]
+            if type(u) == "table" and (u.leftTextClassColor == true or u.centerTextClassColor == true
+                or (u.leftTextSize ~= nil and tonumber(u.leftTextSize) ~= 14)) then
+                profile.blizzardNameStyle = false
+                break
+            end
+        end
+    end
+    profile._blizzardTextDefaults20261003 = true
+end
+
+-- The Target always shows its buffs, above the frame, in every style.
+function ns.EnforceTargetBuffs(profile)
+    local t = profile and profile.target
+    if type(t) ~= "table" then return end
+    t.showBuffs = true
+    if t.buffAnchor ~= "topleft" and t.buffAnchor ~= "topright" then
+        t.buffAnchor = (t.buffAnchor == "bottomright" or t.buffAnchor == "right") and "topright" or "topleft"
+    end
+    if t.buffGrowth == "down" then t.buffGrowth = "auto" end
+    if tonumber(t.maxBuffs) and t.maxBuffs < 1 then t.maxBuffs = 20 end
+end
+
+-- Curse / Poison / Bleed / Magic overlays: on by default only in KUI Style.
+function ns.IsDispelOverlayOn(settings)
+    local v = settings and settings.dispelOverlay
+    if v ~= nil then return v ~= false end
+    return ns.RenderedStyle() == "kui"
+end
+
+-- Theme accent for small ornaments (PvP circle border, combo pips):
+-- Forever bronze, Retail yellow, Classic white (pips) / yellow (PvP circle).
+-- Classic style: cast bars look like Classic's unit-frame bars (Blizzard StatusBar texture,
+-- Classic cast yellow) and their text is capped to the slim bar so it never clips.
+ns.CLASSIC_CAST_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
+function ns.ApplyClassicCastbarLook(frame)
+    local cb = frame and frame.Castbar
+    if not (cb and cb.SetStatusBarTexture) then return end
+    local VT = KT.VisualThemes
+    local isClassic = VT and VT.GetRenderedTheme and VT:GetRenderedTheme() == "classic"
+    if isClassic then
+        local tex = ns.CLASSIC_CAST_TEXTURE
+        cb:SetStatusBarTexture(tex)
+        local sbt = cb:GetStatusBarTexture()
+        if sbt and sbt.SetHorizTile then sbt:SetHorizTile(false) end
+        if cb.castTintLayer then cb.castTintLayer:SetTexture(tex) end
+        local _, _, _, a = cb:GetStatusBarColor()
+        cb:SetStatusBarColor(1.0, 0.70, 0.0, a or 1)
+        cb._ktClassicLook = true
+        local bg = cb:GetParent()
+        local h = bg and bg.GetHeight and bg:GetHeight()
+        if h and h > 0 then
+            cb._ktClassicTextCap = math.max(7, h * 0.55)
+            for _, fs in ipairs({ cb.Text, cb.Time }) do
+                if fs and fs.GetFont and fs.SetFont then
+                    -- Any later SetFont (settings pass, font refresh) is re-capped, so the
+                    -- text can never grow taller than the slim Classic bar again.
+                    if not fs._ktCapHook then
+                        fs._ktCapHook = true
+                        hooksecurefunc(fs, "SetFont", function(self, path, size, flags)
+                            local cap = cb._ktClassicLook and cb._ktClassicTextCap
+                            if cap and type(size) == "number" and size > cap and not self._ktCapBusy then
+                                self._ktCapBusy = true
+                                self:SetFont(path, cap, flags)
+                                self._ktCapBusy = nil
+                            end
+                        end)
+                    end
+                    local path, size, flags = fs:GetFont()
+                    if path and size and size > cb._ktClassicTextCap then
+                        fs._ktCapBusy = true
+                        fs:SetFont(path, cb._ktClassicTextCap, flags)
+                        fs._ktCapBusy = nil
+                    end
+                end
+            end
+            -- The spell icon was tiny and sat under the frame art: enlarge it and lift it above.
+            local icon = cb._iconFrame
+            if icon and icon.SetSize then
+                if cb._updateIconLayout then cb._updateIconLayout() end
+                local ov = frame._kuiIndicatorOverlay
+                if ov then
+                    icon:SetFrameStrata(ov:GetFrameStrata())
+                    icon:SetFrameLevel(ov:GetFrameLevel() + 3)
+                end
+            end
+        end
+    elseif cb._ktClassicLook then
+        cb._ktClassicLook = nil
+        local bg2 = cb:GetParent()
+        if cb._iconFrame and bg2 then
+            cb._iconFrame:SetFrameStrata(bg2:GetFrameStrata())
+            cb._iconFrame:SetFrameLevel(bg2:GetFrameLevel() + 1)
+        end
+        cb:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+        local sbt = cb:GetStatusBarTexture()
+        if sbt and sbt.SetHorizTile then sbt:SetHorizTile(false) end
+        if cb.castTintLayer then cb.castTintLayer:SetTexture("Interface\\Buttons\\WHITE8X8") end
+    end
+end
+
+function ns.GetThemeOrnamentColor(theme, classicColor)
+    if theme == "forever" then return 0.80, 0.56, 0.24 end
+    if theme == "retail" then return 0.96, 0.76, 0.22 end -- gold, not yellow
+    if classicColor then return classicColor[1], classicColor[2], classicColor[3] end
+    return 1, 1, 1
+end
+
 local function SafeUnitClassification(unit)
     if not unit or type(UnitClassification) ~= "function" then return nil end
     local ok, classification = pcall(function()
@@ -119,7 +459,7 @@ end
 local function SafeUnitClassificationNoPortraitTexture(unit, profile)
     local classification = SafeUnitClassification(unit)
     local style = profile and profile.classificationNoPortraitStyle or "nameplate"
-    local textures = CLASSIFICATION_NO_PORTRAIT_STYLES[style] or CLASSIFICATION_NO_PORTRAIT_TEXTURES
+    local textures = ns.CLASSIFICATION_NO_PORTRAIT_STYLES[style] or CLASSIFICATION_NO_PORTRAIT_TEXTURES
     return textures[classification]
 end
 
@@ -134,6 +474,23 @@ local defaults = {
         classificationNoPortraitX = -8,
         classificationNoPortraitY = 0,
         showPvPIcon = true,
+        -- showPvPCircle is deliberately NOT defaulted here. Root cause of
+        -- "circle still shows on kui": this blanket AceDB default ran via
+        -- Compat.CopyDefaults inside BindDatabase(), called BEFORE
+        -- KT:MigrateKuiPvPCircleDefault() in OnInitialize() -- by the time
+        -- the migration checked `profile.showPvPCircle == nil` it was
+        -- already backfilled to true, so the migration silently no-op'd
+        -- and burned its one-shot guard flag forever. This field is
+        -- theme-dependent (true for Classic/Forever/Retail, false for
+        -- kui), unlike smoothBars below, so it must never get a single
+        -- cross-theme default -- it's set explicitly per theme by
+        -- Adapters/UnitFrames.lua's seed(), falls back to the live
+        -- renderedTheme check at render time when nil, and existing kui
+        -- profiles are repaired by the migration below.
+        -- Smooth health/power bar value changes, on by default in every style.
+        smoothBars = true,
+        -- "none" | "elite" | "rare": custom rare/elite border on the Player portrait.
+        playerClassificationBorder = "none",
         levelFont = "AAA_ITC_Avant_Garde",
         levelFontSize = 11,
         levelFontOutline = "OUTLINE",
@@ -157,6 +514,7 @@ local defaults = {
         healthBarOpacity = 90,
         powerBarOpacity = 100,
         darkTheme = false,
+        frameArtKit = "default",  -- Set to "classic" by the VisualThemes classic theme
         -- NEW: separate player sub-table (migrated from shared playerTarget)
         player = {
             frameWidth = 230,
@@ -236,7 +594,7 @@ local defaults = {
             showPortrait = false,
             portraitMode = "2d",
             classThemeStyle = "modern",
-            portraitFacing = "normal",
+            portraitFacing = "flipped",
             portraitSide = "left",
             portraitSize = 0,
             portraitX = 0,
@@ -329,7 +687,7 @@ local defaults = {
             showBuffs = true,
             showDebuffs = true,
             onlyPlayerDebuffs = false,
-            portraitFacing = "flipped",
+            portraitFacing = "normal",
             buffAnchor = "topleft",
             buffGrowth = "auto",
             debuffAnchor = "bottomleft",
@@ -669,6 +1027,24 @@ local function UnitFrameStrataObjectBlocked(frame)
     return not ok or blocked == true
 end
 
+-- Indicator overlays (level, PvP, combo ring...) stay in the unit frame's
+-- LOW strata and sit above the portrait by frame level, so the world map and
+-- other windows still cover them.
+function ns.ApplyOverlayStrata(overlay, owner)
+    if not (overlay and overlay.SetFrameStrata) then return end
+    owner = owner or overlay:GetParent()
+    local bd = owner and owner.Portrait and owner.Portrait.backdrop
+    local function Apply(f, depth)
+        pcall(f.SetFrameStrata, f, "LOW")
+        if depth < 4 and f.GetChildren then
+            for _, child in ipairs({ f:GetChildren() }) do Apply(child, depth + 1) end
+        end
+    end
+    Apply(overlay, 0)
+    local floor = ((bd and bd.GetFrameLevel and bd:GetFrameLevel()) or 0) + 10
+    if (overlay:GetFrameLevel() or 0) < floor then pcall(overlay.SetFrameLevel, overlay, floor) end
+end
+
 local function SetUnitFrameTreeStrata(frame, seen)
     local frameType = type(frame)
     if (frameType ~= "table" and frameType ~= "userdata")
@@ -686,12 +1062,12 @@ local function SetUnitFrameTreeStrata(frame, seen)
         return
     end
 
-    -- Portrait backdrops use MEDIUM; metadata overlays must remain above them.
+    -- Portrait backdrops keep their own level; metadata overlays stay above them.
     if frame._isPortraitBackdrop then
         return
     end
     if frame._kuiAbovePortraitOverlay then
-        pcall(frame.SetFrameStrata, frame, "HIGH")
+        ns.ApplyOverlayStrata(frame)
         return
     end
 
@@ -952,6 +1328,20 @@ if not Compat.HandleWhirlwindStacks then
 end
 
 local function GetThemeAccentColor()
+    -- Forever has a fixed "chrome" identity (bronze), same as the Damage
+    -- Meter's own header/border accent (ThemeEngine.lua's
+    -- DAMAGE_METER_CHROME_COLORS): UnitFrames match that bronze, not
+    -- whatever the user's own configurable skin.accentColor happens to be
+    -- (default red), the same way Classic/Retail already get a fixed gold
+    -- identity there.
+    if KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes.GetDamageMeterAccentColor
+        and KT.VisualThemes:GetRenderedTheme() == "forever" then
+        local r, g, b = KT.VisualThemes:GetDamageMeterAccentColor()
+        if r and g and b then
+            return { r = r, g = g, b = b, a = 1 }
+        end
+    end
+
     if KT and KT.GetStyleAccentRGB then
         local r, g, b = KT:GetStyleAccentRGB()
         if r and g and b then
@@ -1189,9 +1579,6 @@ end
 
 local function ResolveActivePortraitMode(unit, settings)
     local mode = (settings and settings.portraitMode) or (db and db.profile and db.profile.portraitMode) or "2d"
-    if mode == "3d" and db and db.profile and db.profile.portraitStyle == "circular" then
-        return "2d"
-    end
     if mode == "class" and not ResolvePortraitClassToken(unit) then
         -- Pets and non-player units do not always expose a class token.
         -- Fall back to the regular portrait so the slot never renders blank.
@@ -1262,12 +1649,121 @@ local function UnitToSettingsKey(unit) return UCtx.ResolveKey(unit) end
 local function GetSettingsForUnit(unit) return UCtx.ResolveSettings(unit) end
 local function GetMiniDonorSettings() return UCtx.ResolveMiniDonor() end
 
+-- Forever/Retail: use Blizzard's own pre-coloured bar atlases as the fill of the
+-- Player/Target health and power bars (Blizzard client atlases
+-- are used). Only when the user kept the default texture AND the default health
+-- colour; every atlas is validated with GetAtlasInfo and falls back to the flat fill.
+-- The atlas is already coloured, so the bar's vertex colour is forced back to white.
+ns.AtlasFill = {}
+ns.AtlasFill.POWER = {
+    MANA = "Mana", RAGE = "Rage", FOCUS = "Focus", ENERGY = "Energy",
+    RUNIC_POWER = "RunicPower", LUNAR_POWER = "AstralPower", MAELSTROM = "Maelstrom",
+    INSANITY = "Insanity", FURY = "Fury", PAIN = "Pain",
+}
+function ns.AtlasFill.Exists(name)
+    return name and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) and true or false
+end
+function ns.AtlasFill.SeatMask(bar)
+    local m, fill = bar._ktForeverMask, bar:GetStatusBarTexture()
+    if m and m.IsShown and not m:IsShown() then return end   -- mask deliberately dropped (Rare/Elite power bar)
+    if m and fill and fill.AddMaskTexture then
+        pcall(fill.RemoveMaskTexture, fill, m)
+        pcall(fill.AddMaskTexture, fill, m)
+    end
+end
+function ns.AtlasFill.KeepWhite(bar)
+    if bar._kuiWhiteHook then return end
+    bar._kuiWhiteHook = true
+    hooksecurefunc(bar, "SetStatusBarColor", function(self)
+        if self._kuiAtlasFill then
+            local f = self:GetStatusBarTexture()
+            if f then f:SetVertexColor(1, 1, 1, 1) end
+        end
+    end)
+end
+-- Theme default greens (Classic 0.10/0.90/0.10, Forever/Retail 0.57/1/0.235): only these are
+-- "the theme default", a colour the user picked is never overridden.
+function ns.AtlasFill.IsDefaultGreen(c)
+    if type(c) ~= "table" or type(c.r) ~= "number" then return false end
+    local function near(a, b) return math.abs(a - b) < 0.02 end
+    return (near(c.r, 0.57) and near(c.g, 1.0) and near(c.b, 0.235))
+        or (near(c.r, 0.10) and near(c.g, 0.90) and near(c.b, 0.10))
+end
+-- Hostile units must not wear the friendly green: class colour for enemy players, reaction
+-- colour (tapped = grey) for NPCs.
+function ns.AtlasFill.EnemyColor(unit)
+    if not unit or not UnitExists(unit) then return end
+    local ok, can = pcall(UnitCanAttack, "player", unit)
+    if not ok or (issecretvalue and issecretvalue(can)) or not can then return end
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    if okP and isPlayer and not (issecretvalue and issecretvalue(isPlayer)) then
+        local _, cls = UnitClass(unit)
+        if cls and not (issecretvalue and issecretvalue(cls)) then
+            local c = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[cls]
+            if c then return c.r, c.g, c.b end
+        end
+        return
+    end
+    if UnitIsTapDenied and UnitIsTapDenied(unit) then return 0.6, 0.6, 0.6 end
+    local reaction = UnitReaction(unit, "player")
+    if reaction and not (issecretvalue and issecretvalue(reaction)) then
+        local c = FACTION_BAR_COLORS[reaction]
+        if c then return c.r, c.g, c.b end
+    end
+end
+function ns.AtlasFill.Apply(health, power, unitKey, settings)
+    local AtlasExists, SeatForeverMask, KeepWhite, POWER_ATLAS_SUFFIX = ns.AtlasFill.Exists, ns.AtlasFill.SeatMask, ns.AtlasFill.KeepWhite, ns.AtlasFill.POWER
+    local side = (unitKey == "target") and "Target" or "Player"
+    local c = settings and settings.customFillColor
+    local defaultColor = settings and settings.healthClassColored == false and type(c) == "table"
+        and math.abs((c.r or 0) - 0.57) < 0.02 and math.abs((c.g or 0) - 1.0) < 0.02
+        and math.abs((c.b or 0) - 0.235) < 0.02
+    local hAtlas = "UI-HUD-UnitFrame-" .. side .. "-PortraitOn-Bar-Health"
+    if health then
+        if defaultColor and not health._kuiEnemyTint and AtlasExists(hAtlas) then
+            health:SetStatusBarTexture(hAtlas)
+            health._kuiAtlasFill = true
+            KeepWhite(health)
+            SeatForeverMask(health)
+            local f = health:GetStatusBarTexture()
+            if f then f:SetVertexColor(1, 1, 1, 1) end
+        else
+            health._kuiAtlasFill = nil
+        end
+    end
+    if power then
+        local _, token = UnitPowerType(unitKey)
+        local suffix = token and POWER_ATLAS_SUFFIX[token]
+        local pAtlas = suffix and ("UI-HUD-UnitFrame-" .. side .. "-PortraitOn-Bar-" .. suffix)
+        if pAtlas and not AtlasExists(pAtlas) then pAtlas = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-" .. suffix end
+        if pAtlas and AtlasExists(pAtlas) then
+            power:SetStatusBarTexture(pAtlas)
+            power._kuiAtlasFill = true
+            KeepWhite(power)
+            SeatForeverMask(power)
+            local f = power:GetStatusBarTexture()
+            if f then f:SetVertexColor(1, 1, 1, 1) end
+        else
+            power._kuiAtlasFill = nil
+        end
+    end
+end
+
 local function ApplyHealthBarTexture(health, unitKey)
     if not health then return end
     local s = unitKey and db.profile[unitKey]
     local texKey = (s and s.healthBarTexture) or db.profile.healthBarTexture or "none"
     local path   = ResolveSharedTexturePath(texKey, "Melli Reforged")
     local bgPath = healthBarTextures["Melli Dark"]
+
+    -- Forever/Retail: Blizzard's bars are a flat colour with a glossy tube
+    -- highlight (KUI_BarGloss), not the patterned default LSM texture. Only
+    -- when the user kept the default texture.
+    if (unitKey == "player" or unitKey == "target")
+        and (texKey == "Melli Reforged" or texKey == "none")
+        and ns.BarGloss and ns.BarGloss.IsBlizzardStyle and ns.BarGloss.IsBlizzardStyle() then
+        path = nil
+    end
 
     -- Apply texture directly to the StatusBar fill
     if path then
@@ -1297,6 +1793,15 @@ local function ApplyHealthBarTexture(health, unitKey)
             power.bg:SetTexture(bgPath)
             power.bg:SetVertexColor(1, 1, 1, 1)
         end
+    end
+
+    if (unitKey == "player" or unitKey == "target")
+        and (texKey == "Melli Reforged" or texKey == "none")
+        and ns.BarGloss and ns.BarGloss.IsBlizzardStyle and ns.BarGloss.IsBlizzardStyle() then
+        pcall(ns.AtlasFill.Apply, health, power, unitKey, s)
+    else
+        health._kuiAtlasFill = nil
+        if power then power._kuiAtlasFill = nil end
     end
 end
 
@@ -1375,8 +1880,17 @@ local function ApplyDarkTheme(health)
         -- Check for custom fill/bg colors on this unit
         local unitKey = health._kuiUnitKey
         local unitSettings = unitKey and db.profile[unitKey]
-        local customFill = unitSettings and unitSettings.customFillColor
-        local customBg   = unitSettings and unitSettings.customBgColor
+        -- A customFillColor table missing its r/g/b fields (whatever its
+        -- origin) would reach unguarded arithmetic below
+        -- (`customFill.r * 0.2`) and crash EnableAddon for the whole addon.
+        -- Validate at this boundary instead of trusting it's always a
+        -- complete color.
+        local rawCustomFill = unitSettings and unitSettings.customFillColor
+        local customFill = (type(rawCustomFill) == "table" and type(rawCustomFill.r) == "number")
+            and rawCustomFill or nil
+        local rawCustomBg = unitSettings and unitSettings.customBgColor
+        local customBg = (type(rawCustomBg) == "table" and type(rawCustomBg.r) == "number")
+            and rawCustomBg or nil
         if customFill then
             -- Custom fill overrides class coloring; skip if class color is enabled
             if not (unitSettings and unitSettings.healthClassColored) then
@@ -1393,8 +1907,10 @@ local function ApplyDarkTheme(health)
         health.PostUpdateColor = function(self, unit, color)
             local uKey = self._kuiUnitKey
             local uSettings = uKey and db.profile[uKey]
-            local cFill = uSettings and uSettings.customFillColor
-            local cBg   = uSettings and uSettings.customBgColor
+            local rawFill = uSettings and uSettings.customFillColor
+            local cFill = (type(rawFill) == "table" and type(rawFill.r) == "number") and rawFill or nil
+            local rawBg = uSettings and uSettings.customBgColor
+            local cBg = (type(rawBg) == "table" and type(rawBg.r) == "number") and rawBg or nil
             local classColored = uSettings and uSettings.healthClassColored
             if uKey == "pet" and classColored then
                 local _, cls = UnitClass("player")
@@ -1407,6 +1923,25 @@ local function ApplyDarkTheme(health)
                     end
                     return
                 end
+            end
+            -- hostile target/focus: reaction/class colour instead of the theme's friendly green
+            local er, eg, eb
+            if (uKey == "target" or uKey == "focus") and cFill and not classColored
+                and ns.AtlasFill.IsDefaultGreen(cFill) and ns.BarGloss and ns.BarGloss.IsStyledLook
+                and ns.BarGloss.IsStyledLook() then
+                er, eg, eb = ns.AtlasFill.EnemyColor(unit)
+            end
+            if (self._kuiEnemyTint and true or false) ~= (er ~= nil) then
+                self._kuiEnemyTint = (er ~= nil) or nil
+                pcall(ApplyHealthBarTexture, self, uKey)   -- atlas fill is green: swap to flat fill and back
+            end
+            if er then
+                self:SetStatusBarColor(er, eg, eb)
+                if self.bg then
+                    self.bg:SetTexture(healthBarTextures["Melli Dark"] or "Interface\\Buttons\\WHITE8X8")
+                    self.bg:SetVertexColor(er * 0.2, eg * 0.2, eb * 0.2, 1)
+                end
+                return
             end
             if cFill and not classColored then
                 self:SetStatusBarColor(cFill.r, cFill.g, cFill.b)
@@ -1833,10 +2368,78 @@ local function ResolveBuffLayout(anchor, growth)
     return d.fp, d.ia, gx, gy, d.ox, d.oy
 end
 
+-- KUI's generic frame has no stock-art name tab to clear, but its aura row
+-- sat a little too close to the top edge on both player and target. Keep the
+-- adjustment theme-specific so Classic/Forever/Retail retain their dedicated
+-- stock-art geometry. This is a KT method instead of a chunk-local helper
+-- because this large Lua 5.1 file already sits at the 200-local limit.
+-- Classic/Forever/Retail looks pull bottom debuffs 4px closer to the frame;
+-- KUI Style keeps the Retail spacing.
+function KT:GetStyledDebuffLift()
+    local VT = self.VisualThemes
+    local th = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    return (th == "classic" or th == "forever" or th == "retail") and 4 or 0
+end
+
+function KT:GetKUIStyleBuffYOffset(unit)
+    if unit ~= "player" and unit ~= "target" then return 0 end
+    local VT = self.VisualThemes
+    local renderedTheme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    -- KUI Style keeps the Retail aura position (no extra lift).
+    return 0
+end
+
 -- ─── Resolución de tags de vida ──────────────────────────────────
 -- Tabla display → tag oUF (compartida por player, target, focus, boss).
 -- Una sola función ResolveHealthTag reemplaza las antiguas 3 funciones
 -- individuales, consultando HEALTH_TAG_CONTEXT para defaults por unidad.
+-- Aura rows belong to the visible health bar, not to the outer unit-frame
+-- box. This matters for every portrait style and especially for stock art,
+-- where the frame includes large transparent/chrome areas around Health.
+function KT:ResolveUFAuraBarGeometry(frame)
+    local VT = self.VisualThemes
+    local th = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    if th ~= "classic" and th ~= "forever" and th ~= "retail" then
+        -- KUI Style keeps the Retail layout: auras anchored to the whole frame,
+        -- 22px icons, 7 per row.
+        local fw = frame and frame.GetWidth and frame:GetWidth() or 0
+        return frame, fw, 22, 1, 7
+    end
+    local bar = frame and (frame.Health or frame)
+    local width = bar and bar.GetWidth and bar:GetWidth() or 0
+    if width <= 0 then width = frame and frame.GetWidth and frame:GetWidth() or 22 end
+
+    local gap = 1
+    -- Fixed 22, as before this function existed (commit caf2205 replaced
+    -- several separate "local auraSize = 22" call sites). Tying icon size to
+    -- the live Health bar's own height was meant for Forever's stock art,
+    -- which already computes its own icon size independently in
+    -- ThemeClientAssets.lua (geom.health.h * scale) and never calls this
+    -- function at all -- so the only real effect was the generic/kui
+    -- path's icons silently growing to match Health's full height (46px by
+    -- default for player/target), not the small, fixed size they'd always
+    -- had before.
+    local auraSize = 22
+    local perRow = math.max(1, math.floor((width + gap) / (auraSize + gap)))
+    return bar or frame, width, auraSize, gap, perRow
+end
+
+function KT:ApplyLegacyUFAuraBarGeometry(container, frame, framePoint, initialAnchor,
+        growthX, growthY, offsetX, offsetY)
+    if not (container and frame) then return end
+    local bar, width, auraSize, gap, perRow = KT:ResolveUFAuraBarGeometry(frame)
+    container:ClearAllPoints()
+    container:SetPoint(initialAnchor, bar, framePoint,
+        (offsetX or 0) * gap, (offsetY or 0) * gap)
+    container:SetSize(width, auraSize)
+    container.size = auraSize
+    container.spacing = gap
+    container["size-x"] = perRow
+    container.initialAnchor = initialAnchor
+    container.growthX = growthX
+    container.growthY = growthY
+    return width, auraSize, gap, perRow
+end
 local HEALTH_DISPLAY_TAGS = {
     curhpshort = "[curhpshort]",
     perhp      = "[perhp]%",
@@ -1936,30 +2539,180 @@ local function ApplyClassIconTexture(tex, classToken, style)
     return true
 end
 
+-- Direction a 3D portrait looks, as a model yaw. It looks toward its own frame
+-- unless the user picked a facing. Humanoid models start out turned to the
+-- right and shapeshifted forms (druid, ghost wolf) to the left, so each needs a
+-- different turn, and a closer camera so the tail stays out of the frame.
+-- Positive rotation turns toward the right. Returns the yaw, a zoom factor and a sideways camera shift
+-- that brings the head into view.
+function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation)
+    local lookRight
+    if facingMode == "normal" then
+        lookRight = true
+    elseif facingMode == "flipped" then
+        lookRight = false
+    else
+        side = side or ((unit == "player" or unit == "pet") and "left" or "right")
+        lookRight = side ~= "right"
+        if invert then lookRight = not lookRight end
+    end
+    local shifted = false
+    if unit and UnitIsUnit(unit, "player") and type(GetShapeshiftForm) == "function" then
+        local _, class = UnitClass("player")
+        if class == "DRUID" or class == "SHAMAN" then
+            local ok, form = pcall(GetShapeshiftForm)
+            shifted = ok and type(form) == "number" and form > 0
+        end
+    end
+    local yaw
+    if shifted then
+        yaw = lookRight and 1.75 or 0
+    else
+        yaw = lookRight and 0 or -0.9
+    end
+    return yaw + math.rad(tonumber(rotation) or 0), shifted and 1.5 or 1, 0
+end
+
 local function GetDefaultPortraitFacing(unit)
-    if unit == "target" then
+    -- Player and target still face each other ("look inward" toward their
+    -- own frame content), but swapped from the previous defaults: player
+    -- now faces the direction target used to, and vice versa. Other units
+    -- (focus/pet/boss) keep their previous "normal" default, unaffected by
+    -- this swap.
+    if unit == "player" then
         return "flipped"
+    end
+    if unit == "target" then
+        return "normal"
     end
     return "normal"
 end
 
 local function GetPortraitFacing(unit, settings)
-    if settings and settings.portraitFacing then
-        return settings.portraitFacing
+    -- Explicit per-unit choice (Unit Frames > Portrait Facing), valid in every
+    -- style. "auto"/nil keeps the style-specific automatic behaviour below.
+    local mode = settings and settings.portraitFacingMode
+    if mode == "normal" or mode == "flipped" then
+        return mode
     end
-    return GetDefaultPortraitFacing(unit)
+    local facing = (settings and settings.portraitFacing) or GetDefaultPortraitFacing(unit)
+
+    -- The Classic/Forever stock boxes mirror player/target around the
+    -- central gameplay area. Keep ordinary portraits facing inward toward
+    -- their bars; a live player shapeshift keeps the client's already-
+    -- correct druid-form direction instead of flipping it a second time.
+    -- This applies to both real-stock themes, not just Classic: Forever's
+    -- 2D portrait is already correctly oriented for the current shapeshift
+    -- by the client itself, so forcing our facing on top of it is wrong
+    -- (and inconsistent with the non-shapeshifted case) while shapeshifted.
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    local classicKit = db and db.profile and db.profile.frameArtKit == "classic"
+    -- KUI joins this rule: its default profile stores portraitFacing (player "flipped",
+    -- target "normal") for everyone, which made the shapeshift-aware branch below dead code
+    -- and left humanoid portraits looking outward.
+    if (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail" or renderedTheme == "kui" or classicKit)
+        and (unit == "player" or unit == "target") then
+        if unit == "target" then
+            -- Target must always be the MIRROR IMAGE of player's own
+            -- resolved facing, never a fixed constant -- a hardcoded
+            -- "flipped" here breaks the moment player ALSO needs "flipped"
+            -- (shapeshifted), since two frames returning the same value
+            -- render IDENTICALLY instead of as mirror images. Both portraits
+            -- come from the same underlying capture convention regardless
+            -- of shapeshift state, so deriving target from player's own
+            -- answer -- instead of assuming what player currently resolves
+            -- to -- keeps them opposite in every case.
+            local playerFacing = GetPortraitFacing("player", GetSettingsForUnit("player"))
+            return (playerFacing == "flipped") and "normal" or "flipped"
+        else
+            -- Player, NOT shapeshifted: the normal 3D portrait already faces
+            -- inward and needs no override flip.
+            local shapeshifted = false
+            if type(GetShapeshiftForm) == "function" then
+                local ok, form = pcall(GetShapeshiftForm)
+                shapeshifted = ok and type(form) == "number" and form > 0
+            end
+            if shapeshifted then
+                -- Player, shapeshifted: a side-by-side comparison (same
+                -- build, same "normal" value) showed the humanoid case
+                -- correct and the shapeshift-form case still wrong --
+                -- proof the two portrait kinds don't share one orientation
+                -- convention. Shapeshift icons are 2D art with their own
+                -- baked facing, opposite of the 3D portrait's. Flip only
+                -- this case.
+                return "flipped"
+            end
+            return "normal"
+        end
+    end
+
+    -- kui style used to always use the fixed default above
+    -- (GetDefaultPortraitFacing's "flipped" for player) regardless of
+    -- shapeshift state -- right by coincidence for a shapeshifted Druid
+    -- (the 2D form icon's baked facing is the opposite of the normal 3D
+    -- portrait's) but wrong for every ordinary humanoid portrait. Same
+    -- shapeshift-aware check the stock themes above already use, applied
+    -- here too -- but only when the user hasn't picked an explicit facing
+    -- of their own (settings.portraitFacing), since that deliberate choice
+    -- always wins.
+    if unit == "player" and not (settings and settings.portraitFacing) then
+        local shapeshifted = false
+        if type(GetShapeshiftForm) == "function" then
+            local ok, form = pcall(GetShapeshiftForm)
+            shapeshifted = ok and type(form) == "number" and form > 0
+        end
+        return shapeshifted and "flipped" or "normal"
+    end
+
+    return facing
 end
 
--- Classification artwork is directional: mirror it for the portrait side,
--- then combine that with the portrait's own facing direction.
+-- Classification artwork is directional: the elite/rare border points to
+-- the same side as the portrait -- i.e. its own flip matches the
+-- portrait's facing directly, not an XOR with which side of the frame the
+-- portrait happens to sit on. A side-based XOR assumes GetPortraitFacing's
+-- return value means something it no longer does after the Classic/Forever
+-- real-stock facing override (which hardcodes target to "flipped" and
+-- non-shapeshifted player to "normal" regardless of settings), and leaves
+-- the ring's flip mismatched with the portrait's actual visual orientation.
 local function GetClassificationTextureFlipped(unit, settings)
-    local facingFlipped = GetPortraitFacing(unit, settings) == "flipped"
-    local side = settings and settings.portraitSide
-    if not side then
-        side = (unit == "player" or unit == "pet") and "left" or "right"
+    -- Direct match to portrait facing (== "flipped"). Returning false for
+    -- target puts the dragon's head top-left, snout pointing inward/left,
+    -- which is the wrong side.
+    return GetPortraitFacing(unit, settings) == "flipped"
+end
+
+-- Debug export of the live facing/flip formula inputs (shapeshift state,
+-- classification, resolved settings) and return values. Exported on KT
+-- itself (not the local `ns`) -- ThemeClientAssets.lua lives in a SEPARATE
+-- addon/TOC with its own private `ns` upvalue from a different `...`; KT is
+-- the one object LibStub hands back identically to every KullThranUI
+-- sub-addon that asks for it.
+function KT.ResolvePortraitFacing(unit)
+    local ok, facing = pcall(GetPortraitFacing, unit, GetSettingsForUnit(unit))
+    return ok and facing or nil
+end
+
+function KT.KTDebugFacingState(unit)
+    local settings = GetSettingsForUnit(unit)
+    local ok1, facing = pcall(GetPortraitFacing, unit, settings)
+    local ok2, classFlipped = pcall(GetClassificationTextureFlipped, unit, settings)
+    local shapeshiftForm
+    if unit == "player" and type(GetShapeshiftForm) == "function" then
+        local ok, form = pcall(GetShapeshiftForm)
+        shapeshiftForm = ok and form or "pcall-failed"
     end
-    local sideFlipped = side == "right"
-    return sideFlipped ~= facingFlipped
+    local classification = SafeUnitClassification(unit)
+    return {
+        facing = ok1 and facing or "ERROR:" .. tostring(facing),
+        classFlipped = ok2 and classFlipped or "ERROR:" .. tostring(classFlipped),
+        shapeshiftForm = shapeshiftForm,
+        classification = classification,
+        renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme(),
+        frameArtKit = db and db.profile and db.profile.frameArtKit,
+    }
 end
 
 local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
@@ -1984,6 +2737,23 @@ local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
     else
         tex:SetTexCoord(0.15, 0.85, 0.15, 0.85)
     end
+end
+
+
+-- Re-resolve class token + sprite coords + facing for the class-art portrait.
+-- Needed on every unit change (PLAYER_TARGET_CHANGED etc): the class texture is
+-- static and was only refreshed on creation / full reload, so it kept the
+-- previous unit's class (e.g. own rogue icon) after retargeting.
+ns.RefreshClassPortrait = function(unit, backdrop)
+    if not (backdrop and backdrop._class) then return end
+    local uKey = UnitToSettingsKey(unit) or unit
+    local uSettings = uKey and db and db.profile and db.profile[uKey]
+    if ResolveActivePortraitMode(unit, uSettings) ~= "class" then return end
+    local ct = ResolvePortraitClassToken(unit)
+    if not ct then backdrop._class:Hide(); return end
+    ApplyClassIconTexture(backdrop._class, ct, (uSettings and uSettings.classThemeStyle) or "modern")
+    ApplyPortraitFacing(backdrop._class, unit, uSettings, true)
+    backdrop._class:Show()
 end
 
 
@@ -2019,8 +2789,32 @@ local MASK_INSETS = {
     square   = 17,
 }
 
+function KT:FitStockUFPortraitMask(backdrop)
+    if not (backdrop and backdrop._ktStockPortraitAnchor and backdrop._shapeMask) then return end
+    local expand = backdrop._ktStockPortraitMaskExpand or 0
+    backdrop._shapeMask:ClearAllPoints()
+    backdrop._shapeMask:SetPoint("TOPLEFT", backdrop, "TOPLEFT", -expand, expand)
+    backdrop._shapeMask:SetPoint("BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", expand, -expand)
+    backdrop._shapeMask:Show()
+    -- SetPortraitTexture/shape updates can replace the active portrait region
+    -- without preserving its mask membership. Re-seat it on every stock pass
+    -- so a druid form can never expose square texture corners outside the
+    -- circular portrait opening.
+    for _, tex in ipairs({ backdrop._2d, backdrop._class, backdrop._bg }) do
+        if tex and tex.AddMaskTexture then
+            if tex.RemoveMaskTexture then
+                pcall(tex.RemoveMaskTexture, tex, backdrop._shapeMask)
+            end
+            pcall(tex.AddMaskTexture, tex, backdrop._shapeMask)
+        end
+    end
+end
 local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
     if not (backdrop and backdrop:GetParent()) then return end
+    -- Classic/Forever/Retail stock renderers own this anchor while active.
+    -- Generic KUI circular updates can still run later in the same refresh;
+    -- they must never move a stock portrait back beside the health bar.
+    if backdrop._ktStockPortraitAnchor then return end
 
     local frame = backdrop:GetParent()
     local health = frame.Health
@@ -2041,6 +2835,9 @@ local function AnchorCircularPortrait(backdrop, uSettings, unitToken)
         backdrop:SetPoint("LEFT", health, "RIGHT", -overlap + xOffset, yOffset)
     end
     backdrop:SetFrameLevel(frame:GetFrameLevel() + 2)
+    -- Keep the 3D model under the ring frame after the level change.
+    if backdrop._3d then backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1) end
+    if backdrop._shapeBorderFrame then backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3) end
 end
 
 local function ResolveCircularPortraitColor(frame, uSettings, unitToken)
@@ -2146,7 +2943,10 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
     local borderOpacity = ((uSettings and uSettings.detachedPortraitBorderOpacity) or 100) / 100
     local rawBorderSize = (uSettings and uSettings.detachedPortraitBorderSize) or 7
     local bExp = 7 - rawBorderSize
-    local showBorder = isCircular or not (uSettings and uSettings.detachedPortraitBorder == false)
+    -- Stock art already draws its own portrait ring. Keeping KUI's shape
+    -- border here produces a second colored circle over the Classic frame.
+    local showBorder = not backdrop._ktStockPortraitAnchor
+        and (isCircular or not (uSettings and uSettings.detachedPortraitBorder == false))
 
     -- Color del borde: resolver según classColor > unit > manual > fallback
     local bc = (uSettings and uSettings.detachedPortraitBorderColor) or { r = 0, g = 0, b = 0 }
@@ -2208,7 +3008,12 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
 
     -- === TGA BORDER OVERLAY ===
     if not backdrop._shapeBorderTex then
-        backdrop._shapeBorderTex = backdrop:CreateTexture(nil, "OVERLAY")
+        -- The ring lives on its own frame above the portrait so it also
+        -- covers 3D models, which draw above every texture of the backdrop.
+        local ringFrame = CreateFrame("Frame", nil, backdrop)
+        ringFrame:SetAllPoints(backdrop)
+        backdrop._shapeBorderFrame = ringFrame
+        backdrop._shapeBorderTex = ringFrame:CreateTexture(nil, "OVERLAY")
     end
     backdrop._shapeBorderTex:ClearAllPoints()
     PP.Point(backdrop._shapeBorderTex, "TOPLEFT", backdrop, "TOPLEFT", -bExp, bExp)
@@ -2241,7 +3046,20 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
     if bw < 1 then bw = 46 end
     if bh2 < 1 then bh2 = 46 end
     local visRatio = (128 - 2 * insetPx) / 128
-    local cScale = isCircular and 1 or (1 / visRatio)
+    -- Circular style normally skips this zoom (cScale=1): KUI's own
+    -- decorative circular_border.tga is drawn at a size that already
+    -- matches an unzoomed portrait, so zooming would push the content past
+    -- where that border expects it. Classic/Forever/Retail's REAL stock
+    -- rendering (backdrop._ktStockPortraitAnchor) uses a completely
+    -- different ring asset that expects a snugly-filled portrait, same as
+    -- every non-circular shape -- without this zoom, the portrait renders
+    -- small and centered with a wide dark dead-space margin all around it
+    -- before reaching the ring, unlike the reference stock Classic frame
+    -- where the portrait fills the opening edge-to-edge. _2d/_class's own
+    -- bounding box (backdrop) stays exactly at the real stock geometry
+    -- either way -- only their content zooms to fill it, it doesn't change
+    -- what box they're clipped to.
+    local cScale = (isCircular and not backdrop._ktStockPortraitAnchor) and 1 or (1 / visRatio)
     -- Apply user art scale (100 = default, stored as percentage)
     local artScale = ((uSettings and uSettings.portraitArtScale) or 100) / 100
     cScale = cScale * artScale
@@ -2262,17 +3080,31 @@ local function ApplyDetachedPortraitShape(backdrop, uSettings, unitToken)
         PP.Point(backdrop._class, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -classInset + oR, classInset + oB)
     end
     if backdrop._3d then
-        -- 3D models ignore SetClipsChildren, so keep them within the backdrop
-        -- bounds. Art scale is not applied to 3D (camera zoom is fixed).
+        -- 3D models ignore SetClipsChildren and masks, so keep them within the
+        -- backdrop bounds. A circular portrait shrinks the model so its
+        -- corners end under the ring, which is drawn above it. Art scale is
+        -- not applied to 3D (camera zoom is fixed).
+        local ringSize = bh2 + 2 * bExp
+        local modelInset = isCircular and math.max(0, math.floor(bh2 * 0.5 - ringSize * 0.33 + 0.5)) or 0
+        backdrop._3d:SetFrameLevel(backdrop:GetFrameLevel() + 1)
+        if backdrop._shapeBorderFrame then
+            backdrop._shapeBorderFrame:SetFrameLevel(backdrop:GetFrameLevel() + 3)
+        end
         backdrop._3d:ClearAllPoints()
-        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", 0, 0)
-        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
+        PP.Point(backdrop._3d, "TOPLEFT", backdrop, "TOPLEFT", modelInset, -modelInset)
+        PP.Point(backdrop._3d, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", -modelInset, modelInset)
     end
 
-    if isCircular then
+    if backdrop._ktStockPortraitAnchor then
+        KT:FitStockUFPortraitMask(backdrop)
+    end
+
+    if isCircular and not backdrop._ktStockPortraitAnchor then
         AnchorCircularPortrait(backdrop, uSettings, unitToken)
         C_Timer.After(0, function()
-            if backdrop and db and db.profile and db.profile.portraitStyle == "circular" then
+            if backdrop and not backdrop._ktStockPortraitAnchor
+                and db and db.profile and db.profile.portraitStyle == "circular"
+            then
                 AnchorCircularPortrait(backdrop, uSettings, unitToken)
             end
         end)
@@ -2283,7 +3115,14 @@ local function UpdateCircularPortraitBorder(frame)
     if not (frame and frame.Health and frame.Portrait and frame.Portrait.backdrop) then return end
     if not (db and db.profile and db.profile.portraitStyle == "circular") then return end
 
-    local border = frame.Portrait.backdrop._shapeBorderTex
+    local backdrop = frame.Portrait.backdrop
+    if backdrop._ktStockPortraitAnchor then
+        KT:FitStockUFPortraitMask(backdrop)
+        if backdrop._shapeBorderTex then backdrop._shapeBorderTex:Hide() end
+        return
+    end
+
+    local border = backdrop._shapeBorderTex
     if border then
         -- The elite/rare ring replaces the generic portrait border. Keeping
         -- both visible makes one unit look like two classifications at once.
@@ -2476,13 +3315,28 @@ local function ApplyFramePosition(frame, unit)
             -- Calculate additional offset based on portrait configuration
             local basePos = 280
             local additionalOffset = 20  -- Base margin to prevent overlap
-            
+
             if portraitStyle == "circular" then
                 additionalOffset = additionalOffset + 10  -- Extra space for circular portraits
             elseif portraitStyle == "attached" then
                 additionalOffset = additionalOffset + 5   -- Moderate space for attached portraits
             end
-            
+
+            -- This margin was tuned against the module's OLD 100% default
+            -- frame scale. frame.Buffs anchors to frame.Health and the whole
+            -- target frame now gets a real SetScale() centered on itself
+            -- (ApplyFrameScaleCentered) driven by frameScale -- now 132 by
+            -- default (PLAYER_TARGET_FRAME_SCALE in
+            -- Adapters/UnitFrames.lua). Scaling around the center pushes the
+            -- outermost elements (buffs, furthest from center) outward the
+            -- most, straight toward CDM, while this margin stayed fixed, so
+            -- buffs crept almost into CDM. Scale the margin with the same
+            -- factor so clearance keeps pace with frame size.
+            if ns.BarGloss and ns.BarGloss.IsStyledLook and ns.BarGloss.IsStyledLook() then
+                local targetScale = (targetSettings.frameScale or 100) / 100
+                additionalOffset = additionalOffset * targetScale
+            end
+
             -- Only apply offset if we're at or near the default position
             if x >= 270 and x <= 290 then
                 x = basePos + additionalOffset
@@ -2507,6 +3361,19 @@ local function UpdateBordersForScale(frame, unit)
     -- 1) Main frame border textures
     if frame.unifiedBorder then
         PP.SetBorderSize(frame.unifiedBorder, borderSize)
+    end
+
+    -- Forever/Classic real stock geometry (ApplyClassicFrameArt, called from
+    -- CreateUnifiedBorder immediately before this function runs at every
+    -- call site) already sized frame/portrait/health/power correctly. Steps
+    -- 2-8 below assume KUI's NORMAL (unthemed) layout model and unconditionally
+    -- re-derive those same sizes from it: Health's width would match the
+    -- full frame width (this function's own TOPLEFT+RIGHT dual anchor, which
+    -- derives size from the frame's edges) instead of the real ~123px
+    -- bar-track width, despite _ktForeverLayoutActive being true, silently
+    -- undoing the real geometry every time it ran after it.
+    if frame._ktForeverLayoutActive or frame._ktClassicLayoutActive then
+        return
     end
 
     -- 2) Gather layout info
@@ -2839,6 +3706,91 @@ end
 
 -- ShowFakeFrames / HideFakeFrames removed — Unlock Mode handles all positioning
 
+-- "Smooth" option, on by default for every profile/style, that animates
+-- health/power bar value changes instead of jumping instantly. Wraps the
+-- bar's own SetValue so it works regardless of who calls it (oUF's
+-- built-in Health/Power elements included) -- the wrapper reads
+-- db.profile.smoothBars on every call, so toggling the setting takes
+-- effect immediately without needing to recreate the bar.
+function KT:ComputeSmoothStep(self, value)
+    value = tonumber(value) or 0
+    local current = tonumber(self:GetValue()) or value
+    return value, current, math.abs(current - value) < 0.01
+end
+
+-- Driven by OnUpdate, not C_Timer.NewTicker(0.016, ...): a ticker that
+-- advances its internal "elapsed" by a fixed 0.016 every call regardless
+-- of how much real wall-clock time actually passed drifts and stutters --
+-- C_Timer tickers are scheduled relative to game ticks and are not
+-- guaranteed to fire at a precise, consistent sub-frame interval. An
+-- OnUpdate script on the bar itself receives the REAL elapsed time for
+-- that exact frame as its argument, which is the standard, reliable WoW
+-- technique for frame-accurate animation (matches the display's own
+-- refresh rate instead of a guessed fixed step).
+function KT:ApplySmoothBar(bar)
+    if not bar or bar._ktSmoothApplied then return end
+    bar._ktSmoothApplied = true
+    local realSetValue = bar.SetValue
+    bar.SetValue = function(self, value, ...)
+        if bar._ktSmoothBlocked or not (db and db.profile and db.profile.smoothBars ~= false) then
+            -- Smoothing off (default): plain SetValue. Only stop our own tween,
+            -- never an OnUpdate script someone else installed on the bar.
+            if self._ktSmoothTarget ~= nil then
+                self._ktSmoothTarget = nil
+                self:SetScript("OnUpdate", nil)
+            end
+            realSetValue(self, value, ...)
+            return
+        end
+        -- Preferred path: the client's own StatusBar interpolation. It is
+        -- frame-accurate and, unlike the Lua tween below, also works with
+        -- "secret" values (which forbid arithmetic and used to force an
+        -- instant, choppy jump). Only used when the client exposes the enum.
+        local interp = Enum and Enum.StatusBarInterpolation
+            and (Enum.StatusBarInterpolation.ExponentialEaseOut or Enum.StatusBarInterpolation.Linear)
+        if interp and not bar._ktNativeSmoothFailed then
+            self:SetScript("OnUpdate", nil)
+            if pcall(realSetValue, self, value, interp) then
+                return
+            end
+            bar._ktNativeSmoothFailed = true
+        end
+        -- Some power values (certain class resources) arrive as WoW's
+        -- "secret" values, which forbid arithmetic entirely ("a secret
+        -- number value, while execution tainted") -- tonumber() and type()
+        -- both happily pass a secret number through as a normal number, so
+        -- the only way to detect it is to let the arithmetic itself fail
+        -- inside a pcall. It fails identically on every future call for
+        -- this bar, so block smoothing on it permanently instead of
+        -- erroring on every value update.
+        local ok, value2, current, closeEnough = pcall(KT.ComputeSmoothStep, KT, self, value)
+        if not ok then
+            bar._ktSmoothBlocked = true
+            self:SetScript("OnUpdate", nil)
+            realSetValue(self, value)
+            return
+        end
+        self._ktSmoothTarget = value2
+        if closeEnough then
+            self:SetScript("OnUpdate", nil)
+            realSetValue(self, value2)
+            return
+        end
+        self._ktSmoothStart = current
+        self._ktSmoothElapsed = 0
+        self:SetScript("OnUpdate", function(selfBar, elapsedTime)
+            selfBar._ktSmoothElapsed = selfBar._ktSmoothElapsed + elapsedTime
+            local t = math.min(selfBar._ktSmoothElapsed / 0.25, 1)
+            local eased = 1 - (1 - t) * (1 - t)
+            realSetValue(selfBar, selfBar._ktSmoothStart
+                + (selfBar._ktSmoothTarget - selfBar._ktSmoothStart) * eased)
+            if t >= 1 then
+                selfBar:SetScript("OnUpdate", nil)
+            end
+        end)
+    end
+end
+
 local function CreateHealthBar(frame, unit, height, xOffset, settings, rightInset)
     xOffset     = xOffset or 0
     rightInset  = rightInset or 0
@@ -2887,6 +3839,7 @@ local function CreateHealthBar(frame, unit, height, xOffset, settings, rightInse
     ApplyHealthBarTexture(health, settingsKey)
     ApplyHealthBarAlpha(health, settingsKey)
     ApplyDarkTheme(health)
+    KT:ApplySmoothBar(health)
 
     return health
 end
@@ -3102,7 +4055,7 @@ local function CreatePowerBar(frame, unit, settings)
     -- Hide power bar for enemy NPCs that don't use power (melee mobs, etc.)
     -- Show power for: player, friendly units, enemy players, bosses, minibosses, casters
     power._grayedOut = false
-    power.PostUpdate = function(self, u, cur, min, max)
+    local function GrayOutPostUpdate(self, u, cur, min, max)
         local s = GetSettingsForUnit(u)
         if not s then return end
 
@@ -3145,6 +4098,10 @@ local function CreatePowerBar(frame, unit, settings)
             end
         end
     end
+    power.PostUpdate = function(self, u, cur, min, max)
+        GrayOutPostUpdate(self, u, cur, min, max)
+        ns.UpdatePowerBackground(self, u, GetSettingsForUnit(u))
+    end
 
     -- Shadow Priest: show Mana on the power bar
     -- (Insanity is shown as class resource on Resource Bars)
@@ -3162,6 +4119,7 @@ local function CreatePowerBar(frame, unit, settings)
         end
     end
 
+    KT:ApplySmoothBar(power)
     return power
 end
 
@@ -3198,8 +4156,10 @@ local function CreatePortrait(frame, side, frameHeight, unit)
 
     local backdrop = CreateFrame("Frame", nil, frame)
     backdrop._isPortraitBackdrop = true  -- Flag to exclude from strata reset
-    backdrop:SetFrameStrata("MEDIUM")  -- Above frame's LOW strata to render on top
-    backdrop:SetFrameLevel(50)  -- High level to be above all frame elements
+    -- Same LOW strata as the frame (MEDIUM drew it over the world map and
+    -- other windows); a high frame level keeps it above the bars.
+    backdrop:SetFrameStrata("LOW")
+    backdrop:SetFrameLevel(math.max(50, (frame:GetFrameLevel() or 0) + 20))
     backdrop:EnableMouse(false)  -- Allow clicks to pass through to unit frame
     PP.Size(backdrop, adjustedHeight, adjustedHeight)
     backdrop:SetClipsChildren(true)
@@ -3229,7 +4189,7 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         else
             backdrop:SetPoint("TOPLEFT", frame.Health or frame, "TOPRIGHT", 15 + pXOff, pYOff)
         end
-        -- Detached portrait already has MEDIUM strata and high frame level
+        -- Detached portrait already has a high frame level
     end
 
     -- Create 2D and class theme textures eagerly; 3D PlayerModel is deferred
@@ -3243,6 +4203,34 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         PP.Point(model3D, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
         model3D:SetCamera(0)
         model3D:Hide()
+        -- The portrait element resets the camera on every model change, so the
+        -- user's zoom, rotation and offsets are applied after each update.
+        -- The defaults leave the camera untouched.
+        local function applyLook(self, updatedUnit)
+            if not (UnitIsConnected(updatedUnit) and UnitIsVisible(updatedUnit)) then return end
+            local key = UnitToSettingsKey(updatedUnit)
+            local s3 = key and db.profile[key]
+            local zoom = math.max(0.25, ((s3 and s3.portrait3DZoom) or 125) / 100)
+            local backdropFrame = self:GetParent()
+            local rot, formZoom, formShift = KT.Portrait3DYaw(updatedUnit, (s3 and s3.portraitSide) or (backdropFrame and backdropFrame._portraitSide),
+                s3 and s3.portraitFacingMode,
+                s3 and s3.portraitFacing and s3.portraitFacing ~= GetDefaultPortraitFacing(updatedUnit),
+                s3 and s3.portrait3DRotation)
+            local offX = ((s3 and s3.portrait3DX) or 0) / 100
+            local offY = ((s3 and s3.portrait3DY) or 0) / 100
+            if self.SetCamDistanceScale then self:SetCamDistanceScale(1 / (zoom * formZoom)) end
+            if self.SetPosition then self:SetPosition(0, offX + formShift, offY) end
+            if self.SetFacing then self:SetFacing(rot) end
+        end
+        -- The model loads after SetUnit returns and starts from its own camera,
+        -- so the look is applied again once it has loaded.
+        model3D.PostUpdate = function(self, updatedUnit)
+            self._camUnit = updatedUnit
+            applyLook(self, updatedUnit)
+        end
+        model3D:SetScript("OnModelLoaded", function(self)
+            if self._camUnit then applyLook(self, self._camUnit) end
+        end)
         backdrop._3d = model3D
         return model3D
     end
@@ -3304,6 +4292,7 @@ local function CreatePortrait(frame, side, frameHeight, unit)
     tex2D.PostUpdate = function(self)
         UnsnapTex(self)
         ApplyPortraitFacing(self, unit, uSettings)
+        if self.isClass and ns.RefreshClassPortrait then ns.RefreshClassPortrait(unit, backdrop) end
         self:ClearAllPoints()
         -- When detached, ApplyDetachedPortraitShape sets expanded offsets for mask fill.
         -- Re-apply those offsets instead of resetting to default.
@@ -3328,6 +4317,12 @@ local function CreatePortrait(frame, side, frameHeight, unit)
         else
             PP.Point(self, "TOPLEFT", backdrop, "TOPLEFT", 0, 0)
             PP.Point(self, "BOTTOMRIGHT", backdrop, "BOTTOMRIGHT", 0, 0)
+        end
+        if backdrop._ktStockPortraitAnchor then
+            KT:FitStockUFPortraitMask(backdrop)
+            if not frame._kuiClassificationPortraitActive then
+                backdrop:SetClipsChildren(true)
+            end
         end
     end
 
@@ -3399,6 +4394,11 @@ local function CreateCastBar(frame, unit, settings)
     PP.Point(bgTex, "TOPLEFT", castbarBg, "TOPLEFT", 0, 0)
     PP.Point(bgTex, "BOTTOMRIGHT", castbarBg, "BOTTOMRIGHT", 0, 0)
     bgTex:SetColorTexture(0, 0, 0, 0.5)
+    -- Exposed so ThemeClientAssets.lua's SeatStockCastbar can recolor it for
+    -- Classic's own bronze accent on every real-stock apply pass (this
+    -- creation-time code only runs once, before the theme's own flags are
+    -- set, so it can't reliably theme-check itself here).
+    castbarBg._bgTex = bgTex
 
     -- Castbar borders (3 edges: left, right, bottom ? top is shared with the frame above)
     PP.CreateBorder(castbarBg, 0, 0, 0, 1, 1, "OVERLAY", 0)
@@ -3454,6 +4454,7 @@ local function CreateCastBar(frame, unit, settings)
             local uSettings = self._eufSettings
             local ownerUnit = self.__owner and self.__owner.unit
             local cc = ResolveCastbarFillColor(ownerUnit, uSettings)
+            if self._ktClassicLook then cc = { r = 1.0, g = 0.70, b = 0.0 } end
             self.castTintLayer:SetVertexColor(cc.r, cc.g, cc.b)
             if self._shieldedTint then
                 self._shieldedTint:SetAlphaFromBoolean(self.notInterruptible, 1, 0)
@@ -3515,7 +4516,7 @@ local function CreateCastBar(frame, unit, settings)
             PP.Point(castbar, "BOTTOMRIGHT", iconFrame, "BOTTOMLEFT", -2, 0)
             text:SetPoint("LEFT", castbar, "LEFT", 5, 1)
             text:SetPoint("RIGHT", castbar, "RIGHT", -18, 1)
-        elseif unit ~= "player" and showIconSetting then
+        elseif (unit ~= "player" or (KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme() ~= "kui")) and showIconSetting then
             iconFrame:SetSize(math.max(cbH2 - 1, 10), math.max(cbH2 - 1, 10))
             PP.Point(iconFrame, "TOPLEFT", castbarBg, "TOPLEFT", 0, 0)
             PP.Point(castbar, "TOPLEFT", iconFrame, "TOPRIGHT", 2, 0)
@@ -3750,10 +4751,199 @@ local function ApplyBorderAppearance(frame, unit)
     if size == 0 then border:Hide() end
 end
 
+-- VisualThemes: the provisional 8-piece Classic border remains a
+-- fallback for units without verified full-frame geometry. Player/target use
+-- their real Classic or Forever stock box below; those kits replace both the
+-- fallback and KUI's generic unified border.
+function KT:FitStockUFTextToWidth(fontString, maxWidth)
+    if not (fontString and fontString.GetStringWidth and fontString.GetFont and fontString.SetFont) then return end
+    local path, currentSize, flags = fontString:GetFont()
+    if not path or not currentSize then return end
+    -- Cache the ORIGINAL font size once, and always re-measure from THAT
+    -- size, never from whatever size the last call left behind. Clicking a
+    -- target fires ApplyClassicFrameArt (and this function through it)
+    -- more than once in the same refresh; without resetting to a fixed
+    -- base first, each call would shrink an already-shrunk font further,
+    -- so the text would keep getting smaller and never recover.
+    local base = fontString._ktStockFitBaseFontSize
+    if not base then
+        base = currentSize
+        fontString._ktStockFitBaseFontSize = base
+    end
+    fontString:SetFont(path, base, flags)
+    local textWidth = fontString:GetStringWidth()
+    -- A FontString showing text derived from a secure/protected context (e.g.
+    -- certain unit names) can return a tainted "secret" number here -- Blizzard's
+    -- own security model forbids comparing it with plain Lua operators
+    -- ("attempt to compare ... a secret number value").
+    if IsForeverSecretValue(textWidth) then return end
+    if not textWidth or textWidth <= 0 or textWidth <= maxWidth then return end
+    fontString:SetFont(path, math.max(6, base * (maxWidth / textWidth)), flags)
+end
+function KT:ApplyStockUFHealthTextGeometry(frame, unit)
+    local health = frame and frame.Health
+    if not health then return end
+
+    local settings = GetSettingsForUnit(unit)
+    local leftContent = settings.leftTextContent or "name"
+    local rightContent = settings.rightTextContent or "both"
+    local centerContent = settings.centerTextContent or "none"
+    local width = math.max(1, (health.GetWidth and health:GetWidth() or 0) - 4)
+
+    if centerContent ~= "none" then
+        -- "name" is excluded here too (matching LeftText below): whichever
+        -- slot actually holds the name has already been moved to the real
+        -- name tab (ApplyForeverUnitFrameArt/ApplyClassicUnitFrameArt, via
+        -- frame._ktStockNameText) -- repositioning it back onto the bar
+        -- here would silently undo that and leave the tab empty.
+        if frame.CenterText and centerContent ~= "name" then
+            frame.CenterText:ClearAllPoints()
+            frame.CenterText:SetPoint("CENTER", health, "CENTER", 0, 0)
+            frame.CenterText:SetWidth(width)
+            frame.CenterText:SetJustifyH("CENTER")
+            KT:FitStockUFTextToWidth(frame.CenterText, width)
+        end
+        return
+    end
+
+    if frame.LeftText and leftContent ~= "none" and leftContent ~= "name" then
+        frame.LeftText:ClearAllPoints()
+        frame.LeftText:SetPoint("LEFT", health, "LEFT", 2, 0)
+        frame.LeftText:SetWidth(width)
+        frame.LeftText:SetJustifyH("LEFT")
+        KT:FitStockUFTextToWidth(frame.LeftText, width)
+    end
+    if frame.RightText and rightContent ~= "none" and rightContent ~= "name" then
+        -- The value/status text (health percent, or whatever oUF status
+        -- tag like "AFK" currently occupies this same FontString) reads
+        -- centered on the real Blizzard bar, not right-aligned near its
+        -- edge.
+        frame.RightText:ClearAllPoints()
+        frame.RightText:SetPoint("CENTER", health, "CENTER", 0, 0)
+        frame.RightText:SetWidth(width)
+        frame.RightText:SetJustifyH("CENTER")
+        KT:FitStockUFTextToWidth(frame.RightText, width)
+    end
+end
+local function ApplyClassicFrameArt(frame, unit)
+    if not frame then return end
+    local VT = KT.VisualThemes
+    local renderedTheme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    local classicKit = db and db.profile and db.profile.frameArtKit == "classic"
+    local classicActive = renderedTheme == "classic" or classicKit
+    if VT and VT.CreateClassicBorder and VT.SeatClassicBorder and VT.ShowClassicBorder then
+        local wantClassic = classicActive
+        if wantClassic then
+            frame.classicBorder = frame.classicBorder or VT:CreateClassicBorder(frame)
+            if frame.classicBorder then
+                VT:SeatClassicBorder(frame.classicBorder, frame, 1)
+                VT:ShowClassicBorder(frame.classicBorder, true)
+            end
+        elseif frame.classicBorder then
+            VT:ShowClassicBorder(frame.classicBorder, false)
+        end
+    end
+
+    -- Real per-client art. Player/target Classic and Forever both use a
+    -- stable stock-layout box; other Classic units retain portrait-only art,
+    -- while non-Forever units deliberately receive no guessed Forever box.
+    local portraitRegion = (frame.Portrait and frame.Portrait.backdrop) or frame
+
+    -- Which FontString actually holds "name" content is a per-profile
+    -- choice (leftTextContent/rightTextContent/centerTextContent), not
+    -- always frame.LeftText -- a profile with a different assignment would
+    -- leave the name tab empty because nothing was ever moved there.
+    -- ThemeClientAssets.lua has no access to `settings`, so this is
+    -- resolved here and handed to it via frame._ktStockNameText (nil when
+    -- no slot is set to "name", which the caller already handles as "leave
+    -- LeftText untouched" for backward compatibility).
+    do
+        local textSettings = GetSettingsForUnit(unit)
+        local leftContent = textSettings.leftTextContent or "name"
+        local rightContent = textSettings.rightTextContent or "both"
+        local centerContent = textSettings.centerTextContent or "none"
+        if centerContent == "name" then
+            frame._ktStockNameText = frame.CenterText
+        elseif rightContent == "name" then
+            frame._ktStockNameText = frame.RightText
+        elseif leftContent == "name" then
+            frame._ktStockNameText = frame.LeftText
+        else
+            frame._ktStockNameText = nil
+        end
+    end
+
+    -- Pet frame: its own small stock box (Classic sheet / Forever-Retail mini
+    -- atlas). Shape and texture are theme-owned; size, colours, fonts and
+    -- texts stay editable.
+    if unit == "pet" and VT and VT.ApplyPetFrameArt and VT.ClearPetFrameArt then
+        local petKind = classicActive and "classic"
+            or ((renderedTheme == "forever" or renderedTheme == "retail") and "forever" or nil)
+        local petSettings = GetSettingsForUnit(unit)
+        local petScale = (tonumber(petSettings.frameWidth) or 101) / 101
+        if petKind and frame.Portrait and frame.Portrait.backdrop and VT:ApplyPetFrameArt(frame, portraitRegion, petKind, { scale = petScale }) then
+            if frame.classicBorder and VT.ShowClassicBorder then VT:ShowClassicBorder(frame.classicBorder, false) end
+            if frame.unifiedBorder then frame.unifiedBorder:Hide() end
+            KT:ApplyStockUFHealthTextGeometry(frame, unit)
+            return
+        end
+        if frame._ktPetSaved then
+            VT:ClearPetFrameArt(frame)
+            if frame.Power and petSettings.powerHeight then PP.Height(frame.Power, petSettings.powerHeight) end
+            if frame._applyTextPositions then frame._applyTextPositions(petSettings) end
+        end
+    end
+
+    local usingClassicRealArt = false
+    if VT and VT.ApplyClassicUnitFrameArt and VT.ClearClassicUnitFrameArt then
+        if classicActive then
+            usingClassicRealArt = VT:ApplyClassicUnitFrameArt(frame, portraitRegion, unit) and true or false
+        else
+            VT:ClearClassicUnitFrameArt(frame)
+        end
+    end
+    local usingForeverRealArt = false
+    if VT and VT.ApplyForeverUnitFrameArt and VT.ClearForeverUnitFrameArt then
+        -- Retail reuses this same real-stock-geometry renderer -- same
+        -- atlas name, same box -- rather than the bare fixed-accent-color
+        -- ceiling. The atlas itself renders gold instead of bronze on a
+        -- genuine Retail client with no extra handling needed.
+        if (renderedTheme == "forever" or renderedTheme == "retail") and not classicActive then
+            usingForeverRealArt = VT:ApplyForeverUnitFrameArt(frame, portraitRegion, unit) and true or false
+        else
+            VT:ClearForeverUnitFrameArt(frame)
+        end
+    end
+
+    -- A verified full-frame kit already provides the complete frame chrome.
+    -- Hide both KUI's generic border and Classic's provisional 8-piece
+    -- fallback only for player/target, where real stock geometry was applied.
+    local usingThemedRealArt = usingClassicRealArt or usingForeverRealArt
+    if usingClassicRealArt and frame.classicBorder
+        and VT and VT.ShowClassicBorder then
+        VT:ShowClassicBorder(frame.classicBorder, false)
+    end
+    if usingThemedRealArt and frame.unifiedBorder then
+        frame.unifiedBorder:Hide()
+    end
+    if usingThemedRealArt then
+        KT:ApplyStockUFHealthTextGeometry(frame, unit)
+    end
+    -- The real stock layouts own their aura placement. Forever moves buffs
+    -- into its name/buffs tab, while Classic places them above the opaque
+    -- frame texture. Skip the generic refresh so it cannot undo either
+    -- layout. Retail and other unit types keep the normal anchor behavior.
+    if frame._refreshAuraBarGeometry and not usingForeverRealArt and not usingClassicRealArt then
+        frame._refreshAuraBarGeometry()
+    end
+end
+
 -- Función compuesta: mantiene la firma original para los 5 call sites
 local function CreateUnifiedBorder(frame, unit)
+    if not frame then return end
     BuildBorderFrame(frame)
     ApplyBorderAppearance(frame, unit)
+    ApplyClassicFrameArt(frame, unit)
     frame:HookScript("OnEnter", FrameBorderEnter)
     frame:HookScript("OnLeave", FrameBorderLeave)
     return frame.unifiedBorder
@@ -3905,7 +5095,7 @@ local function UpdateUnitDispelBorderEvent(self, event, unit)
     -- its dispel border on every UNIT_AURA even when the user switched it off.
     local settings = GetSettingsForUnit and GetSettingsForUnit(unit)
         or frame.db or (GetMod and GetMod().db) or {}
-    if settings and settings.dispelOverlay == false then
+    if not ns.IsDispelOverlayOn(settings) then
         SetDispelFrameBorder(frame, nil)
         return
     end
@@ -3964,7 +5154,7 @@ local function RefreshTargetDebuffDispelStyle(settings)
     local style = AK and AK.styles and AK.styles["kuiuf:target-debuffs"]
     if not style then return end
 
-    local enabled = not (settings and settings.dispelOverlay == false)
+    local enabled = ns.IsDispelOverlayOn(settings)
         and not (settings and settings.debuffDispelBorder == false)
     local thickness = tonumber(settings and settings.debuffDispelBorderSize)
         or tonumber(settings and settings.dispelBorderThickness)
@@ -4001,14 +5191,32 @@ local function ApplyTargetAuraSettings(frame, settings)
         if cbH <= 0 then cbH = 14 end
         local anchor = settings.debuffAnchor or "bottomleft"
         if anchor == "bottomleft" or anchor == "bottomright" then
-            cbOffset = -cbH
+            -- Debuffs (player and target) sit a bit closer/higher to the
+            -- frame without losing all clearance from the castbar.
+            cbOffset = -cbH + KT:GetStyledDebuffLift()
         end
     end
 
+    local bar, width, auraSize, gap = KT:ResolveUFAuraBarGeometry(frame)
     container:ClearAllPoints()
-    container:SetPoint(dia, frame, dfp, dox, doy + cbOffset)
+    container:SetPoint(dia, bar, dfp, dox * gap, doy * gap + cbOffset)
+
     local AK = _G.KTAuraKit
-    if AK then AK.SetContainerAnchor(container, dia) end
+    if AK then
+        AK.SetContainerAnchor(container, dia)
+        if AK.SetContainerRowWidth and ns.BarGloss and ns.BarGloss.IsStyledLook
+            and ns.BarGloss.IsStyledLook() then
+            AK.SetContainerRowWidth(container, width)
+        end
+
+        local style = AK.styles and AK.styles["kuiuf:target-debuffs"]
+        if style and (style.width ~= auraSize or style.height ~= auraSize) then
+            style.width = auraSize
+            style.height = auraSize
+            if AK.RestyleSoon then AK.RestyleSoon("kuiuf:target-debuffs") end
+        end
+    end
+
     local flow = AnchorUtil and AnchorUtil.FlowDirection
     if flow and AK then
         local h = dgx == "LEFT" and flow.Left or flow.Right
@@ -4017,8 +5225,8 @@ local function ApplyTargetAuraSettings(frame, settings)
     end
     if container.SetAuraGroupLayout then
         container:SetAuraGroupLayout("targetDebuffs", {
-            elementWidth = 22, elementHeight = 22,
-            elementSpacing = 1, lineSpacing = 1,
+            elementWidth = auraSize, elementHeight = auraSize,
+            elementSpacing = gap, lineSpacing = gap,
         })
     end
     container:Show()
@@ -4042,17 +5250,66 @@ local function CreateUnitDispelSlots(frame, unit)
         slots = auraKit.BuildDispelSlotSpecs(prefix),
     })
     container:SetFrameLevel(frame:GetFrameLevel() + 20)
+    container:SetShown(ns.IsDispelOverlayOn(GetSettingsForUnit(unit)))
     frame.KTDispelSlots = container
     frame._ktDispelPrefix = prefix
     frame._ktDispelSlotsCreated = true
 end
 
+function KT:RefreshTargetUFAuraBarGeometry(frame)
+    if not frame then return end
+    local current = GetSettingsForUnit(frame.unit or "target")
+
+    if frame.Buffs then
+        local bfp, bia, bgx, bgy, box, boy = ResolveBuffLayout(
+            current.buffAnchor, current.buffGrowth
+        )
+        local buffOffset = 0
+        local buffAnchor = current.buffAnchor or "topleft"
+        if current.showCastbar ~= false
+            and (buffAnchor == "bottomleft" or buffAnchor == "bottomright")
+        then
+            local castHeight = current.castbarHeight or 14
+            if castHeight <= 0 then castHeight = 14 end
+            buffOffset = -castHeight
+        end
+        KT:ApplyLegacyUFAuraBarGeometry(frame.Buffs, frame, bfp, bia,
+            bgx, bgy, box, boy + buffOffset)
+        if frame.Buffs.ForceUpdate then frame.Buffs:ForceUpdate() end
+    end
+
+    if frame.KTDebuffs then
+        ApplyTargetAuraSettings(frame, current)
+    elseif frame.Debuffs then
+        local dfp, dia, dgx, dgy, dox, doy = ResolveBuffLayout(
+            current.debuffAnchor or "bottomleft",
+            current.debuffGrowth or "auto"
+        )
+        local debuffOffset = 0
+        local debuffAnchor = current.debuffAnchor or "bottomleft"
+        if current.showCastbar ~= false
+            and (debuffAnchor == "bottomleft" or debuffAnchor == "bottomright")
+        then
+            local castHeight = current.castbarHeight or 14
+            if castHeight <= 0 then castHeight = 14 end
+            -- Debuffs (player and target) sit a bit closer/higher to the
+            -- frame without losing all clearance from the castbar.
+            debuffOffset = -castHeight + KT:GetStyledDebuffLift()
+        end
+        KT:ApplyLegacyUFAuraBarGeometry(frame.Debuffs, frame, dfp, dia,
+            dgx, dgy, dox, doy + debuffOffset)
+        if frame.Debuffs.ForceUpdate then frame.Debuffs:ForceUpdate() end
+    end
+end
 local function CreateTargetAuras(frame, unit)
     if frame._targetAurasCreated then
         SyncTargetAuraContainer(frame, unit or "target")
         return
     end
     frame._targetAurasCreated = true
+    frame._refreshAuraBarGeometry = function()
+        KT:RefreshTargetUFAuraBarGeometry(frame)
+    end
     local function SetupAuraIcon(_, button)
         if not button then return end
 
@@ -4074,10 +5331,7 @@ local function CreateTargetAuras(frame, unit)
         end
     end
 
-    local auraSize = 22
-    local gap = 1
-    local perRow = 7
-    local containerWidth = frame:GetWidth()
+    local auraAnchor, containerWidth, auraSize, gap, perRow = KT:ResolveUFAuraBarGeometry(frame)
 
     local settings = GetSettingsForUnit(unit or 'target')
 
@@ -4104,7 +5358,7 @@ local function CreateTargetAuras(frame, unit)
     if bAnc == "bottomleft" or bAnc == "bottomright" then
         buffCbOff = cbOffset
     end
-    buffs:SetPoint(bia, frame, bfp, box * gap, boy * gap + buffCbOff)
+    buffs:SetPoint(bia, auraAnchor, bfp, box * gap, boy * gap + buffCbOff)
     buffs:SetSize(containerWidth, auraSize)
     buffs.size = auraSize
     buffs.spacing = gap
@@ -4122,6 +5376,46 @@ local function CreateTargetAuras(frame, unit)
     -- Set frame level higher to appear above power bar border
     buffs:SetFrameLevel(frame:GetFrameLevel() + 15)
     frame.Buffs = buffs
+
+    -- Target's buffs stay directly above target's own frame. Several
+    -- places in this file reposition frame.Buffs on refresh (this creation
+    -- block, two blocks in ReloadFrames, and
+    -- KT:RefreshTargetUFAuraBarGeometry/ApplyLegacyUFAuraBarGeometry), so
+    -- the position is forced by hooking SetPoint itself: whichever of
+    -- those writes anywhere else, the LAST word is always this fixed
+    -- anchor. Guarded against recursion since the corrective call below
+    -- also goes through SetPoint.
+    if unit == "target" or (frame.unit == "target") then
+        local forcingBuffsAnchor = false
+        local function PinTargetBuffsAboveFrame()
+            if forcingBuffsAnchor then return end
+            -- KUI Style keeps the user's own buff anchor (Retail behaviour).
+            if not (ns.BarGloss and ns.BarGloss.IsStyledLook and ns.BarGloss.IsStyledLook()) then return end
+            forcingBuffsAnchor = true
+            buffs:ClearAllPoints()
+            -- Anchored above the name tab, aligned with the visible name
+            -- tab/health bar's left edge. Frame's raw TOPLEFT.x sits further
+            -- left than that edge (frame's bounding box includes margin the
+            -- name tab doesn't use), so compute the real gap between
+            -- Health's left edge and frame's left edge at runtime (robust to
+            -- frameScale, unlike a hardcoded pixel snapshot) and apply it as
+            -- the X offset, while keeping frame's own Y (above the whole
+            -- stock box, name tab included).
+            local xOff = 0
+            if frame.Health and frame.Health.GetLeft and frame.GetLeft then
+                local hl, fl = frame.Health:GetLeft(), frame:GetLeft()
+                if hl and fl then xOff = hl - fl end
+            end
+            buffs:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", xOff,
+                -9 + KT:GetKUIStyleBuffYOffset("target"))
+            forcingBuffsAnchor = false
+        end
+        hooksecurefunc(buffs, "SetPoint", function()
+            if forcingBuffsAnchor then return end
+            PinTargetBuffsAboveFrame()
+        end)
+        PinTargetBuffsAboveFrame()
+    end
 
     local maxDebuffs = (settings and settings.maxDebuffs) or 28
     local dfp, dia, dgx, dgy, dox, doy = ResolveBuffLayout(
@@ -4144,7 +5438,7 @@ local function CreateTargetAuras(frame, unit)
             texCoord = { 0.07, 0.93, 0.07, 0.93 },
             border = { 0, 0, 0, 1, size = 1 },
             cooldownReverse = true,
-            dispelBorder = settings.dispelOverlay ~= false
+            dispelBorder = ns.IsDispelOverlayOn(settings)
                 and settings.debuffDispelBorder ~= false,
             dispelBorderPx = tonumber(settings.debuffDispelBorderSize)
                 or tonumber(settings.dispelBorderThickness) or 2,
@@ -4165,7 +5459,7 @@ local function CreateTargetAuras(frame, unit)
             }},
         })
         debuffs:ClearAllPoints()
-        debuffs:SetPoint(dia, frame, dfp, dox * gap, doy * gap + debuffCbOff)
+        debuffs:SetPoint(dia, auraAnchor, dfp, dox * gap, doy * gap + debuffCbOff)
         AK.SetContainerAnchor(debuffs, dia)
         local flow = AnchorUtil and AnchorUtil.FlowDirection
         if flow then
@@ -4187,7 +5481,7 @@ local function CreateTargetAuras(frame, unit)
         SyncTargetAuraContainer(frame, unit)
     else
         local debuffs = CreateFrame("Frame", nil, frame)
-        debuffs:SetPoint(dia, frame, dfp, dox * gap, doy * gap + debuffCbOff)
+        debuffs:SetPoint(dia, auraAnchor, dfp, dox * gap, doy * gap + debuffCbOff)
         debuffs:SetSize(containerWidth, auraSize)
         debuffs.size = auraSize
         debuffs.spacing = gap
@@ -4365,14 +5659,68 @@ local function SetupUnitIndicators(frame, unit)
         local ovr = CreateFrame("Frame", nil, frame)
         ovr:SetAllPoints(frame)
         ovr._kuiAbovePortraitOverlay = true
-        ovr:SetFrameStrata("HIGH")
         ovr:SetFrameLevel(frame:GetFrameLevel() + 60)
+        ns.ApplyOverlayStrata(ovr, frame)
         frame._kuiIndicatorOverlay = ovr
     end
     local iOvr = frame._kuiIndicatorOverlay
 
+    -- The level circle/text must render above the elite/rare
+    -- classification ring. Sublevels can't do it: the ring's own art still
+    -- shows through above its sublevel 7, and 7 is the maximum ("Sublevel
+    -- must be between -8 and 7"). The "HIGHLIGHT" draw layer doesn't work
+    -- either -- it makes them invisible, as HIGHLIGHT appears to be a
+    -- Button-specific render layer, not a general 5th layer usable on a
+    -- plain Frame like iOvr.
+    -- A genuinely separate, higher-FrameLevel frame sidesteps sublevel
+    -- limits entirely: FrameLevel ordering is a wholly different
+    -- mechanism from draw-layer sublevels and always wins across frames
+    -- within the same strata, regardless of either frame's own internal
+    -- sublevel usage.
+    if not frame._kuiLevelOverlay then
+        local lvlOvr = CreateFrame("Frame", nil, iOvr)
+        lvlOvr:SetAllPoints(iOvr)
+        frame._kuiLevelOverlay = lvlOvr
+    end
+    local lvlOvr = frame._kuiLevelOverlay
+    -- Strata/level are synced on EVERY call, not just inside the creation
+    -- guard above: iOvr's OWN level (frame:GetFrameLevel() + 60, right
+    -- above) is recomputed on every call, unconditionally. If frame's own
+    -- level ever changes later (a real possibility for unit frames), iOvr
+    -- updates to match, and a lvlOvr set only at creation time would stay
+    -- stale and let the two drift out of order on a later refresh.
+    -- Keeping this in sync every call, matching iOvr's own update pattern,
+    -- holds regardless of when frame's level changes.
+    lvlOvr:SetFrameStrata(iOvr:GetFrameStrata())
+    lvlOvr:SetFrameLevel(iOvr:GetFrameLevel() + 1)
+
+    if not frame._kuiLevelCircle then
+        -- Sublevel -1: the opaque disc must stay under the level number, which
+        -- shares this overlay and layer.
+        local circle = lvlOvr:CreateTexture(nil, "OVERLAY", nil, -1)
+        circle:SetTexture("Interface\\Buttons\\WHITE8X8")
+        -- Fully opaque, not 90%: the frame-level ordering here is already
+        -- correct (63 > 62), so any residual "ring still shows through" is
+        -- the last 10% alpha letting the dragon art's bright highlights
+        -- bleed through, not a stacking bug.
+        circle:SetVertexColor(0.06, 0.06, 0.06, 1)
+        local circleMask = lvlOvr:CreateMaskTexture()
+        -- Blizzard's own full-canvas round mask (no transparent padding like
+        -- circle_mask.tga), so the badge is a true circle with no square areas.
+        circleMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        circleMask:SetAllPoints(circle)
+        circle:AddMaskTexture(circleMask)
+        -- Unsnapped so the small masked disc keeps a true round edge.
+        if circle.SetSnapToPixelGrid then circle:SetSnapToPixelGrid(false) end
+        if circle.SetTexelSnappingBias then circle:SetTexelSnappingBias(0) end
+        if circleMask.SetSnapToPixelGrid then circleMask:SetSnapToPixelGrid(false) end
+        if circleMask.SetTexelSnappingBias then circleMask:SetTexelSnappingBias(0) end
+        circle:Hide()
+        frame._kuiLevelCircle = circle
+        frame._kuiLevelCircleMask = circleMask
+    end
     if not frame._kuiLevelText then
-        local levelText = iOvr:CreateFontString(nil, "OVERLAY")
+        local levelText = lvlOvr:CreateFontString(nil, "OVERLAY", nil, 7)
         SetFSFont(levelText, 11, "OUTLINE")
         levelText:SetJustifyH("LEFT")
         levelText:SetWordWrap(false)
@@ -4391,12 +5739,51 @@ local function SetupUnitIndicators(frame, unit)
         frame._kuiClassificationIndicator = classification
     end
 
+    -- A backdrop circle behind the PvP icon, same treatment as the level
+    -- circle (same lvlOvr parent, so it shares the same higher-than-the-ring
+    -- frame level), for ALL themes (not gated to Classic/Forever's stock
+    -- ornament like the level circle is). Shown/hid in exact lockstep with
+    -- the PvP icon itself, never independently.
+    -- Circle, border, and icon all live on lvlOvr: left on iOvr (a LOWER
+    -- frame level than lvlOvr by design, so lvlOvr's own level circle/text
+    -- beat the classification ring), the icon renders under the circle.
+    -- Creation order (same layer, no explicit sublevel) is a convention,
+    -- never a guarantee from the API, so explicit sublevels keep the order:
+    -- circle lowest, border above it, icon on top, all still within the
+    -- OVERLAY layer.
+    if not frame._kuiPvPCircle then
+        local pvpCircle = lvlOvr:CreateTexture(nil, "OVERLAY", nil, -2)
+        pvpCircle:SetTexture("Interface\\Buttons\\WHITE8X8")
+        pvpCircle:SetVertexColor(0.06, 0.06, 0.06, 1)
+        local pvpCircleMask = lvlOvr:CreateMaskTexture()
+        pvpCircleMask:SetTexture(PORTRAIT_MEDIA .. "circle_mask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        pvpCircleMask:SetAllPoints(pvpCircle)
+        pvpCircle:AddMaskTexture(pvpCircleMask)
+        pvpCircle:Hide()
+        frame._kuiPvPCircle = pvpCircle
+        frame._kuiPvPCircleMask = pvpCircleMask
+    end
+    if not frame._kuiPvPCircleBorder then
+        local pvpBorder = lvlOvr:CreateTexture(nil, "OVERLAY", nil, -1)
+        pvpBorder:SetTexture(PORTRAIT_MEDIA .. "circle_border.tga")
+        pvpBorder:Hide()
+        frame._kuiPvPCircleBorder = pvpBorder
+    end
     if not frame._kuiPvPIcon then
-        local pvp = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
+        local pvp = lvlOvr:CreateTexture(nil, "OVERLAY", nil, 1)
         pvp:SetSize(16, 16)
         pvp:SetPoint("BOTTOMRIGHT", frame, "TOPLEFT", -2, 1)
         pvp:Hide()
         frame._kuiPvPIcon = pvp
+    end
+    if not frame._kuiPvPShadow then
+        -- kui style: no backdrop circle, a soft drop shadow under the icon.
+        local shadow = lvlOvr:CreateTexture(nil, "OVERLAY", nil, 0)
+        shadow:SetVertexColor(0, 0, 0, 0.7)
+        shadow:SetSize(20, 20)
+        shadow:SetPoint("CENTER", frame._kuiPvPIcon, "CENTER", 1.5, -1.5)
+        shadow:Hide()
+        frame._kuiPvPShadow = shadow
     end
 
     local function RefreshForeverMetadata()
@@ -4411,12 +5798,16 @@ local function SetupUnitIndicators(frame, unit)
         local portraitRing = frame._kuiClassificationPortraitRing
         if portraitBackdrop and not portraitRing then
             -- Keep the normal portrait border and render classification outside it.
-            portraitRing = portraitBackdrop:CreateTexture(nil, "OVERLAY", nil, 7)
+            portraitRing = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
             portraitRing:SetTexCoord(0, 1, 0, 1)
             portraitRing:Hide()
             frame._kuiClassificationPortraitRing = portraitRing
         end
-        local showLevel = not profile or profile.showCharacterLevel ~= false
+        -- KUI Style shows no level; only the stock-art styles
+        -- (Classic/Forever/Retail) do.
+        local levelTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme() or "kui"
+        local showLevel = levelTheme ~= "kui" and (not profile or profile.showCharacterLevel ~= false)
         local showClassification = not profile or profile.showClassification ~= false
         local noPortraitSize = math.max(8, tonumber(profile and profile.classificationNoPortraitSize) or CLASSIFICATION_NO_PORTRAIT_SIZE)
         ApplyForeverLevelTextStyle(frame._kuiLevelText, profile, portraitAnchor)
@@ -4426,12 +5817,98 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiLevelText:SetPoint(levelAnchor, portraitAnchor, levelAnchor,
                 tonumber(profile.levelX) or 0, tonumber(profile.levelY) or 0)
         elseif u == "target" then
+            -- kui style (not the Classic/Forever/Retail ornament branch
+            -- below): target's level is nudged right so it mirrors
+            -- player's side.
+            local targetLevelXNudge = 14
             frame._kuiLevelText:SetPoint("BOTTOMRIGHT", portraitAnchor, "TOPRIGHT",
-                -(tonumber(profile and profile.levelX) or 2), tonumber(profile and profile.levelY) or 2)
+                -(tonumber(profile and profile.levelX) or 2) + targetLevelXNudge, tonumber(profile and profile.levelY) or 2)
         else
             frame._kuiLevelText:SetPoint("BOTTOMLEFT", portraitAnchor, "TOPLEFT",
                 tonumber(profile and profile.levelX) or 2, tonumber(profile and profile.levelY) or 2)
         end
+
+        -- Classic AND Forever's stock portraits both have a small empty
+        -- circle below their lower corner (both share the same 232x100
+        -- native box design). Put the level inside that ornament instead
+        -- of above the frame. Mirror the anchor for the target portrait on
+        -- the right. Applies to Forever too, not just Classic, so the level
+        -- circle backdrop (for legibility against the elite/rare ring) also
+        -- shows there.
+        local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme()
+        local classicKit = profile and profile.frameArtKit == "classic"
+        local usingClassicLevelOrnament = (renderedTheme == "classic" or renderedTheme == "forever"
+            or renderedTheme == "retail" or classicKit)
+            and portraitVisible
+        if usingClassicLevelOrnament then
+            -- The 36/30.5 pair (from the frame edges) doesn't match
+            -- Classic's own real ornament art: the level badge sits ~25
+            -- units right and ~3 units above where Classic's real small gold
+            -- ring ornament actually is. Forever/Retail's positioning under
+            -- this same 36/30.5 pair is correct, so this corrects Classic
+            -- only.
+            local ox, oy = 36, 30.5
+            if renderedTheme == "classic" then
+                ox, oy = 55, 35
+            end
+            local classicScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+            if not classicScale or classicScale <= 0 then classicScale = 1 end
+            frame._kuiLevelText:SetSize(18 * classicScale, 14 * classicScale)
+            frame._kuiLevelText:ClearAllPoints()
+            -- The circle (below) anchors at the true geometric center. The
+            -- number visually sits 2-3px left of that center at this size --
+            -- likely the OUTLINE font's own glyph metrics, not a positioning
+            -- issue (the two anchors are identical). Nudge the TEXT only,
+            -- same absolute screen direction for both units, so it lands
+            -- visually centered inside the (unmoved) circle.
+            local levelTextXNudge = 1 * classicScale
+            -- Pulls the level inward toward the portrait on whichever side
+            -- each unit anchors from, applied to BOTH units symmetrically
+            -- (same magnitude): the underlying 60/33 base otherwise sits too
+            -- far out and overlaps the portrait on both sides.
+            local levelXNudge = 0
+            if u == "target" then
+                frame._kuiLevelText:SetPoint("CENTER", frame, "BOTTOMRIGHT",
+                    -ox * classicScale + levelTextXNudge + levelXNudge, oy * classicScale)
+            else
+                frame._kuiLevelText:SetPoint("CENTER", frame, "BOTTOMLEFT",
+                    ox * classicScale + levelTextXNudge - levelXNudge, oy * classicScale)
+            end
+            frame._kuiLevelText:SetJustifyH("CENTER")
+
+            -- Backdrop circle: sized a bit larger than the number itself
+            -- and centered on the exact same point, so it paints over
+            -- whatever the elite/rare ring draws in that spot. 20px is too
+            -- small: the dragon ring's own wing/spike art extends further
+            -- inward than a 20px circle covers, so it crosses over the
+            -- circle's top edge even though the frame-level stacking
+            -- (63 > 62) is correct. This isn't a z-order problem, it's a
+            -- coverage-area problem -- enlarged accordingly.
+            local circleSize = 32 * classicScale
+            frame._kuiLevelCircle:ClearAllPoints()
+            frame._kuiLevelCircle:SetSize(circleSize, circleSize)
+            if frame._kuiLevelCircleMask then
+                -- Full-canvas round mask: fits the badge exactly, no expansion.
+                frame._kuiLevelCircleMask:ClearAllPoints()
+                frame._kuiLevelCircleMask:SetAllPoints(frame._kuiLevelCircle)
+            end
+            if u == "target" then
+                frame._kuiLevelCircle:SetPoint("CENTER", frame, "BOTTOMRIGHT",
+                    -ox * classicScale + levelXNudge, oy * classicScale)
+            else
+                frame._kuiLevelCircle:SetPoint("CENTER", frame, "BOTTOMLEFT",
+                    ox * classicScale - levelXNudge, oy * classicScale)
+            end
+        else
+            -- Restore the normal metadata box when leaving Classic, so a
+            -- later theme switch does not retain the small stock ornament
+            -- dimensions or the mirrored justification.
+            frame._kuiLevelText:SetSize(38, 14)
+            frame._kuiLevelText:SetJustifyH("LEFT")
+            frame._kuiLevelCircle:Hide()
+        end
+
         frame._kuiClassificationIndicator:ClearAllPoints()
         if portraitVisible then
             -- The artwork has a transparent center; enlarge it so that
@@ -4458,12 +5935,82 @@ local function SetupUnitIndicators(frame, unit)
         else
             frame._kuiPvPIcon:SetPoint("RIGHT", portraitAnchor, "LEFT", -2, 1)
         end
+        -- Anchor the circle to the icon's own resolved position (whichever
+        -- of the branches above actually applied) instead of duplicating
+        -- the branching -- guarantees exact alignment regardless of anchor
+        -- settings, and automatically tracks any future change to the
+        -- icon's own anchor logic.
+        frame._kuiPvPCircle:ClearAllPoints()
+        frame._kuiPvPCircle:SetSize(24, 24)
+        frame._kuiPvPCircle:SetPoint("CENTER", frame._kuiPvPIcon, "CENTER", 0, 0)
+        frame._kuiPvPCircleBorder:ClearAllPoints()
+        frame._kuiPvPCircleBorder:SetSize(26, 26)
+        frame._kuiPvPCircleBorder:SetPoint("CENTER", frame._kuiPvPIcon, "CENTER", 0, 0)
+        -- Border color depends on the active theme -- yellow for
+        -- Classic/Retail, bronze for Forever.
+        do
+            local cr, cg, cb = ns.GetThemeOrnamentColor(renderedTheme, { 0.42, 0.43, 0.46 }) -- Classic: dark grey
+            -- Player on Classic with an Elite border (modern or Classic card): gold circle.
+            if renderedTheme == "classic" and u == "player" and profile then
+                local pc = profile.playerClassificationBorder
+                if pc == "elite" or pc == "classicelite" then cr, cg, cb = 0.96, 0.76, 0.22 end
+            end
+            -- Retail/Forever with the player's RARE border selected: dark grey circle.
+            if (renderedTheme == "retail" or renderedTheme == "forever") and u == "player" and profile then
+                local pc = profile.playerClassificationBorder
+                if pc == "rare" or pc == "classicrare" then cr, cg, cb = 0.42, 0.43, 0.46 end
+            end
+            frame._kuiPvPCircleBorder:SetVertexColor(cr, cg, cb, 1)
+        end
         local levelText = showLevel and SafeUnitLevelText(u) or nil
+        -- Blizzard's own level text in the stock-art styles: GameNormalNumberFont
+        -- (scaled with the frame art) and Blizzard's level color rules.
+        local blizzardLevel = ns.StockStyleToggle(profile, "levelBlizzardStyle", renderedTheme)
+        if blizzardLevel then
+            local path, size, flags = ns.BlizzardFont("GameNormalNumberFont", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            local artScale = 1
+            if usingClassicLevelOrnament then
+                artScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+                if not artScale or artScale <= 0 then artScale = 1 end
+            end
+            frame._kuiLevelText:SetFont(path, math.max(6, size * artScale), flags)
+            frame._kuiLevelText:SetTextColor(ns.BlizzardLevelColor(u, renderedTheme))
+        end
+        -- In combat Blizzard swaps the level number for its combat icon inside
+        -- the level circle (modern icon on Retail/Forever, the old one on Classic).
+        local combatIcon = frame._kuiLevelCombatIcon
+        local showCombatIcon = levelText and usingClassicLevelOrnament
+            and ns.StockStyleToggle(profile, "levelCombatIcon", renderedTheme)
+            and ns.UnitInCombat(u)
+        if showCombatIcon then
+            -- Same host as the level number, which sits above the level ring art.
+            local iconHost = frame._kuiLevelText:GetParent() or frame
+            if not combatIcon then
+                combatIcon = iconHost:CreateTexture(nil, "OVERLAY", nil, 7)
+                frame._kuiLevelCombatIcon = combatIcon
+            elseif combatIcon:GetParent() ~= iconHost then
+                combatIcon:SetParent(iconHost)
+            end
+            local artScale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+            if not artScale or artScale <= 0 then artScale = 1 end
+            ns.ApplyBlizzardCombatIcon(combatIcon, renderedTheme, 26 * artScale)
+            combatIcon:ClearAllPoints()
+            combatIcon:SetPoint("CENTER", frame._kuiLevelText, "CENTER", 0, 0)
+            combatIcon:Show()
+        elseif combatIcon then
+            combatIcon:Hide()
+        end
         if levelText then
             frame._kuiLevelText:SetText(levelText)
-            frame._kuiLevelText:Show()
+            frame._kuiLevelText:SetShown(not showCombatIcon)
+            if usingClassicLevelOrnament then
+                frame._kuiLevelCircle:Show()
+            else
+                frame._kuiLevelCircle:Hide()
+            end
         else
             frame._kuiLevelText:Hide()
+            frame._kuiLevelCircle:Hide()
         end
         local classificationTexture
         if showClassification then
@@ -4471,42 +6018,341 @@ local function SetupUnitIndicators(frame, unit)
                 and SafeUnitClassificationTexture(u)
                 or SafeUnitClassificationNoPortraitTexture(u, profile)
         end
+        -- Custom Player rare/elite border (option in Unit Frames): the player is
+        -- never classified, so force the chosen overlay. Forever/Retail also hide
+        -- their bronze base art below; Classic keeps its art.
+        local borderChoice = (u == "player" and profile) and profile.playerClassificationBorder or nil
+        local playerClassicRingKind = (borderChoice == "classicrare" and "rare")
+            or (borderChoice == "classicelite" and "elite") or nil
+        local playerCustomBorder = (u == "player" and profile
+            and (CLASSIFICATION_TEXTURES[borderChoice == "rare" and "rare"
+                or borderChoice == "elite" and "elite" or "none"]
+                or (playerClassicRingKind and ns.ClassicRing.sheets[playerClassicRingKind]))) or nil
+        if playerCustomBorder then
+            classificationTexture = portraitVisible and playerCustomBorder
+                or CLASSIFICATION_NO_PORTRAIT_TEXTURES.elite
+        end
+        -- Retail/Forever native Rare/Elite overlay (Blizzard atlas), picked in Unit
+        -- Frames: the Player's border card, or the Target's overlay art option.
+        local nativeKind
+        if portraitVisible and portraitBackdrop then
+            if u == "player" then
+                if borderChoice == "nativerare" then nativeKind = "rare"
+                elseif borderChoice == "nativeelite" then nativeKind = "elite" end
+            elseif u == "target" and showClassification and profile
+                and profile.targetClassificationArt == "native" then
+                nativeKind = ns.NativeClassificationKind(SafeUnitClassification(u))
+            end
+            if nativeKind and not ns.HasNativeClassificationArt(nativeKind) then nativeKind = nil end
+        end
+        if nativeKind then
+            classificationTexture = nil
+            playerCustomBorder = nil
+            playerClassicRingKind = nil
+        end
+        -- Classic style: Blizzard's own Rare/Elite sheet replaces the whole frame art
+        -- (instead of drawing the custom ring), for the player's chosen border and
+        -- for elite/rare targets.
+        if (renderedTheme == "classic" or classicKit) and (u == "player" or u == "target") then
+            local kind
+            if u == "player" then
+                -- Only the Classic cards swap the sheet; the modern Rare/Elite cards keep
+                -- drawing the custom ring over the Classic frame.
+                if borderChoice == "classicrare" then kind = "rare"
+                elseif borderChoice == "classicelite" then kind = "elite" end
+            elseif showClassification and not nativeKind then
+                kind = ns.ClassicRing.KindForClassification(SafeUnitClassification(u))
+            end
+            -- Remembered on the frame so ApplyClassicUnitFrameArt (re-run on every
+            -- style pass) keeps the chosen sheet instead of resetting to the base one.
+            frame._ktClassicSheetPath = kind and ns.ClassicRing.sheets[kind] or nil
+            if frame._ktClassicPortraitArt then
+                frame._ktClassicPortraitArt:SetTexture(frame._ktClassicSheetPath or ns.ClassicRing.base)
+            end
+            if kind then
+                classificationTexture = nil
+                playerCustomBorder = nil
+                playerClassicRingKind = nil
+            end
+        end
+        local usesForeverArt = renderedTheme == "forever" or renderedTheme == "retail"
+        if u == "player" and not usesForeverArt then
+            frame._ktHideForeverPortraitArt = false
+        end
+        if u == "player" and usesForeverArt then
+            local hideBaseArt = playerCustomBorder ~= nil or nativeKind ~= nil
+            -- Persist the replacement state on the frame so every renderer
+            -- pass (including delayed atlas retries) keeps the Forever art
+            -- hidden while PLAYER uses a Rare/Elite border.
+            frame._ktHideForeverPortraitArt = hideBaseArt
+            local wantCircular = hideBaseArt
+            if (frame._ktCircularPortrait and true or false) ~= wantCircular then
+                frame._ktCircularPortrait = wantCircular
+                local VT2 = KT.VisualThemes
+                if VT2 and VT2.ApplyForeverUnitFrameArt and portraitBackdrop then
+                    VT2:ApplyForeverUnitFrameArt(frame, portraitBackdrop, u)
+                end
+            end
+            -- Hide immediately even if atlas data is temporarily unavailable.
+            -- Restoration is handled by ApplyForeverUnitFrameArt above so it
+            -- restores only the correct side's corner patch, never both.
+            if hideBaseArt then
+                if frame._ktForeverPortraitArt then frame._ktForeverPortraitArt:Hide() end
+                if frame._ktForeverPortraitArtFill then frame._ktForeverPortraitArtFill:Hide() end
+                if frame._ktForeverPortraitCornerPatch then frame._ktForeverPortraitCornerPatch:Hide() end
+                if frame._ktForeverPortraitCornerPatch2 then frame._ktForeverPortraitCornerPatch2:Hide() end
+            end
+        end
+        -- Elite/rare/worldboss targets get ONLY the classification overlay
+        -- (the thorn/dragon ring) -- the base stock-art ring is hidden FOR
+        -- them specifically, since the classification overlay replaces it
+        -- as the visual callout. Every other target keeps the normal base
+        -- ring.
+        -- Target ONLY: the player character can never have an elite/rare
+        -- classification (that concept only applies to NPCs you target),
+        -- so applying this to player too would permanently hide its ring.
+        -- Classic keeps the ring unconditionally (Blizzard's real Classic
+        -- TargetingFrame has no such distinction).
+        if u == "target" and (renderedTheme == "forever" or renderedTheme == "retail") then
+            local rawClassification = SafeUnitClassification(u)
+            local isEliteOrRare = CLASSIFICATION_TEXTURES[rawClassification] ~= nil
+            -- Any Rare/Elite overlay, native or custom, replaces the stock art so
+            -- the two styles never overlap. Kept on the frame so later art passes
+            -- don't bring it back.
+            local showBaseRing = not (isEliteOrRare and showClassification) and nativeKind == nil
+            frame._ktHideForeverPortraitArt = not showBaseRing
+            frame._ktDebugClassification = tostring(rawClassification)
+            frame._ktDebugEliteOrRare = tostring(isEliteOrRare)
+            frame._ktDebugArtShownField = tostring(frame._ktForeverPortraitArt ~= nil)
+            if frame._ktForeverPortraitArt then frame._ktForeverPortraitArt:SetShown(showBaseRing) end
+            if frame._ktForeverPortraitArtFill then frame._ktForeverPortraitArtFill:SetShown(showBaseRing) end
+            if frame._ktForeverPortraitCornerPatch then frame._ktForeverPortraitCornerPatch:SetShown(showBaseRing) end
+            if frame._ktForeverPortraitCornerPatch2 then frame._ktForeverPortraitCornerPatch2:SetShown(showBaseRing) end
+        end
+        -- Rare/Elite hides the whole stock atlas: keep the frame around the bars.
+        if (u == "player" or u == "target") and ns.BarFrameArt and ns.BarFrameArt.Update then
+            pcall(ns.BarFrameArt.Update, frame, u)
+        end
         local pvpFaction = (profile and profile.showPvPIcon ~= false
             and (u == "player" or u == "target"))
             and SafeUnitPvPFaction(u) or nil
-        if pvpFaction == "Horde" then
-            frame._kuiPvPIcon:SetTexture(PVP_ICON_PATH .. "Horde.png")
-            frame._kuiPvPIcon:SetTexCoord(0, 1, 0, 1)
-            frame._kuiPvPIcon:Show()
-        elseif pvpFaction == "Alliance" then
-            frame._kuiPvPIcon:SetTexture(PVP_ICON_PATH .. "Alliance.png")
-            frame._kuiPvPIcon:SetTexCoord(0, 1, 0, 1)
+        -- The backdrop circle defaults OFF for kui style, with its own
+        -- toggle so kui users can still turn it on. The real default is
+        -- recomputed here every refresh rather than relying only on the
+        -- seed()+one-time-migration default (seed only runs on an explicit
+        -- theme switch; the migration only runs once, guarded by its own
+        -- flag), which can miss an existing kui profile: once the user has
+        -- explicitly toggled it (profile.showPvPCircle is no longer nil),
+        -- that choice always wins; until then, it follows the CURRENT
+        -- theme directly instead of trusting a historical snapshot.
+        local showPvPCircle
+        if renderedTheme == "kui" then
+            -- kui style never draws the backdrop circle (icon gets a shadow instead).
+            showPvPCircle = false
+        elseif profile and profile.showPvPCircle ~= nil then
+            showPvPCircle = profile.showPvPCircle
+        else
+            showPvPCircle = renderedTheme ~= "kui"
+        end
+        -- PvP icon style: "modern" (ours) or "classic" (stock banner, cropped to
+        -- the 42/64 art area).  Default: the
+        -- Classic style in the Classic theme, ours everywhere else.
+        local pvpStyle
+        if profile then
+            if u == "target" then pvpStyle = profile.pvpIconStyleTarget
+            else pvpStyle = profile.pvpIconStyle end
+        end
+        if pvpStyle ~= "modern" and pvpStyle ~= "classic" then
+            pvpStyle = (renderedTheme == "classic") and "classic" or "modern"
+        end
+        if pvpFaction == "Horde" or pvpFaction == "Alliance" then
+            if pvpStyle == "classic" then
+                frame._kuiPvPIcon:SetSize(28, 28)
+                frame._kuiPvPIcon:SetTexture("Interface\\TargetingFrame\\UI-PVP-" .. pvpFaction)
+                frame._kuiPvPIcon:SetTexCoord(0, 0.65625, 0, 0.65625)
+                frame._kuiPvPShadow:Hide()
+                -- The stock banner has its own plate: no backdrop circle.
+                frame._kuiPvPCircle:Hide()
+                frame._kuiPvPCircleBorder:Hide()
+            else
+                frame._kuiPvPIcon:SetSize(16, 16)
+                frame._kuiPvPIcon:SetTexture(PVP_ICON_PATH .. pvpFaction .. ".png")
+                frame._kuiPvPIcon:SetTexCoord(0, 1, 0, 1)
+                frame._kuiPvPShadow:SetTexture(PVP_ICON_PATH .. pvpFaction .. ".png")
+                -- KUI Style keeps the Retail icon (no extra shadow).
+                frame._kuiPvPShadow:Hide()
+                frame._kuiPvPCircle:SetShown(showPvPCircle)
+                frame._kuiPvPCircleBorder:SetShown(showPvPCircle)
+            end
             frame._kuiPvPIcon:Show()
         else
+            -- PvP disabled or no faction on this unit removes the backdrop
+            -- circle (and its border) too, never independently.
             frame._kuiPvPIcon:Hide()
+            frame._kuiPvPShadow:Hide()
+            frame._kuiPvPCircle:Hide()
+            frame._kuiPvPCircleBorder:Hide()
         end
+        if ns.KUIOrnaments then pcall(ns.KUIOrnaments.ApplyPvPCircle, frame) end
+        if frame._kuiClassicRingTex then frame._kuiClassicRingTex:Hide() end
+        if not (renderedTheme == "classic" or classicKit) then frame._ktClassicSheetPath = nil end
         if classificationTexture then
             local isFlipped = GetClassificationTextureFlipped(u, settings)
+            if playerCustomBorder then
+                -- Player's custom ring must point the way the portrait looks
+                -- (normally right, toward the CDM): portrait facing "normal"
+                -- looks right, so the ring is flipped to match.
+                local ss = false
+                if type(GetShapeshiftForm) == "function" then
+                    local okSS, formSS = pcall(GetShapeshiftForm)
+                    ss = okSS and type(formSS) == "number" and formSS > 0
+                end
+                local looksRight = (GetPortraitFacing("player", settings) == "normal") ~= ss
+                isFlipped = looksRight
+            end
             if portraitVisible and portraitBackdrop and portraitRing then
                 portraitRing:SetTexture(classificationTexture)
                 portraitRing:SetTexCoord(isFlipped and 1 or 0, isFlipped and 0 or 1, 0, 1)
                 local portraitSize = portraitBackdrop:GetWidth()
                 if portraitSize < 1 then portraitSize = 46 end
+                if playerClassicRingKind then
+                    -- Crop of Blizzard Classic's player Rare/Elite sheet around the portrait.
+                    -- Drawn on its own host frame that sits BELOW the level/PvP overlay frame
+                    -- (iOvr + 1), so level text, PvP circle and PvP icon always render above it.
+                    local CR = ns.ClassicRing
+                    local host = frame._kuiClassicRingHost
+                    if not host then
+                        host = CreateFrame("Frame", nil, frame)
+                        host:SetAllPoints(frame)
+                        host:EnableMouse(false)
+                        frame._kuiClassicRingHost = host
+                    end
+                    host:SetFrameStrata(iOvr:GetFrameStrata())
+                    host:SetFrameLevel(math.max(1, iOvr:GetFrameLevel() - 1))
+                    local ct = frame._kuiClassicRingTex
+                    if not ct then
+                        ct = host:CreateTexture(nil, "OVERLAY", nil, 7)
+                        frame._kuiClassicRingTex = ct
+                    end
+                    portraitRing:Hide()
+                    local sc = portraitSize * CR.scale / 64
+                    ct:SetTexture(classificationTexture)
+                    ct:SetTexCoord(CR.uLeft, CR.uRight, CR.vTop, CR.vBottom)
+                    ct:SetSize(CR.cropW * sc, CR.cropH * sc)
+                    ct:ClearAllPoints()
+                    ct:SetPoint("TOPLEFT", portraitBackdrop, "CENTER",
+                        -CR.portraitCX * sc, CR.portraitCY * sc)
+                    portraitBackdrop:SetClipsChildren(false)
+                    ct:Show()
+                    frame._kuiClassificationPortraitActive = true
+                    frame._kuiClassificationIndicator:Hide()
+                    if (renderedTheme == "forever" or renderedTheme == "retail") and frame.Health then
+                        -- The crop ends right after the portrait, and the stock base art is hidden,
+                        -- so slide bars/name toward the crop's visible edge (same measured-shift
+                        -- approach as the custom ring) to avoid a gap.
+                        local cx = portraitBackdrop:GetCenter()
+                        local oldShift = frame._ktRingHugShift or 0
+                        local edge = frame.Health:GetLeft()
+                        if cx and edge then
+                            local stockEdge = edge - oldShift
+                            local ringEdge = cx + (CR.cropW - CR.portraitCX) * sc
+                            local gap = stockEdge - ringEdge
+                            local newShift = 0
+                            if gap + 4 > 1 then newShift = -(gap + 4) end
+                            if math.abs(newShift - oldShift) > 0.5 then
+                                frame._ktRingHugShift = newShift
+                                local VT3 = KT.VisualThemes
+                                if VT3 and VT3.ApplyForeverUnitFrameArt then
+                                    VT3:ApplyForeverUnitFrameArt(frame, portraitBackdrop, u)
+                                end
+                            end
+                        end
+                    end
+                else
+                -- Shrinking the ring itself (tried previously) couldn't
+                -- actually clear the level position without looking broken
+                -- -- the level sits closer to the portrait's center than
+                -- any reasonably-sized ring's edge, so an opaque backdrop
+                -- circle drawn above the ring (frame._kuiLevelCircle) now
+                -- solves the real conflict directly. Ring keeps its normal
+                -- overhang.
                 local ringWidth = math.max(24, portraitSize * CLASSIFICATION_PORTRAIT_SCALE)
+                -- Classic: its stock frame is wider than the generic ring, so the
+                -- rare/elite ring is a bit larger to fully cover it.
+                if renderedTheme == "classic" then
+                    ringWidth = ringWidth * 1.12
+                elseif renderedTheme == "kui" and playerCustomBorder then
+                    -- KUI's round portrait is smaller than the ring's opening: grow it
+                    -- so the elite/rare art wraps the portrait and its border cleanly.
+                    ringWidth = ringWidth * 0.95
+                elseif renderedTheme == "forever" or renderedTheme == "retail" then
+                    -- Slightly larger too, so no gap shows between ring and portrait/bars.
+                    ringWidth = ringWidth * 1.10
+                    -- Player's custom rare/elite ring: a bit bigger still.
+                    if u == "player" then ringWidth = ringWidth * 1.10 end
+                end
+                if (renderedTheme == "forever" or renderedTheme == "retail") and frame.Health then
+                    -- The stock base art (ring + bar track) is hidden while a
+                    -- rare/elite ring is shown, which leaves a gap between the ring
+                    -- and the bars. Measure it (undoing any shift already applied)
+                    -- and let ThemeClientAssets slide bars/name toward the ring.
+                    local cx = portraitBackdrop:GetCenter()
+                    local oldShift = frame._ktRingHugShift or 0
+                    local edge = (u == "target") and frame.Health:GetRight() or frame.Health:GetLeft()
+                    if cx and edge then
+                        local stockEdge = edge - oldShift
+                        -- Follow the ring's overall visible edge rather than the
+                        -- narrow dragon silhouette at this height. The latter sits
+                        -- inside the portrait aperture and over-extends the bars.
+                        local visRadius = ringWidth * ns.ModernClassificationRing.visibleRadius
+                        local ringCenter = cx
+                            + (isFlipped and -ns.ModernClassificationRing.centerX
+                                or ns.ModernClassificationRing.centerX) * ringWidth
+                        local ringEdge = (u == "target") and (ringCenter - visRadius) or (ringCenter + visRadius)
+                        local gap = (u == "target") and (ringEdge - stockEdge) or (stockEdge - ringEdge)
+                        local newShift = 0
+                        if gap + ns.ModernClassificationRing.barOverlap > 1 then
+                            newShift = (u == "target")
+                                and (gap + ns.ModernClassificationRing.barOverlap)
+                                or -(gap + ns.ModernClassificationRing.barOverlap)
+                        end
+                        if math.abs(newShift - oldShift) > 0.5 then
+                            frame._ktRingHugShift = newShift
+                            local VT3 = KT.VisualThemes
+                            if VT3 and VT3.ApplyForeverUnitFrameArt then
+                                VT3:ApplyForeverUnitFrameArt(frame, portraitBackdrop, u)
+                            end
+                        end
+                    end
+                end
                 local ringHeight = ringWidth * CLASSIFICATION_TEXTURE_ASPECT
                 portraitRing:SetSize(ringWidth, ringHeight)
                 portraitRing:ClearAllPoints()
-                local outwardOffset = 0
-                if settings and settings.portraitSide == "right" then
-                    outwardOffset = 3
-                elseif settings and settings.portraitSide == "left" then
-                    outwardOffset = -3
+                -- The ring art's opening is not centred in the PNG (measured at
+                -- ~0.44, 0.52 of the texture; mirrored when flipped): shift it so the
+                -- opening sits on the portrait centre.
+                local styledRing = renderedTheme == "classic" or renderedTheme == "forever"
+                    or renderedTheme == "retail" or classicKit or playerCustomBorder
+                if styledRing then
+                    portraitRing:SetPoint("CENTER", portraitBackdrop, "CENTER",
+                        (isFlipped and -ns.ModernClassificationRing.centerX
+                            or ns.ModernClassificationRing.centerX) * ringWidth,
+                        0.02 * ringHeight)
+                else
+                    -- KUI Style: the Retail placement (pushed 3px outward).
+                    local outwardOffset = 0
+                    if settings and settings.portraitSide == "right" then
+                        outwardOffset = 3
+                    elseif settings and settings.portraitSide == "left" then
+                        outwardOffset = -3
+                    end
+                    portraitRing:SetPoint("CENTER", portraitBackdrop, "CENTER", outwardOffset, 0)
                 end
-                portraitRing:SetPoint("CENTER", portraitBackdrop, "CENTER", outwardOffset, 0)
                 portraitBackdrop:SetClipsChildren(false)
                 portraitRing:Show()
                 frame._kuiClassificationPortraitActive = true
                 frame._kuiClassificationIndicator:Hide()
+                end
             else
                 frame._kuiClassificationPortraitActive = false
                 if portraitRing then portraitRing:Hide() end
@@ -4520,6 +6366,47 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiClassificationIndicator:Hide()
             if portraitRing then portraitRing:Hide() end
             if portraitBackdrop then portraitBackdrop:SetClipsChildren(true) end
+        end
+        do
+            local side = settings and settings.portraitSide
+                or ((u == "player" or u == "pet") and "left" or "right")
+            ns.ShowNativeClassificationRing(frame, portraitBackdrop, nativeKind, side == "left", iOvr)
+        end
+        -- Classic Rare/Elite ring (any style): seat the level in the sheet's own empty
+        -- level circle instead of the style's normal spot, and hide our own badge.
+        if playerClassicRingKind and frame._kuiClassificationPortraitActive and portraitBackdrop
+            and frame._kuiLevelText then
+            local CR = ns.ClassicRing
+            local sc = (portraitBackdrop:GetWidth() or 46) * CR.scale / 64
+            frame._kuiLevelText:ClearAllPoints()
+            -- Wide enough that the number never truncates to "..." (the box is centred on the anchor).
+            frame._kuiLevelText:SetSize(40, 16)
+            if frame._kuiLevelText.SetWordWrap then frame._kuiLevelText:SetWordWrap(false) end
+            frame._kuiLevelText:SetPoint("CENTER", portraitBackdrop, "CENTER", CR.levelDX * sc + 1, CR.levelDY * sc)
+            frame._kuiLevelText:SetJustifyH("CENTER")
+            if frame._kuiLevelCircle then frame._kuiLevelCircle:Hide() end
+        end
+        if ns.KUIOrnaments then pcall(ns.KUIOrnaments.ApplyLevelCircle, frame) end
+        -- KUI Style: with the Rare/Elite ring on the Player portrait, nudge the PvP
+        -- icon 2px to the left (the icon was re-anchored from scratch above, so
+        -- this never accumulates).
+        if renderedTheme == "kui" and u == "player" and frame._kuiClassificationPortraitActive
+            and frame._kuiPvPIcon then
+            local pt, rel, relPt, px, py = frame._kuiPvPIcon:GetPoint(1)
+            if pt then
+                frame._kuiPvPIcon:SetPoint(pt, rel, relPt, (px or 0) - 2, py or 0)
+            end
+        end
+        if frame._ktRingHugShift and not frame._kuiClassificationPortraitActive then
+            frame._ktRingHugShift = nil
+            local VT3 = KT.VisualThemes
+            if VT3 and VT3.ApplyForeverUnitFrameArt and portraitBackdrop
+                and (renderedTheme == "forever" or renderedTheme == "retail") then
+                VT3:ApplyForeverUnitFrameArt(frame, portraitBackdrop, u)
+            end
+        end
+        if u == "target" and ns.KTTargetCombo then
+            ns.KTTargetCombo:Refresh(frame)
         end
         -- Keep the normal border visible underneath the external classification ring.
         local portraitBorder = portraitBackdrop and portraitBackdrop._shapeBorderTex
@@ -4559,6 +6446,8 @@ local function SetupUnitIndicators(frame, unit)
         for _, ev in ipairs({
             "PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED",
             "GROUP_ROSTER_UPDATE", "UNIT_LEVEL", "UNIT_FLAGS", "UNIT_CLASSIFICATION_CHANGED", "UNIT_FACTION", "PLAYER_FLAGS_CHANGED",
+            "UNIT_POWER_UPDATE", "UNIT_POWER_FREQUENT", "UNIT_DISPLAYPOWER", "UPDATE_SHAPESHIFT_FORM", "PLAYER_SPECIALIZATION_CHANGED",
+            "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
         }) do
             frame:RegisterEvent(ev, function()
                 QueueForeverMetadataRefresh()
@@ -4681,8 +6570,21 @@ local function SetupUnitIndicators(frame, unit)
             ovr._icon:SetTexture(iconPath)
             ovr._icon:SetTexCoord(0, 1, 0, 1)
             ovr:Show()
+            -- The status icon and the health value text both center on the
+            -- bar (centering the value text makes it overlap the
+            -- always-centered AFK/Dead/Ghost/Offline icon into unreadable
+            -- mixed text). Real Blizzard shows one or the other, never
+            -- both. Never hides whichever FontString currently serves as
+            -- the name tab (frame._ktStockNameText), which lives above the
+            -- bar, not on it, and must stay visible regardless.
+            if frame.RightText and frame.RightText ~= frame._ktStockNameText then
+                frame.RightText:Hide()
+            end
         else
             ovr:Hide()
+            if frame.RightText and frame.RightText ~= frame._ktStockNameText then
+                frame.RightText:Show()
+            end
         end
     end
 
@@ -4764,8 +6666,13 @@ local function StyleFullFrame(frame, unit)
         if frame.Portrait and not showPortrait then
             frame.Portrait.backdrop:Hide()
         end
+        ApplyClassicFrameArt(frame, unit)
         -- Re-anchor health bar to portrait's actual snapped width (eliminates sub-pixel gap)
-        if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health then
+        -- -- skipped when Forever/Classic real stock geometry is active: this
+        -- unconditional dual TOPLEFT+RIGHT anchor would silently undo the
+        -- real bar width ApplyClassicFrameArt just set, immediately above.
+        if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health
+            and not (frame._ktForeverLayoutActive or frame._ktClassicLayoutActive) then
             local snappedPortW = frame.Portrait.backdrop:GetWidth()
             local newXOff = (effectiveSide == "left") and snappedPortW or 0
             local newRI = (effectiveSide == "right") and snappedPortW or 0
@@ -4786,9 +6693,7 @@ local function StyleFullFrame(frame, unit)
 
         -- Always create player buffs; oUF element disabled later if not wanted
         do
-            local auraSize = 22
-            local gap = 1
-            local perRow = 7
+            local auraAnchor, auraWidth, auraSize, gap, perRow = KT:ResolveUFAuraBarGeometry(frame)
             local bfp, bia, bgx, bgy, box, boy = ResolveBuffLayout(
                 settings.buffAnchor, settings.buffGrowth
             )
@@ -4802,8 +6707,9 @@ local function StyleFullFrame(frame, unit)
                 buffCbOffset = -cbH
             end
             local buffs = CreateFrame("Frame", nil, frame)
-            buffs:SetPoint(bia, frame, bfp, box * gap, boy * gap + buffCbOffset)
-            buffs:SetSize(frame:GetWidth(), auraSize)
+            buffs:SetPoint(bia, auraAnchor, bfp, box * gap,
+                boy * gap + buffCbOffset + KT:GetKUIStyleBuffYOffset("player"))
+            buffs:SetSize(auraWidth, auraSize)
             buffs.size = auraSize
             buffs.spacing = gap
             buffs.num = settings.maxBuffs or 4
@@ -4828,6 +6734,26 @@ local function StyleFullFrame(frame, unit)
                 end
             end
             frame.Buffs = buffs
+            frame._refreshAuraBarGeometry = function()
+                local current = GetSettingsForUnit(frame.unit or unit or "player")
+                local bfp2, bia2, bgx2, bgy2, box2, boy2 = ResolveBuffLayout(
+                    current.buffAnchor, current.buffGrowth
+                )
+                local liveOffset = 0
+                local liveAnchor = current.buffAnchor or "topleft"
+                if current.showPlayerCastbar
+                    and (liveAnchor == "bottomleft" or liveAnchor == "bottomright"
+                        or liveAnchor == "left" or liveAnchor == "right")
+                then
+                    local castHeight = current.playerCastbarHeight or 0
+                    if castHeight <= 0 then castHeight = 14 end
+                    liveOffset = -castHeight
+                end
+                KT:ApplyLegacyUFAuraBarGeometry(frame.Buffs, frame, bfp2, bia2,
+                    bgx2, bgy2, box2,
+                    boy2 + liveOffset + KT:GetKUIStyleBuffYOffset("player"))
+                if frame.Buffs.ForceUpdate then frame.Buffs:ForceUpdate() end
+            end
             CreateUnitDispelSlots(frame, unit)
         end
     elseif unit == "target" then
@@ -4859,8 +6785,12 @@ local function StyleFullFrame(frame, unit)
         if frame.Portrait and not showPortrait then
             frame.Portrait.backdrop:Hide()
         end
+        ApplyClassicFrameArt(frame, unit)
         -- Re-anchor health bar to portrait's actual snapped width (eliminates sub-pixel gap)
-        if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health then
+        -- -- skipped when Forever/Classic real stock geometry is active: see
+        -- the identical player-branch comment above for why.
+        if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health
+            and not (frame._ktForeverLayoutActive or frame._ktClassicLayoutActive) then
             local snappedPortW = frame.Portrait.backdrop:GetWidth()
             local newXOff = (effectiveSide == "left") and snappedPortW or 0
             local newRI = (effectiveSide == "right") and snappedPortW or 0
@@ -4978,6 +6908,9 @@ local function StyleFullFrame(frame, unit)
 
     -- Indicadores comunes a todas las unidades
     SetupUnitIndicators(frame, unit)
+    -- Text regions now exist; re-run the theme layout so the name tab and
+    -- text strata are seated in the same stock geometry as the bars.
+    ApplyClassicFrameArt(frame, unit)
 end
 
 SetupPlayerStatusIndicators = function(frame, settings)
@@ -4988,8 +6921,8 @@ SetupPlayerStatusIndicators = function(frame, settings)
         local ovr = CreateFrame("Frame", nil, frame)
         ovr:SetAllPoints(frame)
         ovr._kuiAbovePortraitOverlay = true
-        ovr:SetFrameStrata("HIGH")
         ovr:SetFrameLevel(frame:GetFrameLevel() + 60)
+        ns.ApplyOverlayStrata(ovr, frame)
         frame._kuiIndicatorOverlay = ovr
     end
     local iOvr = frame._kuiIndicatorOverlay
@@ -5005,13 +6938,22 @@ SetupPlayerStatusIndicators = function(frame, settings)
     if not frame.RestingIndicator then
         local resting = iOvr:CreateTexture(nil, "OVERLAY", nil, 7)
         resting:Hide()
-        resting:SetTexture(KUI_ICON_PATH .. "Zzz.png")
-        resting:SetTexCoord(0, 1, 0, 1)
         frame.RestingIndicator = resting
-        -- PostUpdate: oUF resetea la textura; forzamos la nuestra
+        -- KUI Style keeps its own Zzz; Classic, Forever and Retail share
+        -- Blizzard's original resting icon.
+        local function ApplyRestingTexture(self)
+            if ns.IsStockStyle() then
+                self:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+                self:SetTexCoord(0, 0.5, 0, 0.421875)
+            else
+                self:SetTexture(KUI_ICON_PATH .. "Zzz.png")
+                self:SetTexCoord(0, 1, 0, 1)
+            end
+        end
+        ApplyRestingTexture(resting)
+        -- PostUpdate: oUF resets the texture; put ours back
         frame.RestingIndicator.PostUpdate = function(self, isResting)
-            self:SetTexture(KUI_ICON_PATH .. "Zzz.png")
-            self:SetTexCoord(0, 1, 0, 1)
+            ApplyRestingTexture(self)
         end
     end
 
@@ -5067,8 +7009,24 @@ SetupPlayerStatusIndicators = function(frame, settings)
 
         resting:SetSize(16, 16)
         resting:ClearAllPoints()
-        resting:SetPoint("TOPLEFT", frame.Health, "TOPLEFT", 3, 8)
         resting:SetDrawLayer("OVERLAY", 7)
+
+        -- The resting (Zzz) icon always sits 5px directly above player's
+        -- portrait in Retail/Forever/Classic styles, not anchored to the
+        -- health bar like the generic kui layout below.
+        local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme()
+        local usesPortraitAnchor = renderedTheme == "retail" or renderedTheme == "forever"
+            or renderedTheme == "classic"
+        local portraitAnchor = frame.Portrait and (frame.Portrait.backdrop or frame.Portrait)
+        if usesPortraitAnchor and portraitAnchor then
+            -- Blizzard's icon is 31x33 on its 64px portrait.
+            local k = math.max(0.5, (portraitAnchor:GetWidth() or 46) / 64)
+            resting:SetSize(24 * k, 25 * k)
+            resting:SetPoint("BOTTOM", portraitAnchor, "TOP", 0, 5)
+        else
+            resting:SetPoint("TOPLEFT", frame.Health, "TOPLEFT", 3, 8)
+        end
     end
 
     frame._updateCombatIndicatorLayout = UpdateCombatIndicatorLayout
@@ -5138,7 +7096,8 @@ local function StyleFocusFrame(frame, unit)
         frame.Portrait.backdrop:Hide()
     end
     -- Re-anchor health bar to portrait's actual snapped width (eliminates sub-pixel gap)
-    if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health then
+    if frame.Portrait and frame.Portrait.backdrop and showPortrait and isAttached and frame.Health
+        and not (frame._ktForeverLayoutActive or frame._ktClassicLayoutActive) then
         local snappedPortW = frame.Portrait.backdrop:GetWidth()
         local newXOff = (effectiveSide == "left") and snappedPortW or 0
         local newRI = (effectiveSide == "right") and snappedPortW or 0
@@ -5266,6 +7225,7 @@ local function StyleSimpleFrame(frame, unit)
     health.colorTapped = true
     health.colorDisconnected = true
     health._kuiUnitKey = UnitToSettingsKey(unit)
+    KT:ApplySmoothBar(health)
 
     -- Inherit health bar texture from donor frame (focus > target > player)
     local donor = GetMiniDonorSettings()
@@ -5370,6 +7330,7 @@ local function StylePetFrame(frame, unit)
     health.colorTapped = true
     health.colorDisconnected = true
     health._kuiUnitKey = UnitToSettingsKey(unit)
+    KT:ApplySmoothBar(health)
 
     -- Inherit health bar texture from donor frame (focus > target > player)
     local donor = GetMiniDonorSettings()
@@ -5390,7 +7351,8 @@ local function StylePetFrame(frame, unit)
     if frame.Portrait and not showPortrait then        frame.Portrait.backdrop:Hide()
     end
     -- Re-anchor health bar to portrait's actual snapped width (eliminates sub-pixel gap)
-    if frame.Portrait and frame.Portrait.backdrop and showPortrait then
+    if frame.Portrait and frame.Portrait.backdrop and showPortrait
+        and not (frame._ktForeverLayoutActive or frame._ktClassicLayoutActive) then
         local snappedPortW = frame.Portrait.backdrop:GetWidth()
         health:ClearAllPoints()
         PP.Point(health, "TOPLEFT", frame, "TOPLEFT", snappedPortW, 0)
@@ -5458,6 +7420,8 @@ local function StylePetFrame(frame, unit)
 
     -- Indicadores comunes a todas las unidades
     SetupUnitIndicators(frame, unit)
+    -- Texts now exist: seat the theme art (Classic/Forever/Retail) on the pet.
+    ApplyClassicFrameArt(frame, unit)
 end
 
 
@@ -5487,7 +7451,8 @@ local function StyleBossFrame(frame, unit)
         frame.Portrait.backdrop:Hide()
     end
     -- Re-anchor health bar to portrait's actual snapped width (eliminates sub-pixel gap)
-    if frame.Portrait and frame.Portrait.backdrop and showPortrait and frame.Health then
+    if frame.Portrait and frame.Portrait.backdrop and showPortrait and frame.Health
+        and not (frame._ktForeverLayoutActive or frame._ktClassicLayoutActive) then
         local snappedPortW = frame.Portrait.backdrop:GetWidth()
         local powerAboveOff = (bPpPos == "above") and (settings.powerHeight or 6) or 0
         frame.Health:ClearAllPoints()
@@ -5725,7 +7690,8 @@ local function ResolveClassResource(playerClass)
         powerType, isCustom = entry, false
     else
         -- Tabla con specIDs: resolver según especialización activa
-        local spec = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization()
+        local spec = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+            and C_SpecializationInfo.GetSpecialization()
         local specID = spec and C_SpecializationInfo.GetSpecializationInfo(spec)
         local specEntry = specID and entry[specID]
         if not specEntry then return nil end
@@ -5773,6 +7739,352 @@ local function ResolvePipColor(playerClass, isModern)
     return classColor.r, classColor.g, classColor.b
 end
 
+-- Target combo points use the same circular language in Classic, Forever
+-- and Retail as the resource-bar pips, staying attached to the target
+-- portrait. kui style gets a different language entirely -- a centered
+-- horizontal bar of rectangular pips below target, clear of
+-- debuffs/castbar -- since it has no portrait ring to match.
+ns.KTTargetCombo = ns.KTTargetCombo or {}
+
+function ns.KTTargetCombo:_Hide(frame)
+    if frame and frame._kuiTargetComboRing then
+        frame._kuiTargetComboRing:Hide()
+    end
+    if frame and frame._kuiTargetComboBar then
+        frame._kuiTargetComboBar:Hide()
+    end
+end
+
+function ns.KTTargetCombo:_StylePip(pip, r, g, b)
+    if not pip then return end
+    if not pip._circleMask then
+        pip._circleMask = pip:CreateMaskTexture()
+        pip._circleMask:SetTexture(PORTRAIT_MEDIA .. "circle_mask.tga",
+            "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        pip._circleMask:SetAllPoints(pip)
+        -- The ring's pips look soft/jagged at their small size, arranged
+        -- via trig (non-integer pixel offsets). The same unsnap treatment
+        -- already used for circular portrait art (UnsnapTexture in
+        -- ThemeClientAssets.lua) fixes this class of blur -- WoW's default
+        -- pixel-snapping fights fractional positioning on small round
+        -- masked textures.
+        if pip._circleMask.SetSnapToPixelGrid then pip._circleMask:SetSnapToPixelGrid(false) end
+        if pip._circleMask.SetTexelSnappingBias then pip._circleMask:SetTexelSnappingBias(0) end
+    end
+    if not pip._bg then
+        pip._bg = pip:CreateTexture(nil, "BACKGROUND")
+        pip._bg:SetAllPoints(pip)
+        pip._bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        pcall(pip._bg.AddMaskTexture, pip._bg, pip._circleMask)
+        if pip._bg.SetSnapToPixelGrid then pip._bg:SetSnapToPixelGrid(false) end
+        if pip._bg.SetTexelSnappingBias then pip._bg:SetTexelSnappingBias(0) end
+    end
+    if not pip._fill then
+        pip._fill = pip:CreateTexture(nil, "ARTWORK")
+        pip._fill:SetAllPoints(pip)
+        pip._fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+        pcall(pip._fill.AddMaskTexture, pip._fill, pip._circleMask)
+        if pip._fill.SetSnapToPixelGrid then pip._fill:SetSnapToPixelGrid(false) end
+        if pip._fill.SetTexelSnappingBias then pip._fill:SetTexelSnappingBias(0) end
+    end
+    if not pip._border then
+        pip._border = pip:CreateTexture(nil, "OVERLAY", nil, 4)
+        pip._border:SetAllPoints(pip)
+        pip._border:SetTexture(PORTRAIT_MEDIA .. "circle_border.tga")
+        if pip._border.SetSnapToPixelGrid then pip._border:SetSnapToPixelGrid(false) end
+        if pip._border.SetTexelSnappingBias then pip._border:SetTexelSnappingBias(0) end
+    end
+    -- Default-game look: black socket, metallic rim, glossy red orb.
+    pip._bg:SetVertexColor(0.03, 0.03, 0.03, 1)
+    pip._fill:SetTexture("Interface\\COMMON\\Indicator-Red")
+    pip._fill:SetVertexColor(1, 1, 1, 1)
+    -- A gold border (1, 0.82, 0.08) blends into the bronze ring the pips
+    -- sit against, low contrast against a similarly-colored background.
+    -- White stands out regardless of what's behind it.
+    do
+        local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme()
+        pip._border:SetVertexColor(0.66, 0.60, 0.52, 1)
+    end
+
+    if pip._secretBar then
+        local secretFill = pip._secretBar:GetStatusBarTexture()
+        if secretFill then
+            pcall(secretFill.AddMaskTexture, secretFill, pip._circleMask)
+        end
+        pip._secretBar:SetStatusBarColor(r, g, b, 1)
+    end
+end
+
+-- kui's generic target layout has no portrait ring to anchor the circular
+-- pips to (and no fixed "corner" geometry the way Classic/Forever/Retail's
+-- stock boxes do), so the ring style is reserved for those three. kui
+-- instead gets a single horizontal bar anchored below whichever of
+-- {frame, Debuffs, Castbar background} sits lowest on screen right now --
+-- dynamic on purpose, since debuffAnchor and showCastbar are both
+-- user-configurable and a fixed offset would overlap one or the other
+-- depending on that configuration.
+function ns.KTTargetCombo:_LowestRegion(frame)
+    local winner, winnerBottom = frame, frame.GetBottom and frame:GetBottom() or 0
+    local function Consider(region)
+        if region and region.IsShown and region:IsShown()
+            and region.GetBottom and region:GetBottom() then
+            local b = region:GetBottom()
+            if b < winnerBottom then
+                winner, winnerBottom = region, b
+            end
+        end
+    end
+    Consider(frame.Debuffs)
+    Consider(frame.Castbar and frame.Castbar.GetParent and frame.Castbar:GetParent())
+    return winner
+end
+
+function ns.KTTargetCombo:_StyleRectPip(pip, r, g, b, borderR, borderG, borderB)
+    if not pip then return end
+    if not pip._bg then
+        pip._bg = pip:CreateTexture(nil, "BACKGROUND")
+        pip._bg:SetAllPoints(pip)
+        pip._bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    end
+    if not pip._fill then
+        pip._fill = pip:CreateTexture(nil, "ARTWORK")
+        pip._fill:SetAllPoints(pip)
+        pip._fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    end
+    -- PP.CreateBorder is idempotent (safe to call every refresh, just
+    -- repaints the same 4 edge textures), so no "only once" guard is
+    -- needed.
+    -- Black 1px border + soft shadow.
+    ns.KTTargetCombo:_DecorateRectPip(pip)
+    pip._bg:SetVertexColor(0.22, 0.02, 0.02, 0.92)
+    pip._fill:SetVertexColor(r, g, b, 1)
+end
+
+-- Black 1px border + drop shadow drawn as textures just outside the pip frame.
+function ns.KTTargetCombo:_DecorateRectPip(pip)
+    if not pip or pip._ktDecor then return end
+    pip._ktDecor = true
+    local sh = pip:CreateTexture(nil, "BACKGROUND", nil, -2)
+    sh:SetColorTexture(0, 0, 0, 0.5)
+    sh:SetPoint("TOPLEFT", pip, "TOPLEFT", -2, 1)
+    sh:SetPoint("BOTTOMRIGHT", pip, "BOTTOMRIGHT", 2, -3)
+    local bd = pip:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bd:SetColorTexture(0, 0, 0, 1)
+    bd:SetPoint("TOPLEFT", pip, "TOPLEFT", -1, 1)
+    bd:SetPoint("BOTTOMRIGHT", pip, "BOTTOMRIGHT", 1, -1)
+end
+
+function ns.KTTargetCombo:Refresh(frame)
+    local unit = frame and (frame.unit or (frame.GetAttribute and frame:GetAttribute("unit")))
+    if not frame or unit ~= "target" then return end
+
+    -- Target combo display is chosen in the options (default off); this
+    -- ring (or the kui bar) only draws for the "ring" choice.
+    if ns.ComboUnderFrame and ns.ComboUnderFrame.GetStyle("target") ~= "ring" then
+        self:_Hide(frame)
+        return
+    end
+
+    -- Only show on neutral/hostile targets, never on an ally -- combo
+    -- points are a player-vs-enemy mechanic, and the ring showing on a
+    -- friendly target reads as a display bug.
+    if UnitExists(unit) and UnitIsFriend and UnitIsFriend("player", unit) then
+        self:_Hide(frame)
+        return
+    end
+
+    local _, class = UnitClass("player")
+    -- Warlock's Soul Shards work here too, not just Rogue/Druid combo
+    -- points.
+    local comboType
+    if class == "ROGUE" or class == "DRUID" then
+        comboType = Enum and Enum.PowerType and Enum.PowerType.ComboPoints or 4
+    elseif class == "WARLOCK" then
+        comboType = Enum and Enum.PowerType and Enum.PowerType.SoulShards
+    end
+    if not comboType then
+        self:_Hide(frame)
+        return
+    end
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    local useRing = renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail"
+
+    local portrait = frame.Portrait and frame.Portrait.backdrop
+    -- KUI Style with round portraits gets the same ring around the portrait.
+    if not useRing and db and db.profile and db.profile.portraitStyle == "circular"
+        and portrait and portrait:IsShown() then
+        useRing = true
+    end
+    if useRing and (not portrait or not portrait:IsShown()) then
+        self:_Hide(frame)
+        return
+    end
+
+    local ok, maxPower = pcall(UnitPowerMax, "player", comboType)
+    if not ok or IsForeverSecretValue(maxPower) or type(maxPower) ~= "number" then
+        maxPower = 5
+    end
+    if maxPower <= 0 then
+        self:_Hide(frame)
+        return
+    end
+    maxPower = math.max(1, math.min(10, math.floor(maxPower + 0.5)))
+
+    local r, g, b = 1.0, 0.05, 0.05
+    local okCurrent, current = pcall(UnitPower, "player", comboType)
+    local numericCurrent = okCurrent and not IsForeverSecretValue(current)
+        and type(current) == "number" and current or nil
+    local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+    local classColor = classColors and classColors[class]
+
+    if not useRing then
+        if frame._kuiTargetComboRing then frame._kuiTargetComboRing:Hide() end
+
+        local overlay = frame._kuiIndicatorOverlay or frame
+        local bar = frame._kuiTargetComboBar
+        if not bar then
+            bar = CreateFrame("Frame", nil, overlay)
+            frame._kuiTargetComboBar = bar
+            bar.pips = {}
+        end
+        bar:SetFrameStrata(overlay:GetFrameStrata())
+        bar:SetFrameLevel((overlay:GetFrameLevel() or frame:GetFrameLevel()) + 12)
+
+        -- Wider pips (classic WoW's own combo-point ticks read as
+        -- rectangles, not squares).
+        local pipWidth, pipHeight, gap = 24, 10, 5
+        local totalWidth = maxPower * pipWidth + (maxPower - 1) * gap
+        bar:SetSize(math.max(pipWidth, totalWidth), pipHeight)
+        bar:ClearAllPoints()
+        bar:SetPoint("TOP", self:_LowestRegion(frame), "BOTTOM", 0, -6)
+
+        for index = 1, maxPower do
+            local pip = bar.pips[index]
+            if not pip then
+                pip = CreateFrame("Frame", nil, bar)
+                bar.pips[index] = pip
+            end
+            pip:SetSize(pipWidth, pipHeight)
+            pip:ClearAllPoints()
+            pip:SetPoint("LEFT", bar, "LEFT", (index - 1) * (pipWidth + gap), 0)
+            self:_StyleRectPip(pip, r, g, b,
+                classColor and classColor.r, classColor and classColor.g, classColor and classColor.b)
+            pip._fill:Hide()
+            if pip._secretBar then pip._secretBar:Hide() end
+
+            if numericCurrent then
+                pip._fill:SetShown(index <= numericCurrent)
+            elseif okCurrent and IsForeverSecretValue(current) then
+                if not pip._secretBar then
+                    pip._secretBar = CreateFrame("StatusBar", nil, pip)
+                    pip._secretBar:SetAllPoints(pip)
+                    pip._secretBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+                    pip._secretBar:SetFrameLevel(pip:GetFrameLevel() + 1)
+                end
+                pip._secretBar:SetMinMaxValues(index - 1, index)
+                pip._secretBar:SetShown(pcall(pip._secretBar.SetValue, pip._secretBar, current))
+            end
+            pip:Show()
+        end
+        for index = maxPower + 1, #bar.pips do
+            bar.pips[index]:Hide()
+        end
+        bar:Show()
+        return
+    end
+
+    if frame._kuiTargetComboBar then frame._kuiTargetComboBar:Hide() end
+
+    local overlay = frame._kuiIndicatorOverlay or frame
+    local ring = frame._kuiTargetComboRing
+    if not ring then
+        ring = CreateFrame("Frame", nil, overlay)
+        ring:SetClipsChildren(false)
+        frame._kuiTargetComboRing = ring
+        ring.pips = {}
+    end
+    ring:SetFrameStrata(overlay:GetFrameStrata())
+    ring:SetFrameLevel((overlay:GetFrameLevel() or frame:GetFrameLevel()) + 12)
+
+    -- Blizzard's ComboFrame geometry: 12px points around a 64px portrait,
+    -- on its arc, scaled to this portrait. comboPosTarget "above" turns the
+    -- arc toward the top; X/Y offset the whole ring.
+    local portraitSize = portrait:GetWidth()
+    if type(portraitSize) ~= "number" or portraitSize < 1 then portraitSize = 46 end
+    local O = ns.KUIOrnaments
+    local art = O and O.GetComboArt() or "modern"
+    local pipSize = math.max(8, portraitSize * 12 / 64)
+    local comboPos, comboX, comboY = "below", 0, 0
+    if ns.ComboUnderFrame and ns.ComboUnderFrame.GetPlacement then
+        comboPos, comboX, comboY = ns.ComboUnderFrame.GetPlacement("target")
+    end
+    local reach = portraitSize * 0.8 + pipSize
+    ring:SetSize(reach * 2, reach * 2)
+    ring:ClearAllPoints()
+    ring:SetPoint("CENTER", portrait, "CENTER", comboX, comboY)
+
+    local layout = O and O.LayoutRing(frame, portrait, maxPower, pipSize, comboPos == "above")
+    if not layout then
+        layout = {}
+        for index = 1, maxPower do
+            local t = (maxPower > 1) and ((index - 1) / (maxPower - 1)) or 0
+            local angle = math.rad(95 + (15 - 95) * t)
+            local radius = portraitSize * 0.5 + 14
+            layout[index] = { math.cos(angle) * radius, math.sin(angle) * radius }
+        end
+    end
+
+    for index = 1, maxPower do
+        local pip = ring.pips[index]
+        if not pip then
+            pip = CreateFrame("Frame", nil, ring)
+            ring.pips[index] = pip
+        end
+        local spot = layout[index]
+        if not spot then
+            pip:Hide()
+        else
+            pip:SetSize(pipSize, pipSize)
+            pip:ClearAllPoints()
+            pip:SetPoint("CENTER", ring, "CENTER", spot[1], spot[2])
+            if okCurrent and IsForeverSecretValue(current) and not pip._secretBar then
+                pip._secretBar = CreateFrame("StatusBar", nil, pip)
+                pip._secretBar:SetFrameLevel(pip:GetFrameLevel() + 1)
+                pip._ktArt = nil
+            end
+            local lit
+            if O then
+                O.StylePip(pip, art, pipSize)
+                lit = pip._lit
+            else
+                self:_StylePip(pip, r, g, b)
+                lit = pip._fill
+            end
+            if pip._secretBar then pip._secretBar:Hide() end
+            local filled = numericCurrent and index <= numericCurrent
+            if numericCurrent then
+                lit:SetShown(filled)
+            else
+                lit:Hide()
+                if okCurrent and IsForeverSecretValue(current) and pip._secretBar then
+                    pip._secretBar:SetMinMaxValues(index - 1, index)
+                    pip._secretBar:SetShown(pcall(pip._secretBar.SetValue, pip._secretBar, current))
+                end
+            end
+            -- Points past the standard row only appear while filled.
+            pip:SetShown(not spot.onlyFilled or filled or numericCurrent == nil)
+            pip:SetAlpha(spot.onlyFilled and 0.6 or 1)
+        end
+    end
+    for index = maxPower + 1, #ring.pips do
+        ring.pips[index]:Hide()
+    end
+    ring:Show()
+end
+
 local function CreateCustomClassPower(playerFrame, style)
     local _, playerClass = UnitClass("player")
 
@@ -5782,13 +8094,32 @@ local function CreateCustomClassPower(playerFrame, style)
 
     local isModern = (style == "modern")
     local isCircle = (style == "circles")
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    local comboPowerType = Enum and Enum.PowerType and Enum.PowerType.ComboPoints or 4
+    -- Classic combo ornament now lives in KUI_ComboUnderFrame.lua.
+    local isClassicCombo = false
+    -- Atlas availability differs between clients: probe first, fall back to
+    -- stock textures (glossy red orb on a dark plate) when it is missing.
+    local function HasAtlas(name)
+        return C_Texture and C_Texture.GetAtlasInfo
+            and C_Texture.GetAtlasInfo(name) ~= nil
+    end
 
     -- Dimensiones de cada pip según estilo
     local sizeAdj = db.profile.player.classPowerSize or 8
     local spacingAdj = db.profile.player.classPowerSpacing or 2
     local pipSize, pipH
-    if isModern then
-        pipSize = sizeAdj
+    if isClassicCombo then
+        -- The legacy PlayerFrame combo ornament is a 126x20 strip: five
+        -- 20px points, four 1px gaps and 11px of art padding on each side.
+        -- Keep that native geometry so ComboPoints-AllPointsBG, the empty
+        -- point overlay and the red active atlas line up without stretching
+        -- individual pips.
+        pipSize = 20
+        pipH = 20
+    elseif isModern then
+        pipSize = math.floor(sizeAdj * 1.4 + 0.5)  -- wider pips
         pipH = math.max(3, math.floor(sizeAdj * 0.375))
     elseif isCircle then
         pipSize = sizeAdj + 6
@@ -5797,8 +8128,8 @@ local function CreateCustomClassPower(playerFrame, style)
         pipSize = sizeAdj + 12
         pipH = sizeAdj
     end
-    local gap = spacingAdj
-    local pad = isModern and 0 or 4
+    local gap = isClassicCombo and 1 or (isCircle and spacingAdj or (spacingAdj + 2))
+    local pad = isClassicCombo and 22 or (isModern and 0 or 4)
     -- Ajustar a píxeles físicos
     pipSize = PP.Scale(pipSize)
     pipH    = PP.Scale(pipH)
@@ -5816,16 +8147,57 @@ local function CreateCustomClassPower(playerFrame, style)
     -- Fondo detrás de todos los pips
     local bgCol = db.profile.player.classPowerBgColor
         or { r = 0.082, g = 0.082, b = 0.082, a = 1.0 }
-    local containerBg = container:CreateTexture(nil, "BACKGROUND")
+    local containerBg = container:CreateTexture(nil, isClassicCombo and "OVERLAY" or "BACKGROUND", nil,
+        isClassicCombo and -1 or 0)
     containerBg:SetAllPoints()
-    containerBg:SetColorTexture(bgCol.r, bgCol.g, bgCol.b, bgCol.a)
+    local classicOverlayApplied = false
+    if isClassicCombo and containerBg.SetAtlas and HasAtlas("ComboPoints-AllPointsBG") then
+        classicOverlayApplied = pcall(containerBg.SetAtlas, containerBg,
+            "ComboPoints-AllPointsBG", false)
+        if classicOverlayApplied then
+            containerBg:SetVertexColor(1, 1, 1, 1)
+            UnsnapTex(containerBg)
+        end
+    end
+    if not classicOverlayApplied then
+        if isClassicCombo then
+            containerBg:SetColorTexture(0.03, 0.03, 0.03, 0.95)
+        else
+            containerBg:SetColorTexture(bgCol.r, bgCol.g, bgCol.b, bgCol.a)
+        end
+    end
+    if isClassicCombo and not classicOverlayApplied then
+        -- Fallback when the atlas is missing: chamfered plate built from 1px
+        -- strips: a silver outline shape with a dark fill shape inset by 1px.
+        containerBg:SetColorTexture(0, 0, 0, 0)
+        -- Classic plate is ~1.6x a bar row tall, slots nearly fill its height.
+        local ph = playerFrame and playerFrame.Power and playerFrame.Power:GetHeight() or 0
+        if not ph or ph < 6 then ph = 14 end
+        local H = math.max(20, math.floor(ph * 1.6 + 0.5))
+        local C = 4
+        container._ktPlateH = H
+        local function Strip(r, g, b, a, yTop, h, inset, sub)
+            local t = container:CreateTexture(nil, "OVERLAY", nil, sub)
+            t:SetColorTexture(r, g, b, a)
+            t:SetHeight(h)
+            t:SetPoint("TOPLEFT", container, "TOPLEFT", inset, -yTop)
+            t:SetPoint("TOPRIGHT", container, "TOPRIGHT", -inset, -yTop)
+        end
+        -- outline shape
+        Strip(0.62, 0.62, 0.66, 1, 0, H - C, 0, 0)
+        for k = 1, C do Strip(0.62, 0.62, 0.66, 1, H - C + k - 1, 1, k, 0) end
+        -- fill shape (1px inside the outline)
+        Strip(0.03, 0.03, 0.03, 0.97, 1, H - C - 1, 1, 1)
+        for k = 1, C - 1 do Strip(0.03, 0.03, 0.03, 0.97, H - C + k - 1, 1, k + 1, 1) end
+    end
     container._bg = containerBg
+    container._ktClassicComboOverlay = classicOverlayApplied and containerBg or nil
 
     -- Color de pip vacío
     local emptyCol = db.profile.player.classPowerEmptyColor
         or { r = 0.2, g = 0.2, b = 0.2, a = 1.0 }
 
-    if not isModern then
+    if not isModern and not isClassicCombo then
         MakeBorder(container, 0, 0, 0, 0.8)
     end
 
@@ -5856,7 +8228,21 @@ local function CreateCustomClassPower(playerFrame, style)
         -- Capa vacía (visible cuando el recurso no está lleno)
         local pipEmpty = pip:CreateTexture(nil, "ARTWORK", nil, 0)
         pipEmpty:SetAllPoints()
-        if pipTexPath then
+        local emptyAtlasApplied = false
+        if isClassicCombo and pipEmpty.SetAtlas and HasAtlas("ComboPoints-PointBg") then
+            emptyAtlasApplied = pcall(pipEmpty.SetAtlas, pipEmpty,
+                "ComboPoints-PointBg", false)
+            if emptyAtlasApplied then
+                pipEmpty:SetVertexColor(1, 1, 1, 1)
+                UnsnapTex(pipEmpty)
+            end
+        end
+        if emptyAtlasApplied then
+            -- Atlas already supplies the metal ring and dark empty center.
+        elseif isClassicCombo then
+            pipEmpty:SetTexture("Interface\\COMMON\\Indicator-Gray")
+            pipEmpty:SetVertexColor(0.08, 0.08, 0.08, 1)
+        elseif pipTexPath then
             pipEmpty:SetTexture(pipTexPath)
             pipEmpty:SetVertexColor(emptyCol.r, emptyCol.g, emptyCol.b, emptyCol.a)
         else
@@ -5866,7 +8252,21 @@ local function CreateCustomClassPower(playerFrame, style)
         -- Capa de relleno (encima de la vacía)
         local pipFill = pip:CreateTexture(nil, "ARTWORK", nil, 1)
         pipFill:SetAllPoints()
-        if pipTexPath then
+        local fillAtlasApplied = false
+        if isClassicCombo and pipFill.SetAtlas and HasAtlas("ComboPoints-ComboPoint") then
+            fillAtlasApplied = pcall(pipFill.SetAtlas, pipFill,
+                "ComboPoints-ComboPoint", false)
+            if fillAtlasApplied then
+                pipFill:SetVertexColor(1, 1, 1, 1)
+                UnsnapTex(pipFill)
+            end
+        end
+        if fillAtlasApplied then
+            -- The native atlas owns Classic's red fill and highlight.
+        elseif isClassicCombo then
+            pipFill:SetTexture("Interface\\COMMON\\Indicator-Red")
+            pipFill:SetVertexColor(1, 1, 1, 1)
+        elseif pipTexPath then
             pipFill:SetTexture(pipTexPath)
             pipFill:SetVertexColor(cr, cg, cb, 1)
         else
@@ -5875,6 +8275,14 @@ local function CreateCustomClassPower(playerFrame, style)
 
         pip._fill = pipFill
         pip._empty = pipEmpty
+        pip._ktClassicComboAtlas = emptyAtlasApplied and fillAtlasApplied
+        -- Border + shadow on rectangular pips belongs to the styled looks;
+        -- KUI Style keeps the Retail pips.
+        if not isClassicCombo and not isCircle
+            and (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail")
+            and ns.KTTargetCombo and ns.KTTargetCombo._DecorateRectPip then
+            ns.KTTargetCombo:_DecorateRectPip(pip)
+        end
         return pip
     end
 
@@ -5882,11 +8290,41 @@ local function CreateCustomClassPower(playerFrame, style)
     for i = 1, maxPower do
         pips[i] = MakePip(container, i)
     end
+    if isClassicCombo then
+        -- Slim plate as wide as the bars; round slots spread evenly across it.
+        -- Geometry of the native 126x20 ornament: five 20px slots, 1px gaps,
+        -- 11px side padding.  Scale it to the bar width keeping its aspect.
+        local function Layout()
+            local W = container:GetWidth()
+            if not W or W <= 0 then return end
+            local k = W / 126
+            local d = 20 * k
+            if math.abs((container:GetHeight() or 0) - d) > 0.5 then
+                container:SetHeight(d)
+            end
+            for i, pp in ipairs(pips) do
+                pp:ClearAllPoints()
+                -- Slots are a bit larger than the plate openings and hang
+                -- slightly below its lower edge, like the original ornament.
+                local sz = d * 1.1
+                pp:SetSize(sz, sz)
+                pp:SetPoint("LEFT", container, "LEFT",
+                    (11 + 21 * (i - 1)) * k - (sz - d) / 2, -d * 0.18)
+            end
+        end
+        container:SetScript("OnSizeChanged", Layout)
+        container._ktClassicLayout = Layout
+        Layout()
+    end
 
     -- Update function
     local isSecretResource = (powerType == "SOUL_FRAGMENTS_VENGEANCE")
     local function UpdatePips()
         local cur, max
+        if isClassicCombo and playerClass == "DRUID" and GetShapeshiftFormID then
+            -- Druid combo points only exist in Cat Form (form id 1).
+            container:SetAlpha(GetShapeshiftFormID() == 1 and 1 or 0)
+        end
         if isCustom then
             -- Custom resource: use Compat tracker functions
             if powerType == "SOUL_FRAGMENTS_VENGEANCE" then
@@ -5941,13 +8379,29 @@ local function CreateCustomClassPower(playerFrame, style)
                         local sb = CreateFrame("StatusBar", nil, pips[i])
                         sb:SetAllPoints(pips[i]._fill or pips[i])
                         sb:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-                        sb:SetStatusBarColor(cr, cg, cb, 1)
+                        if isClassicCombo then
+                            local sbTexture = sb:GetStatusBarTexture()
+                            if sbTexture and sbTexture.SetAtlas and HasAtlas("ComboPoints-ComboPoint") then
+                                pcall(sbTexture.SetAtlas, sbTexture,
+                                    "ComboPoints-ComboPoint", false)
+                                UnsnapTex(sbTexture)
+                            elseif sbTexture then
+                                sb:SetStatusBarTexture("Interface\\COMMON\\Indicator-Red")
+                            end
+                            sb:SetStatusBarColor(1, 1, 1, 1)
+                        else
+                            sb:SetStatusBarColor(cr, cg, cb, 1)
+                        end
                         sb:SetFrameLevel(pips[i]:GetFrameLevel() + 1)
                         pips[i]._secretBar = sb
                     end
                     pips[i]._secretBar:SetMinMaxValues(i - 1, i)
                     local secretValueOK = pcall(pips[i]._secretBar.SetValue, pips[i]._secretBar, cur)
-                    pips[i]._secretBar:SetStatusBarColor(cr, cg, cb, 1)
+                    if isClassicCombo then
+                        pips[i]._secretBar:SetStatusBarColor(1, 1, 1, 1)
+                    else
+                        pips[i]._secretBar:SetStatusBarColor(cr, cg, cb, 1)
+                    end
                     pips[i]._secretBar:SetShown(secretValueOK)
                     -- Hide normal fill; StatusBar replaces it
                     if pips[i]._fill then pips[i]._fill:Hide() end
@@ -6044,12 +8498,15 @@ local function CreateCustomClassPower(playerFrame, style)
         eventFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
         eventFrame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        if isClassicCombo and playerClass == "DRUID" then
+            eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+        end
         if powerType == Enum.PowerType.Runes then
             eventFrame:RegisterEvent("RUNE_POWER_UPDATE")
         end
         eventFrame:SetScript("OnEvent", function(_, event, unit)
             if event == "PLAYER_ENTERING_WORLD" or event == "RUNE_POWER_UPDATE"
-               or (unit == "player") then
+               or event == "UPDATE_SHAPESHIFT_FORM" or (unit == "player") then
                 UpdatePips()
             end
         end)
@@ -6062,6 +8519,7 @@ local function CreateCustomClassPower(playerFrame, style)
     container._pipH = pipH
     container._gap = gap
     container._pad = pad
+    container._ktClassicCombo = isClassicCombo
 
     -- Reposition pips to fill a given width (for "above" position)
     -- Uses Snap() to round all positions to physical pixel boundaries
@@ -6092,12 +8550,33 @@ local function CreateCustomClassPower(playerFrame, style)
     return container
 end
 
+-- Lightweight dispel-overlay toggle (no secure/layout work), so the option also works in
+-- combat instead of being ignored until the next full reload.
+function ns.ApplyDispelOverlayLive()
+    for unit, frame in pairs(frames) do
+        if type(unit) == "string" and unit:sub(1, 1) ~= "_" and type(frame) == "table" then
+            local settings = GetSettingsForUnit(unit)
+            if settings then
+                local show = ns.IsDispelOverlayOn(settings)
+                if frame.KTDispelSlots then frame.KTDispelSlots:SetShown(show) end
+                if frame.dispelBorderFrame then
+                    frame.dispelBorderFrame:SetShown(show)
+                    if not show then SetDispelFrameBorder(frame, nil) end
+                end
+                if unit == "target" then RefreshTargetDebuffDispelStyle(settings) end
+            end
+        end
+    end
+end
+
 local function ReloadFrames()
     if InCombatLockdown() then
+        pcall(ns.ApplyDispelOverlayLive)
         return
     end
 
     ResolveFontPath()
+    ns.EnforceTargetBuffs(db.profile)
 
     -- Invalidar cache del subsistema de contexto de unidad
     ns._UnitCtx.Invalidate()
@@ -6201,6 +8680,10 @@ local function ReloadFrames()
             -- Swap 2D/3D portrait mode if changed (no reload needed)
             if frame.Portrait then
                 SwapPortraitMode(frame)
+                -- Re-apply the 3D zoom, rotation and offsets without a reload.
+                if frame.Portrait.is2D == false and frame.Portrait.PostUpdate then
+                    frame.Portrait:PostUpdate(unit)
+                end
             end
 
             -- Refresh class art style texture (may have changed without mode change)
@@ -6247,7 +8730,7 @@ local function ReloadFrames()
                 end
                 -- Live-update detached portrait shape/mask/border
                 ApplyDetachedPortraitShape(frame.Portrait.backdrop, uSettings, unit)
-                -- Portrait strata and level set at creation (MEDIUM/50) - always above LOW frame
+                -- Portrait level set at creation (50+) - always above the frame's bars
             end
 
             if unit == "player" and frame.HealthPrediction then
@@ -6420,7 +8903,23 @@ local function ReloadFrames()
                                 local cbH = settings.castbarHeight or 14
                                 local owH = settings.playerCastbarHeight or 0
                                 if owH > 0 then cbH = owH end
-                                castbarBg:SetSize(cbW, cbH)
+                                -- SeatStockCastbar (ThemeClientAssets.lua, called earlier
+                                -- this same refresh via ApplyClassicFrameArt) already set
+                                -- the REAL slim stock height for Classic/Forever. This
+                                -- generic reset runs AFTER it and would clobber that back
+                                -- to the module's own 14px default every single time.
+                                -- Defer to it unless the user set an explicit per-frame
+                                -- override.
+                                local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+                                    and KT.VisualThemes:GetRenderedTheme()
+                                local usingStockHeight = owH <= 0 and (renderedTheme == "classic"
+                                    or renderedTheme == "forever" or renderedTheme == "retail"
+                                    or db.profile.frameArtKit == "classic")
+                                if usingStockHeight then
+                                    castbarBg:SetWidth(cbW)
+                                else
+                                    castbarBg:SetSize(cbW, cbH)
+                                end
                                 if frame.Castbar._iconFrame then
                                     frame.Castbar._iconFrame:SetSize(cbH + 1, cbH + 1)
                                     if frame.Castbar._updateIconLayout then frame.Castbar._updateIconLayout() end
@@ -6453,6 +8952,7 @@ local function ReloadFrames()
                                 local dtC = settings.castDurationColor or { r=1, g=1, b=1 }
                                 frame.Castbar.Time:SetTextColor(dtC.r, dtC.g, dtC.b)
                             end
+                            ns.ApplyClassicCastbarLook(frame)
                         else
                             if frame:IsElementEnabled("Castbar") then
                                 frame:DisableElement("Castbar")
@@ -6508,11 +9008,20 @@ local function ReloadFrames()
                                 buffCbOff = -cbH
                             end
                             -- Only reanchor + ForceUpdate when layout actually changed
-                            local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. buffCbOff .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 4)
+                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("player")
+                            local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. buffCbOff .. kuiBuffYOffset .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 4)
                             if frame.Buffs._lastBuffKey ~= buffKey then
                                 frame.Buffs._lastBuffKey = buffKey
                                 frame.Buffs:ClearAllPoints()
-                                frame.Buffs:SetPoint(bia, frame, bfp, box * 1, boy * 1 + buffCbOff)
+                                -- CreateTargetAuras/the player-creation block both anchor
+                                -- Buffs to frame.Health (KT:ResolveUFAuraBarGeometry's own
+                                -- "bar = frame.Health or frame"); anchoring this later
+                                -- live-toggle pass to the raw outer frame instead lands
+                                -- Buffs at a large offset, far from the actual visible
+                                -- health bar. Match the creation-time anchor for
+                                -- consistency.
+                                frame.Buffs:SetPoint(bia, KT:ResolveUFAuraBarGeometry(frame), bfp,
+                                    box * 1, boy * 1 + buffCbOff + kuiBuffYOffset)
                                 frame.Buffs.initialAnchor = bia
                                 frame.Buffs.growthX = bgx
                                 frame.Buffs.growthY = bgy
@@ -6536,6 +9045,13 @@ local function ReloadFrames()
                     if frame._applyTextPositions then
                         frame._applyTextPositions(settings)
                     end
+                    -- KUI's own default text layout just ran, assuming its
+                    -- normal (unthemed) health bar width -- re-apply the
+                    -- real stock geometry so themed name/value text isn't
+                    -- left at that stale, much-wider position. Confirmed
+                    -- live: without this, the health value hangs well past
+                    -- the real (narrower) bar's right edge on every reload.
+                    ApplyClassicFrameArt(frame, unit)
 
                     -- Bottom Text Bar update (player)
                     if settings.bottomTextBar then
@@ -6586,7 +9102,7 @@ local function ReloadFrames()
                     end
 
                     if frame.KTDispelSlots then
-                        frame.KTDispelSlots:SetShown(settings.dispelOverlay ~= false)
+                        frame.KTDispelSlots:SetShown(ns.IsDispelOverlayOn(settings))
                         if _G.KTAuraKit and frame._ktDispelPrefix then
                             _G.KTAuraKit.ConfigureDispelSlotStyles(frame._ktDispelPrefix, frame.Health, {
                                 alpha = 1,
@@ -6596,7 +9112,7 @@ local function ReloadFrames()
                         end
                     end
                     if frame.dispelBorderFrame then
-                        frame.dispelBorderFrame:SetShown(settings.dispelOverlay ~= false)
+                        frame.dispelBorderFrame:SetShown(ns.IsDispelOverlayOn(settings))
                     end
 
                     UpdateBordersForScale(frame, unit)
@@ -6724,13 +9240,16 @@ local function ReloadFrames()
                         end
                     end
 
-                    -- Reposition name and health text
+                    -- Reposition name and health text (target)
                     if frame._applyTextTags then
                         frame._applyTextTags(settings.leftTextContent or "name", settings.rightTextContent or "both", settings.centerTextContent or "none")
                     end
                     if frame._applyTextPositions then
                         frame._applyTextPositions(settings)
                     end
+                    -- Same re-apply as the player block above -- see its
+                    -- comment for why this is needed on every reload.
+                    ApplyClassicFrameArt(frame, unit)
 
                     -- Bottom Text Bar update (target) ? must come before castbar so castbar can anchor to it
                     local tPpBtbAnchor = (ppIsAtt and frame.Power) or frame.Health
@@ -6790,9 +9309,23 @@ local function ReloadFrames()
                                 if showPortrait and isAttached then
                                     castBarOffset = (effectiveSide == "left") and -(adjPortraitH / 2) or (adjPortraitH / 2)
                                 end
-                                castbarBg:SetSize(totalWidth, settings.castbarHeight or 14)
+                                -- Same clobbering bug as the player castbar block above:
+                                -- SeatStockCastbar already set the real slim stock height
+                                -- for Classic/Forever earlier this refresh (via
+                                -- ApplyClassicFrameArt) -- defer to it instead of
+                                -- resetting to the module's generic 14px default.
+                                local targetRenderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+                                    and KT.VisualThemes:GetRenderedTheme()
+                                local targetUsingStockHeight = (targetRenderedTheme == "classic"
+                                    or targetRenderedTheme == "forever" or targetRenderedTheme == "retail"
+                                    or db.profile.frameArtKit == "classic")
+                                if targetUsingStockHeight then
+                                    castbarBg:SetWidth(totalWidth)
+                                else
+                                    castbarBg:SetSize(totalWidth, settings.castbarHeight or 14)
+                                end
                                 if frame.Castbar._iconFrame then
-                                    local cbH = settings.castbarHeight or 14
+                                    local cbH = castbarBg:GetHeight() or settings.castbarHeight or 14
                                     frame.Castbar._iconFrame:SetSize(cbH + 1, cbH + 1)
                                     if frame.Castbar._updateIconLayout then frame.Castbar._updateIconLayout() end
                                 end
@@ -6830,6 +9363,7 @@ local function ReloadFrames()
                             local dtC = settings.castDurationColor or { r=1, g=1, b=1 }
                             frame.Castbar.Time:SetTextColor(dtC.r, dtC.g, dtC.b)
                         end
+                        ns.ApplyClassicCastbarLook(frame)
                     end
 
                     -- Buffs
@@ -6853,11 +9387,17 @@ local function ReloadFrames()
                                     liveCbOff = -cbH
                                 end
                             end
-                            local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 20) .. liveCbOff
+                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("target")
+                            local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 20) .. liveCbOff .. kuiBuffYOffset
                             if frame.Buffs._lastBuffKey ~= buffKey then
                                 frame.Buffs._lastBuffKey = buffKey
                                 frame.Buffs:ClearAllPoints()
-                                frame.Buffs:SetPoint(bia, frame, bfp, box * 1, boy * 1 + liveCbOff)
+                                -- Same as the player block above: CreateTargetAuras
+                                -- anchors Buffs to frame.Health, so this live-toggle pass
+                                -- does too instead of the raw outer frame. Match the
+                                -- creation-time anchor.
+                                frame.Buffs:SetPoint(bia, KT:ResolveUFAuraBarGeometry(frame), bfp,
+                                    box * 1, boy * 1 + liveCbOff + kuiBuffYOffset)
                                 frame.Buffs.initialAnchor = bia
                                 frame.Buffs.growthX = bgx
                                 frame.Buffs.growthY = bgy
@@ -6890,7 +9430,9 @@ local function ReloadFrames()
                             if dAnc == "bottomleft" or dAnc == "bottomright" then
                                 local cbH = settings.castbarHeight or 14
                                 if cbH <= 0 then cbH = 14 end
-                                liveDbCbOff = -cbH
+                                -- Debuffs (player and target) sit a
+                                -- bit closer/higher to the frame.
+                                liveDbCbOff = -cbH + KT:GetStyledDebuffLift()
                             end
                         end
                         local debuffKey = (dia or "") .. (dfp or "") .. (dox or 0) .. (doy or 0) .. (dgx or 0) .. (dgy or 0) .. (settings.maxDebuffs or 20) .. liveDbCbOff .. (settings.onlyPlayerDebuffs and "1" or "0")
@@ -7037,6 +9579,10 @@ local function ReloadFrames()
                 if frame._applyTextPositions then
                     frame._applyTextPositions(settings)
                 end
+                -- Same re-apply as the player block earlier in this
+                -- function -- see its comment for why this is needed on
+                -- every reload.
+                ApplyClassicFrameArt(frame, unit)
 
                 -- Bottom Text Bar update (focus) ? must come before castbar so castbar can anchor to it
                 local fPpBtbAnchor = (fPpIsAtt and frame.Power) or frame.Health
@@ -7136,6 +9682,7 @@ local function ReloadFrames()
                         local dtC = settings.castDurationColor or { r=1, g=1, b=1 }
                         frame.Castbar.Time:SetTextColor(dtC.r, dtC.g, dtC.b)
                     end
+                    ns.ApplyClassicCastbarLook(frame)
                 end
 
                 UpdateBordersForScale(frame, unit)
@@ -7167,6 +9714,8 @@ local function ReloadFrames()
                         frame.Health._rightInset = 0
                         frame.Health._topOffset = 0
                     end
+                    -- Theme art re-seats (or clears) after the generic layout.
+                    ApplyClassicFrameArt(frame, unit)
                 else
                     PP.Size(frame, settings.frameWidth, settings.healthHeight)
                     if frame.Health then
@@ -7329,19 +9878,35 @@ local function ReloadFrames()
             end
 
             if frame.unifiedBorder then
-                frame.unifiedBorder:ClearAllPoints()
-                local bs = donorSettings.borderSize or 1
-                local bc = donorSettings.borderColor or { r = 0, g = 0, b = 0 }
-                if bs == 0 then
+                -- Skip entirely when real stock art owns this unit's border.
+                -- Running unconditionally on every ReloadFrames pass would
+                -- re-show the generic border regardless of whether real
+                -- stock art (ApplyForeverUnitFrameArt/ApplyClassicUnitFrameArt,
+                -- earlier in this same refresh) had already hidden it for
+                -- player/target under Classic/Forever/Retail, drawing the
+                -- plain generic border on top of target's real decorative
+                -- Retail ring.
+                local ufRenderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+                    and KT.VisualThemes:GetRenderedTheme()
+                local ufUsingRealArt = (unit == "player" or unit == "target")
+                    and (ufRenderedTheme == "classic" or ufRenderedTheme == "forever"
+                        or ufRenderedTheme == "retail" or (db.profile and db.profile.frameArtKit == "classic"))
+                if ufUsingRealArt then
                     frame.unifiedBorder:Hide()
                 else
-                    PP.Point(frame.unifiedBorder, "TOPLEFT", frame, "TOPLEFT", 0, 0)
-                    PP.Point(frame.unifiedBorder, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-                    PP.UpdateBorder(frame.unifiedBorder, bs, bc.r, bc.g, bc.b, 1)
-                    frame.unifiedBorder:Show()
+                    frame.unifiedBorder:ClearAllPoints()
+                    local bs = donorSettings.borderSize or 1
+                    local bc = donorSettings.borderColor or { r = 0, g = 0, b = 0 }
+                    if bs == 0 then
+                        frame.unifiedBorder:Hide()
+                    else
+                        PP.Point(frame.unifiedBorder, "TOPLEFT", frame, "TOPLEFT", 0, 0)
+                        PP.Point(frame.unifiedBorder, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+                        PP.UpdateBorder(frame.unifiedBorder, bs, bc.r, bc.g, bc.b, 1)
+                        frame.unifiedBorder:Show()
+                    end
                 end
             end
-
             -- Helper: set font on a FontString, using donor font for mini frames
             local function SetMiniFont(fs, sz)
                 if not fs or not fs.SetFont then return end
@@ -7385,6 +9950,8 @@ local function ReloadFrames()
                 frame._applyTextPositions(settings)
             end
 
+            ApplyClassicFrameArt(frame, unit)
+
             if frame.Castbar then
                 if frame.Castbar.Text then
                     SetFSFont(frame.Castbar.Text, 11)
@@ -7398,7 +9965,7 @@ local function ReloadFrames()
             -- player uses dedicated AuraKit slots while focus/pet/boss use a
             -- frame border; both must be hidden immediately when the option is
             -- switched off, not only after the next UNIT_AURA event.
-            local showDispelOverlay = settings.dispelOverlay ~= false
+            local showDispelOverlay = ns.IsDispelOverlayOn(settings)
             if frame.KTDispelSlots then
                 frame.KTDispelSlots:SetShown(showDispelOverlay)
             end
@@ -7535,6 +10102,33 @@ end
 
 function Mod:RefreshClassificationMetadata()
     RefreshAllForeverMetadata()
+end
+
+-- Health-color controls must never enter the full profile-refresh path:
+-- Mod:Refresh() deliberately reapplies every frame position and scale, which
+-- made Player/Target jump until the next reload when only CLASS/HEALTH changed.
+function Mod:RefreshHealthColors()
+    self:BindDatabase()
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    for _, unit in ipairs({ "player", "target" }) do
+        local frame = frames[unit]
+        if frame and frame.Health then
+            ApplyHealthBarAlpha(frame.Health, unit)
+            ApplyDarkTheme(frame.Health)
+            if frame.Health.ForceUpdate then
+                frame.Health:ForceUpdate()
+            end
+            -- Classic's texture lives on a separate art host above the bars.
+            -- Re-seat that already-created art after oUF repaints Health so a
+            -- CLASS/HEALTH click cannot leave its layers or internal regions
+            -- in the generic KUI state. This does not apply saved positions,
+            -- scales or any of Mod:Refresh()'s profile-layout path.
+            if renderedTheme == "classic" then
+                ApplyClassicFrameArt(frame, unit)
+            end
+        end
+    end
 end
 
 function Mod:UpdateRestingIndicator()
@@ -7683,6 +10277,11 @@ function InitializeFrames()
         end
     end
 
+    if KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme() == "classic" and frames.player then
+        ApplyClassicFrameArt(frames.player, "player")
+    end
+
     -- Wrapper que mantiene la firma original para los 5 call sites
     local function ResizeFrameForClassPower(cpAboveH)
         if not frames.player then return end
@@ -7703,7 +10302,21 @@ function InitializeFrames()
             bar._castbarWatcher:Hide()
         end
 
-        if style == "modern" and position == "above" then
+        if bar._ktClassicCombo then
+            -- CLASSIC owns this ornament's geometry.  It sits immediately
+            -- below the native power bar, inside the lower part of the
+            -- 232x100 stock-art box shown in the reference.  Do not call
+            -- ResizeFrameForClassPower here: that generic path would undo
+            -- ApplyClassicFrameArt's native frame/portrait/bar placement.
+            bar:SetParent(frames.player)
+            local anchorFrame = frames.player.Power or frames.player
+            bar:ClearAllPoints()
+            bar:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", offsetX, 1 + offsetY)
+            bar:SetPoint("TOPRIGHT", anchorFrame, "BOTTOMRIGHT", offsetX, 1 + offsetY)
+            bar:SetHeight(20)
+            if bar._ktClassicLayout then bar._ktClassicLayout() end
+            if bar._bottomBdrFrame then bar._bottomBdrFrame:Hide() end
+        elseif style == "modern" and position == "above" then
             -- Above health bar, inside the frame ? pips stretch to fill health bar width
             -- Bottom of pips flush with top of health bar, top of pips flush with top of border
             bar:SetParent(frames.player)
@@ -8191,6 +10804,7 @@ function InitializeFrames()
                         ApplyDetachedPortraitShape(backdrop, uSettings, unitKey)
                     end
                     SwapPortraitMode(frame)
+                    ns.RefreshClassPortrait(unitKey, backdrop)
                     if frame:IsElementEnabled("Portrait") and frame.Portrait and frame.Portrait.ForceUpdate then
                         frame.Portrait:ForceUpdate()
                     end
@@ -8367,6 +10981,41 @@ local function RegisterUnitFramesWithEditMode()
                 ApplyFramePosition(frame, key)
                 if onStop then onStop() end
             end,
+            resetPosition = function()
+                -- "Reset Position" must land on the shipped default, not on the
+                -- user's saved offset. Both stores below hold user edits, so drop
+                -- the UnlockMode override first, then re-seed the native store
+                -- from the module defaults before reapplying.
+                local editMode = KT.db and KT.db.profile and KT.db.profile.editMode
+                if editMode and type(editMode.frames) == "table" then
+                    editMode.frames[unlockKey] = nil
+                end
+
+                local defaultPos = defaults.profile.positions
+                    and defaults.profile.positions[key]
+                db.profile.positions = db.profile.positions or {}
+                if type(defaultPos) == "table" then
+                    -- Keep the user's scale: only the anchor is being reset.
+                    db.profile.positions[key] = {
+                        point = defaultPos.point or "CENTER",
+                        x = defaultPos.x or 0,
+                        y = defaultPos.y or 0,
+                        scale = (frame.GetScale and frame:GetScale()) or 1,
+                    }
+                else
+                    db.profile.positions[key] = nil
+                end
+
+                if KT.FlushPersistence then KT:FlushPersistence() end
+
+                local targetPos = db.profile.positions[key]
+                if targetPos and targetPos.scale and ApplyFrameScale then
+                    ApplyFrameScale(frame, key, targetPos.scale, false)
+                end
+                ApplyFramePosition(frame, key)
+                if onStop then onStop() end
+                return true
+            end,
         })
     end
 
@@ -8412,6 +11061,7 @@ local function SetupOptionsPanel()
             self:Hide()
             ns._ufReloadPending = false
             ReloadFrames()
+            if ns.ComboUnderFrame then ns.ComboUnderFrame:RefreshAll() end
         end)
     end
 
@@ -8811,6 +11461,175 @@ local function ApplyTargetCastbarYellowDefault()
     profile._targetCastbarYellow20260803 = true
 end
 
+-- Player/target portraitFacing defaults were swapped (player normal->flipped,
+-- target flipped->normal) -- the two still face each other, just mirrored
+-- from before. Changing the defaults table alone only affects brand-new
+-- profiles; AceDB never overwrites a key an existing profile already has
+-- saved. This migrates existing profiles once, only when the saved value
+-- still exactly matches the OLD default (an explicit custom choice is left
+-- alone).
+-- Attached to KT (not a top-level `local function`): this file is already at
+-- Lua 5.1's 200-active-local ceiling for its main chunk -- one more
+-- `local function` here fails to compile with "Only 200 active local
+-- variables and upvalues can be existed at the same time". Matches the
+-- same KT:/Mod: method pattern already used elsewhere in this file for
+-- exactly this reason.
+function KT:SwapPortraitFacingDefaults()
+    local profile = db.profile
+    if not profile or profile._portraitFacingSwap20260929 then return end
+
+    local player = profile.player
+    if player and player.portraitFacing == "normal" then
+        player.portraitFacing = "flipped"
+    end
+
+    local target = profile.target
+    if target and target.portraitFacing == "flipped" then
+        target.portraitFacing = "normal"
+    end
+
+    profile._portraitFacingSwap20260929 = true
+end
+
+-- Classic's VisualThemes seed (Adapters/UnitFrames.lua) used to set
+-- portraitStyle = "attached" -- wrong, since Classic's real stock box
+-- (ApplyClassicUnitFrameArt) assumes a round-clipped portrait like Forever's.
+-- "attached" skips mask creation entirely (ApplyDetachedPortraitShape's fast
+-- path), so the portrait rendered unmasked and bled outside the ring.
+-- Fixed at the seed; this migrates an existing profile already on Classic
+-- theme, only when portraitStyle still exactly matches the OLD wrong
+-- default (a deliberate "attached" choice under any OTHER theme, where
+-- it's a normal valid setting, is left alone).
+function KT:MigrateClassicPortraitCircular()
+    local profile = db.profile
+    if not profile or profile._classicPortraitCircular20260930 then return end
+    profile._classicPortraitCircular20260930 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if renderedTheme == "classic" and profile.portraitStyle == "attached" then
+        profile.portraitStyle = "circular"
+    end
+end
+
+-- Retail's VisualThemes seed used to be the bare fixed-accent-color ceiling
+-- (portraitStyle = "none", no real stock geometry at all). Retail now
+-- reuses the same real per-client stock rendering as Forever
+-- (ApplyForeverUnitFrameArt), same as Classic already does. Fixed at the
+-- seed; this migrates an existing profile already on Retail theme, only
+-- when portraitStyle still exactly matches the OLD default (a deliberate
+-- "none" choice under any OTHER theme is left alone).
+function KT:MigrateRetailPortraitCircular()
+    local profile = db.profile
+    if not profile or profile._retailPortraitCircular20260930 then return end
+    profile._retailPortraitCircular20260930 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if renderedTheme == "retail" and profile.portraitStyle == "none" then
+        profile.portraitStyle = "circular"
+        for _, key in ipairs({ "player", "target", "focus", "pet", "boss" }) do
+            profile[key] = type(profile[key]) == "table" and profile[key] or {}
+            if profile[key].showPortrait == false then
+                profile[key].showPortrait = true
+            end
+        end
+    end
+end
+
+-- Retail's seed only started setting customFillColor/healthClassColored
+-- (for the default green health bar) after this fix -- seed() never runs
+-- retroactively, so an existing profile already on Retail theme needs this
+-- migrated in separately, exactly like the portrait-circular migration
+-- above.
+-- showPvPCircle is a new seeded field (kui should default it off, unlike
+-- Classic/Forever/Retail) -- seed() never runs retroactively, so an
+-- existing profile already on kui needs this one-time backfill too.
+function KT:MigrateKuiPvPCircleDefault()
+    local profile = db.profile
+    -- Re-run under a new guard key (20261002, not the original 20261001):
+    -- the original version's nil-check was defeated by a blanket AceDB
+    -- default that backfilled showPvPCircle to true before this migration
+    -- ever ran (see the comment on the removed default above), so any
+    -- profile that already ran the 20261001 guard may be carrying that
+    -- bogus true and needs a real repair, not just a second nil-check.
+    if not profile or profile._kuiPvPCircleDefault20261002 then return end
+    profile._kuiPvPCircleDefault20261002 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if renderedTheme == "kui" then
+        profile.showPvPCircle = false
+    end
+end
+
+function KT:MigrateRetailHealthGreen()
+    local profile = db.profile
+    if not profile or profile._retailHealthGreen20261001 then return end
+    profile._retailHealthGreen20261001 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if renderedTheme ~= "retail" then return end
+    for _, key in ipairs({ "player", "target" }) do
+        profile[key] = type(profile[key]) == "table" and profile[key] or {}
+        if profile[key].customFillColor == nil then
+            profile[key].customFillColor = { r = 0.57, g = 1.00, b = 0.235 }
+        end
+        if profile[key].healthClassColored == nil then
+            profile[key].healthClassColored = false
+        end
+    end
+end
+
+-- Forever used to seed darkTheme=true before its CLASS/HEALTH selector was
+-- added. Dark mode has higher render priority and forced #111111 over either
+-- selection. Repair the currently active legacy profile once; future Forever
+-- seeds and restored slots are handled by the VisualThemes adapter.
+-- darkTheme is a single field shared by every theme
+-- (ResolveLiveHealthColor in ThemePreview.lua returns its dark gray
+-- immediately, before ever checking healthClassColored, whenever it's
+-- true), so a profile that got stuck on darkTheme=true while Forever was
+-- once active stays stuck for Classic/Retail too (CLASS on the theme-card
+-- selector then shows no class color), even though only Forever's own
+-- legacy default could ever have SET it. The repair covers whichever of
+-- the three real-stock themes is currently active, under its own guard
+-- key.
+function KT:MigrateForeverHealthColorSelector()
+    local profile = db.profile
+    if not profile or profile._foreverHealthColorSelector20261002 then return end
+    profile._foreverHealthColorSelector20261002 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    local isStockTheme = renderedTheme == "forever" or renderedTheme == "classic"
+        or renderedTheme == "retail"
+    if isStockTheme and profile.darkTheme == true then
+        profile.darkTheme = false
+    end
+end
+
+-- Classic/Forever's real stock box already anchors the cast bar below Power
+-- (CreateCastBar) and now matches its real width (SeatStockCastbar in
+-- ThemeClientAssets.lua), but showPlayerCastbar itself defaults to false
+-- module-wide and neither theme's seed used to turn it on, so the cast bar
+-- never appeared under either theme. Fixed at the seed; this migrates an
+-- existing profile already on Classic/Forever theme, only when the value
+-- is still exactly the module's own default (a deliberate "off" choice,
+-- under any theme, is left alone).
+function KT:MigrateThemedCastbarVisible()
+    local profile = db.profile
+    if not profile or profile._themedCastbarVisible20260930 then return end
+    profile._themedCastbarVisible20260930 = true
+
+    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    if (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail")
+        and profile.player and profile.player.showPlayerCastbar == false then
+        profile.player.showPlayerCastbar = true
+    end
+end
+
 local function ApplyReferenceLayoutDefaults()
     local profile = db.profile
     if not profile or profile._referenceLayout20260801 then return end
@@ -9046,6 +11865,13 @@ function Mod:BindDatabase()
     Compat.CopyDefaults(KT.db.profile.unitFrames, defaults.profile)
     db = { profile = KT.db.profile.unitFrames }
     self.db = db.profile
+    -- 5.0.8 forced the character level off once (marked by
+    -- _kuiForeverLevelPvpOptionsReset) and that false stayed saved after 5.1.1
+    -- made it default on again. Give the level back once to those profiles.
+    if self.db._kuiForeverLevelPvpOptionsReset and not self.db._kuiLevelRestored then
+        self.db.showCharacterLevel = true
+        self.db._kuiLevelRestored = true
+    end
     self.db.enable = self.db.enable ~= false
 end
 
@@ -9058,9 +11884,18 @@ function Mod:OnInitialize()
     MigrateLegacyCrimsonAccent()
     ApplyUpdatedDefaultPreset()
     ApplyTargetCastbarYellowDefault()
+    KT:SwapPortraitFacingDefaults()
+    KT:MigrateClassicPortraitCircular()
+    KT:MigrateRetailPortraitCircular()
+    KT:MigrateRetailHealthGreen()
+    KT:MigrateForeverHealthColorSelector()
+    KT:MigrateKuiPvPCircleDefault()
+    KT:MigrateThemedCastbarVisible()
     ApplyReferenceLayoutDefaults()
     ApplyDebuffDefaultsMigration()
     ApplyForeverUnitFrameLayoutDefaults()
+    ns.MigrateBlizzardTextDefaults(db.profile)
+    ns.EnforceTargetBuffs(db.profile)
     if RegisterUFHPDebugSlash then
         C_Timer.After(0, RegisterUFHPDebugSlash)
     end
@@ -9227,6 +12062,65 @@ function Mod:Refresh()
         return
     end
     SetupOptionsPanel()
+    -- ThemeClientAssets.lua's ScaleStockBarText caches each FontString's
+    -- pre-scale "base" font size the FIRST time it runs, on purpose (so
+    -- repeated calls within the same settings never compound the shrink).
+    -- But this IS a genuine profile change (Refresh only fires from
+    -- OnProfileChanged/OnProfileCopied/OnProfileReset, or the login
+    -- charKey-correction firing that same callback manually) -- confirmed
+    -- live: health text size stayed wrong even after position/theme
+    -- corrected, because that first capture happened during the brief
+    -- wrong-profile window and every later call only ever multiplied that
+    -- already-wrong base by the new scale, never truly resetting it. Clear
+    -- the cache here so the next ReloadFrames recaptures a correct base.
+    local function ClearStockFontCache(fs)
+        if type(fs) ~= "table" then return end
+        fs._ktStockBaseFontSize = nil
+        fs._ktForeverFitBaseFontSize = nil
+    end
+    for _, frame in pairs(frames) do
+        if type(frame) == "table" then
+            ClearStockFontCache(frame.LeftText)
+            ClearStockFontCache(frame.RightText)
+            ClearStockFontCache(frame.CenterText)
+            if type(frame.Castbar) == "table" then
+                ClearStockFontCache(frame.Castbar.Text)
+                ClearStockFontCache(frame.Castbar.Time)
+            end
+        end
+    end
+    -- ApplyFramePosition is only ever called from InitializeFrames (once,
+    -- at OnEnable, using whatever profile happened to be active at that
+    -- exact instant) and from the separate Edit Mode registration path --
+    -- never from ReloadFrames. After a genuine profile change (the login
+    -- charKey correction firing OnProfileChanged), theme and health text
+    -- update but frame position would stay on whatever the previous
+    -- profile had, because nothing in this refresh path ever reapplies it.
+    -- Re-seat every unit's position here too.
+    for _, unit in ipairs({ "player", "target", "focus", "pet", "targettarget", "focustarget" }) do
+        if frames[unit] then
+            ApplyFramePosition(frames[unit], unit)
+        end
+    end
+    -- UpdateCircularPortraitBorder only ever runs from frame creation or
+    -- from Health's own PostUpdate hook (i.e. the next time health VALUE
+    -- changes), so a new "Circular Portrait Border Color" picked in Options
+    -- (which calls Mod:Reload() same as every other option here) wouldn't
+    -- repaint until health next ticked. Re-seat it here too, same fix shape
+    -- as the font-cache and position re-applies above.
+    for _, frame in pairs(frames) do
+        if type(frame) == "table" then
+            UpdateCircularPortraitBorder(frame)
+        end
+    end
+    if KT.PersistDebug and frames.target then
+        local pos = db and db.profile and db.profile.positions and db.profile.positions.target
+        local point, _, _, ofsX, ofsY = frames.target:GetPoint()
+        KT:PersistDebug("UF REFRESH target savedX=%s savedY=%s livePoint=%s liveX=%s liveY=%s rightTextFont=%s",
+            tostring(pos and pos.x), tostring(pos and pos.y), tostring(point), tostring(ofsX), tostring(ofsY),
+            tostring(frames.target.RightText and frames.target.RightText.GetFont
+                and select(2, frames.target.RightText:GetFont())))
+    end
     if frames.player and ns.ReloadFrames then
         ns.ReloadFrames()
     end
@@ -9304,10 +12198,3 @@ function Mod:OnDisable()
     end
     HideFrameTree(frames)
 end
-
-
-
-
-
-
-
