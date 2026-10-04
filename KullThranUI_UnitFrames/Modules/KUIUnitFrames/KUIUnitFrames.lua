@@ -4955,8 +4955,11 @@ do
             holder:EnableMouse(false)
             texts = { holder = holder, fs = {} }
             for _, key in ipairs({ "hp", "hpPct", "pp", "ppPct" }) do
-                texts.fs[key] = holder:CreateFontString(nil, "OVERLAY")
-                texts.fs[key]:SetWordWrap(false)
+                local fs = holder:CreateFontString(nil, "OVERLAY")
+                -- A FontString needs a font before any SetText, even an empty one.
+                fs:SetFont(ns.BlizzardFont("TextStatusBarText", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE"))
+                fs:SetWordWrap(false)
+                texts.fs[key] = fs
             end
             frame._ktClassicStatus = texts
         end
