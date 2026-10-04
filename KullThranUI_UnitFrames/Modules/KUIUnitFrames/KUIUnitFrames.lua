@@ -6080,7 +6080,7 @@ local function SetupUnitIndicators(frame, unit)
             frame._ktHideForeverPortraitArt = false
         end
         if u == "player" and usesForeverArt then
-            local hideBaseArt = playerCustomBorder ~= nil
+            local hideBaseArt = playerCustomBorder ~= nil or nativeKind ~= nil
             -- Persist the replacement state on the frame so every renderer
             -- pass (including delayed atlas retries) keeps the Forever art
             -- hidden while PLAYER uses a Rare/Elite border.
@@ -6116,8 +6116,11 @@ local function SetupUnitIndicators(frame, unit)
         if u == "target" and (renderedTheme == "forever" or renderedTheme == "retail") then
             local rawClassification = SafeUnitClassification(u)
             local isEliteOrRare = CLASSIFICATION_TEXTURES[rawClassification] ~= nil
-            -- The native overlay is drawn over the normal frame, like Blizzard's.
-            local showBaseRing = not isEliteOrRare or nativeKind ~= nil
+            -- Any Rare/Elite overlay, native or custom, replaces the stock art so
+            -- the two styles never overlap. Kept on the frame so later art passes
+            -- don't bring it back.
+            local showBaseRing = not (isEliteOrRare and showClassification) and nativeKind == nil
+            frame._ktHideForeverPortraitArt = not showBaseRing
             frame._ktDebugClassification = tostring(rawClassification)
             frame._ktDebugEliteOrRare = tostring(isEliteOrRare)
             frame._ktDebugArtShownField = tostring(frame._ktForeverPortraitArt ~= nil)
