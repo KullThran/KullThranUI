@@ -168,8 +168,9 @@ end
 
 local function Layout(frame, g)
     local sources = {
-        frame._ktForeverPortraitArt, frame._ktClassicPortraitArt,
-        frame._kuiClassificationPortraitRing, frame._kuiClassificationIndicator,
+        frame._ktForeverPortraitArt or false, frame._ktClassicPortraitArt or false,
+        frame._kuiClassificationPortraitRing or false, frame._kuiClassificationIndicator or false,
+        frame._kuiNativeClassRing or false, frame._kuiClassicRingTex or false,
     }
     -- Por encima del retrato y del arte: igualar strata y nivel maximos.
     local order = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
@@ -226,7 +227,8 @@ local function Layout(frame, g)
     -- o a la hoja Classic Elite/Rara cuando estan activos.
     local bdp = frame.Portrait and frame.Portrait.backdrop
     local ringAnchor
-    for _, r in ipairs({ frame._kuiClassificationPortraitRing, frame._kuiClassificationIndicator }) do
+    for _, r in ipairs({ frame._kuiClassificationPortraitRing or false, frame._kuiClassificationIndicator or false,
+        frame._kuiNativeClassRing or false, frame._kuiClassicRingTex or false }) do
         if r and r.IsShown and r:IsShown() and (r:GetWidth() or 0) > 1 then
             if not ringAnchor or (r:GetWidth() or 0) > (ringAnchor:GetWidth() or 0) then ringAnchor = r end
         end
