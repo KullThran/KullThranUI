@@ -1042,27 +1042,13 @@ function UM:GetRawElementPosition(key)
 end
 
 function UM:PrepareElementPositionForCurrentUI(key)
-    local raw = self:GetRawElementPosition(key)
-    if not raw then
-        self:RememberPositionReference(key)
-        return nil
-    end
-
-    local normalized, changed = self:NormalizePositionForCurrentUI(key, raw)
-    if changed then
-        self:SaveElementPosition(key, normalized)
-    else
-        self:RememberPositionReference(key)
-    end
-
-    self:ApplyStoredPositionToElement(key, normalized)
-    if changed then
-        local def = self:GetElementDef(key)
-        if def and type(def.applyPosition) == "function" then
-            SafeCall(def.applyPosition, key)
-        end
-    end
-    return normalized
+    -- Opening UnlockMode must be read-only. Re-applying every element's
+    -- stored position here (anchored to UIParent, without relativeTo) broke
+    -- modules that own their own anchoring: Damage Meter docks, CDM bars with
+    -- anchorTo, Unit Frames, Combat Timer... and rescaling + saving on open
+    -- permanently cleared those docks/anchors. Only record the reference size.
+    self:RememberPositionReference(key)
+    return self:GetRawElementPosition(key)
 end
 
 function UM:GetStoredDBPosition(key)
@@ -1150,8 +1136,7 @@ function UM:LoadElementPosition(key)
     if not raw then
         return nil
     end
-    local normalized = self:NormalizePositionForCurrentUI(key, raw)
-    return normalized
+    return raw
 end
 
 function UM:GetElementRect(key)
@@ -1926,7 +1911,12 @@ function UM:CreateMover(key)
             if not self:IsMoverSelected(s.key) then
                 self:ToggleMoverSelection(s.key)
             end
-        elseif not self:IsMoverSelected(s.key) or self:GetSelectedMoverCount() <= 1 then
+        else
+            -- A normal drag must never inherit a stale multi-selection. This
+            -- is especially important for Damage Meter windows: touching one
+            -- of them while moving an unrelated element clears its dock and
+            -- permanently changes the saved layout. Keep group dragging an
+            -- explicit Shift action from the start of the drag.
             self:SelectMover(s.key)
         end
         s.isDragging = true
@@ -2065,15 +2055,35 @@ end
 
 function UM:ResetMover(key)
     local mover = self.movers[key]
-    local snapshot = self.snapshotPositions[key]
-    if mover and snapshot then
-        self:ApplyStoredPositionToElement(key, snapshot)
-        mover:Sync()
-        self.pendingPositions[key] = nil
-        self.hasChanges = next(self.pendingPositions) ~= nil
-        if self.moverMenu and self.moverMenu:IsShown() and self.moverMenu.activeKey == key and self.RefreshMoverMenuFields then
-            self:RefreshMoverMenuFields()
+    if not mover then return end
+
+    local def = self:GetElementDef(key)
+    local handled = false
+
+    -- Elements that persist into their own module store (Unit Frames) expose a
+    -- resetPosition hook: it drops the user override and re-applies the shipped
+    -- default. Reading loadPosition alone would just return that same override.
+    if def and type(def.resetPosition) == "function" then
+        local ok, result = SafeCall(def.resetPosition, key)
+        handled = (ok ~= false and result ~= false)
+    end
+
+    if not handled then
+        local snapshot = self.snapshotPositions[key]
+        if snapshot then
+            self:ApplyStoredPositionToElement(key, snapshot)
         end
+    end
+
+    mover:Sync()
+    self.pendingPositions[key] = nil
+    self.hasChanges = next(self.pendingPositions) ~= nil
+
+    if self.BackupPersistedPositionsToGlobal then
+        self:BackupPersistedPositionsToGlobal()
+    end
+    if self.moverMenu and self.moverMenu:IsShown() and self.moverMenu.activeKey == key and self.RefreshMoverMenuFields then
+        self:RefreshMoverMenuFields()
     end
 end
 
@@ -3360,24 +3370,9 @@ function UM:RescaleOpenLayout()
         return
     end
 
-    local hadChanges = self.hasChanges
-    for key, mover in pairs(self.movers or {}) do
-        if mover:IsShown() then
-            local left = mover:GetLeft()
-            local top = mover:GetTop()
-            if left and top then
-                SetFrameTopLeft(mover, left * xRatio, top * yRatio)
-                self:ApplyMoverToElement(key, mover)
-            end
-        end
-    end
-
-    for _, pos in pairs(self.snapshotPositions or {}) do
-        pos.x = (tonumber(pos.x) or 0) * xRatio
-        pos.y = (tonumber(pos.y) or 0) * yRatio
-    end
-
-    self.hasChanges = hadChanges
+    -- Do not move real frames on a scale/display change: that queued a
+    -- pending position for EVERY element (committed on Save), dropping docks
+    -- and anchors. Movers are re-synced from the real frames below instead.
     self._unlockReferenceWidth = width
     self._unlockReferenceHeight = height
     self:RebuildGrid()

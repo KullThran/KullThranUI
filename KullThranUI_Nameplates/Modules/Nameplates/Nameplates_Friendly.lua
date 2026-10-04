@@ -879,8 +879,7 @@ end
 
 -------------------------------------------------------------------------------
 --  Stable name-only friendly overlay
---  Plater and Platynator both render friendly names in addon-owned regions.
---  Keeping the Blizzard name FontString while attaching custom level/guild
+--  Friendly names are best rendered in addon-owned regions. Keeping the Blizzard name FontString while attaching custom level/guild
 --  regions produces mixed layout passes as the projected plate scale changes.
 -------------------------------------------------------------------------------
 local npcOverlays = {}    -- nameplate -> stable friendly overlay
@@ -901,7 +900,7 @@ end
 local function StyleStableOverlayFont(fs, size)
     if not fs then return end
     SetFriendlyFSFont(fs, size, (ns and ns.GetNPOutline and ns.GetNPOutline()) or "OUTLINE")
-    -- Platynator only enables smooth scaling for SLUG fonts. The KUI font
+    -- Smooth scaling is only meaningful for SLUG fonts. The KUI font
     -- does not use that flag, so forcing it here makes moving text softer.
     if fs.SetSmoothScaling then
         fs:SetSmoothScaling(false)
@@ -959,7 +958,7 @@ local function ScheduleStableOverlayLayout(overlay)
         if self._ktLayoutFrames < 2 then return end
         self._ktLayoutFrames = nil
         self:SetScript("OnUpdate", nil)
-        -- Match Platynator: wait two render frames after OnSizeChanged before
+        -- Wait two render frames after OnSizeChanged before
         -- asking PixelUtil to resolve anchors at the new projected scale.
         ApplyStableOverlayLayout(self, false)
     end)
@@ -1181,8 +1180,8 @@ local function HideNPCOverlay(nameplate)
 end
 -------------------------------------------------------------------------------
 --  Runtime layout comparison
---  /knpdebug [target|mouseover|nameplateN] prints the same scale, parent and
---  font metrics for Blizzard, KUI, Plater and Platynator when present.
+--  Debug command [target|mouseover|nameplateN] prints the same scale, parent and
+--  font metrics for the Blizzard and KUI nameplate regions.
 -------------------------------------------------------------------------------
 local function DebugValue(frame, methodName)
     local fn = frame and frame[methodName]
@@ -1469,7 +1468,7 @@ end)
 --  Frame pool for custom friendly plates
 -------------------------------------------------------------------------------
 local friendlyFrameCache = CreateFramePool("Frame", UIParent, nil, nil, false, function(plate)
-    -- Match Platynator's stable display root: a small, fixed-size child of
+    -- Use a stable display root: a small, fixed-size child of
     -- Blizzard's projected nameplate whose render layers are composed once.
     plate:SetSize(10, 10)
     plate:SetFlattensRenderLayers(true)
@@ -1803,7 +1802,7 @@ function FriendlyFrame:UpdateHealth()
     local unit = self.unit
     if not unit then return end
 
-    -- Fase 1: resolver valores de vida seg\u00fan el m\u00e9todo disponible
+    -- Paso 1: resolver valores de vida seg\u00fan el m\u00e9todo disponible
     local curHP, maxHP
     local calc = self.hpCalculator
     if calc and calc.GetMaximumHealth then
@@ -1818,7 +1817,7 @@ function FriendlyFrame:UpdateHealth()
     self.health:SetMinMaxValues(0, maxHP)
     self.health:SetValue(curHP)
 
-    -- Fase 2: texto de porcentaje — evaluar condiciones de mayor a menor prioridad
+    -- Paso 2: texto de porcentaje — evaluar condiciones de mayor a menor prioridad
     local label
     if UnitIsDeadOrGhost(unit) then
         label = "0%"
@@ -2295,6 +2294,8 @@ function ns.UpdateFriendlyNameplateSystem()
         ns.QueueNameplateCVar("nameplateShowFriends", showPlayers and 1 or 0)
         ns.QueueNameplateCVar("nameplateShowFriendlyNPCs", showNPCs and 1 or 0)
         ns.QueueNameplateCVar("nameplateShowFriendlyNpcs", showNPCs and 1 or 0)
+        -- Quest givers use Blizzard's special-NPC state for their native ? marker.
+        ns.QueueNameplateCVar("UnitNameFriendlySpecialNPCName", showNPCs and 1 or 0)
     end
 
     -- Remove custom bars for units that have just switched to name-only.

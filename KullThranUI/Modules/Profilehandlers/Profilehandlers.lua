@@ -233,6 +233,7 @@ function ns.Handlers.Layout(profileName, profileData)
     end
 
     if profileData.uiScale then
+        if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
         if KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale and KT.SetBlizzardUIScale then
             KT:SetBlizzardUIScale(profileData.uiScale)
         else

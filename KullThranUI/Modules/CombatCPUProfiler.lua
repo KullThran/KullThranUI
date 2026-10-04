@@ -182,7 +182,7 @@ function profiler:PrintModernAddonSummary(title)
         Print(string.format("%2d. %-42s %.4f / %.4f / %.2fms",
             i, row.name, row.recent, row.session, row.peak))
     end
-    -- Igual que el medidor oficial de EllesmereUI: sumar todos los paquetes
+    -- Sumar todos los paquetes
     -- cargados de la suite. Comparar solo los addons raiz es enganoso porque
     -- KUI y EUI distribuyen funciones distintas entre sus carpetas.
     for i = 1, #rows do

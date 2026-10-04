@@ -167,8 +167,8 @@ function Mod:OnEnable()
     if not self.db then self:OnInitialize() end
     self:EnsureFrame()
     self:ResetSession()
-    -- Always hide Blizzard status bars when this module is running.
-    self:ShowBlizzardBars(false)
+    -- Blizzard's bars are only replaced while this module is enabled.
+    self:ShowBlizzardBars(self.db.enable == false)
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnterWorld")
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "UpdateBar")
@@ -186,8 +186,8 @@ function Mod:OnEnable()
 end
 
 function Mod:OnDisable()
-    -- Keep Blizzard bars hidden even when this module is disabled.
-    self:ShowBlizzardBars(false)
+    -- Give the XP/reputation bar back to Blizzard when the module is disabled.
+    self:ShowBlizzardBars(true)
     if self.frame then
         self.frame:Hide()
     end
@@ -468,8 +468,8 @@ function Mod:UpdateBar()
         barActive = false
     end
 
-    -- Never show Blizzard bars; this module owns the status bars.
-    self:ShowBlizzardBars(false)
+    -- This module owns the status bars only while it is enabled.
+    self:ShowBlizzardBars(db.enable == false)
 
     if not barActive then
         self.frame:Hide()

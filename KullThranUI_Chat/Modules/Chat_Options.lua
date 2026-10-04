@@ -650,6 +650,9 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         _, h = W:Toggle(container, "Class Color Names", -by,
             function() return db.classColorNames ~= false end,
             function(v) db.classColorNames = v; RefreshChat() end); by = by + h
+        _, h = W:Toggle(container, "Click Channel to Chat", -by,
+            function() return db.clickChannelToChat ~= false end,
+            function(v) db.clickChannelToChat = v end); by = by + h
         return by
     end)
 

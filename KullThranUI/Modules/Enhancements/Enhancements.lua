@@ -1103,33 +1103,47 @@ function Mod:ApplyFontSizes()
     end
 end
 
+-- Game CVars are only written while their option is on. Turning an option off
+-- restores the value the player had before KUI changed it; CVars KUI never
+-- changed are left alone.
+local function ApplyOwnedCVar(db, cvar, wanted, value)
+    db.graphicsSound.cvarBackups = db.graphicsSound.cvarBackups or {}
+    local backups = db.graphicsSound.cvarBackups
+    local GetCVar = _G.GetCVar
+    if wanted then
+        local current = GetCVar and GetCVar(cvar)
+        if backups[cvar] == nil and current ~= nil then
+            backups[cvar] = tostring(current)
+        end
+        if tostring(current) ~= tostring(value) then
+            pcall(SetCVar, cvar, tostring(value))
+        end
+    elseif backups[cvar] ~= nil then
+        if pcall(SetCVar, cvar, backups[cvar]) then
+            backups[cvar] = nil
+        end
+    end
+end
+
 function Mod:ApplyCVars()
     local db = self:GetDB()
+    local enabled = IsModuleEnabled()
+    local gs = db.graphicsSound
 
-    SetCVar("ffxGlow", (IsModuleEnabled() and db.graphicsSound.disableScreenGlow) and "0" or "1")
+    ApplyOwnedCVar(db, "ffxGlow", enabled and gs.disableScreenGlow, "0")
 
-    if IsModuleEnabled() and db.graphicsSound.disableScreenEffects then
-        SetCVar("ffxDeath", "0")
-        SetCVar("ffxNether", "0")
-        SetCVar("ffxVenari", "0")
-        SetCVar("ffxLingeringVenari", "0")
-    else
-        SetCVar("ffxDeath", "1")
-        SetCVar("ffxNether", "1")
-        SetCVar("ffxVenari", "1")
-        SetCVar("ffxLingeringVenari", "1")
-    end
+    local noEffects = enabled and gs.disableScreenEffects
+    ApplyOwnedCVar(db, "ffxDeath", noEffects, "0")
+    ApplyOwnedCVar(db, "ffxNether", noEffects, "0")
+    ApplyOwnedCVar(db, "ffxVenari", noEffects, "0")
+    ApplyOwnedCVar(db, "ffxLingeringVenari", noEffects, "0")
 
-    if IsModuleEnabled() and db.graphicsSound.setWeatherDensity then
-        local density = math.max(0, math.min(3, db.graphicsSound.weatherDensity or 0))
-        SetCVar("WeatherDensity", density)
-        SetCVar("RAIDweatherDensity", density)
-    else
-        SetCVar("WeatherDensity", "3")
-        SetCVar("RAIDweatherDensity", "3")
-    end
+    local setWeather = enabled and gs.setWeatherDensity
+    local density = math.max(0, math.min(3, gs.weatherDensity or 0))
+    ApplyOwnedCVar(db, "WeatherDensity", setWeather, density)
+    ApplyOwnedCVar(db, "RAIDweatherDensity", setWeather, density)
 
-    SetCVar("cameraDistanceMaxZoomFactor", (IsModuleEnabled() and db.graphicsSound.maxCameraZoom) and 2.6 or 1.9)
+    ApplyOwnedCVar(db, "cameraDistanceMaxZoomFactor", enabled and gs.maxCameraZoom, "2.6")
 
     if SetAllowLowLevelRaid then
         SetAllowLowLevelRaid(IsModuleEnabled() and db.gameOptions.removeRaidRestrictions or false)

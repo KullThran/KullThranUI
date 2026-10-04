@@ -896,6 +896,13 @@ function Mod:OnInitialize()
         statsFontOutline = "OUTLINE",
     }
 
+    -- Theme slots live in the core addon. Restore the active slot before
+    -- normalising this module so a persisted Forever theme also restores its
+    -- round minimap and automatic ring after a reload/login.
+    if KT.VisualThemes and KT.VisualThemes.ApplyCurrentThemeToModule then
+        KT.VisualThemes:ApplyCurrentThemeToModule("minimap")
+    end
+
     self.db = KT.db.profile.minimap
     self.db.enable = self.db.enable ~= false
     self.db.shape = self.db.shape or "SQUARE"
@@ -1328,6 +1335,9 @@ function Mod:CreatePixelPerfectBorder()
     end
 
     holder:HookScript("OnSizeChanged", function()
+        if Mod and Mod.UpdateRing then
+            Mod:UpdateRing()
+        end
         if Mod and Mod.UpdatePixelPerfectBorder then
             Mod:UpdatePixelPerfectBorder()
         end
@@ -1341,6 +1351,10 @@ function Mod:UpdatePixelPerfectBorder()
     if not (borderFrame and segments and edges) then return end
 
     NormalizeBorderSettings(self.db)
+    if self.RingActive and self:RingActive() and holder.KT_Ring and holder.KT_Ring:IsShown() then
+        borderFrame:Hide()
+        return
+    end
     local borderColor = self.db and self.db.borderColor or {}
     local red = borderColor.r or 0
     local green = borderColor.g or 0
@@ -1930,6 +1944,115 @@ function Mod:RestoreClusterSize(force)
     self._ktRestoringClusterSize = nil
 end
 
+-------------------------------------------------------------------------------
+--  Minimap ring: decorative frame around the (round) minimap, one per visual
+--  style (KUI keeps only the pixel border). db.ringStyle = nil/"auto" follows the
+--  rendered visual style; "none" / "forever" / "retail" / "classic" force one.
+--  Geometry: Forever uses the C60 art bundled by the core addon because Retail
+--  resolves UI-HUD-Minimap-Frame to its own atlas. Retail uses its native atlas;
+--  Classic UI-Minimap-Border is a 192px region for a 140px map, offset (-8,-24).
+-------------------------------------------------------------------------------
+KT.MinimapRingStyles = {
+    { key = "none",    label = "KUI (none)" },
+    { key = "forever", label = "Forever",
+      file = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\minimap\\UI-HUD-Minimap-Frame-C60.blp",
+      coords = { 1 / 512, 254 / 512, 1 / 512, 254 / 512 }, base = 198, size = 253, dx = 0, dy = 0 },
+    { key = "retail",  label = "Retail",  atlases = { "UI-HUD-Minimap-Frame-Circle", "UI-HUD-Minimap-Frame" }, base = 198,
+      -- Only the Forever client remaps this atlas to its bronze sheet; Retail draws it gold natively.
+      goldTint = not (WOW_PROJECT_ID and WOW_PROJECT_MAINLINE and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) },
+    { key = "classic", label = "Classic", file = "Interface\\Minimap\\UI-Minimap-Border",
+      coords = { 0.25, 1.0, 0.125, 0.875 }, base = 140, size = 192, dx = -8, dy = -24 },
+}
+local RING_BY_THEME = { kui = "none", forever = "forever", retail = "retail", classic = "classic" }
+
+-- Draws ring `def` into frame `ring`/texture `tex`, centred on `target`, for a map of `diameter` px.
+-- Shared by the real minimap, the picker tiles and the Live Preview. Returns false if unavailable.
+function KT.DrawMinimapRing(def, ring, tex, target, diameter)
+    ring:ClearAllPoints()
+    tex:SetDesaturated(false)
+    tex:SetVertexColor(1, 1, 1, 1)
+    local k = diameter / def.base
+    if def.file then
+        tex:SetAtlas(nil)
+        tex:SetTexture(def.file)
+        tex:SetTexCoord(unpack(def.coords))
+        ring:SetPoint("CENTER", target, "CENTER", def.dx * k, def.dy * k)
+        ring:SetSize(def.size * k, def.size * k)
+        return true
+    end
+    local atlas, info
+    for _, name in ipairs(def.atlases or {}) do
+        info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)
+        if info then atlas = name break end
+    end
+    if not atlas then return false end
+    tex:SetTexCoord(0, 1, 0, 1)
+    tex:SetAtlas(atlas)
+    if def.goldTint then
+        tex:SetDesaturated(true)
+        tex:SetVertexColor(1, 0.84, 0.38, 1)
+    end
+    ring:SetPoint("CENTER", target, "CENTER", 0, 0)
+    ring:SetSize(info.width * k, info.height * k)
+    return true
+end
+
+function Mod:GetRingStyleKey()
+    local k = self.db and self.db.ringStyle
+    if k == "none" or k == "forever" or k == "retail" or k == "classic" then return k end
+    local VT = KT.VisualThemes
+    local theme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    return RING_BY_THEME[theme] or "none"
+end
+
+local function ResolveRingAtlas(def)
+    for _, name in ipairs(def.atlases or {}) do
+        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)
+        if info then return name, info end
+    end
+end
+
+function Mod:RingActive()
+    if isSquare or not holder then return false end
+    local key = self:GetRingStyleKey()
+    if key == "none" then return false end
+    for _, def in ipairs(KT.MinimapRingStyles) do
+        if def.key == key then
+            if def.file then return true end
+            return ResolveRingAtlas(def) ~= nil
+        end
+    end
+    return false
+end
+
+function Mod:UpdateRing()
+    if not holder then return end
+    local ring = holder.KT_Ring
+    if not self:RingActive() then
+        if ring then ring:Hide() end
+        if holder.KT_PixelBorderFrame then self:UpdatePixelPerfectBorder() end
+        return
+    end
+    local key = self:GetRingStyleKey()
+    local def
+    for _, d in ipairs(KT.MinimapRingStyles) do if d.key == key then def = d break end end
+    if not def then return end
+    if not ring then
+        ring = CreateFrame("Frame", nil, holder)
+        ring:EnableMouse(false)
+        ring.tex = ring:CreateTexture(nil, "ARTWORK")
+        ring.tex:SetAllPoints(ring)
+        holder.KT_Ring = ring
+    end
+    ring:SetFrameStrata(holder:GetFrameStrata())
+    ring:SetFrameLevel(holder:GetFrameLevel() + 3)
+    local w = holder:GetWidth() or 0
+    if w <= 0 then return end
+    if not KT.DrawMinimapRing(def, ring, ring.tex, holder, w) then ring:Hide() return end
+    ring:Show()
+    if holder.KT_PixelBorderFrame then self:UpdatePixelPerfectBorder() end
+end
+
 function Mod:Refresh()
     if not KT.db or not KT.db.profile then
         return
@@ -1959,6 +2082,7 @@ function Mod:Refresh()
     self:RememberClusterPosition()
     self:RestoreMinimapInteraction()
     self:UpdatePixelPerfectBorder()
+    self:UpdateRing()
 
     self:UpdateFonts()
     self:UpdateZone()

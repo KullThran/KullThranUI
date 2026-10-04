@@ -880,6 +880,10 @@ end
 --  Consolidated cooldown/desat/charge-text helper
 -------------------------------------------------------------------------------
 local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha, skipCD, insufficientPower, hideGCDSwipe, blizzChild, isBuffBar)
+    if ns.CDMShouldKeepCooldownColored
+        and ns.CDMShouldKeepCooldownColored(icon._barKey, icon._baseSpellID or spellID) then
+        desatOnCD = false
+    end
     CacheMultiChargeSpell(spellID)
 
     local isChargeSpell = _multiChargeSpells[spellID] == true
@@ -920,7 +924,7 @@ local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha
                 ok = pcall(icon._cooldown.SetCooldownFromDurationObject, icon._cooldown, durObj)
             end
             if ok then
-                icon._cooldown:SetDrawSwipe(true)
+                icon._cooldown:SetDrawSwipe(not icon._kuiStateHideSwipe)
                 icon._cooldown:SetDrawEdge(false)
                 return true
             end
@@ -931,7 +935,7 @@ local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha
         if rawStart and rawDur and not (issecretvalue and (issecretvalue(rawStart) or issecretvalue(rawDur))) then
             local ok = pcall(icon._cooldown.SetCooldown, icon._cooldown, rawStart, rawDur)
             if ok then
-                icon._cooldown:SetDrawSwipe(true)
+                icon._cooldown:SetDrawSwipe(not icon._kuiStateHideSwipe)
                 icon._cooldown:SetDrawEdge(false)
                 return true
             end
@@ -990,10 +994,10 @@ local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha
         if isChargeSpell then
             if ccd then
                 icon._cooldown:SetCooldownFromDurationObject(ccd, true)
-                icon._cooldown:SetDrawSwipe(true)
+                icon._cooldown:SetDrawSwipe(not icon._kuiStateHideSwipe)
             elseif scd and not hideGCD then
                 icon._cooldown:SetCooldownFromDurationObject(scd, true)
-                icon._cooldown:SetDrawSwipe(true)
+                icon._cooldown:SetDrawSwipe(not icon._kuiStateHideSwipe)
             elseif TryApplyHookedBlizzCooldown() then
                 -- Blizzard's viewer started the cooldown before C_Spell reflected it.
             else
@@ -1003,7 +1007,7 @@ local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha
         else
             if scd and not hideGCD then
                 icon._cooldown:SetCooldownFromDurationObject(scd, true)
-                icon._cooldown:SetDrawSwipe(true)
+                icon._cooldown:SetDrawSwipe(not icon._kuiStateHideSwipe)
             elseif TryApplyHookedBlizzCooldown() then
                 -- Use the live Blizzard CDM cooldown as an immediate fallback to avoid swipe delay.
             else
@@ -1131,6 +1135,7 @@ local function ApplySpellCooldown(icon, spellID, desatOnCD, showCharges, swAlpha
     else
         icon._chargeText:Hide()
     end
+    if icon._kuiStateHideChargeText then icon._chargeText:Hide() end
 
     return scd
 end
@@ -1940,6 +1945,8 @@ function ns.SetCDMIconShown(icon, shouldShow)
     -- Potion tracker icons are SecureActionButtonTemplate buttons. Never call
     -- Show/Hide on them from addon code: a stale combat flag can still taint
     -- the call during the combat transition and produce ADDON_ACTION_BLOCKED.
+    local shownAlpha = icon._kuiUsableVisibilityAlpha
+    if shownAlpha == nil then shownAlpha = 1 end
     local isPotionTrackerIcon = icon._barKey == "kui_potion"
     local combatLocked = InCombatLockdown and InCombatLockdown() or false
     local inCombat = _G.KUI_CDM_inCombat
@@ -1949,7 +1956,7 @@ function ns.SetCDMIconShown(icon, shouldShow)
 
     if isPotionTrackerIcon then
         icon._ktCDMShouldShow = shouldShow == true
-        icon:SetAlpha(shouldShow and 1 or 0)
+        icon:SetAlpha(shouldShow and shownAlpha or 0)
         if inCombat or combatLocked then
             _pendingPotionTrackerSecureRefresh = true
         end
@@ -1965,7 +1972,7 @@ function ns.SetCDMIconShown(icon, shouldShow)
         isProtected = ok and result == true
     end
     if (inCombat or combatLocked) and isProtected then
-        icon:SetAlpha(shouldShow and 1 or 0)
+        icon:SetAlpha(shouldShow and shownAlpha or 0)
         if ns.SyncProcGlowIndexForIcon then
             ns.SyncProcGlowIndexForIcon(icon)
         end
@@ -1974,6 +1981,7 @@ function ns.SetCDMIconShown(icon, shouldShow)
 
     if shouldShow then
         icon:Show()
+        icon:SetAlpha(shownAlpha)
     else
         icon:Hide()
     end
@@ -2612,6 +2620,7 @@ local DEFAULTS = {
                 bgA = 0.6,
                 iconZoom = 0.08,
                 iconShape = "none",
+                frameArtKit = "default",
                 growDirection = "RIGHT",
                 verticalOrientation = false,
                 barBgEnabled = false,
@@ -4490,7 +4499,10 @@ function ns.SyncNativeCDMBarAlpha(barKey)
     end
     container._kuiNativeAlpha = alpha
     for _, icon in ipairs(icons) do
-        if ns._nativeCDMFrameData[icon] then icon:SetAlpha(alpha) end
+        if ns._nativeCDMFrameData[icon] then
+            local usableAlpha = icon._kuiUsableVisibilityAlpha
+            icon:SetAlpha(usableAlpha ~= nil and usableAlpha or alpha)
+        end
     end
 end
 
@@ -6368,7 +6380,7 @@ local function TrackerDebugOnce(tag, msg)
     KUI_CDM._trackerDebugOnce = KUI_CDM._trackerDebugOnce or {}
     if KUI_CDM._trackerDebugOnce[tag] then return end
     KUI_CDM._trackerDebugOnce[tag] = true
-    -- if KT and KT.Print then KT:Print(msg) end -- Silenced per user request
+    -- if KT and KT.Print then KT:Print(msg) end -- Output silenced.
 end
 
 local INTERRUPTS_BY_CLASS = {
@@ -7424,6 +7436,14 @@ BuildCDMBar = function(barIndex)
             local side = barData.playerFrameSide or "LEFT"
             local oX = barData.playerFrameOffsetX or 0
             local oY = barData.playerFrameOffsetY or 0
+            -- Classic/Forever/Retail stock layouts put the player's buff row
+            -- above (or on) the frame's top edge; a tracker docked above the
+            -- frame stacks over that row instead of covering the auras.
+            if barData.isKUITracker and (side == "TOPRIGHT_OUT" or side == "TOPLEFT_OUT")
+                and playerFrame._ktAuraRowLift
+                and playerFrame.Buffs and playerFrame.Buffs.IsShown and playerFrame.Buffs:IsShown() then
+                oY = oY + playerFrame._ktAuraRowLift
+            end
             local grow = barData.growDirection or "RIGHT"
             local centered = barData.growCentered ~= false
             local fp = CDMFrameAnchorPoint(side, grow, centered)
@@ -7685,7 +7705,7 @@ LayoutCDMBar = function(barKey)
         else
             includeInLayout = icon:IsShown()
         end
-        if includeInLayout then
+        if includeInLayout and not icon._kuiUsableShiftHidden then
             if #visibleIcons < maxIcons then
                 visibleIcons[#visibleIcons + 1] = icon
             else
@@ -7843,6 +7863,61 @@ icon:SetSize(iconW, iconH)
 end
 
 -------------------------------------------------------------------------------
+--  VisualThemes: optional classic 8-piece frame art around a CDM icon
+-------------------------------------------------------------------------------
+-- Ring size (in on-screen pixels) of ThemeBorderKit.lua's shared 8-piece
+-- classic border at scale = 1. That file does not expose BASE_RING_SIZE as
+-- a public constant (it is a private local there), so the value is mirrored
+-- here deliberately; keep this in sync if ThemeBorderKit.lua's own value
+-- ever changes.
+local CDM_CLASSIC_BORDER_BASE_RING_SIZE = 16
+
+-- CDM icons sit far closer together (default spacing = 2px, icons as small
+-- as 28px) than the other 3 modules this shared border kit is used on
+-- (frames of 100px+), so reusing scale = 1 (a 16px outward ring on every
+-- side) overlaps the neighboring icon by roughly 2*16 - spacing pixels --
+-- not a maybe, that is the actual arithmetic at the module's own defaults.
+-- Scale the ring down per-bar so its outward reach stays within half of
+-- that bar's own on-screen icon spacing, closing the gap instead of
+-- spilling past it into the next icon.
+local function ComputeClassicBorderScale(barData)
+    local barScale = (barData and barData.barScale) or 1.0
+    if not barScale or barScale < 0.1 then barScale = 1.0 end
+    local spacing = ((barData and barData.spacing) or 2) * barScale
+    local scale = (spacing / 2) / CDM_CLASSIC_BORDER_BASE_RING_SIZE
+    if scale > 1 then scale = 1 end
+    -- Keep a hairline ring instead of 0 (or less, for a bar configured with
+    -- negative/overlapping spacing): ThemeBorderKit.lua's own SeatClassicBorder
+    -- treats scale <= 0 as "unset" and resets it to a full-size scale = 1 ring,
+    -- which would reintroduce the exact overlap this function exists to avoid.
+    if scale < 0.02 then scale = 0.02 end
+    return scale
+end
+
+-- Applies or removes the "classic" theme's shared border kit around a single
+-- CDM icon. Purely decorative: anchored just outside the icon itself (same
+-- pattern as CastBar/ResourceBars/UnitFrames). barData.frameArtKit is a
+-- normal per-bar profile field (same name as unitFrames.frameArtKit /
+-- castbar.frameArtKit / resourceBars general.frameArtKit).
+local function ApplyClassicFrameArt(icon, barData)
+    if not icon then return end
+    local VT = KT.VisualThemes
+    if not (VT and VT.CreateClassicBorder and VT.SeatClassicBorder and VT.ShowClassicBorder) then
+        return
+    end
+    local wantClassic = barData and barData.frameArtKit == "classic"
+    if wantClassic then
+        icon.classicBorder = icon.classicBorder or VT:CreateClassicBorder(icon)
+        if icon.classicBorder then
+            VT:SeatClassicBorder(icon.classicBorder, icon, ComputeClassicBorderScale(barData))
+            VT:ShowClassicBorder(icon.classicBorder, true)
+        end
+    elseif icon.classicBorder then
+        VT:ShowClassicBorder(icon.classicBorder, false)
+    end
+end
+
+-------------------------------------------------------------------------------
 --  Create a single icon frame for a CDM bar
 -------------------------------------------------------------------------------
 local function CreateCDMIcon(barKey, index)
@@ -7893,11 +7968,11 @@ local function CreateCDMIcon(barKey, index)
     cd:SetDrawEdge(false)
     cd:SetDrawSwipe(true)
     cd:SetDrawBling(false)
+    cd:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
     do
         local swipeR, swipeG, swipeB = GetConfiguredSwipeColor(barData, icon)
         cd:SetSwipeColor(swipeR, swipeG, swipeB, barData.swipeAlpha or 0.7)
     end
-    cd:SetSwipeTexture("Interface\\Buttons\\WHITE8x8", 0, 1, 0, 1)
     cd:SetHideCountdownNumbers(not barData.showCooldownText)
     cd:SetReverse(false)
     icon._cooldown = cd
@@ -8072,6 +8147,7 @@ local function CreateCDMIcon(barKey, index)
     if shape ~= "none" then
         ApplyShapeToCDMIcon(icon, shape, barData)
     end
+    ApplyClassicFrameArt(icon, barData)
 
     ns.SetCDMIconShown(icon, false)
     return icon
@@ -9140,13 +9216,13 @@ function ns.ApplyNativeCDMVisualState(frame)
         end
         swipeR, swipeG, swipeB = GetActiveSwipeColor(barData, glowR, glowG, glowB, frame)
     end
-    if cooldown.SetDrawSwipe then cooldown:SetDrawSwipe(true) end
+    if cooldown.SetDrawSwipe then cooldown:SetDrawSwipe(not frame._kuiStateHideSwipe) end
     if cooldown.SetSwipeColor then
         fd.desiredSwipeR, fd.desiredSwipeG, fd.desiredSwipeB = swipeR, swipeG, swipeB
         fd.desiredSwipeA = barData.swipeAlpha or 0.7
         cooldown:SetSwipeColor(swipeR, swipeG, swipeB, barData.swipeAlpha or 0.7)
     end
-    fd.desiredHideCountdown = not barData.showCooldownText
+    fd.desiredHideCountdown = frame._kuiStateHideDuration or not barData.showCooldownText
     cooldown:SetHideCountdownNumbers(fd.desiredHideCountdown)
     fd.applyingVisual = nil
 end
@@ -9339,14 +9415,14 @@ function ns.EnsureNativeCDMFrame(frame, barKey, barData)
             hooksecurefunc(nativeCooldown, "SetDrawSwipe", function()
                 if fd.applyingVisual then return end
                 fd.applyingVisual = true
-                nativeCooldown:SetDrawSwipe(true)
+                nativeCooldown:SetDrawSwipe(not frame._kuiStateHideSwipe)
                 fd.applyingVisual = nil
             end)
 
             hooksecurefunc(nativeCooldown, "SetHideCountdownNumbers", function()
                 if fd.applyingVisual or fd.desiredHideCountdown == nil then return end
                 fd.applyingVisual = true
-                nativeCooldown:SetHideCountdownNumbers(fd.desiredHideCountdown)
+                nativeCooldown:SetHideCountdownNumbers(frame._kuiStateHideDuration or fd.desiredHideCountdown)
                 fd.applyingVisual = nil
             end)
         end
@@ -9379,8 +9455,8 @@ function ns.EnsureNativeCDMFrame(frame, barKey, barData)
     if frame.ChargeCount then pcall(frame.ChargeCount.SetFrameLevel, frame.ChargeCount, baseLevel + 23) end
 
     if frame.Cooldown then
-        if frame.Cooldown.SetDrawSwipe then frame.Cooldown:SetDrawSwipe(true) end
-        frame.Cooldown:SetHideCountdownNumbers(not barData.showCooldownText)
+        if frame.Cooldown.SetDrawSwipe then frame.Cooldown:SetDrawSwipe(not frame._kuiStateHideSwipe) end
+        frame.Cooldown:SetHideCountdownNumbers(frame._kuiStateHideDuration or not barData.showCooldownText)
         local countdown = frame.Cooldown.GetCountdownFontString and frame.Cooldown:GetCountdownFontString()
         if countdown then SetCDMFont(countdown, GetCDMFont(), barData.cooldownFontSize or 12) end
     end
@@ -10109,7 +10185,7 @@ local function RefreshCDMIconAppearance(barKey)
                 local swipeR, swipeG, swipeB = GetConfiguredSwipeColor(barData, icon)
                 icon._cooldown:SetSwipeColor(swipeR, swipeG, swipeB, barData.swipeAlpha or 0.7)
             end
-            icon._cooldown:SetHideCountdownNumbers(not barData.showCooldownText)
+            icon._cooldown:SetHideCountdownNumbers(icon._kuiStateHideDuration or not barData.showCooldownText)
             -- Mark pending font update
             if barData.showCooldownText then
                 icon._pendingFontPath = GetCDMFont(); icon._pendingFontSize = barData.cooldownFontSize or 12
@@ -10189,6 +10265,7 @@ local function RefreshCDMIconAppearance(barKey)
         -- Apply custom shape
         local shape = barData.iconShape or "none"
         ApplyShapeToCDMIcon(icon, shape, barData)
+        ApplyClassicFrameArt(icon, barData)
 
         -- Reset active state so glow type change takes effect on next tick
         if icon._glowOverlay and not ns._nativeCDMFrameData[icon] then
@@ -10801,6 +10878,12 @@ ns.AnchorPlayerFrameToCDM = function()
         ns._playerFrameAnchorPending = true
         return false
     end
+    -- Moving frames while the player drags things in Edit Mode makes them jump.
+    local editMode = _G.EditModeManagerFrame
+    if editMode and editMode.IsEditModeActive and editMode:IsEditModeActive() then
+        ns._playerFrameAnchorPending = true
+        return false
+    end
 
     local cdmBar = cdmBarFrames and cdmBarFrames["cooldowns"]
     -- Don't require :IsShown(); we still want a stable default anchor even when
@@ -10823,32 +10906,11 @@ ns.AnchorPlayerFrameToCDM = function()
     }
 
     local p = KUI_CDM and KUI_CDM.db and KUI_CDM.db.profile
-    local function EnsureMovedFramesTable()
-        if not p or not p.cdmBars then return end
-        p.cdmBars.userMovedFrames = p.cdmBars.userMovedFrames or {}
-    end
-
     local function HasUserMovedFrame(frame)
         if not frame or not frame.GetName then return false end
         local name = frame:GetName()
         if not name or name == "" then return false end
         return p and p.cdmBars and p.cdmBars.userMovedFrames and p.cdmBars.userMovedFrames[name] or false
-    end
-
-    local function HookDetectUserMoved(frame)
-        if not frame or frame.KT_CDM_MoveDetectHooked then return end
-        if not frame.GetName then return end
-        local name = frame:GetName()
-        if not name or name == "" then return end
-
-        frame.KT_CDM_MoveDetectHooked = true
-        hooksecurefunc(frame, "SetPoint", function(self)
-            if self.KT_CDM_Anchoring then return end
-            EnsureMovedFramesTable()
-            if p and p.cdmBars and p.cdmBars.userMovedFrames then
-                p.cdmBars.userMovedFrames[name] = true
-            end
-        end)
     end
 
     local function PersistKUIUnitFramePosition(frame, unitKey)
@@ -10893,10 +10955,9 @@ ns.AnchorPlayerFrameToCDM = function()
         if not f then return false end
         if ShouldSkipManagedFrameAutoAnchor(f, unitKey) then return false end
         if HasUserMovedFrame(f) then return false end
+        -- No SetUserPlaced: the game would cache this position in its own
+        -- layout file and keep it even after KUI is disabled.
         local ok = pcall(function()
-            if f.SetUserPlaced and not InCombatLockdown() then
-                pcall(f.SetUserPlaced, f, true)
-            end
             f.KT_CDM_Anchoring = true
             f:ClearAllPoints()
             f:SetPoint(point, relFrame, relPoint, ox, oy)
@@ -10936,26 +10997,14 @@ ns.AnchorPlayerFrameToCDM = function()
             end
         end
     end
-    if not anchoredPlayer then
-        local blizzPlayer = ns.CDMGetBlizzardPlayerFrameCandidate and ns.CDMGetBlizzardPlayerFrameCandidate() or _G["PlayerFrame"]
-        if blizzPlayer then
-            HookDetectUserMoved(blizzPlayer)
-            TryAnchorFrame(blizzPlayer, "player", "RIGHT", anchorFrame, "LEFT", -offsetX, 0)
-        end
-    end
+    -- Blizzard's PlayerFrame/TargetFrame belong to Edit Mode: KUI never
+    -- re-anchors them, so Edit Mode layouts stay exactly as the player saved them.
 
     local anchoredTarget = false
     for _, name in ipairs(targetCandidates) do
         if TryAnchorFrame(name, "target", "LEFT", anchorFrame, "RIGHT", offsetX, 0) then
             anchoredTarget = true
             break
-        end
-    end
-    if not anchoredTarget then
-        local blizzTarget = _G["TargetFrame"] or _G["TargetFrameContainer"] or _G["TargetFrameContent"]
-        if blizzTarget then
-            HookDetectUserMoved(blizzTarget)
-            TryAnchorFrame(blizzTarget, "target", "LEFT", anchorFrame, "RIGHT", offsetX, 0)
         end
     end
 
@@ -12732,6 +12781,19 @@ ns.initFrame:SetScript("OnEvent", function(self, event, arg1)
             end
             p.migratedCDM_v36 = true
         end
+
+        -- v41: VisualThemes classic border kit (frameArtKit) is a new field;
+        -- AceDB will not add a new key into an already-existing bars[] entry,
+        -- so backfill it explicitly. "default" keeps the current look.
+        if p and p.cdmBars and p.cdmBars.bars and not p.migratedCDM_v41 then
+            if p.cdmBars.barDefaults and p.cdmBars.barDefaults.frameArtKit == nil then
+                p.cdmBars.barDefaults.frameArtKit = "default"
+            end
+            for _, b in ipairs(p.cdmBars.bars) do
+                if b.frameArtKit == nil then b.frameArtKit = "default" end
+            end
+            p.migratedCDM_v41 = true
+        end
         KUI_CDM._needsCapture = not KUI_CDM.db.profile._capturedOnce
         _G._KUI_CDM_AceDB = KUI_CDM.db
         _G._KUI_CDM_Apply = function()
@@ -13056,8 +13118,7 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
         -- local is always legal; only *testing* it errors. So bind the fields,
         -- issecretvalue-gate every use, and when unreadable assume duration/
         -- stack-only churn: skip the viewer refresh rather than rebuild on the
-        -- off chance (pool hooks remain the primary composition signal). Same
-        -- guard shape as EllesmereUI.
+        -- off chance (pool hooks remain the primary composition signal).
         local updateInfo = ...
         local compositionChanged = true
         if type(updateInfo) == "table" and issecretvalue and not issecretvalue(updateInfo) then

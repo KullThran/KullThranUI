@@ -1590,8 +1590,9 @@ initFrame:SetScript("OnEvent", function(self)
             DBVal("font")
             local npOutline  = (KT and KT.GetNPFontOutline and KT.GetNPFontOutline()) or
             "OUTLINE"
-            local barH       = Snap(DBVal("healthBarHeight"))
-            local rawBarW    = BAR_W + DBVal("healthBarWidth")
+            -- Same size rules as the live plates (style defaults apply while the player keeps the default size)
+            local barH       = Snap((ns.GetHealthBarHeight and ns.GetHealthBarHeight()) or DBVal("healthBarHeight"))
+            local rawBarW    = (ns.GetHealthBarWidth and ns.GetHealthBarWidth()) or (BAR_W + DBVal("healthBarWidth"))
             local barW       = IsDragging() and rawBarW or Snap(rawBarW)
             local castH      = Snap(DBVal("castBarHeight") or defaults.castBarHeight)
             local showArrows = DBVal("showTargetArrows") == true
@@ -1812,9 +1813,9 @@ initFrame:SetScript("OnEvent", function(self)
 
             -- Slot-based text positioning
             -- Read slot assignments
-            local slotTop    = DBVal("textSlotTop") or defaults.textSlotTop
+            local slotTop    = (ns.GetTextSlot and ns.GetTextSlot("textSlotTop")) or DBVal("textSlotTop") or defaults.textSlotTop
             local slotRight  = DBVal("textSlotRight") or defaults.textSlotRight
-            local slotLeft   = DBVal("textSlotLeft") or defaults.textSlotLeft
+            local slotLeft   = (ns.GetTextSlot and ns.GetTextSlot("textSlotLeft")) or DBVal("textSlotLeft") or defaults.textSlotLeft
             local slotCenter = DBVal("textSlotCenter") or defaults.textSlotCenter
 
             -- Hide all three text elements first
@@ -2631,6 +2632,11 @@ initFrame:SetScript("OnEvent", function(self)
                     if ov._resizeToText then ov._resizeToText() end
                 end
             end
+
+            -- The preview wears the active nameplate style (bars, border, level and quest icon)
+            if ns.ApplyThemePreview then
+                ns.ApplyThemePreview(pf, health, healthBG, cast, castBG, nameFS, levelFS, borderFrame, simpleBorderFrame)
+            end
         end
 
         -- Expose preview elements for click-navigation hit overlays
@@ -3058,8 +3064,308 @@ initFrame:SetScript("OnEvent", function(self)
             function() return DBVal("enable") ~= false end,
             function(v)
                 DB().enable = v and true or false
-                ReloadUI()
+                StaticPopup_Show("KULLTHRANUI_RELOAD")
             end); y = y - h
+
+        -----------------------------------------------------------------------
+        --  STYLE PRESETS (compact: one mini nameplate per style)
+        -----------------------------------------------------------------------
+        _, h = W:SectionHeader(parent, "STYLE PRESETS", y); y = y - h
+        do
+            local STYLES = {
+                -- mismo orden que el selector de Visual Styles (ThemeCatalog ORDER)
+                { key = "kui",     label = "KUI" },
+                { key = "forever", label = "Forever" },
+                { key = "retail",  label = "Retail" },
+                { key = "classic", label = "Classic" },
+            }
+            local tiles = {}
+            local function Cur()
+                return (ns.NameplateStyle and ns.NameplateStyle()) or "kui"
+            end
+            local function Tex(f, layer, r, g, b, a)
+                local t = f:CreateTexture(nil, layer)
+                t:SetTexture("Interface\\Buttons\\WHITE8x8")
+                t:SetVertexColor(r, g, b, a or 1)
+                return t
+            end
+            local function Frame(f, x1, y1, x2, y2, r, g, b)
+                -- 1px border drawn as 4 strips around the rect
+                local t = Tex(f, "BORDER", r, g, b); t:SetPoint("TOPLEFT", x1, y1); t:SetPoint("TOPRIGHT", x2, y1); t:SetHeight(1)
+                t = Tex(f, "BORDER", r, g, b); t:SetPoint("BOTTOMLEFT", x1, y2); t:SetPoint("BOTTOMRIGHT", x2, y2); t:SetHeight(1)
+                t = Tex(f, "BORDER", r, g, b); t:SetPoint("TOPLEFT", x1, y1); t:SetPoint("BOTTOMLEFT", x1, y2); t:SetWidth(1)
+                t = Tex(f, "BORDER", r, g, b); t:SetPoint("TOPRIGHT", x2, y1); t:SetPoint("BOTTOMRIGHT", x2, y2); t:SetWidth(1)
+            end
+            local function Gloss(f, h, a1, a2)
+                local g = Tex(f, "ARTWORK", 1, 1, 1, 1)
+                g:SetPoint("TOPLEFT", 4, -9); g:SetPoint("TOPRIGHT", -4, -9); g:SetHeight(h)
+                if g.SetGradient and CreateColor then
+                    g:SetGradient("VERTICAL", CreateColor(1, 1, 1, a1), CreateColor(1, 1, 1, a2))
+                end
+            end
+            local CLASS_SPELLS = {
+                WARRIOR = { 100, 6343, 1680, 23922 },        DEATHKNIGHT = { 49998, 49143, 55090, 47541 },
+                PALADIN = { 20271, 35395, 19750, 853 },      HUNTER = { 56641, 34026, 5116, 19434 },
+                ROGUE = { 1752, 1943, 2098, 1766 },          PRIEST = { 585, 589, 2061, 8092 },
+                SHAMAN = { 188196, 8042, 51505, 8004 },      MAGE = { 116, 133, 30451, 2948 },
+                WARLOCK = { 686, 172, 29722, 116858 },       MONK = { 100780, 100784, 107428, 116694 },
+                DRUID = { 8921, 5176, 774, 8936 },           DEMONHUNTER = { 162243, 185123, 198013, 188499 },
+                EVOKER = { 361469, 362969, 357208, 355913 },
+            }
+            local function SpellIcon(idx)
+                local _, class = UnitClass("player")
+                local list = CLASS_SPELLS[class] or CLASS_SPELLS.MAGE
+                local id = list[((idx - 1) % #list) + 1]
+                local tex = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(id)
+                return tex or "Interface\\Icons\\INV_Misc_QuestionMark"
+            end
+            -- same status-bar textures as each style's profile (Adapters/Nameplates.lua seed)
+            local PROFILE_TEX = { kui = "Melli Reforged", classic = "Blizzard", retail = "Blizzard Raid Bar", forever = "Melli Dark" }
+            local function BarTex(key)
+                local path = LSM and LSM.Fetch and LSM:Fetch("statusbar", PROFILE_TEX[key], true)
+                return path or "Interface\\Buttons\\WHITE8x8"
+            end
+            local CP_MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
+            local CP_BORDER = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_border.tga"
+            local function PreviewFont()
+                local path = KT and KT.ResolveFontPath and KT:ResolveFontPath("AAA_ITC_Avant_Garde", "Fonts\\FRIZQT__.TTF")
+                return path or "Fonts\\FRIZQT__.TTF"
+            end
+            local function DrawSample(tile, key, idx)
+                local BH  = ({ kui = 14, classic = 13, retail = 17, forever = 17 })[key]
+                local CH  = 7                        -- cast bar height
+                local IC  = BH + 2 + CH              -- spell icon = bars stack height
+                local BW  = 78                       -- bar width
+                local STACKW = IC + 4 + BW           -- icon + gap + bars (centered as a group)
+                local style = {
+                    kui     = { empty = { 0.10, 0.10, 0.10 }, fill = { 0.78, 0.18, 0.18 }, edge = { 0, 0, 0 } },
+                    classic = { empty = { 0.05, 0.05, 0.05 }, fill = { 0.82, 0.07, 0.07 }, edge = { 0.85, 0.70, 0.16 } },
+                    retail  = { empty = { 0.16, 0.03, 0.03 }, fill = { 0.66, 0.08, 0.08 }, edge = { 0.82, 0.81, 0.79 } },
+                    forever = { empty = { 0.16, 0.03, 0.03 }, fill = { 0.66, 0.08, 0.08 }, edge = { 0.82, 0.81, 0.79 } },
+                }
+                local S = style[key]
+                local function Edge(f)
+                    if key == "classic" then
+                        Frame(f, -1, 1, 1, -1, S.edge[1], S.edge[2], S.edge[3])
+                        Frame(f, -2, 2, 2, -2, 0.10, 0.07, 0.02)
+                    elseif key == "kui" then
+                        Frame(f, -1, 1, 1, -1, 0, 0, 0)
+                    else
+                        Frame(f, -1, 1, 1, -1, S.edge[1], S.edge[2], S.edge[3])
+                        Frame(f, -2, 2, 2, -2, 0.02, 0.02, 0.03)
+                    end
+                end
+                local function Shine(f, hgt, a)
+                    local gl = Tex(f, "OVERLAY", 1, 1, 1, 1)
+                    gl:SetPoint("TOPLEFT"); gl:SetPoint("TOPRIGHT"); gl:SetHeight(hgt)
+                    if gl.SetGradient and CreateColor then gl:SetGradient("VERTICAL", CreateColor(1, 1, 1, 0.02), CreateColor(1, 1, 1, a)) end
+                end
+
+                -- group frame, centered horizontally in the tile
+                local grp = CreateFrame("Frame", nil, tile)
+                grp:SetSize(STACKW, BH + 2 + CH + 4 + 9)
+                grp:SetPoint("TOP", tile, "TOP", 0, -9)
+
+                -- combo points (centered over the bar stack): 3 lit + 2 dim
+                local cx = IC + 4 + BW / 2   -- centered under the bars
+                local _, cls = UnitClass("player")
+                local cc = (RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls]) or { r = 1, g = 0.82, b = 0.1 }
+                local ROUND = (key ~= "kui")
+                for n = 1, 5 do
+                    local lit = n <= 3
+                    local yoff = -(BH + 2 + CH + 4)
+                    if ROUND then
+                        local D = 9
+                        local pt = grp:CreateTexture(nil, "OVERLAY", nil, 2)
+                        pt:SetTexture("Interface\\Buttons\\WHITE8x8")
+                        pt:SetSize(D, D)
+                        pt:SetPoint("TOPLEFT", grp, "TOPLEFT", cx + (n - 3) * 11 - D / 2, yoff)
+                        if lit then pt:SetVertexColor(cc.r, cc.g, cc.b, 1) else pt:SetVertexColor(0.15, 0.15, 0.15, 0.9) end
+                        local mask = grp:CreateMaskTexture()
+                        mask:SetTexture(CP_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                        mask:SetAllPoints(pt)
+                        pt:AddMaskTexture(mask)
+                        local br = grp:CreateTexture(nil, "OVERLAY", nil, 4)
+                        br:SetTexture(CP_BORDER)
+                        br:SetAllPoints(pt)
+                        if lit then br:SetVertexColor(1, 0.82, 0.08, 1) else br:SetVertexColor(0.35, 0.3, 0.1, 1) end
+                    else
+                        local pt = Tex(grp, "OVERLAY", lit and cc.r or 0.25, lit and cc.g or 0.25, lit and cc.b or 0.25)
+                        pt:SetSize(9, 3)
+                        pt:SetPoint("TOPLEFT", grp, "TOPLEFT", cx + (n - 3) * 11 - 4.5, yoff - 3)
+                    end
+                end
+
+                local blz = (key == "retail" or key == "forever")
+                -- Blizzard atlases (same ones the real Retail/Forever plates use)
+                local function BlizzBar(frame, bgAtlas, fillAtlas, pct, ex, ey, tint)
+                    local interior
+                    if tint then
+                        interior = frame:CreateTexture(nil, "BACKGROUND", nil, -6)
+                        interior:SetAllPoints()
+                        interior:SetColorTexture(tint[1], tint[2], tint[3], 1)
+                    end
+                    local bgA = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+                    bgA:SetAtlas(bgAtlas)
+                    bgA:SetPoint("TOPLEFT", -ex, ey); bgA:SetPoint("BOTTOMRIGHT", ex, -ey)
+                    if key == "forever" then
+                        local bz = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+                        bz:SetColorTexture(0.78, 0.55, 0.26, 1)
+                        local m = frame:CreateMaskTexture()
+                        m:SetAtlas(bgAtlas)
+                        for _, o in ipairs({ bz, m }) do
+                            o:SetPoint("TOPLEFT", -ex - 2, ey + 2); o:SetPoint("BOTTOMRIGHT", ex + 2, -ey - 2)
+                        end
+                        bz:AddMaskTexture(m)
+                    end
+                    local fill = frame:CreateTexture(nil, "ARTWORK")
+                    fill:SetAtlas(fillAtlas)
+                    fill:SetPoint("TOPLEFT"); fill:SetPoint("BOTTOMLEFT"); fill:SetWidth(math.floor(frame:GetWidth() * pct))
+                    return fill
+                end
+
+                -- health bar
+                local bar = CreateFrame("Frame", nil, grp)
+                bar:SetSize(BW, BH)
+                bar:SetPoint("TOPLEFT", grp, "TOPLEFT", IC + 4, 0)
+                if blz then
+                    local fill = BlizzBar(bar, "UI-HUD-CoolDownManager-Bar-BG", "UI-HUD-CoolDownManager-Bar", 0.72, BH * 0.25, BH * 0.281, { 0.16, 0.03, 0.03 })
+                    fill:SetVertexColor(1, 0, 0, 1)
+                    local lvl = bar:CreateFontString(nil, "OVERLAY"); lvl:SetFont(PreviewFont(), 11, "OUTLINE")
+                    lvl:SetPoint("LEFT", bar, "LEFT", 3, 0); lvl:SetText("60"); lvl:SetTextColor(1, 1, 1)
+                    local nm = bar:CreateFontString(nil, "OVERLAY"); nm:SetFont(PreviewFont(), 8, "OUTLINE")
+                    nm:SetPoint("LEFT", bar, "LEFT", 21, 0); nm:SetText("Mob")
+                    local pc = bar:CreateFontString(nil, "OVERLAY"); pc:SetFont(PreviewFont(), 8, "OUTLINE")
+                    pc:SetPoint("RIGHT", bar, "RIGHT", -3, 0); pc:SetText("72%")
+                else
+                    local bg = Tex(bar, "BACKGROUND", S.empty[1], S.empty[2], S.empty[3]); bg:SetAllPoints()
+                    local f = Tex(bar, "ARTWORK", S.fill[1], S.fill[2], S.fill[3])
+                    f:SetPoint("TOPLEFT"); f:SetPoint("BOTTOMLEFT"); f:SetWidth(math.floor(BW * 0.72))
+                    f:SetTexture(BarTex(key))
+                    if key == "classic" then
+                        -- matte (original Blizzard bar texture): no shine
+                        Edge(bar)
+                        -- rounded corners: knock out the 4 corner pixels of the frame
+                        for _, c in ipairs({ { "TOPLEFT", 1, -1 }, { "TOPRIGHT", -1, -1 }, { "BOTTOMLEFT", 1, 1 }, { "BOTTOMRIGHT", -1, 1 } }) do
+                            local px = Tex(bar, "OVERLAY", 0.05, 0.04, 0.02); px:SetSize(2, 2); px:SetPoint(c[1], bar, c[1], c[2] * -1, c[3] * -1)
+                        end
+                        -- oval level plate on the right: gold ring, dark centre, difficulty-coloured number
+                        local plate = CreateFrame("Frame", nil, bar)
+                        plate:SetSize(26, BH + 4); plate:SetPoint("LEFT", bar, "RIGHT", -8, 0)
+                        plate:SetFrameLevel(bar:GetFrameLevel() + 5)
+                        for _, o in ipairs({ { -3, 0.02, 0.02, 0.02, -1 }, { -2, 0.85, 0.70, 0.30, 0 }, { -1, 0.05, 0.05, 0.05, 2 } }) do
+                            local t = plate:CreateTexture(nil, "BACKGROUND", nil, o[1]); t:SetColorTexture(o[2], o[3], o[4], 1)
+                            t:SetPoint("TOPLEFT", o[5], -o[5]); t:SetPoint("BOTTOMRIGHT", -o[5], o[5])
+                            local m = plate:CreateMaskTexture(); m:SetTexture(CP_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                            m:SetPoint("TOPLEFT", o[5], -o[5]); m:SetPoint("BOTTOMRIGHT", -o[5], o[5]); t:AddMaskTexture(m)
+                        end
+                        local lv = plate:CreateFontString(nil, "OVERLAY"); lv:SetFont(PreviewFont(), 8, "OUTLINE")
+                        lv:SetPoint("CENTER", plate, "CENTER", 0, 0); lv:SetText("60"); lv:SetTextColor(0.25, 0.9, 0.25)
+                    else
+                        Edge(bar)
+                    end
+                    local fs = bar:CreateFontString(nil, "OVERLAY")
+                    fs:SetFont(PreviewFont(), 8, "OUTLINE")
+                    fs:SetPoint("CENTER", bar, "CENTER", (key == "classic") and -6 or 0, 0)
+                    fs:SetText("Mob Name")
+                end
+
+                -- cast bar under the health bar
+                local cast = CreateFrame("Frame", nil, grp)
+                cast:SetSize(BW, CH)
+                cast:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -(blz and 5 or 2))
+                if blz then
+                    BlizzBar(cast, "UI-CastingBar-Background", "UI-CastingBar-Full-Standard", 0.55, 0, 0, nil)
+                else
+                    local cbg = Tex(cast, "BACKGROUND", key == "kui" and 0.10 or 0.30, key == "kui" and 0.10 or 0.29, key == "kui" and 0.10 or 0.28)
+                    cbg:SetAllPoints()
+                    local cf = Tex(cast, "ARTWORK", key == "classic" and 1 or 0.9, key == "classic" and 0.8 or 0.7, key == "classic" and 0.2 or 0.15)
+                    cf:SetPoint("TOPLEFT"); cf:SetPoint("BOTTOMLEFT"); cf:SetWidth(math.floor(BW * 0.55))
+                    cf:SetTexture(BarTex(key))
+                    Edge(cast)
+                end
+
+                -- spell icon beside both bars
+                local ic = CreateFrame("Frame", nil, grp)
+                ic:SetSize(IC, IC)
+                ic:SetPoint("TOPLEFT", grp, "TOPLEFT", 0, 0)
+                local it = ic:CreateTexture(nil, "ARTWORK")
+                it:SetAllPoints()
+                it:SetTexture(SpellIcon(idx))
+                it:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- sin borde en los iconos
+            end
+            local function Highlight()
+                local cur = Cur()
+                for _, t in ipairs(tiles) do
+                    local on = (t.key == cur)
+                    t.sel:SetShown(on)
+                    t.label:SetTextColor(on and 1 or 0.75, on and 0.82 or 0.75, on and 0 or 0.75)
+                end
+            end
+            local row = CreateFrame("Frame", nil, parent)
+            row:SetPoint("TOP", parent, "TOP", 0, y)
+            row:SetSize(4 * 126, 76)
+            for i, st in ipairs(STYLES) do
+                local tile = CreateFrame("Button", nil, row)
+                tile:SetSize(120, 74)
+                tile:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * 126, 0)
+                local bgt = Tex(tile, "BACKGROUND", 0.05, 0.05, 0.06, 0.8); bgt:SetAllPoints()
+                tile.sel = CreateFrame("Frame", nil, tile)
+                tile.sel:SetAllPoints()
+                Frame(tile.sel, 0, 0, 0, 0, 1, 0.82, 0)
+                tile.sel:Hide()
+                tile.key = st.key
+                tile.label = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                tile.label:SetPoint("BOTTOM", tile, "BOTTOM", 0, 6)
+                tile.label:SetText(st.label)
+                DrawSample(tile, st.key, i)
+                tile:SetScript("OnClick", function()
+                    if st.key == Cur() and DB().nameplateStyle == st.key then return end
+                    local d = DB()
+                    local P = (KT.VisualThemes and KT.VisualThemes.GetModuleAdapter
+                        and KT.VisualThemes:GetModuleAdapter("nameplates")
+                        and KT.VisualThemes:GetModuleAdapter("nameplates").getProfile
+                        and KT.VisualThemes:GetModuleAdapter("nameplates").getProfile()) or d
+                    -- 1) overwrite sizes / dimensions / offsets / text sizes of the enemy plate
+                    local PREFIX = { "healthBar", "castBar", "cast", "enemyName", "level", "name", "classPower",
+                        "textSlot", "raidMarker", "rareElite", "targetArrow", "focusCast" }
+                    for _, tbl in ipairs({ d, P }) do
+                        for k in pairs(tbl) do
+                            if type(k) == "string" and not k:find("^friendly") then
+                                for _, pre in ipairs(PREFIX) do
+                                    if k:sub(1, #pre) == pre then tbl[k] = nil; break end
+                                end
+                            end
+                        end
+                    end
+                    -- 2) seed the style's own look (textures, border, colors, combo shape) from its profile
+                    local ad = KT.VisualThemes and KT.VisualThemes.GetModuleAdapter and KT.VisualThemes:GetModuleAdapter("nameplates")
+                    if ad and ad.seed then
+                        pcall(ad.seed, P, st.key)
+                        if ad.validate then pcall(ad.validate, P) end
+                    end
+                    d.nameplateStyle = st.key
+                    P.nameplateStyle = st.key
+                    d.classPowerPos = "bottom"   -- combo points debajo de la plate
+                    if ns.RefreshThemeSkin then ns.RefreshThemeSkin() end
+                    RefreshAllPlates()
+                    Highlight()
+                    -- 3) some of this (sizes, textures, anchors) only fully applies after a reload
+                    StaticPopupDialogs["KT_NP_STYLE_RELOAD"] = {
+                        text = string.format(LText("Nameplate style changed to %s. Sizes and dimensions were reset to that style. Reload the interface to finish applying it?"), tostring(st.label)),
+                        button1 = YES or "Yes", button2 = NO or "No",
+                        OnAccept = function() ReloadUI() end,
+                        timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+                    }
+                    StaticPopup_Show("KT_NP_STYLE_RELOAD")
+                end)
+                tile:SetScript("OnEnter", function(self) self.label:SetTextColor(1, 1, 1) end)
+                tile:SetScript("OnLeave", Highlight)
+                tiles[#tiles + 1] = tile
+            end
+            Highlight()
+            y = y - 80
+        end
 
         -----------------------------------------------------------------------
         --  FRIENDLY NAMEPLATES
@@ -7388,6 +7694,74 @@ initFrame:SetScript("OnEvent", function(self)
                     ns.RefreshClassPower(); UpdatePreview()
                 end
             }); y = y - h
+
+        -- Row 4: Combo point shape -- two preview cards (circles / pips)
+        do
+            local lbl, lh = W:Label(parent, "Combo Point Shape", y, 12)
+            y = y - lh
+            local holder = CreateFrame("Frame", nil, parent)
+            holder:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, y)
+            holder:SetSize(300, 70)
+            local MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
+            local BORDER = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_border.tga"
+            local cards = {}
+            local function Paint()
+                local cur = ns.GetClassPowerShape()
+                local ar, ag, ab = NPPreviewAccentRGB()
+                for key, btn in pairs(cards) do
+                    local on = cur == key
+                    btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
+                    btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
+                end
+            end
+            local defs = { { key = "circle", label = "Circles" }, { key = "pip", label = "Pips" } }
+            for index, def in ipairs(defs) do
+                local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+                btn:SetSize(140, 70)
+                btn:SetPoint("TOPLEFT", (index - 1) * 148, 0)
+                btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+                local w, hgt, gap = def.key == "circle" and 16 or 18, def.key == "circle" and 16 or 7, 6
+                local total = 5 * w + 4 * gap
+                for i = 1, 5 do
+                    local filled = i <= 3
+                    local fr, fg, fb = 1, 0.05, 0.05
+                    if not filled then fr, fg, fb = 0.22, 0.02, 0.02 end
+                    local t = btn:CreateTexture(nil, "ARTWORK")
+                    t:SetSize(w, hgt)
+                    t:SetPoint("TOPLEFT", btn, "TOPLEFT", (140 - total) / 2 + (i - 1) * (w + gap), -14 - (16 - hgt) / 2)
+                    t:SetColorTexture(fr, fg, fb, 1)
+                    if def.key == "circle" then
+                        local m = btn:CreateMaskTexture()
+                        m:SetTexture(MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                        m:SetAllPoints(t)
+                        t:AddMaskTexture(m)
+                        local bd = btn:CreateTexture(nil, "OVERLAY")
+                        bd:SetTexture(BORDER)
+                        bd:SetAllPoints(t)
+                        bd:SetVertexColor(1, 0.82, 0.08, 1)
+                    end
+                end
+                local fs = btn:CreateFontString(nil, "OVERLAY")
+                fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+                fs:SetPoint("BOTTOM", 0, 8)
+                fs:SetText(LText(def.label))
+                btn:SetScript("OnClick", function()
+                    if classPowerDisabled() then return end
+                    DB().classPowerShape = def.key
+                    ns.RefreshClassPower(); UpdatePreview()
+                    Paint()
+                end)
+                cards[def.key] = btn
+            end
+            local function Refresh()
+                holder:SetAlpha(classPowerDisabled() and 0.35 or 1)
+                Paint()
+            end
+            Refresh()
+            KT_RegisterWidgetRefresh(Refresh)
+            y = y - 78
+        end
 
         -- Invisible frame spanning the entire CLASS RESOURCE section for glow targeting
         local classResourceSection = CreateFrame("Frame", nil, parent)

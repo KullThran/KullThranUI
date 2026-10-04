@@ -45,6 +45,9 @@ local function RestoreResourceBarsDefaults()
     if _G._KRB_GetDB then
         _G._KRB_GetDB()
     end
+    if _KRB_RestoreProfileColorsAndSizes then
+        _KRB_RestoreProfileColorsAndSizes()
+    end
 
     Refresh()
 
@@ -584,6 +587,15 @@ end
 local _animTimers = {}
 local function SmoothAnimate(frame, key, targetVal, applyFn)
     if not frame then return end
+    -- A caller can pass a nil targetVal (db.health.height missing -- the
+    -- VisualThemes resourcebars adapter's seed can create a sparse
+    -- health/primary/secondary table via `profile[key] = profile[key] or
+    -- {}`, which wins over this addon's own default-population since the
+    -- table is no longer nil by the time it runs, leaving fields like
+    -- height unset). Guard here too, not just at each call site, so any
+    -- other nil targetVal fails safe instead of crashing the whole options
+    -- panel.
+    if type(targetVal) ~= "number" then return end
     if not _animTimers[frame] then _animTimers[frame] = {} end
     if _animTimers[frame][key] then
         _animTimers[frame][key]:Cancel()
@@ -613,6 +625,18 @@ local function SmoothAnimate(frame, key, targetVal, applyFn)
         end
     end)
     _animTimers[frame][key] = ticker
+end
+
+-- `bar:SetStatusBarColor(r, g, b, a)` can throw "bad argument #1 ...
+-- Usage: self:SetStatusBarColor(color [, a])" on some clients -- a
+-- different overload than the traditional 4-number-args signature. Try
+-- the normal form first (works on a standard client); fall back to the
+-- (color, alpha) form instead of crashing the whole options panel.
+local function SafeSetStatusBarColor(bar, r, g, b, a)
+    if not bar then return end
+    if pcall(bar.SetStatusBarColor, bar, r, g, b, a) then return end
+    local color = (CreateColor and CreateColor(r or 1, g or 1, b or 1)) or { r = r or 1, g = g or 1, b = b or 1 }
+    pcall(bar.SetStatusBarColor, bar, color, a)
 end
 
 -- ============================================================================
@@ -835,16 +859,16 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
         fakeHealth:SetStatusBarTexture(texHealth)
         SmoothAnimate(fakeHealth, "width", w, function(val) fakeHealth:SetWidth(val) end)
-        SmoothAnimate(fakeHealth, "height", db.health.height, function(val) fakeHealth:SetHeight(val) end)
-        fakeHealth:SetStatusBarColor(db.health.fillR, db.health.fillG, db.health.fillB, db.health.fillA)
+        SmoothAnimate(fakeHealth, "height", db.health.height or 25, function(val) fakeHealth:SetHeight(val) end)
+        SafeSetStatusBarColor(fakeHealth, db.health.fillR, db.health.fillG, db.health.fillB, db.health.fillA)
         fakeHealth:SetShown(db.health.enabled and (previewMode == "stack" or previewMode == "health"))
 
         fakePower:SetStatusBarTexture(texPrimary)
         SmoothAnimate(fakePower, "width", w, function(val) fakePower:SetWidth(val) end)
-        SmoothAnimate(fakePower, "height", db.primary.height, function(val) fakePower:SetHeight(val) end)
+        SmoothAnimate(fakePower, "height", db.primary.height or 25, function(val) fakePower:SetHeight(val) end)
         do
             local r, g, b, a = ResolveSectionColor(db.primary, ppType)
-            fakePower:SetStatusBarColor(r, g, b, a)
+            SafeSetStatusBarColor(fakePower, r, g, b, a)
         end
         fakePower:SetShown(shouldShowPower)
         do
@@ -861,11 +885,11 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
         fakeClassBar:SetStatusBarTexture(texSecondary)
         SmoothAnimate(fakeClassBar, "width", w, function(val) fakeClassBar:SetWidth(val) end)
-        SmoothAnimate(fakeClassBar, "height", db.secondary.pipHeight, function(val) fakeClassBar:SetHeight(val) end)
+        SmoothAnimate(fakeClassBar, "height", db.secondary.pipHeight or 14, function(val) fakeClassBar:SetHeight(val) end)
         do
             local secPowerType = secondary and secondary.power
             local r, g, b, a = ResolveSectionColor(db.secondary, secPowerType)
-            fakeClassBar:SetStatusBarColor(r, g, b, a)
+            SafeSetStatusBarColor(fakeClassBar, r, g, b, a)
         end
         fakeClassBar:SetShown(shouldShowSecondaryBar)
         do
@@ -888,7 +912,7 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
         end
 
         SmoothAnimate(fakePips, "width", w, function(val) fakePips:SetWidth(val) end)
-        SmoothAnimate(fakePips, "height", db.secondary.pipHeight, function(val) fakePips:SetHeight(val) end)
+        SmoothAnimate(fakePips, "height", db.secondary.pipHeight or 14, function(val) fakePips:SetHeight(val) end)
         
         local pipCount = 5
         if secondary and secondary.type == "pips" and type(secondary.max) == "number" and secondary.max > 0 then
@@ -1076,9 +1100,10 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
     _, h = W:Toggle(sc, LText("Enable Module"), -y,
         function()
-            return (db.primary.enabled or db.secondary.enabled or db.health.enabled) and true or false
+            return db.enabled ~= false and (db.primary.enabled or db.secondary.enabled or db.health.enabled) and true or false
         end,
         function(v)
+            db.enabled = v and true or false
             db.primary.enabled = v and true or false
             db.secondary.enabled = v and true or false
             db.health.enabled = v and true or false

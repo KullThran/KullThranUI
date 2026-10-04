@@ -13,11 +13,18 @@ local EXPORT_PREFIX = "!KTUI_"
 local CDM_EXPORT_PREFIX = "!KTCDM_"
 local PROFILE_BRIDGE_VERSION = 1
 
+-- Per-display scale settings: never exported, never replaced by an import.
+local LOCAL_SCALE_KEYS = {
+    "uiScale", "autoResolutionScale", "useBlizzardUIScale", "uiScaleInitialized",
+    "uiScaleUserSet", "uiScaleOwnershipMigrated",
+}
+
 local MODULE_DEFS = {
     {
         id = "general",
         label = "General",
-        keys = { "globalFont", "language", "uiScale", "autoResolutionScale", "useBlizzardUIScale", "menuCustomWidth", "menuCustomHeight", "editMode" },
+        -- UI scale stays out of shared strings: it belongs to each player's display.
+        keys = { "globalFont", "language", "menuCustomWidth", "menuCustomHeight", "editMode" },
         -- Accept keys emitted by older General module strings, but do not put
         -- them in new exports now that they belong to their own page scopes.
         importKeys = { "skin", "objectiveTracker", "blizzframes", "externalAddons", "uufIntegration" },
@@ -1406,12 +1413,51 @@ local function SanitizeInterruptGlowProfile(value)
     }
 end
 
+-- Returns ok, errorMessage, crossFlavorWarning. Same rules as KullThranUI Forever:
+-- strings from the other variant import with a warning and the profile is tagged
+-- with where it came from. Pre-envelope (version 1) strings are still accepted.
+local function ValidatePayloadFlavor(payload)
+    if type(payload) ~= "table" then
+        return false, LText("Invalid profile.")
+    end
+
+    if payload.version == 1 and payload.client == nil then
+        return true, nil, LText("Notice: this string uses the old format and does not say which variant (Retail or Forever) it came from. Check the result after reloading.")
+    end
+
+    local flavor = payload.flavor
+    if payload.client ~= "KullThranUI" or (flavor ~= "forever" and flavor ~= "retail") then
+        return false, LText("Profile string not recognized as a KullThranUI string.")
+    end
+
+    if payload.version ~= (KT.PROFILE_FORMAT_VERSION or 2) then
+        return false, LText("Unsupported profile version. Export the profile again from this variant.")
+    end
+
+    local warning
+    if flavor ~= KT:GetProfileFlavor() then
+        warning = string.format(
+            LText("Notice: this profile comes from the %s variant and is being imported into %s. It is usually compatible, but may cause incompatibilities."),
+            tostring(flavor), tostring(KT:GetProfileFlavorLabel()))
+    end
+    return true, nil, warning
+end
+
+local function FinishImportFlavor(payload, warning)
+    if KT.StampProfileMeta then
+        KT:StampProfileMeta(GetRootProfile(), warning and payload.flavor or nil)
+    end
+    if warning and KT.Print then
+        KT:Print(warning)
+    end
+end
+
 local function BuildTransferProfile(profileData)
     local snapshot = {}
     for key, value in pairs(profileData or {}) do
         if key == "interruptsGlow" then
             snapshot[key] = SanitizeInterruptGlowProfile(value)
-        elseif key ~= "progressBars" and key ~= "kuiMove" and key ~= "blizzMove" and key ~= "BlizzMove" and key ~= "KUIMove" and key ~= "dandersIntegration" then
+        elseif key ~= "progressBars" and key ~= "kuiMove" and key ~= "blizzMove" and key ~= "BlizzMove" and key ~= "KUIMove" and key ~= "dandersIntegration" and key ~= "_flavorMeta" then
             snapshot[key] = DeepCopy(value)
         end
     end
@@ -1429,12 +1475,10 @@ function Mod:ExportCurrentProfileString()
 
     local profileSnapshot = BuildTransferProfile(root)
 
-    local payload = {
-        version = 1,
-        type = "full",
-        data = profileSnapshot,
-        savedVariables = CaptureAllExternalProfileSources(),
-    }
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "full"
+    payload.data = profileSnapshot
+    payload.savedVariables = CaptureAllExternalProfileSources()
     return EncodePayload(EXPORT_PREFIX, payload)
 end
 
@@ -1455,12 +1499,10 @@ function Mod:ExportModulesString(moduleIDs)
         return nil, "No se pudo capturar ningun modulo."
     end
 
-    local payload = {
-        version = 1,
-        type = "modules",
-        data = {
-            modules = exported,
-        },
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "modules"
+    payload.data = {
+        modules = exported,
     }
     return EncodePayload(EXPORT_PREFIX, payload)
 end
@@ -1493,9 +1535,17 @@ function Mod:ApplyFullProfile(profileData)
     end
 
     local transferProfile = BuildTransferProfile(profileData)
+    -- Keep this display's scale choice; an imported profile never brings one.
+    local localScale = {}
+    for _, key in ipairs(LOCAL_SCALE_KEYS) do
+        localScale[key] = root[key]
+    end
     WipeTable(root)
     for key, value in pairs(transferProfile) do
         root[key] = DeepCopy(value)
+    end
+    for _, key in ipairs(LOCAL_SCALE_KEYS) do
+        root[key] = localScale[key]
     end
     return true
 end
@@ -1568,8 +1618,9 @@ function Mod:ImportProfileString(importString)
         return false, err
     end
 
-    if payload.version ~= 1 then
-        return false, "Version de perfil no soportada."
+    local flavorOK, flavorError, crossWarning = ValidatePayloadFlavor(payload)
+    if not flavorOK then
+        return false, flavorError
     end
 
     if payload.type == "full" then
@@ -1593,8 +1644,9 @@ function Mod:ImportProfileString(importString)
         return false, "Tipo de importacion desconocido."
     end
 
+    FinishImportFlavor(payload, crossWarning)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("El perfil se ha importado correctamente.")
+    PromptReloadPopup("El perfil se ha importado correctamente." .. (crossWarning and (" " .. crossWarning) or ""))
     return true
 end
 
@@ -1613,8 +1665,9 @@ function Mod:ImportPageProfileString(pageID, importString)
     if not payload then
         return false, err
     end
-    if payload.version ~= 1 then
-        return false, "Version de perfil no soportada."
+    local flavorOK, flavorError, crossWarning = ValidatePayloadFlavor(payload)
+    if not flavorOK then
+        return false, flavorError
     end
     if payload.type ~= "modules" then
         return false, "Este importador solo acepta perfiles de modulos, no perfiles completos."
@@ -1646,8 +1699,9 @@ function Mod:ImportPageProfileString(pageID, importString)
     end
 
     SaveExternalProfileSnapshot(KT.db and KT.db:GetCurrentProfile())
+    FinishImportFlavor(payload, crossWarning)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("Se ha importado: " .. table.concat(importedLabels, ", ") .. ".")
+    PromptReloadPopup("Se ha importado: " .. table.concat(importedLabels, ", ") .. "." .. (crossWarning and (" " .. crossWarning) or ""))
     return true
 end
 
@@ -1898,11 +1952,9 @@ function Mod:ExportCDMSpellsString(specKeys)
         return nil, "No hay datos CDM para las especializaciones seleccionadas."
     end
 
-    local payload = {
-        version = 1,
-        type = "cdm_spells",
-        data = exported,
-    }
+    local payload = KT:GetProfileEnvelope()
+    payload.type = "cdm_spells"
+    payload.data = exported
     return EncodePayload(CDM_EXPORT_PREFIX, payload)
 end
 
@@ -1917,8 +1969,9 @@ function Mod:ImportCDMSpellsString(importString)
         return false, err
     end
 
-    if payload.version ~= 1 or payload.type ~= "cdm_spells" then
-        return false, "Cadena CDM no valida."
+    local flavorOK, flavorError = ValidatePayloadFlavor(payload)
+    if not flavorOK or payload.type ~= "cdm_spells" then
+        return false, flavorError or "Cadena CDM no valida."
     end
 
     local cdmProfile = GetCDMProfile()

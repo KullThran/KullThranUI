@@ -187,6 +187,16 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
         previewCircleSegments[index] = segment
     end
 
+    local previewRingFrame = CreateFrame("Frame", nil, previewMap)
+    previewRingFrame:SetAllPoints(previewMap)
+    previewRingFrame:SetFrameLevel(previewMap:GetFrameLevel() + 8)
+    previewRingFrame:EnableMouse(false)
+    local previewRing = CreateFrame("Frame", nil, previewRingFrame)
+    previewRing:EnableMouse(false)
+    local previewRingTex = previewRing:CreateTexture(nil, "ARTWORK")
+    previewRingTex:SetAllPoints(previewRing)
+    previewRing:Hide()
+
     local previewCompass = previewOverlay:CreateTexture(nil, "BORDER")
     previewCompass:SetSize(26, 26)
     previewCompass:SetPoint("TOPLEFT", previewMap, "TOPLEFT", 6, -6)
@@ -275,6 +285,36 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
             for _, segment in ipairs(previewCircleSegments) do segment:Hide() end
             if previewMap.borderKT then
                 previewMap.borderKT:Show()
+            end
+        end
+
+        -- decorative ring of the effective style (own choice or the visual style's)
+        previewRing:Hide()
+        previewRoundMask:ClearAllPoints()
+        previewRoundMask:SetAllPoints(previewMap)
+        if selected == "ROUND" then
+            local key = db.ringStyle
+            if key ~= "none" and key ~= "forever" and key ~= "retail" and key ~= "classic" then
+                local VT = KT.VisualThemes
+                local theme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+                key = ({ forever = "forever", retail = "retail", classic = "classic" })[theme] or "none"
+            end
+            for _, d in ipairs(KT.MinimapRingStyles or {}) do
+                if d.key == key and key ~= "none" then
+                    -- ring outer edge = preview size; the map circle sits in its hole
+                    local diam = previewMap:GetWidth() * (d.base / 253)
+                    if d.file then diam = previewMap:GetWidth() * (d.base / d.size) end
+                    if KT.DrawMinimapRing(d, previewRing, previewRingTex, previewMap, diam) then
+                        local inset = (previewMap:GetWidth() - diam) / 2
+                        if inset > 0 then
+                            previewRoundMask:ClearAllPoints()
+                            previewRoundMask:SetPoint("TOPLEFT", previewMap, "TOPLEFT", inset, -inset)
+                            previewRoundMask:SetPoint("BOTTOMRIGHT", previewMap, "BOTTOMRIGHT", -inset, inset)
+                        end
+                        previewRing:Show()
+                        for _, segment in ipairs(previewCircleSegments) do segment:Hide() end
+                    end
+                end
             end
         end
 
@@ -488,6 +528,90 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
                 { ["SQUARE"] = "Square", ["ROUND"] = "Round" },
                 function() return db.shape or "SQUARE" end,
                 function(v) db.shape = v; RefreshMM() end); by = by + h
+
+            -- Ring style picker: visual tiles (Auto + one per style), like the Elite/Rare portrait picker
+            do
+                local ringHolder = CreateFrame("Frame", nil, container)
+                ringHolder:SetPoint("TOPLEFT", 10, -by)
+                ringHolder:SetSize(290, 204)
+                local lbl = ringHolder:CreateFontString(nil, "OVERLAY")
+                lbl:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+                lbl:SetPoint("TOPLEFT", 0, 0)
+                lbl:SetText("Minimap Frame Style")
+                local MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
+                local tiles = {}
+                local function Current()
+                    local k = db.ringStyle
+                    if k == "none" or k == "forever" or k == "retail" or k == "classic" then return k end
+                    return "auto"
+                end
+                local function Paint()
+                    local cur = Current()
+                    local ar, ag, ab = 1, 0.82, 0
+                    local pal = (KT and KT.GetStylePalette and KT:GetStylePalette()) or KT.STYLE_PALETTE
+                    if pal and pal.accent then ar, ag, ab = pal.accent.r or ar, pal.accent.g or ag, pal.accent.b or ab end
+                    for key, btn in pairs(tiles) do
+                        local on = key == cur
+                        btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
+                        btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
+                    end
+                end
+                local defs = { { key = "auto", label = "Auto" } }
+                for _, d in ipairs(KT.MinimapRingStyles or {}) do defs[#defs + 1] = d end
+                for index, def in ipairs(defs) do
+                    local btn = CreateFrame("Button", nil, ringHolder, "BackdropTemplate")
+                    btn:SetSize(90, 92)
+                    local col, row = (index - 1) % 3, math.floor((index - 1) / 3)
+                    btn:SetPoint("TOPLEFT", col * 96, -22 - row * 98)
+                    btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+                        edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+                    local D = 46
+                    if def.key ~= "auto" then
+                        local disc = btn:CreateTexture(nil, "BACKGROUND")
+                        disc:SetSize(D, D)
+                        disc:SetPoint("TOP", 0, -12)
+                        disc:SetTexture(MASK)
+                        disc:SetVertexColor(0.26, 0.33, 0.18, 1)
+                        if def.key == "none" then
+                            disc:SetTexture("Interface\\Buttons\\WHITE8X8")
+                            disc:SetVertexColor(0.26, 0.33, 0.18, 1)
+                            local e = btn:CreateTexture(nil, "OVERLAY")
+                            e:SetColorTexture(0, 0, 0, 1)
+                            e:SetPoint("TOPLEFT", disc, -1, 1); e:SetPoint("BOTTOMRIGHT", disc, 1, -1)
+                            e:SetDrawLayer("BORDER")
+                        else
+                            local rg = CreateFrame("Frame", nil, btn)
+                            rg:SetFrameLevel(btn:GetFrameLevel() + 2)
+                            local t = rg:CreateTexture(nil, "ARTWORK")
+                            t:SetAllPoints(rg)
+                            KT.DrawMinimapRing(def, rg, t, disc, D)
+                        end
+                    end
+                    local fs = btn:CreateFontString(nil, "OVERLAY")
+                    fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+                    fs:SetPoint("BOTTOM", 0, 6)
+                    fs:SetText(def.label)
+                    if def.key == "auto" then
+                        local sub = btn:CreateFontString(nil, "OVERLAY")
+                        sub:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+                        sub:SetPoint("CENTER", 0, 8)
+                        sub:SetText("follows the\nvisual style")
+                    end
+                    btn:SetScript("OnClick", function()
+                        if def.key == "auto" then
+                            db.ringStyle = nil
+                        else
+                            db.ringStyle = def.key
+                            if def.key ~= "none" then db.shape = "ROUND" end -- the ring art is circular
+                        end
+                        Paint()
+                        RefreshMM()
+                    end)
+                    tiles[def.key] = btn
+                end
+                Paint()
+                by = by + 210
+            end
 
             _, h = W:Slider(container, "Scale", -by,
                 function() return db.scale or 1.2 end,

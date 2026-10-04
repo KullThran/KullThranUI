@@ -958,10 +958,39 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.1"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.2"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.2"] = {
+        version = "5.1.2",
+        published = "2026-10-04",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "New Visual Style selector (KUI, Classic, Retail, Forever) in the General tab and in the Installer. Applying a style restyles Unit Frames, Party Frames, Nameplates, Action Bars, Resource Bars, Cast Bar, Cooldown Manager, Minimap and Skins together, shows a live preview and reloads the interface.",
+            "The Installer's color step is now Visual Style & Color and returns to that page after the reload.",
+            "Nameplates: style presets in Nameplates > General with a preview of each. Classic has the original bronze border, a gold level pill and larger bars; Retail uses Blizzard's own nameplate art with the level inside the bar; Forever has taller bars with the name above, a bronze border and the level in a yellow box beside the bar.",
+            "Nameplates mark enemies you still need for a quest with a yellow \"!\" in every style.",
+            "The nameplate live preview shows the selected visual style.",
+            "Unit Frames: authentic player, target and pet frame art per style, Blizzard-style name and level text, combat and resting icons, a frame-size option, and Rare/Elite indicators.",
+            "Combo points under the Player and Target frames can be Off, Modern or Classic (Target also has a portrait ring), as circles or pips, placed below or above the frame with X/Y offsets. Each style picks its own look by default.",
+            "Incoming heal prediction, combat text on the portrait (with an off toggle and a white-numbers option) and an aggro glow toggle that also lights the Target portrait overlays.",
+            "Party Frames: portraits can be 2D, 3D or Class Theme, with zoom, rotation, offset, side, facing and border options.",
+            "3D portraits in circular Unit Frame portraits.",
+            "Action Bars: Action Bar Art selector with live previews (Forever or Classic end caps); cooldown swipes follow the button shape.",
+            "Cooldown Manager: per-ability visibility rules (right-click an icon) such as hidden or glowing while on cooldown, usable-only display and charge controls; the KUI Tracker adapts to every style.",
+            "Minimap: frame rings per style with a selector and Live Preview.",
+            "The Objective Tracker headers show an accent-colored gradient bar in the Blizzard-art styles.",
+            "Chat: left-click a channel tag to start typing in that channel.",
+            "Redesigned Mail skin.",
+            "Profiles remember whether they come from Retail or Forever; importing a string from the other variant works with a notice, and UI scale is no longer part of exported or imported profiles.",
+            "KUI no longer changes your UI scale unless you choose a scale yourself, and module on/off toggles apply correctly.",
+            "The changelog button now sits in the General tab header.",
+            "Fixed KUI Tracker icons briefly showing a green swipe.",
+            "Profile import notices, nameplate style prompts and visual style messages are now available in every supported language.",
+        },
+    },
     ["5.1.1"] = {
         version = "5.1.1",
         published = "2026-09-27",
@@ -969,13 +998,14 @@ local CHANGELOG_ENTRIES = {
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
             "KullThranUI 5.1.1",
-            "Added separate Only Name and instance-display controls for friendly players and NPCs, including KUI bars, name-only mode, and hiding friendly plates.",
-            "Reduced active friendly player and NPC health-bar dimensions and stabilized their custom overlays, font handling, and Blizzard-frame suppression.",
-            "Added runtime diagnostics for comparing nameplate ownership and layout.",
+            "KullThranUI 5.1.1.",
+            "Added separate Only Name and instance-display controls for friendly players and NPCs, with KUI bars, name-only mode, and hidden friendly plates.",
+            "Reduced active friendly nameplate health-bar dimensions and stabilized custom overlays, font handling, and Blizzard-frame suppression.",
+            "Added a runtime /knpdebug comparison for nameplate ownership and layout.",
             "Added configurable elite/rare indicators, no-portrait placement, classification artwork, and refreshed level/PvP metadata for Unit Frames.",
             "Improved Unit Frames cast-bar cleanup, secret-value resource handling, dispel overlays, and metadata refresh after target or unit changes.",
-            "Made Unlock Mode remember the UI reference size and rescale saved positions when UI scale or display dimensions change.",
-            "Added the KUI options icon setting, new translations for indicator controls, and improved Action Bars and Minimap option presentation.",
+            "Made Unlock Mode rescale saved positions when UI scale or display dimensions change.",
+            "Added the KUI options icon setting and translations for the new indicator controls.",
             "Corrected the LFG skin right border and restored Minimap state across cinematic transitions.",
             "Hardened the stable release workflow with explicit release, beta, and alpha classification and dynamic package versioning.",
         },
@@ -2223,12 +2253,12 @@ local CHANGELOG_ENTRIES = {
 local function GetCurrentKUIVersion()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
         or KT.VERSION
-        or "5.1.1"
-    -- When loaded from the source tree without the BigWigs packager the TOC
+        or "5.1.2"
+    -- When loaded from the source tree without the release packager the TOC
     -- still contains the literal "@project-version@" token.  Fall back to the
     -- hardcoded release version so the changelog and options never display it.
     if ver and ver:find("@", 1, true) then
-        ver = "5.1.1"
+        ver = "5.1.2"
     end
     return ver
 end
@@ -2389,7 +2419,7 @@ local function BuildChangelogText(version)
 
     if displayEntry.notes and #displayEntry.notes > 0 then
         for _, note in ipairs(displayEntry.notes) do
-            local cleanNote = NormalizeNote(note)
+            local cleanNote = NormalizeNote(LText(note))
             if cleanNote then
                 lines[#lines + 1] = "- " .. cleanNote
             end
@@ -3308,7 +3338,7 @@ local function UpdateMenuThemeVisuals(menu)
         local vr = math.floor((accent.r or 1) * 255 + 0.5)
         local vg = math.floor((accent.g or 0) * 255 + 0.5)
         local vb = math.floor((accent.b or 0.333) * 255 + 0.5)
-	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.1")))
+	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.2")))
     end
 
     for _, btn in ipairs(menu._sizePresetButtons or {}) do
@@ -3761,6 +3791,7 @@ local function AddOptionBlock(cols, column, title, buildFn)
     else
         cols.leftUsed = cols.leftUsed + totalH + cols.gap
     end
+    return frame, content, totalH
 end
 
 local function EndOptionBlocks(cols)
@@ -4964,12 +4995,12 @@ local function CreateMenuFrame()
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
     local verColor = string.format("%02x%02x%02x", accentR*255, accentG*255, accentB*255)
-	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.1") .. "|r")
+	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.2") .. "|r")
     titleTex:SetPoint("TOPLEFT", f, "TOPLEFT", 94, -68)
     titleTex:SetWidth(190)
     titleTex:SetJustifyH("LEFT")
     f._versionText = titleTex
-	f._versionValue = KT.VERSION or "5.1.1"
+	f._versionValue = KT.VERSION or "5.1.2"
 
     -- Corrupted generated comment removed.
     local nav = CreateFrame("Frame", nil, f)
@@ -5666,6 +5697,9 @@ end
 -- ============================================================================
 local function LockScaleGuard()
     if not UIParent then return end
+    if not (KT and KT.IsUIScaleManaged and KT:IsUIScaleManaged()) then
+        return
+    end
     if KT and KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale then
         return
     end
@@ -5775,7 +5809,8 @@ function KT:OpenMenu(pageId)
                 C_Timer.After(0, CloseGameMenuForKUIOptions)
             end
 
-            if UIParent and KT._scaleLockValue and not (KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale) then
+            if UIParent and KT._scaleLockValue and KT.IsUIScaleManaged and KT:IsUIScaleManaged()
+                and not (KT.db and KT.db.profile and KT.db.profile.useBlizzardUIScale) then
                 local cur = UIParent:GetScale()
                 if cur and math.abs(cur - KT._scaleLockValue) > 0.001 then
                     if KT and KT._ApplyScaleValue then
@@ -5814,7 +5849,17 @@ function KT:OpenMenu(pageId)
             end
 
         end
-    end, geterrorhandler() or debugstack)
+    -- NOTE: do NOT use geterrorhandler() here. It logs the error but returns
+    -- nil, so `error(err)` below re-raises nil and the real message is lost --
+    -- all the user ever sees is "UNKNOWN ERROR". Return a real string instead
+    -- and append the original stack, so the failure is actually diagnosable.
+    end, function(menuErr)
+        local message = (type(menuErr) == "string") and menuErr or tostring(menuErr)
+        if type(debugstack) == "function" then
+            message = message .. "\n" .. debugstack(2, 3, 3)
+        end
+        return message
+    end)
 
     self._openingMenu = nil
     if not ok then
@@ -7009,10 +7054,53 @@ local function BuildGeneralCore(sc, W, y)
     heroVersion:SetText(LTextFmt("VERSION  %s", currentVersion))
     heroVersion:SetTextColor(accentR, accentG, accentB, 1)
 
+    -- Compact changelog access in the corner of the landing card.
+    local changelogBtn = CreateFrame("Button", nil, hero, "BackdropTemplate")
+    changelogBtn:SetSize(92, 20)
+    changelogBtn:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -14, -12)
+    KT:AddBackdrop(changelogBtn, 0.05, 0.045, 0.055, 0.95)
+    KT:AddBorder(changelogBtn, accentR, accentG, accentB, 0.55)
+
+    local changelogLabel = changelogBtn:CreateFontString(nil, "OVERLAY")
+    changelogLabel:SetFont(KT.FONT_PATH, 9, "OUTLINE")
+    changelogLabel:SetPoint("CENTER")
+    changelogLabel:SetText(LText("Open Changelog"))
+    changelogBtn:SetWidth(math.max(92, math.ceil(changelogLabel:GetStringWidth()) + 20))
+    changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+
+    changelogBtn:SetScript("OnClick", function()
+        if KT and KT.ShowChangelogPopup then
+            KT:ShowChangelogPopup(currentVersion)
+        end
+    end)
+    changelogBtn:SetScript("OnEnter", function(self)
+        KT:AddBorder(self, accentR, accentG, accentB, 1)
+        changelogLabel:SetTextColor(1, 1, 1, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+            GameTooltip:SetText(LText("Updates & Release Notes"), 1, 1, 1)
+            GameTooltip:AddLine(LTextFmt("Installed Version: %s", currentVersion), accentR, accentG, accentB)
+            if changelogEntry then
+                GameTooltip:AddLine(LTextFmt("Release notes are available for version %s.", changelogEntry.version), 0.75, 0.75, 0.75, true)
+            elseif latestChangelogEntry then
+                GameTooltip:AddLine(LTextFmt("Latest archived release notes: %s", latestChangelogEntry.version), 0.75, 0.75, 0.75, true)
+            end
+            if isFallback then
+                GameTooltip:AddLine(LText("The current release has not been published to the Wago archive yet. CurseForge and Discord sources remain available inside the changelog."), 1, 0.62, 0.32, true)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    changelogBtn:SetScript("OnLeave", function(self)
+        KT:AddBorder(self, accentR, accentG, accentB, 0.55)
+        changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
     if assigned then
         local heroSpec = hero:CreateFontString(nil, "OVERLAY")
         heroSpec:SetFont(KT.FONT_PATH, 9, "")
-        heroSpec:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -18, -16)
+        heroSpec:SetPoint("RIGHT", changelogBtn, "LEFT", -10, 0)
         heroSpec:SetText(LTextFmt("SPEC ASSIGNMENT  %s", assigned))
         heroSpec:SetTextColor(0.72, 0.72, 0.76, 1)
     end
@@ -7024,6 +7112,19 @@ local function BuildGeneralCore(sc, W, y)
     AddOptionBlock(coreCols, "left", "Interface Scale", function(container)
         local by = 0
         _, h = W:Label(container, LText("Match KUI to your display first. This controls the scale used by every module."), -by, 10); by = by + h
+        _, h = W:Toggle(container, "KUI controls the UI scale", -by,
+            function()
+                return KT.IsUIScaleManaged and KT:IsUIScaleManaged() or false
+            end,
+            function(v)
+                if v then
+                    if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
+                    KT:ApplyUIScale()
+                elseif KT.ReleaseUIScale then
+                    KT:ReleaseUIScale()
+                end
+            end
+        ); by = by + h
         _, h = W:Toggle(container, "Use Blizzard UI Scale", -by,
             function()
                 return KT.db.profile.useBlizzardUIScale
@@ -7033,6 +7134,7 @@ local function BuildGeneralCore(sc, W, y)
                 if v then
                     KT.db.profile.autoResolutionScale = false
                 end
+                if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                 KT:ApplyUIScale()
             end
         ); by = by + h
@@ -7053,6 +7155,7 @@ local function BuildGeneralCore(sc, W, y)
                     else
                         KT.db.profile.autoResolutionScale = true
                         KT.db.profile.uiScale = autoScale
+                        if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                         KT:ApplyUIScale()
                     end
                 end
@@ -7061,7 +7164,9 @@ local function BuildGeneralCore(sc, W, y)
         _, h = W:Slider(container, "Manual UI Scale", -by,
             function()
                 local scale
-                if KT.db.profile.useBlizzardUIScale and KT.GetBlizzardUIScale then
+                if not (KT.IsUIScaleManaged and KT:IsUIScaleManaged()) then
+                    scale = UIParent and UIParent:GetScale() or nil
+                elseif KT.db.profile.useBlizzardUIScale and KT.GetBlizzardUIScale then
                     scale = KT:GetBlizzardUIScale()
                 else
                     scale = tonumber(KT.db.profile.uiScale)
@@ -7078,6 +7183,7 @@ local function BuildGeneralCore(sc, W, y)
                 else
                     KT.db.profile.autoResolutionScale = false
                     KT.db.profile.uiScale = v
+                    if KT.MarkUIScaleUserSet then KT:MarkUIScaleUserSet() end
                     KT:ApplyUIScale()
                 end
             end,
@@ -7156,30 +7262,47 @@ local function BuildGeneralCore(sc, W, y)
         return by
     end)
 
-    y = EndOptionBlocks(coreCols) + 4
-
-    local updateBlock, updateContent = CreateOptionBlock(sc, "Updates & Release Notes", 10, -y, sc:GetWidth() - 22)
-    local updateY = 0
-    _, h = W:Label(updateContent, LTextFmt("Installed Version: %s", currentVersion), -updateY, 11, { r = accentR, g = accentG, b = accentB }); updateY = updateY + h
-    if changelogEntry then
-        _, h = W:Label(updateContent, LTextFmt("Release notes are available for version %s.", changelogEntry.version), -updateY, 10); updateY = updateY + h
-    elseif latestChangelogEntry then
-        _, h = W:Label(updateContent, LTextFmt("Latest archived release notes: %s", latestChangelogEntry.version), -updateY, 10); updateY = updateY + h
-    end
-    if isFallback then
-        _, h = W:Label(updateContent, LText("The current release has not been published to the Wago archive yet. CurseForge and Discord sources remain available inside the changelog."), -updateY, 10, { r = 1, g = 0.62, b = 0.32 }); updateY = updateY + h
-    end
-    _, h = W:Button(updateContent, "Open Changelog", -updateY, function()
-        if KT and KT.ShowChangelogPopup then
-            KT:ShowChangelogPopup(currentVersion)
-        end
-    end, "FULL"); updateY = updateY + h
-    y = y + FinalizeOptionBlock(updateBlock, updateContent, updateY) + 14
+    y = EndOptionBlocks(coreCols) + 14
     _, h = W:SectionHeader(sc, "Advanced Style System", -y); y = y + h
     _, h = W:Label(sc, "Build a complete visual preset for KUI or fine tune the palette manually. These settings affect the entire addon.", -y, 11); y = y + h
-    local styleCols = BeginOptionBlocks(sc, y, { gap = 14, columnGap = 14 })
+    -- Visual Theme sits on top, full width: it decides the geometry and assets.
+    local themeFrame, themeContent = CreateOptionBlock(sc, "Visual Theme", 10, -y, sc:GetWidth() - 22)
+    local themeY = 0
+    -- The addon's own general accent color (this tab's "Accent Color"
+    -- swatch, used for Unlock Mode/Friend List/Armory/Objective
+    -- Tracker/Bags) no longer gets silently overridden by whichever Unit
+    -- Frame visual theme happens to be active (see the removed themeAccent
+    -- block in KT:GetStylePalette) -- it's yours to pick regardless of
+    -- which style is selected here, not just on kui.
+    _, h = W:Label(themeContent, "Select the visual theme. This sets the geometry and assets for Unit Frames. The addon's own accent color below stays yours to customize regardless of which style you pick.", -themeY, 11); themeY = themeY + h
+    if KT.VisualThemes and KT.VisualThemes.CreateSelector then
+        -- The cards used to be laid out edge to edge across the whole block,
+        -- flush against its accent rail and right border, so they read as
+        -- pasted over the section instead of belonging to it. They now sit
+        -- in an inset tray with even padding, like the rest of the blocks'
+        -- content, with a clear gap under the description.
+        local trayLeft, trayRight, trayPad, trayGap = 12, 10, 10, 8
+        local trayW = (sc:GetWidth() - 22) - trayLeft - trayRight
+        local tray = CreateFrame("Frame", nil, themeContent, "BackdropTemplate")
+        tray:SetPoint("TOPLEFT", themeContent, "TOPLEFT", trayLeft, -(themeY + trayGap))
+        tray:SetWidth(trayW)
+        KT:AddBackdrop(tray, 0.012, 0.014, 0.020, 0.95)
+        KT:AddBorder(tray, 1, 1, 1, 0.07)
+        h = KT.VisualThemes:CreateSelector(tray, {
+            columns = 4, compact = true,
+            xOffset = trayPad, yOffset = trayPad,
+            width = trayW - (trayPad * 2),
+        })
+        -- CreateSelector reports its content height plus 4px of slack.
+        local trayH = trayPad + (h - 4) + trayPad
+        tray:SetHeight(trayH)
+        themeY = themeY + trayGap + trayH
+    end
+    y = y + FinalizeOptionBlock(themeFrame, themeContent, themeY) + 14
 
-    AddOptionBlock(styleCols, "left", "Preset Styles", function(container)
+    -- Colors follow, full width, enabled only for KullThranUI Style.
+    local presetFrame, presetContent = CreateOptionBlock(sc, "Preset Colors", 10, -y, sc:GetWidth() - 22)
+    local presetBuild = function(container)
         local by = 0
         _, h = W:Label(container, "Choose a preset to recolor the KullThranUI menu and sync the main profile accent values.", -by, 11); by = by + h
 
@@ -7197,55 +7320,37 @@ local function BuildGeneralCore(sc, W, y)
             "plague_green",
             "sakura_fall",
         }
-        local btnGap = 10
-        local btnHeight = 36
-        local btnWidth = math.floor((container:GetWidth() - 30 - btnGap) / 2)
-        local currentPreset = KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson"
-
-        for index, presetKey in ipairs(presetOrder) do
-            local preset = STYLE_PRESETS[presetKey]
-            local row = math.floor((index - 1) / 2)
-            local col = (index - 1) % 2
-            local x = 10 + (col * (btnWidth + btnGap))
-            local yOff = by + (row * (btnHeight + 8))
-            local btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            btn:SetSize(btnWidth, btnHeight)
-            btn:SetPoint("TOPLEFT", container, "TOPLEFT", x, -yOff)
-            KT:AddBackdrop(btn, preset.background.r, preset.background.g, preset.background.b, 0.96)
-            KT:AddBorder(btn, preset.accent.r, preset.accent.g, preset.accent.b, currentPreset == presetKey and 0.95 or 0.45)
-
-            local title = btn:CreateFontString(nil, "OVERLAY")
-            title:SetFont(KT.FONT_PATH, 10, "OUTLINE")
-            title:SetPoint("CENTER")
-            title:SetText(preset.label)
-            title:SetTextColor(preset.text.r, preset.text.g, preset.text.b, 1)
-
-            local accentLine = btn:CreateTexture(nil, "ARTWORK")
-            accentLine:SetHeight(2)
-            accentLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 3, 3)
-            accentLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
-            accentLine:SetColorTexture(preset.accent.r, preset.accent.g, preset.accent.b, 1)
-
-            btn:SetScript("OnClick", function()
+        local gridHeight = KT:CreateAccentPresetGrid(container, {
+            columns = 3,
+            width = container:GetWidth() - 20,
+            xOffset = 10,
+            yOffset = by + 4,
+            cardHeight = 46,
+            gap = 10,
+            fontPath = KT.FONT_PATH,
+            localize = LText,
+            isSelected = function(presetKey)
+                return (KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson") == presetKey
+            end,
+            onSelect = function(presetKey)
                 ApplySmartStylePreset(presetKey)
-            end)
-            btn:SetScript("OnEnter", function(self)
-                if KT.AddBorder then KT:AddBorder(self, 1, 1, 1, 0.95) end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                local selected = KT.db.profile.skin and KT.db.profile.skin.stylePreset == presetKey
-                if KT.AddBorder then
-                    KT:AddBorder(self, preset.accent.r, preset.accent.g, preset.accent.b, selected and 0.95 or 0.45)
-                end
-            end)
-        end
-
-        by = by + (math.ceil(#presetOrder / 2) * (btnHeight + 8))
+            end,
+        })
+        by = by + gridHeight + 14
         _, h = W:Label(container, LText("Preset selection also updates accent-driven fields like tracker highlights, chat highlight and castbar color."), -by, 10); by = by + h
         return by
-    end)
+    end
+    y = y + FinalizeOptionBlock(presetFrame, presetContent, presetBuild(presetContent)) + 14
 
-    AddOptionBlock(styleCols, "right", LText("Manual Colors"), function(container)
+    -- Color presets/manual colors stay fully usable regardless of which
+    -- Unit Frame visual theme is active, not just kui -- this full-section
+    -- mouse-blocking overlay (plus its twin below, for the Manual Colors
+    -- section) was the actual mechanism making the controls unselectable;
+    -- GetStylePalette no longer overrides the result anyway (see the
+    -- removed themeAccent block there), so gating input here too was
+    -- doubly wrong.
+
+    local frame, content = CreateOptionBlock(sc, LText("Manual Colors"), 10, -y, sc:GetWidth() - 22)
         local by = 0
         KT.db.profile.skin = KT.db.profile.skin or {}
         local skin = KT.db.profile.skin
@@ -7261,8 +7366,8 @@ local function BuildGeneralCore(sc, W, y)
         end
 
 
-        _, h = W:Label(container, LText("Fine tune the smart recolor palette manually if you want a custom style."), -by, 11); by = by + h
-        _, h = W:ColorSwatch(container, LText("Accent Color"), -by,
+        _, h = W:Label(content, LText("Fine tune the smart recolor palette manually if you want a custom style."), -by, 11); by = by + h
+        _, h = W:ColorSwatch(content, LText("Accent Color"), -by,
             function() local c = KT_GetActiveAccent(skin); return c.r, c.g, c.b, 1 end,
             function(r, g, b)
                 skin.accentColor = MakeStyleColor(r, g, b, 1)
@@ -7274,33 +7379,33 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Window Background"), -by,
+        _, h = W:ColorSwatch(content, LText("Window Background"), -by,
             function() local c = skin.backgroundColor or STYLE_PRESETS.kui_crimson.background; return c.r, c.g, c.b, c.a end,
             function(r, g, b, a) skin.backgroundColor = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
             true
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Main Text"), -by,
+        _, h = W:ColorSwatch(content, LText("Main Text"), -by,
             function() local c = skin.menuTextColor or STYLE_PRESETS.kui_crimson.text; return c.r, c.g, c.b, 1 end,
             function(r, g, b) skin.menuTextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Secondary Text"), -by,
+        _, h = W:ColorSwatch(content, LText("Secondary Text"), -by,
             function() local c = skin.menuSubtextColor or STYLE_PRESETS.kui_crimson.muted; return c.r, c.g, c.b, 1 end,
             function(r, g, b) skin.menuSubtextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
             false
         ); by = by + h
-        _, h = W:ColorSwatch(container, LText("Background Tint"), -by,
+        _, h = W:ColorSwatch(content, LText("Background Tint"), -by,
             function() local c = skin.menuBackgroundTint or STYLE_PRESETS.kui_crimson.backgroundTint; return c.r, c.g, c.b, c.a end,
             function(r, g, b, a) skin.menuBackgroundTint = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
             true
         ); by = by + h
-        _, h = W:Dropdown(container, "Unlock Mode Color", -by,
+        _, h = W:Dropdown(content, "Unlock Mode Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.unlockModeColorMode or "accent" end,
             function(v) skin.unlockModeColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Unlock Mode Accent", -by,
+        _, h = W:ColorSwatch(content, "Unlock Mode Accent", -by,
             function()
                 local mode = skin.unlockModeColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.unlockModeColor or KT_GetActiveAccent(skin))
@@ -7313,13 +7418,13 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Friend List Color", -by,
+        _, h = W:Dropdown(content, "Friend List Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.friendListColorMode or "accent" end,
             function(v) skin.friendListColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Friend List Accent", -by,
+        _, h = W:ColorSwatch(content, "Friend List Accent", -by,
             function()
                 local mode = skin.friendListColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.friendListColor or KT_GetActiveAccent(skin))
@@ -7332,7 +7437,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Armory Color", -by,
+        _, h = W:Dropdown(content, "Armory Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.armoryColorMode or "accent" end,
             function(v)
@@ -7341,7 +7446,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Armory Accent", -by,
+        _, h = W:ColorSwatch(content, "Armory Accent", -by,
             function()
                 local mode = skin.armoryColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.armoryColor or KT_GetActiveAccent(skin))
@@ -7354,7 +7459,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Objective Tracker Color", -by,
+        _, h = W:Dropdown(content, "Objective Tracker Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return KT.db.profile.objectiveTracker and KT.db.profile.objectiveTracker.colorMode or "accent" end,
             function(v)
@@ -7363,7 +7468,7 @@ local function BuildGeneralCore(sc, W, y)
             end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Objective Tracker Accent", -by,
+        _, h = W:ColorSwatch(content, "Objective Tracker Accent", -by,
             function()
                 local obj = KT.db.profile.objectiveTracker
                 local mode = obj and obj.colorMode or "accent"
@@ -7380,13 +7485,13 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Bags Color", -by,
+        _, h = W:Dropdown(content, "Bags Color", -by,
             { accent = "Accent", custom = "Custom" },
             function() return skin.bagsColorMode or "accent" end,
             function(v) skin.bagsColorMode = v; ApplyManualStyle() end,
             { "accent", "custom" }
         ); by = by + h
-        _, h = W:ColorSwatch(container, "Bags Accent", -by,
+        _, h = W:ColorSwatch(content, "Bags Accent", -by,
             function()
                 local mode = skin.bagsColorMode or "accent"
                 local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.bagsColor or KT_GetActiveAccent(skin))
@@ -7399,17 +7504,24 @@ local function BuildGeneralCore(sc, W, y)
             end,
             false
         ); by = by + h
-        _, h = W:Dropdown(container, "Menu Icons", -by,
+        _, h = W:Dropdown(content, "Menu Icons", -by,
             { accent = "Accent", white = "White" },
             function() return skin.menuIconColorMode or "accent" end,
             function(v) skin.menuIconColorMode = v; ApplyManualStyle() end,
             { "accent", "white" }
         ); by = by + h
-        _, h = W:Label(container, "If some live module keeps the previous palette, use Reload UI after saving the style.", -by, 10); by = by + h
-        return by
-    end)
+        _, h = W:Label(content, "If some live module keeps the previous palette, use Reload UI after saving the style.", -by, 10); by = by + h
 
-    y = EndOptionBlocks(styleCols) + 8
+
+
+
+    -- Manual Colors stays fully usable regardless of theme (see the
+    -- matching removal above, for the Color Presets block).
+    content:SetAlpha(1.0)
+
+    y = y + FinalizeOptionBlock(frame, content, by) + 8
+
+
 
     return y
 end
@@ -8268,7 +8380,7 @@ local function BuildDisableModulesTab(sc, W, y)
         { label = "Aura Reminders", get = function() local db = _G._KUIAR_AceDB; local p = db and db.profile; return p == nil or p.enable ~= false end, set = function(v) local db = _G._KUIAR_AceDB; if db and db.profile then db.profile.enable = v and true or false end; Reload() end },
         { label = "Nameplates", get = function() return not (_G.KullThranUINameplatesDB and _G.KullThranUINameplatesDB.enable == false) end, set = function(v) _G.KullThranUINameplatesDB = _G.KullThranUINameplatesDB or {}; _G.KullThranUINameplatesDB.enable = v and true or false; Reload() end },
         { label = "Cooldown Manager", get = function() return KT.db.profile.cooldownManager.cdmBars.enabled end, set = function(v) KT.db.profile.cooldownManager.cdmBars.enabled = v; Reload() end },
-        { label = "Resource Bars", get = function() return (KT.db.profile.resourceBars.primary.enabled or KT.db.profile.resourceBars.secondary.enabled or KT.db.profile.resourceBars.health.enabled) and true or false end, set = function(v) KT.db.profile.resourceBars.primary.enabled = v; KT.db.profile.resourceBars.secondary.enabled = v; KT.db.profile.resourceBars.health.enabled = v; Reload() end },
+        { label = "Resource Bars", get = function() return KT.db.profile.resourceBars.enabled ~= false and (KT.db.profile.resourceBars.primary.enabled or KT.db.profile.resourceBars.secondary.enabled or KT.db.profile.resourceBars.health.enabled) and true or false end, set = function(v) KT.db.profile.resourceBars.enabled = v and true or false; KT.db.profile.resourceBars.primary.enabled = v; KT.db.profile.resourceBars.secondary.enabled = v; KT.db.profile.resourceBars.health.enabled = v; Reload() end },
 }
 
     _, h = W:SectionHeader(sc, "Disable Modules", -y); y = y + h

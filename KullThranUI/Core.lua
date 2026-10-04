@@ -1192,22 +1192,19 @@ local function PerformFullKullThranUIReset()
             ns.Handlers.Layout(KT.db:GetCurrentProfile(), ns.ProfileData.Layouts[layout])
         end
     end
+    -- A reset hands the scale back to the game, like a fresh install.
+    KT.db.profile.uiScale = nil
     KT.db.profile.autoResolutionScale = true
     KT.db.profile.useBlizzardUIScale = false
     KT.db.profile.uiScaleInitialized = false
+    KT.db.profile.uiScaleUserSet = false
+    KT.db.profile.uiScaleOwnershipMigrated = true
     if KT.db and KT.db.profile then
         KT.db.profile.installer = KT.db.profile.installer or {}
         KT.db.profile.installer.showOnLogin = true
         KT.db.profile.installer.step = 1
         KT.db.profile.installer.dontShowAgain = nil
         KT.db.profile.installer.lastVersion = nil
-    end
-    local Installer = KT:GetModule("Installer", true)
-    if Installer and Installer.ApplyScaleOnly then
-        Installer:ApplyScaleOnly("AUTO", { silent = true })
-    elseif KT.ApplyUIScale then
-        KT.db.profile.uiScale = nil
-        KT:ApplyUIScale()
     end
     ReloadUI()
 end
@@ -1730,7 +1727,7 @@ end
 -- 1. ON INITIALIZE
 -- ============================================================================
 function KT:PrintStartupMessages()
-    local version = KT.VERSION or "5.1.1"
+    local version = KT.VERSION or "5.1.2"
     local updateAvailable = false
     local latestVersion = KT.GetLatestArchivedChangelogVersion and KT:GetLatestArchivedChangelogVersion()
     if latestVersion and KT.CompareVersions then
@@ -1943,7 +1940,7 @@ function KT:InitializeCore()
     end)
 
     -- -----------------------------------------------------------------------
-    -- /ktperf [segundos]
+    -- Rendimiento [segundos]
     -- Lee ns._perf que el módulo CDM popula con debugprofilestart/stop.
     -- -----------------------------------------------------------------------
     self:RegisterChatCommand("ktperf", function(args)
@@ -1975,7 +1972,7 @@ function KT:InitializeCore()
     end)
 
     -- -----------------------------------------------------------------------
-    -- /ktcdmstats — Estado de cada barra CDM
+    -- Estado de cada barra CDM
     -- -----------------------------------------------------------------------
     self:RegisterChatCommand("ktcdmstats", function()
         KT:_PrintCDMStats()
@@ -2021,43 +2018,12 @@ function KT:InitializeCore()
         self._installerReopenWatcher = watcher
     end
 
-    local version = KT.VERSION or "5.1.1"
+    local version = KT.VERSION or "5.1.2"
     local accentR, accentG, accentB = self:GetStyleAccentRGB()
     self:Print("Welcome to |cff" .. string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r " .. version)
 end
 
--- ============================================================================
--- 2. APPLY UI SCALE
--- ============================================================================
-function KT:ApplyUIScale()
-    if self._suppressApplyUIScale then return end
-    if not (self.db and self.db.profile and _G.UIParent) then return end
-
-    local scale = tonumber(self.db.profile.uiScale)
-    local auto = (self.db.profile.autoResolutionScale ~= false)
-    if auto or not scale then
-        local _, height = GetPhysicalScreenSize()
-        if height and height >= 2160 then
-            scale = 0.35
-        elseif height and height >= 1440 then
-            scale = 0.53
-        else
-            scale = 0.71
-        end
-        self.db.profile.uiScale = scale
-    end
-
-    _G.UIParent:SetScale(scale)
-
-    if _G.GameMenuFrame then
-        C_Timer.After(0, function()
-            local escapeMenu = KT.GetModule and KT:GetModule("EscapeMenu", true)
-            if escapeMenu and escapeMenu.RequestRefresh then
-                pcall(escapeMenu.RequestRefresh, escapeMenu)
-            end
-        end)
-    end
-end
+-- KT:ApplyUIScale lives in Modules/Defaults/Defaults.lua.
 
 -- ============================================================================
 -- 3. WELCOME FRAME (Instalador)
@@ -2100,7 +2066,7 @@ function KT:MaybeAutoOpenInstaller()
         installerDb.isOpen = false
     end
 
-    local currentVersion = KT.VERSION or "5.1.1"
+    local currentVersion = KT.VERSION or "5.1.2"
     local characterKey = self:GetInstallerCharacterKey()
     local legacyCharacterGUID = UnitGUID and UnitGUID("player")
 
@@ -2580,7 +2546,7 @@ end
 -- 5. CDM STATS
 -- ============================================================================
 -- ============================================================================
--- CPU DEBUG (/ktcpu)
+-- CPU DEBUG
 -- ============================================================================
 local function KT_CPUProfileEnabled()
     if not _G.GetCVar then

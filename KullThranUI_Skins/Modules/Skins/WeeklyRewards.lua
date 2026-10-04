@@ -38,7 +38,7 @@ local function AnchorInset(texture, owner, inset)
 end
 
 -- Warm native artwork with a restrained highlight gives the cards the same
--- polished wood character as EllesmereUI without importing any external art.
+-- polished wood character without importing any external art.
 local function ApplyWoodSatin(frame, options)
     if not (frame and frame.CreateTexture) then return end
     options = options or {}
