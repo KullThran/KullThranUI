@@ -1972,11 +1972,12 @@ function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation)
     end
     local yaw
     if shifted then
-        yaw = lookRight and 1.75 or 0
+        -- Same view as a creature target, mirrored when the unit looks right.
+        yaw = lookRight and 0.9 or -0.9
     else
         yaw = lookRight and 0 or -0.9
     end
-    return yaw + math.rad(tonumber(rotation) or 0), shifted and 1.5 or 1, 0
+    return yaw + math.rad(tonumber(rotation) or 0), 1, 0
 end
 
 local function GetDefaultPortraitFacing(unit)
@@ -3323,6 +3324,8 @@ local function CreatePortrait(frame, side, frameHeight, unit)
             if self.SetCamDistanceScale then self:SetCamDistanceScale(1 / (zoom * formZoom)) end
             if self.SetPosition then self:SetPosition(0, offX + formShift, offY) end
             if self.SetFacing then self:SetFacing(rot) end
+            KT.Portrait3DLast = KT.Portrait3DLast or {}
+            KT.Portrait3DLast[updatedUnit] = string.format("yaw %.2f zoom %.2f x %.2f y %.2f", rot, zoom * formZoom, offX + formShift, offY)
         end
         -- The model loads after SetUnit returns and starts from its own camera,
         -- so the look is applied again once it has loaded.
@@ -9400,9 +9403,14 @@ function Mod:OnDisable()
     HideFrameTree(frames)
 end
 
-
-
-
-
-
-
+-- /kui3d prints the camera values last applied to each 3D portrait.
+SLASH_KUI3D1 = "/kui3d"
+SlashCmdList["KUI3D"] = function()
+    local any
+    for unit, info in pairs(KT.Portrait3DLast or {}) do
+        local form = UnitIsUnit(unit, "player") and type(GetShapeshiftForm) == "function" and GetShapeshiftForm() or 0
+        print("KUI 3D " .. unit .. " (form " .. tostring(form) .. "): " .. info)
+        any = true
+    end
+    if not any then print("KUI 3D: no 3D portrait has loaded yet") end
+end
