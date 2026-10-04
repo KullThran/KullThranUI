@@ -7881,7 +7881,7 @@ function ns.KTTargetCombo:Refresh(frame)
 
     -- Target combo display is chosen in the options (default off); this
     -- ring (or the kui bar) only draws for the "ring" choice.
-    if ns.ComboUnderFrame and ns.ComboUnderFrame.GetStyle("target") ~= "ring" then
+    if ns.ComboUnderFrame and not ns.ComboUnderFrame.ShowsRing("target") then
         self:_Hide(frame)
         return
     end
@@ -7939,6 +7939,12 @@ function ns.KTTargetCombo:Refresh(frame)
         and type(current) == "number" and current or nil
     local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
     local classColor = classColors and classColors[class]
+
+    -- Ring + Pips without a portrait: the pips under the target already show them.
+    if not useRing and ns.ComboUnderFrame and ns.ComboUnderFrame.GetStyle("target") == "both" then
+        self:_Hide(frame)
+        return
+    end
 
     if not useRing then
         if frame._kuiTargetComboRing then frame._kuiTargetComboRing:Hide() end
