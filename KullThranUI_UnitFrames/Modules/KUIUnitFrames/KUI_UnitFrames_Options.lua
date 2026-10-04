@@ -2235,6 +2235,9 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
             _, h = W:Toggle(container, 'Blizzard Name Text (Classic / Forever / Retail)', -by,
                 function() return ns.StockStyleToggle(db, 'blizzardNameStyle') end,
                 function(v) SetAndRefresh(function() db.blizzardNameStyle = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Classic Bar Text: 516/553 93% (Classic)', -by,
+                function() return ns.StockStyleToggle(db, 'classicStatusText', 'classic') end,
+                function(v) SetAndRefresh(function() db.classicStatusText = v and true or false end) end); by = by + h
             _, h = W:Toggle(container, 'Show PvP Faction Icon', -by,
                 function() return db.showPvPIcon == true end,
                 function(v) SetAndRefresh(function() db.showPvPIcon = v and true or false end) end); by = by + h

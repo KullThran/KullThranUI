@@ -2320,6 +2320,71 @@ end]]
 oUF.Tags.Methods[SMART_POWER_CURRENT_TAG] = POWER_CURRENT_TAG_METHOD
 oUF.Tags.Events[SMART_POWER_CURRENT_TAG] = SMART_POWER_TAG_EVENTS
 
+do
+    -- Classic Visual Style status text, as the old Blizzard frames showed it:
+    -- full values ("516/553"), and abbreviated only when they grow too long
+    -- for the 119px stock bar (modern health pools).
+    local function ClassicStatusValue(v)
+        local n = CoerceNumber(v)
+        if n then
+            if n < 100000 then return tostring(math.floor(n + 0.5)) end
+            return ManualShort(n)
+        end
+        if AbbreviateLargeNumbers then
+            local ok, res = pcall(AbbreviateLargeNumbers, v)
+            if ok and res ~= nil then return res end
+        end
+        return ""
+    end
+    local function ClassicStatusState(u)
+        if not u or not UnitExists(u) then return "" end
+        if not UnitIsConnected(u) then return PLAYER_OFFLINE or "Offline" end
+        if UnitIsDeadOrGhost(u) then return DEAD or "Dead" end
+    end
+    local function ClassicHealthPercent(u)
+        return string.format("%d%%", UnitHealthPercent(u, true, CurveConstants.ScaleTo100))
+    end
+    local function ClassicPowerPercent(u, pType)
+        return string.format("%d%%", UnitPowerPercent(u, pType, true, CurveConstants.ScaleTo100))
+    end
+    oUF.Tags.Methods["kui-classic-hp"] = function(u)
+        local state = ClassicStatusState(u)
+        if state then return state end
+        return string.format("%s/%s", ClassicStatusValue(UnitHealth(u)), ClassicStatusValue(UnitHealthMax(u)))
+    end
+    oUF.Tags.Events["kui-classic-hp"] = "UNIT_HEALTH UNIT_MAXHEALTH UNIT_CONNECTION"
+    oUF.Tags.Methods["kui-classic-hppct"] = function(u)
+        if ClassicStatusState(u) then return "" end
+        return ClassicHealthPercent(u)
+    end
+    oUF.Tags.Events["kui-classic-hppct"] = "UNIT_HEALTH UNIT_MAXHEALTH UNIT_CONNECTION"
+    oUF.Tags.Methods["kui-classic-hpfull"] = function(u)
+        local state = ClassicStatusState(u)
+        if state then return state end
+        return string.format("%s/%s (%s)", ClassicStatusValue(UnitHealth(u)),
+            ClassicStatusValue(UnitHealthMax(u)), ClassicHealthPercent(u))
+    end
+    oUF.Tags.Events["kui-classic-hpfull"] = "UNIT_HEALTH UNIT_MAXHEALTH UNIT_CONNECTION"
+    oUF.Tags.Methods["kui-classic-pp"] = function(u)
+        if ClassicStatusState(u) then return "" end
+        local pType = UnitPowerType(u)
+        return string.format("%s/%s", ClassicStatusValue(UnitPower(u, pType)), ClassicStatusValue(UnitPowerMax(u, pType)))
+    end
+    oUF.Tags.Events["kui-classic-pp"] = SMART_POWER_TAG_EVENTS .. " UNIT_HEALTH UNIT_CONNECTION"
+    oUF.Tags.Methods["kui-classic-pppct"] = function(u)
+        if ClassicStatusState(u) then return "" end
+        return ClassicPowerPercent(u, UnitPowerType(u))
+    end
+    oUF.Tags.Events["kui-classic-pppct"] = SMART_POWER_TAG_EVENTS .. " UNIT_HEALTH UNIT_CONNECTION"
+    oUF.Tags.Methods["kui-classic-ppfull"] = function(u)
+        if ClassicStatusState(u) then return "" end
+        local pType = UnitPowerType(u)
+        return string.format("%s/%s (%s)", ClassicStatusValue(UnitPower(u, pType)),
+            ClassicStatusValue(UnitPowerMax(u, pType)), ClassicPowerPercent(u, pType))
+    end
+    oUF.Tags.Events["kui-classic-ppfull"] = SMART_POWER_TAG_EVENTS .. " UNIT_HEALTH UNIT_CONNECTION"
+end
+
 local optionsFrame
 local optionsCategoryID
 _G.KUIUF_StylesRegistered = _G.KUIUF_StylesRegistered or false
@@ -4825,6 +4890,118 @@ function KT:ApplyStockUFHealthTextGeometry(frame, unit)
         KT:FitStockUFTextToWidth(frame.RightText, width)
     end
 end
+-- Classic Visual Style: the bar texts of the old Blizzard frames. Player:
+-- "516/553" centred on each bar with "93%" just outside its right end.
+-- Target: "664/707 (93%)" centred (its right side is the portrait). Pet:
+-- "707/707" with no percent. The profile's own text slots are kept for the
+-- other styles; here they are only hidden (the name slot stays as is).
+do
+    local CLASSIC_STATUS_LAYOUT = {
+        player = { hp = "kui-classic-hp", hpPct = "kui-classic-hppct", pp = "kui-classic-pp", ppPct = "kui-classic-pppct" },
+        target = { hp = "kui-classic-hpfull", pp = "kui-classic-ppfull" },
+        pet    = { hp = "kui-classic-hp", pp = "kui-classic-pp" },
+    }
+    local CLASSIC_STATUS_TEXT_RATIO = 0.85
+
+    local function SetClassicStatusHidden(fs, hidden)
+        if type(fs) ~= "table" or not fs.SetAlpha then return end
+        if hidden then
+            fs._ktClassicStatusHidden = true
+            if not fs._ktClassicStatusHook and hooksecurefunc then
+                fs._ktClassicStatusHook = true
+                hooksecurefunc(fs, "SetAlpha", function(self, a)
+                    if self._ktClassicStatusHidden and a ~= 0 and not self._ktClassicStatusBusy then
+                        self._ktClassicStatusBusy = true
+                        self:SetAlpha(0)
+                        self._ktClassicStatusBusy = nil
+                    end
+                end)
+            end
+            fs:SetAlpha(0)
+        elseif fs._ktClassicStatusHidden then
+            fs._ktClassicStatusHidden = nil
+            fs:SetAlpha(1)
+        end
+    end
+
+    function ns.ApplyClassicStatusText(frame, unit, active)
+        local layout = CLASSIC_STATUS_LAYOUT[unit]
+        if active then
+            local profile = db and db.profile
+            active = layout ~= nil and frame.Health ~= nil
+                and ns.StockStyleToggle(profile, "classicStatusText", "classic")
+        end
+        local nameText = frame._ktStockNameText or frame.LeftText
+        for _, fs in ipairs({ frame.LeftText, frame.RightText, frame.CenterText }) do
+            SetClassicStatusHidden(fs, active and fs ~= nameText)
+        end
+        SetClassicStatusHidden(frame.Power and frame.Power._ppFS, active)
+
+        local texts = frame._ktClassicStatus
+        if not active then
+            if texts then
+                for _, fs in pairs(texts.fs) do
+                    if fs._curTag then frame:Untag(fs); fs._curTag = nil end
+                    fs:SetText("")
+                    fs:Hide()
+                end
+            end
+            return
+        end
+
+        if not texts then
+            local holder = CreateFrame("Frame", nil, frame)
+            holder:SetAllPoints(frame)
+            holder:EnableMouse(false)
+            texts = { holder = holder, fs = {} }
+            for _, key in ipairs({ "hp", "hpPct", "pp", "ppPct" }) do
+                texts.fs[key] = holder:CreateFontString(nil, "OVERLAY")
+                texts.fs[key]:SetWordWrap(false)
+            end
+            frame._ktClassicStatus = texts
+        end
+        -- Above the bars and the stock art, and never inside Health's clip.
+        local level = frame:GetFrameLevel()
+        for _, region in ipairs({ frame.Health, frame.Power, frame._ktClassicArtHost, frame._ktPetArtHost }) do
+            if region and region.GetFrameLevel then level = math.max(level, region:GetFrameLevel()) end
+        end
+        texts.holder:SetFrameLevel(level + 2)
+
+        local path, size, flags = ns.BlizzardFont("TextStatusBarText", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        local bars = { hp = frame.Health, hpPct = frame.Health, pp = frame.Power, ppPct = frame.Power }
+        for key, fs in pairs(texts.fs) do
+            local tag = layout[key]
+            local bar = bars[key]
+            if tag and bar and not (bar.IsShown and not bar:IsShown()) then
+                local barH = bar.GetHeight and bar:GetHeight() or 12
+                fs:SetFont(path, math.max(6, math.min(size, barH * CLASSIC_STATUS_TEXT_RATIO)), flags)
+                fs:SetTextColor(1, 1, 1, 1)
+                fs:SetShadowColor(0, 0, 0, 1)
+                fs:SetShadowOffset(1, -1)
+                fs:ClearAllPoints()
+                if key == "hpPct" or key == "ppPct" then
+                    fs:SetPoint("LEFT", bar, "RIGHT", 4, 0)
+                    fs:SetJustifyH("LEFT")
+                else
+                    fs:SetPoint("CENTER", bar, "CENTER", 0, 0)
+                    fs:SetJustifyH("CENTER")
+                end
+                if fs._curTag ~= "[" .. tag .. "]" then
+                    if fs._curTag then frame:Untag(fs) end
+                    fs._curTag = "[" .. tag .. "]"
+                    frame:Tag(fs, fs._curTag)
+                end
+                fs:Show()
+            else
+                if fs._curTag then frame:Untag(fs); fs._curTag = nil end
+                fs:SetText("")
+                fs:Hide()
+            end
+        end
+        if frame.UpdateTags then frame:UpdateTags() end
+    end
+end
+
 local function ApplyClassicFrameArt(frame, unit)
     if not frame then return end
     local VT = KT.VisualThemes
@@ -4885,6 +5062,7 @@ local function ApplyClassicFrameArt(frame, unit)
             if frame.classicBorder and VT.ShowClassicBorder then VT:ShowClassicBorder(frame.classicBorder, false) end
             if frame.unifiedBorder then frame.unifiedBorder:Hide() end
             KT:ApplyStockUFHealthTextGeometry(frame, unit)
+            ns.ApplyClassicStatusText(frame, unit, petKind == "classic")
             return
         end
         if frame._ktPetSaved then
@@ -4929,6 +5107,7 @@ local function ApplyClassicFrameArt(frame, unit)
     if usingThemedRealArt then
         KT:ApplyStockUFHealthTextGeometry(frame, unit)
     end
+    ns.ApplyClassicStatusText(frame, unit, usingClassicRealArt)
     -- The real stock layouts own their aura placement. Forever moves buffs
     -- into its name/buffs tab, while Classic places them above the opaque
     -- frame texture. Skip the generic refresh so it cannot undo either
