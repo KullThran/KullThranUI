@@ -1481,7 +1481,8 @@ do
 end
 
 -- Combo point style picker (tiles) for Player / Target.  Player: Off, Modern,
--- Classic.  Target: Off, Ring (circle around the portrait), Modern, Classic.
+-- Classic.  Target: Off, Ring (circle around the portrait), Ring + Pips,
+-- Modern, Classic.
 -- PvP icon style picker (graphic tiles): Modern = ours, Classic = stock banner.
 -- Independent for Player (pvpIconStyle) and Target (pvpIconStyleTarget).
 function ns.BuildPvPPicker(container, W, by, unitKey)
@@ -1567,11 +1568,14 @@ function ns.BuildComboPicker(container, W, by, unitKey)
         end
     end
     local defs = { { key = 'off', label = 'Off', hint = 'Hidden' } }
-    if isTarget then defs[#defs + 1] = { key = 'ring', label = 'Ring' } end
+    if isTarget then
+        defs[#defs + 1] = { key = 'ring', label = 'Ring' }
+        defs[#defs + 1] = { key = 'both', label = 'Ring + Pips' }
+    end
     defs[#defs + 1] = { key = 'modern', label = 'Modern' }
     defs[#defs + 1] = { key = 'classic', label = 'Classic' }
     local count = #defs
-    local tileW = (count > 3) and 72 or 92
+    local tileW = (count > 4) and 62 or (count > 3) and 72 or 92
     local step = tileW + 6
     for index, def in ipairs(defs) do
         local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
@@ -1595,14 +1599,20 @@ function ns.BuildComboPicker(container, W, by, unitKey)
             plate:SetPoint("TOP", 0, -20)
             if CUF.HasAtlas(CUF.ATLAS.plate) then plate:SetAtlas(CUF.ATLAS.plate, false)
             else plate:SetColorTexture(0.05, 0.05, 0.05, 1) end
-        elseif def.key == 'ring' then
+        elseif def.key == 'ring' or def.key == 'both' then
+            local ringY = (def.key == 'both') and -28 or -34
             for k = 1, 4 do
                 local a = math.rad(100 - (k - 1) * 28)
                 local t = btn:CreateTexture(nil, "ARTWORK")
                 t:SetSize(11, 11)
-                t:SetPoint("CENTER", btn, "TOP", math.cos(a) * 22 - 6, -34 + math.sin(a) * 16)
+                t:SetPoint("CENTER", btn, "TOP", math.cos(a) * 22 - 6, ringY + math.sin(a) * 16)
                 t:SetTexture(k <= 2 and "Interface\\COMMON\\Indicator-Red" or "Interface\\COMMON\\Indicator-Gray")
                 if k > 2 then t:SetVertexColor(0.1, 0.1, 0.1, 1) end
+            end
+            if def.key == 'both' and CUF then
+                Pip(CUF.ATLAS.modernFill, "Interface\\COMMON\\Indicator-Red", -10, -54, 12)
+                Pip(CUF.ATLAS.modernFill, "Interface\\COMMON\\Indicator-Red", 2, -54, 12)
+                Pip(CUF.ATLAS.modernEmpty, "Interface\\COMMON\\Indicator-Gray", 14, -54, 12)
             end
         else
             local hint = btn:CreateFontString(nil, "OVERLAY")
@@ -1612,7 +1622,7 @@ function ns.BuildComboPicker(container, W, by, unitKey)
             hint:SetText(LText(def.hint))
         end
         local fs = btn:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+        fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", (#def.label > 8) and 10 or 12, "OUTLINE")
         fs:SetPoint("BOTTOM", 0, 8)
         fs:SetText(LText(def.label))
         btn:SetScript("OnClick", function()
