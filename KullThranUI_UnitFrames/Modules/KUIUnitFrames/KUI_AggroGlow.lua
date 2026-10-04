@@ -65,7 +65,7 @@ end
 -- retrato), ligeramente ensanchada, para que siga exactamente su forma.
 local PAD = 0
 
-local function CloneTexture(g, i, src, pool, host)
+local function CloneTexture(g, i, src, pool, host, textureFile)
     pool, host = pool or g.clones, host or g.clip
     local dst = pool[i]
     if not dst then
@@ -78,11 +78,11 @@ local function CloneTexture(g, i, src, pool, host)
     dst:SetBlendMode("BLEND")
     local pad = PAD
     local ok, failure = pcall(function()
-        local atlas = src.GetAtlas and src:GetAtlas()
+        local atlas = not textureFile and src.GetAtlas and src:GetAtlas()
         if atlas then
             if dst:SetAtlas(atlas, false) == false then error("atlas rejected") end
         else
-            local file = src._ktGlowTextureFile or src:GetTexture()
+            local file = textureFile or src._ktGlowTextureFile or src:GetTexture()
             if dst:SetTexture(file) == false then error("texture rejected") end
         end
         if dst.SetDesaturated then dst:SetDesaturated(true) end
@@ -380,6 +380,19 @@ local function Layout(frame, g)
     -- Zona de recorte: el retrato, ampliada al anillo Elite/Rara (dragon, etc.)
     -- o a la hoja Classic Elite/Rara cuando estan activos.
     local bdp = frame.Portrait and frame.Portrait.backdrop
+    -- The stock Classic sheet includes the bar panel. Its isolated dragon
+    -- has identical UVs, so copy it separately without the health-bar cut.
+    local classicArt = frame._ktClassicPortraitArt
+    local classicDragon
+    local cr = ns.ClassicRing
+    if classicArt and classicArt:IsShown() and frame._ktClassicSheetPath and cr then
+        for kind, sheet in pairs(cr.sheets) do
+            if frame._ktClassicSheetPath == sheet then
+                classicDragon = cr.dragons[kind]
+                break
+            end
+        end
+    end
     local ringAnchor
     for _, r in ipairs({ frame._kuiClassificationPortraitRing or false, frame._kuiClassificationIndicator or false,
         frame._kuiNativeClassRing or false, frame._kuiClassicRingTex or false }) do
@@ -443,7 +456,10 @@ local function Layout(frame, g)
     -- El anillo Elite/Rara no pasa por el corte de las barras: su copia solo
     -- pinta sus propios pixeles, asi que puede brillar entero (cola del dragon).
     g.ringClip:ClearAllPoints()
-    if ringAnchor then
+    if classicDragon then
+        g.ringClip:SetPoint("TOPLEFT", classicArt, "TOPLEFT", -6, 6)
+        g.ringClip:SetPoint("BOTTOMRIGHT", classicArt, "BOTTOMRIGHT", 6, -6)
+    elseif ringAnchor then
         g.ringClip:SetPoint("TOPLEFT", ringAnchor, "TOPLEFT", -6, 6)
         g.ringClip:SetPoint("BOTTOMRIGHT", ringAnchor, "BOTTOMRIGHT", 6, -6)
     else
@@ -471,6 +487,12 @@ local function Layout(frame, g)
                 local idx = used + 1
                 if CloneTexture(g, idx, src) then used = idx end
             end
+        end
+    end
+    if not nativeRest and classicDragon then
+        local idx = ringUsed + 1
+        if CloneTexture(g, idx, classicArt, g.ringClones, g.ringClip, classicDragon) then
+            ringUsed = idx
         end
     end
     for k = used + 1, #g.clones do g.clones[k]:Hide() end

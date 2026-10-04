@@ -8,5 +8,6 @@
 ## OptionalDeps: KullThranUI_ResourceBars, KullThranUI_CooldownManager
 
 Init.lua
+Modules\CastBar\CastBar_Styles.lua
 Modules\CastBar\CastBar.lua
 Modules\CastBar\CastBar_Options.lua

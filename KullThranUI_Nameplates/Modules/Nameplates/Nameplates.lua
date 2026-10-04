@@ -4325,6 +4325,12 @@ local function GetReactionColor(unit)
     -- P2: Quest mob → sólo si el color de quest está habilitado en DB
     if db.questMobColorEnabled and IsQuestMob(unit) then
         local qc = db.questMobColor or defaults.questMobColor
+        -- Classic's final brightness boost makes blue quest bars too pale.
+        -- Deepen that blue before the shared colour pass, including saved profiles.
+        if ns.NameplateStyle and ns.NameplateStyle() == "classic"
+            and qc.b > qc.r and qc.b > qc.g then
+            return qc.r * 0.5, qc.g * 0.5, qc.b * 0.5
+        end
         return qc.r, qc.g, qc.b
     end
 

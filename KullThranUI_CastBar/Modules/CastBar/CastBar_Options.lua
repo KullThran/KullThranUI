@@ -5,6 +5,7 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
 if not KT then return end
 
 local LSM = LibStub("LibSharedMedia-3.0", true)
+local Styles = KT.CastBarStyles
 
 local Opt = KT.Options or {}
 local LText = Opt.LText or function(t) return t end
@@ -46,6 +47,7 @@ local function RestoreCastBarDefaults()
 end
 
 local function GetPreviewBarColor(db)
+    if Styles:GetStyle(db) ~= "kui" then return Styles:Color(db) end
     local profile = KT and KT.db and KT.db.profile
     local skin = profile and profile.skin
     local globalClassColor = skin and (skin.kullthranUIColorByClass == true or skin.borderTheme == "CLASS")
@@ -104,7 +106,7 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
     end
 
     local prevContainer = CreateFrame("Frame", nil, sc, "BackdropTemplate")
-    prevContainer:SetSize((sc:GetWidth() or 1) - 20, 80)
+    prevContainer:SetSize((sc:GetWidth() or 1) - 20, 160)
     prevContainer:SetPoint("TOP", sc, "TOP", 0, -10)
     if KT.AddBackdrop then KT:AddBackdrop(prevContainer, 0.1, 0.1, 0.1, 0.4) end
     if KT.AddBorder then KT:AddBorder(prevContainer, 0, 0, 0, 1) end
@@ -117,7 +119,7 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
     lblPrev:SetText(LText("LIVE PREVIEW"))
     KT:SetAccentTextColor(lblPrev, 1)
 
-    local fakeBar = CreateFrame("StatusBar", nil, prevContainer)
+    local fakeBar = CreateFrame("StatusBar", nil, prevContainer, "BackdropTemplate")
     fakeBar:SetPoint("CENTER")
     fakeBar:SetMinMaxValues(0, 1)
     fakeBar:SetValue(0.65)
@@ -146,14 +148,63 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
     if KT.AddBackdrop then KT:AddBackdrop(fakeIconBg, 0.05, 0.05, 0.05, 0.9) end
     if KT.AddBorder then KT:AddBorder(fakeIconBg, 0, 0, 0, 1) end
 
-    local fakeIcon = fakeIconBg:CreateTexture(nil, "ARTWORK")
-    fakeIcon:SetAllPoints()
+    local fakeIcon = fakeBar:CreateTexture(nil, "ARTWORK")
     fakeIcon:SetTexture(136071)
     fakeIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+    fakeBar.Text, fakeBar.Time, fakeBar.Spark = fakeText, fakeTime, fakeSpark
+    fakeBar.Icon, fakeBar.IconBg, fakeBar.PreviewBackground = fakeIcon, fakeIconBg, fakeBg
     local iconMask = nil
 
-    local function UpdatePreview()
+    -- Browse a preset without changing the live cast bar; Apply commits it.
+    local selectedStyle = KT._castbarStyleTab or Styles:GetStyle(db)
+    if not Styles.labels[selectedStyle] then selectedStyle = "kui" end
+    local previewDB, UpdatePreview
+    local tabs = {}
+    local tabsHost = CreateFrame("Frame", nil, prevContainer)
+    tabsHost:SetSize(4 * 116, 28)
+    tabsHost:SetPoint("TOP", prevContainer, "TOP", 0, -8)
+    for i, key in ipairs(Styles.order) do
+        local button = CreateFrame("Button", nil, tabsHost, "BackdropTemplate")
+        button:SetSize(110, 26)
+        button:SetPoint("TOPLEFT", tabsHost, "TOPLEFT", (i - 1) * 116, 0)
+        if KT.AddBackdrop then KT:AddBackdrop(button, 0.06, 0.06, 0.06, 0.9) end
+        local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("CENTER"); text:SetText(LText(Styles.labels[key]))
+        button.label, button.key = text, key
+        button:SetScript("OnClick", function()
+            selectedStyle = key
+            KT._castbarStyleTab = key
+            UpdatePreview()
+        end)
+        tabs[#tabs + 1] = button
+    end
+    local apply = CreateFrame("Button", nil, prevContainer, "UIPanelButtonTemplate")
+    apply:SetSize(150, 24)
+    apply:SetPoint("BOTTOM", prevContainer, "BOTTOM", 0, 8)
+    local dimensions = prevContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dimensions:SetPoint("BOTTOM", apply, "TOP", 0, 5)
+    apply:SetScript("OnClick", function()
+        Styles:Select(db, selectedStyle)
+        RefreshCastBar()
+        UpdatePreview()
+        if KT.RefreshPage then KT:RefreshPage() end
+    end)
+
+    local function GetPreviewDB()
+        if selectedStyle == Styles:GetStyle(db) then return db end
+        local sample = {}
+        if selectedStyle == "kui" and db.kuiStyleSettings then
+            for key, value in pairs(db.kuiStyleSettings) do sample[key] = value end
+        else
+            Styles:Seed(sample, selectedStyle)
+        end
+        return sample
+    end
+
+    UpdatePreview = function()
+        previewDB = GetPreviewDB()
+        local db = previewDB
         local barW = tonumber(db.width) or 250
         local barH = tonumber(db.height) or 20
         local barScale = tonumber(db.scale) or 1.0
@@ -161,7 +212,8 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
         fakeBar:SetSize(barW, barH)
         fakeBar:SetScale(barScale)
 
-        local tex = FetchStatusbarTex(db.texture or "Melli")
+        local tex = Styles:GetStyle(db) == "kui" and FetchStatusbarTex(db.texture or "Melli")
+            or "Interface\\Buttons\\WHITE8x8"
         fakeBar:SetStatusBarTexture(tex)
 
         do
@@ -171,9 +223,11 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
 
         local font = FetchFont(db.font or "AAA_ITC_Avant_Garde")
         local outline = db.fontOutline or "OUTLINE"
+        if outline == "NONE" then outline = "" end
         local sz = tonumber(db.fontSize) or 16
-        fakeText:SetFont(font, sz, outline)
-        fakeTime:SetFont(font, sz, outline)
+        local adjustedSize = math.min(sz, math.max(8, barW / 12))
+        fakeText:SetFont(font, adjustedSize, outline)
+        fakeTime:SetFont(font, adjustedSize, outline)
 
         local tc = db.textColor or { r = 1, g = 1, b = 1, a = 1 }
         fakeText:SetTextColor(tc.r or 1, tc.g or 1, tc.b or 1, tc.a or 1)
@@ -183,7 +237,8 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
         fakeSpark:ClearAllPoints()
         fakeSpark:SetPoint("CENTER", fakeBar, "LEFT", sparkX, 0)
 
-        if db.showIcon ~= false then
+        if Styles:ShowsIcon(db) then
+            fakeIcon:Show()
             fakeIconBg:Show()
             fakeIconBg:ClearAllPoints()
             fakeIconBg:SetSize(barH, barH)
@@ -208,17 +263,33 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
                 if KT.AddBorder then KT:AddBorder(fakeIconBg, 0, 0, 0, 1) end
             end
         else
+            fakeIcon:Hide()
             fakeIconBg:Hide()
+        end
+        Styles:Apply(fakeBar, db)
+        fakeSpark:SetPoint("CENTER", fakeBar, "LEFT", sparkX, selectedStyle == "classic" and 2 or 0)
+        fakeTime:SetText(selectedStyle == "kui" and "1.5" or "1.5 / 3.0")
+        dimensions:SetText(string.format("%s  |  %d x %d", LText(Styles.labels[selectedStyle]), barW, barH))
+        local applied = selectedStyle == Styles:GetStyle(KT.db.profile.castbar)
+        apply:SetText(LText(applied and "Applied" or "Apply Style"))
+        apply:SetEnabled(not applied)
+        for _, button in ipairs(tabs) do
+            local on = button.key == selectedStyle
+            local r, g, b = PreviewAccentColor()
+            if KT.AddBorder then KT:AddBorder(button, on and r or 0, on and g or 0, on and b or 0, 1) end
+            if on then KT:SetAccentTextColor(button.label, 1) else button.label:SetTextColor(0.75, 0.75, 0.75, 1) end
         end
     end
 
     local function RefreshAndPreview()
+        selectedStyle = Styles:GetStyle(db)
+        KT._castbarStyleTab = selectedStyle
         RefreshCastBar()
         UpdatePreview()
     end
 
     UpdatePreview()
-    y = y + 118
+    y = y + 198
 
     _, h = W:Label(sc, LText("This module auto-anchors above the top cooldown/resource stack. With Auto Width enabled, the width slider becomes a fallback value instead of the live width."), -y, 11)
     y = y + h
@@ -293,6 +364,10 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
 
     AddOptionBlock(cols, "right", "Bar Appearance", function(container)
         local by = 0
+        if Styles:GetStyle(db) ~= "kui" then
+            _, h = W:Label(container, "This style uses Blizzard casting textures and colors. Choose KUI Style to customize the bar fill.", -by, 11)
+            return by + h
+        end
 
         _, h = W:Label(container, "Choose the texture and base colors for the cast bar body. Class Color overrides the live fill while preserving your saved manual color.", -by, 11); by = by + h
         _, h = W:Dropdown(container, "Texture", -by, GetStatusbarValues,
@@ -348,6 +423,10 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
 
     AddOptionBlock(cols, "right", "Icon", function(container)
         local by = 0
+        if Styles:GetStyle(db) == "classic" then
+            _, h = W:Label(container, "Classic cast bars do not use a spell icon.", -by, 11)
+            return by + h
+        end
 
         _, h = W:Label(container, "Configure the spell icon independently so it can match either a compact or more decorative cast bar layout.", -by, 11); by = by + h
         _, h = W:Toggle(container, "Show Icon", -by,

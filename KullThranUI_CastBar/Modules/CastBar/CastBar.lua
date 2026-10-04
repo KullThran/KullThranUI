@@ -20,6 +20,7 @@ local function LText(text)
 end
 local Mod = KT:NewModule("CastBar", "AceEvent-3.0", "AceTimer-3.0")
 local LSM = LibStub("LibSharedMedia-3.0", true)
+local Styles = KT.CastBarStyles
 
 local UnitCastingInfo  = UnitCastingInfo
 local UnitChannelInfo  = UnitChannelInfo
@@ -173,14 +174,14 @@ end
 local function GetUnlockPreviewIconOffset()
     local db = Mod and Mod.db
     local bar = Mod and Mod.bar
-    if not (db and db.showIcon) then
+    if not (Styles:ShowsIcon(db)) then
         return 0
     end
 
-    local baseHeight = (db.height or (bar and bar.GetHeight and bar:GetHeight()) or 20)
+    local baseHeight, iconGap = Styles:IconMetrics(db)
     local uiScale = UIParent:GetEffectiveScale()
     local frameScale = (bar and bar.GetEffectiveScale and bar:GetEffectiveScale()) or uiScale
-    return (baseHeight + 2) * frameScale / uiScale
+    return (baseHeight + iconGap) * frameScale / uiScale
 end
 
 local function TranslateUnlockMoverPosition(pos)
@@ -197,7 +198,7 @@ local function TranslateUnlockMoverPosition(pos)
     }
 
     local db = Mod and Mod.db
-    if db and db.showIcon and db.iconPosition ~= "RIGHT" then
+    if Styles:ShowsIcon(db) and db.iconPosition ~= "RIGHT" then
         translated.x = translated.x + GetUnlockPreviewIconOffset()
     end
 
@@ -221,9 +222,10 @@ function Mod:RegisterUnlockElement()
             local db = Mod and Mod.db
             local width = bar and bar.GetWidth and bar:GetWidth() or 250
             local height = bar and bar.GetHeight and bar:GetHeight() or 20
-            if db and db.showIcon then
-                width = width + (db.height or height) + 2
-                height = math.max(height, db.height or height)
+            if Styles:ShowsIcon(db) then
+                local iconSize, iconGap = Styles:IconMetrics(db)
+                width = width + iconSize + iconGap
+                height = math.max(height, iconSize)
             end
             return math.max(width, 180), math.max(height, 20)
         end,
@@ -241,7 +243,7 @@ function Mod:RegisterUnlockElement()
             local width = (bar.GetWidth and bar:GetWidth() or 250) * frameScale / uiScale
             local height = (bar.GetHeight and bar:GetHeight() or 20) * frameScale / uiScale
 
-            if db and db.showIcon then
+            if Styles:ShowsIcon(db) then
                 local extra = GetUnlockPreviewIconOffset()
                 if db.iconPosition == "RIGHT" then
                     width = width + extra
@@ -249,7 +251,8 @@ function Mod:RegisterUnlockElement()
                     left = left - extra
                     width = width + extra
                 end
-                height = math.max(height, (db.height or 20) * frameScale / uiScale)
+                local iconSize = Styles:IconMetrics(db)
+                height = math.max(height, iconSize * frameScale / uiScale)
             end
 
             return left, top, math.max(width, 180), math.max(height, 20)
@@ -304,6 +307,7 @@ end
 
 function Mod:GetResolvedBarColor()
     local db = self.db
+    if Styles:GetStyle(db) ~= "kui" then return Styles:Color(db, self.bar) end
     if not db then
         local r, g, b = GetThemeAccentColor()
         return r, g, b, 1
@@ -341,8 +345,8 @@ function Mod:SyncAutoWidth(forceApply)
     end
 
     local refW = widthAnchor:GetWidth()
-    local iconSz = self.db.showIcon and self.db.height or 0
-    local gap = self.db.showIcon and 2 or 0
+    local iconSz, gap = Styles:IconMetrics(self.db)
+    if not Styles:ShowsIcon(self.db) then iconSz, gap = 0, 0 end
     local newW = refW - iconSz - gap
 
     if newW > 20 and math.abs((self.db.width or 0) - newW) > 1 then
@@ -420,7 +424,7 @@ function Mod:OnInitialize()
             db.color = { r = r, g = g, b = b, a = 1 }
         end
 
-        if db.texture == "Interface\\TargetingFrame\\UI-StatusBar" then
+        if Styles:GetStyle(db) == "kui" and db.texture == "Interface\\TargetingFrame\\UI-StatusBar" then
             db.texture = "Melli"
         end
         if not db.frameStrata then db.frameStrata = "MEDIUM" end
@@ -879,8 +883,9 @@ function Mod:SnapToTop()
 
     if self.db.autoPosition then
         local xOffset = 0
-        if self.db.showIcon then
-            local shift = (self.db.height + 2) / 2
+        if Styles:ShowsIcon(self.db) then
+            local iconSize, iconGap = Styles:IconMetrics(self.db)
+            local shift = (iconSize + iconGap) / 2
             xOffset = (self.db.iconPosition == "RIGHT") and -shift or shift
         end
         self.bar:ClearAllPoints()
@@ -992,72 +997,6 @@ function Mod:ScheduleBarFailsafe(endTime, castID)
     end)
 end
 
--- VisualThemes: aplica o retira el marco clasico opcional del tema
--- "classic". Es puramente decorativo: se ancla justo fuera de la propia barra
--- (sin tocar backdrop/tamano/anclajes existentes). db.frameArtKit es un valor
--- de perfil normal (mismo patron que unitFrames.frameArtKit).
---
--- Geometria (ver ApplySettings/SnapToTop): el icono (db.height x db.height)
--- esta a 2px del borde de la barra (bar.Icon SetPoint) y su fondo (IconBg)
--- sobresale CASTBAR_ICON_BG_PAD px mas; con autoPosition la barra se coloca
--- CASTBAR_ANCHOR_GAP px encima del stack de recursos. ThemeBorderKit.lua
--- dibuja 16px hacia FUERA del rect a scale = 1 (BASE_RING_SIZE, local privado
--- alli; reflejado aqui a proposito, mantener sincronizado), lo que taparia
--- casi todo el icono y el anillo de la barra de recursos de abajo. Por eso:
---   1) el anillo rodea un rect que une barra + icono (bar.classicBorderRect),
---      asi el icono queda DENTRO del marco en vez de debajo del anillo;
---   2) su alcance se limita a la mitad del hueco de auto-posicion (igual que
---      ComputeClassicBorderScale de KUICooldownManager.lua), de modo que no
---      llega al anillo de la barra de recursos (que a su vez usa como maximo
---      la otra mitad).
-local CASTBAR_CLASSIC_BORDER_BASE_RING_SIZE = 16
-local CASTBAR_ANCHOR_GAP = 5
-local CASTBAR_ICON_BG_PAD = 1
-
-local function ComputeClassicBorderScale()
-    return (CASTBAR_ANCHOR_GAP / 2) / CASTBAR_CLASSIC_BORDER_BASE_RING_SIZE
-end
-
-local function SeatClassicBorderRect(bar, db)
-    local rect = bar.classicBorderRect
-    if not rect then
-        rect = CreateFrame("Frame", nil, bar)
-        bar.classicBorderRect = rect
-    end
-    rect:ClearAllPoints()
-    if db.showIcon and bar.Icon then
-        -- Icon has the bar's own height and is vertically centred on it, so
-        -- the union only grows horizontally (icon + gap + IconBg padding).
-        if db.iconPosition == "RIGHT" then
-            rect:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-            rect:SetPoint("BOTTOMRIGHT", bar.Icon, "BOTTOMRIGHT", CASTBAR_ICON_BG_PAD, 0)
-        else
-            rect:SetPoint("TOPLEFT", bar.Icon, "TOPLEFT", -CASTBAR_ICON_BG_PAD, 0)
-            rect:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-        end
-    else
-        rect:SetAllPoints(bar)
-    end
-    return rect
-end
-
-local function ApplyClassicFrameArt(bar, db)
-    local VT = KT.VisualThemes
-    if not (VT and VT.CreateClassicBorder and VT.SeatClassicBorder and VT.ShowClassicBorder) then
-        return
-    end
-    local wantClassic = db and db.frameArtKit == "classic"
-    if wantClassic then
-        bar.classicBorder = bar.classicBorder or VT:CreateClassicBorder(bar)
-        if bar.classicBorder then
-            VT:SeatClassicBorder(bar.classicBorder, SeatClassicBorderRect(bar, db), ComputeClassicBorderScale())
-            VT:ShowClassicBorder(bar.classicBorder, true)
-        end
-    elseif bar.classicBorder then
-        VT:ShowClassicBorder(bar.classicBorder, false)
-    end
-end
-
 -- ============================================================================
 -- ApplySettings
 -- ============================================================================
@@ -1073,7 +1012,8 @@ function Mod:ApplySettings()
     bar:SetFrameLevel(db.frameLevel  or 10)
 
     -- Textura
-    local tex = LSM and LSM:Fetch("statusbar", db.texture) or db.texture
+    local tex = Styles:GetStyle(db) ~= "kui" and "Interface\\Buttons\\WHITE8x8"
+        or (LSM and LSM:Fetch("statusbar", db.texture) or db.texture)
     if db.texture == "Melli" and (not tex or tex == "Melli") then
         tex = "Interface\\TargetingFrame\\UI-StatusBar"
     end
@@ -1091,6 +1031,7 @@ function Mod:ApplySettings()
     -- Fuente
     local font        = (KT and KT.ResolveFontForLocale and KT:ResolveFontForLocale(db.font)) or (LSM and LSM:Fetch("font", db.font)) or db.font
     local outline     = db.fontOutline or "OUTLINE"
+    if outline == "NONE" then outline = "" end
     local adjustedSz  = math.min(db.fontSize, math.max(8, db.width / 12))
     bar.Text:SetFont(font, adjustedSz, outline)
     bar.Text:SetTextColor(db.textColor.r, db.textColor.g, db.textColor.b, db.textColor.a)
@@ -1100,7 +1041,7 @@ function Mod:ApplySettings()
     bar.Time:SetTextColor(db.textColor.r, db.textColor.g, db.textColor.b, db.textColor.a)
 
     -- Icono
-    if db.showIcon then
+    if Styles:ShowsIcon(db) then
         bar.Icon:Show()
         bar.IconBg:Show()
         bar.Icon:ClearAllPoints()
@@ -1142,7 +1083,7 @@ function Mod:ApplySettings()
         self:ClearChannelTicks()
     end
 
-    ApplyClassicFrameArt(bar, db)
+    Styles:Apply(bar, db)
 end
 
 -- ============================================================================
@@ -1158,7 +1099,8 @@ function Mod:OnUpdate(bar, elapsed)
         bar:SetValue(time)
         local remaining = bar.maxValue - time
         if remaining > 0 then
-            bar.Time:SetFormattedText("%.1f", remaining)
+            if Styles:GetStyle(self.db) == "kui" then bar.Time:SetFormattedText("%.1f", remaining)
+            else bar.Time:SetFormattedText("%.1f / %.1f", remaining, bar.casting and (bar.maxValue - bar.minValue) or (bar.endTime - bar.startTime)) end
         else
             if self._debugCastBar and not bar._ktDebugNearEndLogged then
                 bar._ktDebugNearEndLogged = true
@@ -1169,7 +1111,7 @@ function Mod:OnUpdate(bar, elapsed)
         local dur = bar.maxValue - bar.minValue
         if dur > 0 then
             local sp = math.max(0, math.min((time - bar.minValue) / dur * bar:GetWidth(), bar:GetWidth()))
-            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, 0)
+            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, Styles:GetStyle(self.db) == "classic" and 2 or 0)
         end
 
     elseif bar.empowering then
@@ -1179,7 +1121,8 @@ function Mod:OnUpdate(bar, elapsed)
         bar:SetValue(time)
         local remaining = bar.endTime - time
         if remaining > 0 then
-            bar.Time:SetFormattedText("%.1f", remaining)
+            if Styles:GetStyle(self.db) == "kui" then bar.Time:SetFormattedText("%.1f", remaining)
+            else bar.Time:SetFormattedText("%.1f / %.1f", remaining, bar.casting and (bar.maxValue - bar.minValue) or (bar.endTime - bar.startTime)) end
         else
             if self._debugCastBar and not bar._ktDebugNearEndLogged then
                 bar._ktDebugNearEndLogged = true
@@ -1190,7 +1133,7 @@ function Mod:OnUpdate(bar, elapsed)
         local dur = bar.endTime - bar.startTime
         if dur > 0 then
             local sp = math.max(0, math.min((time - bar.startTime) / dur * bar:GetWidth(), bar:GetWidth()))
-            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, 0)
+            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, Styles:GetStyle(self.db) == "classic" and 2 or 0)
         end
     elseif bar.channeling then
         local time = GetTime()
@@ -1199,7 +1142,8 @@ function Mod:OnUpdate(bar, elapsed)
         local remaining = bar.endTime - time
         bar:SetValue(remaining)
         if remaining > 0 then
-            bar.Time:SetFormattedText("%.1f", remaining)
+            if Styles:GetStyle(self.db) == "kui" then bar.Time:SetFormattedText("%.1f", remaining)
+            else bar.Time:SetFormattedText("%.1f / %.1f", remaining, bar.casting and (bar.maxValue - bar.minValue) or (bar.endTime - bar.startTime)) end
         else
             if self._debugCastBar and not bar._ktDebugNearEndLogged then
                 bar._ktDebugNearEndLogged = true
@@ -1210,7 +1154,7 @@ function Mod:OnUpdate(bar, elapsed)
         local dur = bar.endTime - bar.startTime
         if dur > 0 then
             local sp = math.max(0, math.min((remaining / dur) * bar:GetWidth(), bar:GetWidth()))
-            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, 0)
+            bar.Spark:SetPoint("CENTER", bar, "LEFT", sp, Styles:GetStyle(self.db) == "classic" and 2 or 0)
         end
     end
 end
@@ -1289,6 +1233,7 @@ function Mod:UNIT_SPELLCAST_START(event, unit, castGUID, spellID)
     self.bar.Spark:Show()
     self:UpdateSafeZone()
     do
+        Styles:ApplyFill(self.bar, self.db)
         local r, g, b, a = self:GetResolvedBarColor()
         self.bar:SetStatusBarColor(r, g, b, a)
     end
@@ -1360,6 +1305,7 @@ function Mod:UNIT_SPELLCAST_CHANNEL_START(event, unit, castGUID, spellID)
     self:UpdateSafeZone()
 
     do
+        Styles:ApplyFill(self.bar, self.db)
         local r, g, b, a = self:GetResolvedBarColor()
         self.bar:SetStatusBarColor(r, g, b, a)
     end
@@ -1464,6 +1410,7 @@ function Mod:Unlock()
     self.bar.Icon:Show()
     self.bar.Time:SetText("2.5")
     do
+        Styles:ApplyFill(self.bar, self.db)
         local r, g, b, a = self:GetResolvedBarColor()
         self.bar:SetStatusBarColor(r, g, b, a)
     end
@@ -1485,6 +1432,7 @@ function Mod:Refresh()
             frameArtKit = "default",
         }
     end
+    Styles:Migrate(KT.db.profile.castbar)
     self.db = KT.db.profile.castbar
     if self.db.classColor == nil then
         self.db.classColor = false

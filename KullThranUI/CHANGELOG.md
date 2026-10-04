@@ -5,7 +5,9 @@ Current addon version: **@project-version@**
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
 
-## 5.1.2 (2026-10-04)
+## 5.1.2 (2026-10-05)
+
+- Cast Bar now offers KUI, Classic, Forever and Retail preview tabs with Apply controls; native styles use Blizzard casting art and colors. Classic has no icon, outlined text and a properly layered frame.
 - New Visual Style selector (KUI, Classic, Retail, Forever) in the General tab and in the Installer. Applying a style restyles Unit Frames, Party Frames, Nameplates, Action Bars, Resource Bars, Cast Bar, Cooldown Manager, Minimap and Skins together, shows a live preview and reloads the interface.
 - The Installer's color step is now Visual Style & Color and returns to that page after the reload.
 - Nameplates: style presets in Nameplates > General with a preview of each. Classic has the original bronze border, a gold level pill and larger bars; Retail uses Blizzard's own nameplate art with the level inside the bar; Forever has taller bars with the name above, a bronze border and the level in a yellow box beside the bar.
@@ -27,6 +29,11 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - The changelog button now sits in the General tab header.
 - Fixed KUI Tracker icons briefly showing a green swipe.
 - Profile import notices, nameplate style prompts and visual style messages are now available in every supported language.
+- KUI Style target combo points now form a separate row above the portrait.
+- Classic Rare/Elite overlays fit KUI circular portraits without the stock level socket.
+- Classic player health and power percentages appear inside their bars.
+- Blue quest-objective nameplates use a darker shade in Classic.
+- Aggro glow illuminates the complete Classic Rare/Elite decoration.
 
 ## 5.1.1 (2026-09-27)
 - KullThranUI 5.1.1

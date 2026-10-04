@@ -5247,14 +5247,13 @@ function KT:ApplyStockUFHealthTextGeometry(frame, unit)
         KT:FitStockUFTextToWidth(frame.RightText, width)
     end
 end
--- Classic Visual Style: the bar texts of the old Blizzard frames. Player:
--- "516/553" centred on each bar with "93%" just outside its right end.
--- Target: "664/707 (93%)" centred (its right side is the portrait). Pet:
+-- Classic Visual Style: Player and Target show "664/707 (93%)" centred
+-- inside each bar, keeping the percentage within the stock frame. Pet:
 -- "707/707" with no percent. The profile's own text slots are kept for the
 -- other styles; here they are only hidden (the name slot stays as is).
 do
     local CLASSIC_STATUS_LAYOUT = {
-        player = { hp = "kui-classic-hp", hpPct = "kui-classic-hppct", pp = "kui-classic-pp", ppPct = "kui-classic-pppct" },
+        player = { hp = "kui-classic-hpfull", pp = "kui-classic-ppfull" },
         target = { hp = "kui-classic-hpfull", pp = "kui-classic-ppfull" },
         pet    = { hp = "kui-classic-hp", pp = "kui-classic-pp" },
     }
