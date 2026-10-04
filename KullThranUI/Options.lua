@@ -7009,10 +7009,53 @@ local function BuildGeneralCore(sc, W, y)
     heroVersion:SetText(LTextFmt("VERSION  %s", currentVersion))
     heroVersion:SetTextColor(accentR, accentG, accentB, 1)
 
+    -- Compact changelog access in the corner of the landing card.
+    local changelogBtn = CreateFrame("Button", nil, hero, "BackdropTemplate")
+    changelogBtn:SetSize(92, 20)
+    changelogBtn:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -14, -12)
+    KT:AddBackdrop(changelogBtn, 0.05, 0.045, 0.055, 0.95)
+    KT:AddBorder(changelogBtn, accentR, accentG, accentB, 0.55)
+
+    local changelogLabel = changelogBtn:CreateFontString(nil, "OVERLAY")
+    changelogLabel:SetFont(KT.FONT_PATH, 9, "OUTLINE")
+    changelogLabel:SetPoint("CENTER")
+    changelogLabel:SetText(LText("Open Changelog"))
+    changelogBtn:SetWidth(math.max(92, math.ceil(changelogLabel:GetStringWidth()) + 20))
+    changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+
+    changelogBtn:SetScript("OnClick", function()
+        if KT and KT.ShowChangelogPopup then
+            KT:ShowChangelogPopup(currentVersion)
+        end
+    end)
+    changelogBtn:SetScript("OnEnter", function(self)
+        KT:AddBorder(self, accentR, accentG, accentB, 1)
+        changelogLabel:SetTextColor(1, 1, 1, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+            GameTooltip:SetText(LText("Updates & Release Notes"), 1, 1, 1)
+            GameTooltip:AddLine(LTextFmt("Installed Version: %s", currentVersion), accentR, accentG, accentB)
+            if changelogEntry then
+                GameTooltip:AddLine(LTextFmt("Release notes are available for version %s.", changelogEntry.version), 0.75, 0.75, 0.75, true)
+            elseif latestChangelogEntry then
+                GameTooltip:AddLine(LTextFmt("Latest archived release notes: %s", latestChangelogEntry.version), 0.75, 0.75, 0.75, true)
+            end
+            if isFallback then
+                GameTooltip:AddLine(LText("The current release has not been published to the Wago archive yet. CurseForge and Discord sources remain available inside the changelog."), 1, 0.62, 0.32, true)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    changelogBtn:SetScript("OnLeave", function(self)
+        KT:AddBorder(self, accentR, accentG, accentB, 0.55)
+        changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
     if assigned then
         local heroSpec = hero:CreateFontString(nil, "OVERLAY")
         heroSpec:SetFont(KT.FONT_PATH, 9, "")
-        heroSpec:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -18, -16)
+        heroSpec:SetPoint("RIGHT", changelogBtn, "LEFT", -10, 0)
         heroSpec:SetText(LTextFmt("SPEC ASSIGNMENT  %s", assigned))
         heroSpec:SetTextColor(0.72, 0.72, 0.76, 1)
     end
@@ -7156,25 +7199,7 @@ local function BuildGeneralCore(sc, W, y)
         return by
     end)
 
-    y = EndOptionBlocks(coreCols) + 4
-
-    local updateBlock, updateContent = CreateOptionBlock(sc, "Updates & Release Notes", 10, -y, sc:GetWidth() - 22)
-    local updateY = 0
-    _, h = W:Label(updateContent, LTextFmt("Installed Version: %s", currentVersion), -updateY, 11, { r = accentR, g = accentG, b = accentB }); updateY = updateY + h
-    if changelogEntry then
-        _, h = W:Label(updateContent, LTextFmt("Release notes are available for version %s.", changelogEntry.version), -updateY, 10); updateY = updateY + h
-    elseif latestChangelogEntry then
-        _, h = W:Label(updateContent, LTextFmt("Latest archived release notes: %s", latestChangelogEntry.version), -updateY, 10); updateY = updateY + h
-    end
-    if isFallback then
-        _, h = W:Label(updateContent, LText("The current release has not been published to the Wago archive yet. CurseForge and Discord sources remain available inside the changelog."), -updateY, 10, { r = 1, g = 0.62, b = 0.32 }); updateY = updateY + h
-    end
-    _, h = W:Button(updateContent, "Open Changelog", -updateY, function()
-        if KT and KT.ShowChangelogPopup then
-            KT:ShowChangelogPopup(currentVersion)
-        end
-    end, "FULL"); updateY = updateY + h
-    y = y + FinalizeOptionBlock(updateBlock, updateContent, updateY) + 14
+    y = EndOptionBlocks(coreCols) + 14
     _, h = W:SectionHeader(sc, "Advanced Style System", -y); y = y + h
     _, h = W:Label(sc, "Build a complete visual preset for KUI or fine tune the palette manually. These settings affect the entire addon.", -y, 11); y = y + h
     local styleCols = BeginOptionBlocks(sc, y, { gap = 14, columnGap = 14 })
