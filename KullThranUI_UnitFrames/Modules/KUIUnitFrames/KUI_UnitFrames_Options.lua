@@ -1482,10 +1482,24 @@ function ns.ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, value
         if ring then ring:Hide() end
         return
     end
+    -- Portrait children are clipped to its aperture. Keep the full ornament
+    -- on an independent layer above the portrait but below the level badge.
+    local ringHost = frame._ktPreviewClassificationHost
+    if not ringHost then
+        ringHost = CreateFrame("Frame", nil, frame)
+        ringHost:SetAllPoints(frame)
+        ringHost:EnableMouse(false)
+        ringHost:SetClipsChildren(false)
+        frame._ktPreviewClassificationHost = ringHost
+    end
+    local above = frame.levelFrame or frame
+    ringHost:SetFrameStrata(above:GetFrameStrata())
+    ringHost:SetFrameLevel(math.max(1, above:GetFrameLevel() - 1))
     if not ring then
-        ring = (frame.levelFrame or frame):CreateTexture(nil, "OVERLAY", nil, 7)
+        ring = ringHost:CreateTexture(nil, "OVERLAY", nil, 7)
         frame.classificationRing = ring
     end
+    ring:SetParent(ringHost)
     local theme = ActiveVisualTheme and ActiveVisualTheme() or nil
     -- Classic's own Rare/Elite sheet: crop of the portrait side (same numbers as the live frame).
     local CR = ns.ClassicRing

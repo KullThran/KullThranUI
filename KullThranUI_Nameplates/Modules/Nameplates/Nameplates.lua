@@ -2230,7 +2230,8 @@ end
 --- Posiciona las flechas de target fuera del espacio lateral ocupado.
 --- Combina MeasureLateralExtent (cálculo) con el anclaje real (commit).
 function ns._AuraLayout.CommitArrowAnchors(plate)
-    if not (plate.leftArrow and plate.leftArrow:IsShown()) then return end
+    if not (plate.leftArrow and plate.rightArrow) then return end
+    if not (plate.leftArrow:IsShown() or plate.rightArrow:IsShown()) then return end
     local extL, extR = ns._AuraLayout.MeasureLateralExtent(plate)
     if ns.ThemeLateralExtent then
         local tl, tr = ns.ThemeLateralExtent(plate)
@@ -5558,6 +5559,7 @@ local function CommitTargetArrows(frame, desc)
     ns._AcquireVisualLayer(frame, "arrows")
     ns.RefreshTargetIndicatorTextures(frame, desc.indicatorStyle, desc.arrowScale)
     ns.SetTargetIndicatorShown(frame, true)
+    ns._AuraLayout.CommitArrowAnchors(frame)
 end
 
 -- Paso 3 commit: muestra u oculta los pips de class power en la placa
@@ -5708,6 +5710,7 @@ function NameplateFrame:UpdateLevelAnchor()
     self.level:ClearAllPoints()
     PP.Point(self.level, "BOTTOMLEFT", self.health, "TOPLEFT", x, y)
     if ns.ApplyThemeLevel then ns.ApplyThemeLevel(self) end
+    ns._AuraLayout.CommitArrowAnchors(self)
 end
 -- Muestra/oculta el nivel de la unidad con estilo y posición independientes.
 function NameplateFrame:UpdateLevel()

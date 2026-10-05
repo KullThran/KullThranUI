@@ -8,6 +8,17 @@ local S = {}
 KT.CastBarStyles = S
 S.order = { "kui", "classic", "forever", "retail" }
 S.labels = { kui = "KUI Style", classic = "Classic", forever = "Forever", retail = "Retail" }
+S.styleIcons = {
+    kui = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUILogoCuadrado.png",
+    classic = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\SEDbDUlE_400x400.png",
+    retail = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\WoWRetail.png",
+    forever = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\WoWForever.png",
+}
+function S:ApplyStyleIcon(icon, key)
+    icon:SetTexture(self.styleIcons[key] or self.styleIcons.kui)
+    if key == "kui" then icon:SetVertexColor(1, 0.08, 0.34, 1)
+    else icon:SetVertexColor(1, 1, 1, 1) end
+end
 S.ownedPaths = { "castbarStyle", "width", "height", "scale", "autoWidth", "texture",
     "iconShape", "iconPosition", "showIcon", "classColor", "colorMode", "color", "frameArtKit",
     "font", "fontSize", "fontOutline", "textColor" }
@@ -32,7 +43,7 @@ function S:Seed(profile, key)
         profile.width, profile.height = 250, 20
         profile.autoWidth = true
         profile.texture, profile.colorMode = "Melli", "THEME"
-        profile.font = KT.DEFAULT_FONT_NAME or "AAA_ITC_Avant_Garde"
+        profile.font = "AAA_ITC_Avant_Garde"
         profile.fontSize = 16
     else
         local classic = key == "classic"
@@ -40,7 +51,7 @@ function S:Seed(profile, key)
         profile.texture = classic and "Interface\\TargetingFrame\\UI-StatusBar" or "ui-castingbar-filling-standard"
         profile.colorMode = "CUSTOM"
         profile.color = classic and { r = 1, g = 0.7, b = 0, a = 1 } or { r = 1, g = 1, b = 1, a = 1 }
-        profile.font, profile.fontSize = "Friz Quadrata TT", classic and 10 or 12
+        profile.font, profile.fontSize = "AAA_ITC_Avant_Garde", classic and 10 or 12
         if classic then profile.showIcon = false end
     end
 end
@@ -89,6 +100,10 @@ local function RepairClassicText(profile)
     profile._ktClassicCastArtV3 = true
 end
 
+local function RepairCastFont(profile)
+    if profile.font == "Friz Quadrata TT" then profile.font = "AAA_ITC_Avant_Garde" end
+end
+
 -- Upgrade only the untouched thin modern preset from the first implementation.
 local function RepairNativeArt(profile)
     if (profile.castbarStyle == "forever" or profile.castbarStyle == "retail")
@@ -127,13 +142,14 @@ function S:Migrate(profile, themeKey)
             end
         end
     end
-    for _, slot in pairs(slots or {}) do RepairNativeArt(slot); RepairClassicText(slot) end
+    for _, slot in pairs(slots or {}) do RepairNativeArt(slot); RepairClassicText(slot); RepairCastFont(slot) end
     if profile.castbarStyle == nil then
         if active == "kui" then profile.castbarStyle = "kui"
         else self:Seed(profile, active) end
     end
     RepairNativeArt(profile)
     RepairClassicText(profile)
+    RepairCastFont(profile)
 end
 
 local function GetProfile()

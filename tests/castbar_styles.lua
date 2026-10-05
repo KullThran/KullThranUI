@@ -150,6 +150,7 @@ for _, key in ipairs({ "classic", "forever", "retail", "kui" }) do
     M:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", "player", "cast-1", 118)
     M:OnUpdate(bar, .01)
     eq(bar.value, 11, "real casting progress preserved")
+    if key ~= "kui" then eq(bar.Text.font[1], "AAA_ITC_Avant_Garde") end
     if key == "classic" then
         eq(bar.texture, "Interface\\TargetingFrame\\UI-StatusBar")
         eq(bar._ktCastStyleArt.border.texture, "Interface\\CastingBar\\UI-CastingBar-Border")
@@ -204,6 +205,7 @@ local oldClassic = { castbarStyle = "classic", width = 195, height = 13,
     font = "Friz Quadrata TT", fontSize = 12, fontOutline = "OUTLINE" }
 S:Migrate(oldClassic)
 eq(oldClassic.fontSize, 10); eq(oldClassic.fontOutline, "OUTLINE")
+eq(oldClassic.font, "AAA_ITC_Avant_Garde", "old native font upgraded")
 eq(oldClassic.showIcon, false)
 local previousClassic = { castbarStyle = "classic", _ktClassicCastArtV3 = true, fontSize = 10, fontOutline = "NONE", showIcon = true }
 S:Migrate(previousClassic)
@@ -239,10 +241,17 @@ for i = first+1, #frames do
     if f.kind == "StatusBar" then preview = f end
 end
 assert(apply and preview)
+for key, tab in pairs(tabs) do
+    eq(tab.styleIcon.texture, S.styleIcons[key])
+    eq(tab.label.font[1], "AAA_ITC_Avant_Garde")
+    if key == "kui" then eq(tab.styleIcon.tint[2], .08); eq(tab.styleIcon.tint[3], .34) end
+end
 for _, key in ipairs({ "classic", "forever", "retail" }) do
     tabs[key].scripts.OnClick()
     eq(db.castbarStyle, "kui", "browsing never changes the live style")
     eq(preview.width, key == "classic" and 195 or 208)
+    eq(preview.StyleIcon.texture, S.styleIcons[key], "preview identifies the browsed style")
+    eq(preview.Text.font[1], "AAA_ITC_Avant_Garde")
     if key == "classic" then
         eq(preview.Icon.shown, false); eq(preview.IconBg.shown, false)
         eq(preview.Text.font[3], "OUTLINE")

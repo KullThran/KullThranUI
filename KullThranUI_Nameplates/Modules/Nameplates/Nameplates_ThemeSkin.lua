@@ -507,13 +507,18 @@ end
 
 -- Room the Forever quest icon and level badge take beside the bar, so the target arrows sit outside them.
 function ns.ThemeLateralExtent(plate)
-    local l, r = 0, 0
+    local edge = RenderedTheme() ~= "kui" and 4 or 0
+    local l, r = edge, edge
     local qi, fb = plate and plate._fvQuest, plate and plate._fvBadge
     if qi and qi:IsShown() then
         local gap = (RenderedTheme() == "retail") and math.floor((plate.health:GetHeight() or 16) * 0.25 + 4) or 5
-        l = gap + (qi:GetStringWidth() or 0)
+        l = math.max(l, gap + (qi:GetStringWidth() or 0))
     end
-    if fb and fb:IsShown() then r = 6 + (fb:GetWidth() or 0) end
+    if fb and fb:IsShown() then r = math.max(r, 6 + (fb:GetWidth() or 0)) end
+    local classic = plate and plate._clBadge
+    if classic and classic:IsShown() then
+        r = math.max(r, (classic:GetWidth() or 0) - math.floor((classic:GetHeight() or 0) * 0.5))
+    end
     return l, r
 end
 
