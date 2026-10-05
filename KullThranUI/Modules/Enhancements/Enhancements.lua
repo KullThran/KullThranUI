@@ -104,6 +104,119 @@ local tostring = _G.tostring
 local type = _G.type
 local UIParent = _G.UIParent
 
+local LootRollGuard = { active = {}, presented = {} }
+local function HasActiveGroupLootRoll()
+    for rollID, deadline in pairs(LootRollGuard.active) do
+        if deadline > _G.GetTime() then return true end
+        LootRollGuard.active[rollID] = nil
+        LootRollGuard.presented[rollID] = nil
+    end
+    local getter = _G.GetActiveLootRollIDs
+    if type(getter) == "function" then
+        local ok, ids = pcall(getter)
+        if ok and type(ids) == "table" and next(ids) then
+            return true
+        end
+    end
+
+    local api = _G.C_Loot
+    if api and type(api.GetActiveLootRollIDs) == "function" then
+        local ok, ids = pcall(api.GetActiveLootRollIDs)
+        if ok and type(ids) == "table" and next(ids) then return true end
+    end
+    local container = _G.GroupLootContainer
+    if container and type(container.rollFrames) == "table" then
+        for _, frame in pairs(container.rollFrames) do
+            if frame then
+                return true
+            end
+        end
+    end
+
+    -- Some clients expose the native roll frames without a container list.
+    for index = 1, 4 do
+        local frame = _G["GroupLootFrame" .. index]
+        if frame and frame.IsShown and frame:IsShown() then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function ShouldHideAlerts(db)
+    return db
+        and db.visibility
+        and db.visibility.hideAlerts
+        and not HasActiveGroupLootRoll()
+end
+
+-- A roll can start while AlertFrame is hidden and before rollFrames is filled.
+-- Keep the manager available throughout that bootstrap, and recover only a
+-- still-pending native roll. Need/Greed/Pass handlers stay owned by Blizzard.
+function LootRollGuard:Restore()
+    local profile = KT.db and KT.db.profile and KT.db.profile.enhancements
+    if not (profile and profile.enable ~= false and profile.visibility and profile.visibility.hideAlerts) then return end
+    if not HasActiveGroupLootRoll() then return end
+    local function Reveal(frame)
+        if not frame then return end
+        if frame.SetAlpha then frame:SetAlpha(1) end
+        if frame.Show then frame:Show() end
+    end
+    Reveal(_G.AlertFrame)
+    local container = _G.GroupLootContainer
+    for rollID in pairs(self.active) do
+        if not self.presented[rollID] then
+            local found = false
+            if container and type(container.rollFrames) == "table" then
+                for _, frame in pairs(container.rollFrames) do
+                    if frame and frame.rollID == rollID then found = true; Reveal(frame) end
+                end
+            end
+            for i = 1, 4 do
+                local frame = _G["GroupLootFrame" .. i]
+                if frame and frame.rollID == rollID then
+                    local left = _G.GetLootRollTimeLeft and _G.GetLootRollTimeLeft(rollID)
+                    if type(left) == "number" and left > 0 then found = true; Reveal(frame) end
+                end
+            end
+            if not found and container and type(_G.GroupLootContainer_AddRoll) == "function"
+                and type(_G.GetLootRollTimeLeft) == "function" then
+                local left = _G.GetLootRollTimeLeft(rollID)
+                if type(left) == "number" and left > 0 then
+                    _G.GroupLootContainer_AddRoll(rollID, left)
+                    if type(container.rollFrames) == "table" then
+                        for _, frame in pairs(container.rollFrames) do
+                            if frame and frame.rollID == rollID then Reveal(frame); found = true end
+                        end
+                    end
+                end
+            end
+            if found then self.presented[rollID] = true end
+        end
+    end
+    if container and type(container.rollFrames) == "table" and next(container.rollFrames) then Reveal(container) end
+end
+LootRollGuard.events = CreateFrame("Frame")
+LootRollGuard.events:RegisterEvent("START_LOOT_ROLL")
+LootRollGuard.events:RegisterEvent("CANCEL_LOOT_ROLL")
+LootRollGuard.events:RegisterEvent("CANCEL_ALL_LOOT_ROLLS")
+LootRollGuard.events:SetScript("OnEvent", function(_, event, rollID, rollTime)
+    if event == "CANCEL_ALL_LOOT_ROLLS" then
+        wipe(LootRollGuard.active)
+        wipe(LootRollGuard.presented)
+    elseif event == "CANCEL_LOOT_ROLL" then
+        LootRollGuard.active[rollID] = nil
+        LootRollGuard.presented[rollID] = nil
+    elseif type(rollID) == "number" and type(rollTime) == "number" and rollTime > 0 then
+        LootRollGuard.presented[rollID] = nil
+        LootRollGuard.active[rollID] = _G.GetTime() + rollTime / 1000
+        for _, delay in ipairs({ 0, 0.1, 0.5 }) do
+            _G.C_Timer.After(delay, function() LootRollGuard:Restore() end)
+        end
+    end
+end)
+
 local function LText(text)
     if type(text) ~= "string" then
         return text
@@ -1575,7 +1688,7 @@ function Mod:EnsureBattleNetToastVisibility()
     if not toast._KTEnhancementsVisibilityHook and toast.HookScript then
         toast:HookScript('OnShow', function()
             local db = Mod:GetDB()
-            if not (IsModuleEnabled() and db.visibility.hideAlerts) then
+            if not (IsModuleEnabled() and ShouldHideAlerts(db)) then
                 return
             end
 
@@ -1591,7 +1704,7 @@ function Mod:EnsureBattleNetToastVisibility()
         end)
         toast:HookScript('OnHide', function()
             local db = Mod:GetDB()
-            if IsModuleEnabled() and db.visibility.hideAlerts and _G.AlertFrame then
+            if IsModuleEnabled() and ShouldHideAlerts(db) and _G.AlertFrame then
                 _G.AlertFrame:Hide()
             end
         end)
@@ -1638,7 +1751,7 @@ function Mod:InstallHooks()
         _G.AlertFrame._KTEnhancementsHook = true
         _G.AlertFrame:HookScript("OnShow", function(frame)
             local db = Mod:GetDB()
-            if IsModuleEnabled() and db.visibility.hideAlerts and not frame.KT_BNetToastVisible
+            if IsModuleEnabled() and ShouldHideAlerts(db) and not frame.KT_BNetToastVisible
                 and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
                 frame:Hide()
             end
@@ -1819,7 +1932,7 @@ function Mod:RefreshSettings()
     if IsModuleEnabled() and db.blocks.blockFriendRequests then
         self:DeclinePendingFriendInvites()
     end
-    if _G.AlertFrame and IsModuleEnabled() and db.visibility.hideAlerts
+    if _G.AlertFrame and IsModuleEnabled() and ShouldHideAlerts(db)
         and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
         _G.AlertFrame:Hide()
     end

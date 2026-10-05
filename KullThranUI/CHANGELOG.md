@@ -37,6 +37,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Target arrows respect the frame and level badges in every nameplate style.
 - Unit Frames live previews show the complete Rare/Elite artwork beneath the level.
 - Cast Bar styles use Avant Garde text, with style icons in the tabs and preview.
+- Fixed Hide Alerts suppressing loot-roll windows; pending rolls remain visible and selectable.
 
 ## 5.1.1 (2026-09-27)
 - KullThranUI 5.1.1
