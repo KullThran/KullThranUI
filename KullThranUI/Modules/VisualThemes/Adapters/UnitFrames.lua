@@ -287,7 +287,16 @@ KT.VisualThemes:RegisterModule("unitframes", {
             end
         end
     end,
-    validate = function(profile, themeKey)
+    validate = function(profile, themeKey, clientFlavor)
+        -- Saved KUI slots can retain portraits from an older selection. Retail
+        -- applies KUI without portraits, whether the slot is seeded or restored.
+        if themeKey == "kui" and clientFlavor == "retail" then
+            profile.portraitStyle = "none"
+            for _, key in ipairs(UNIT_KEYS) do
+                profile[key] = type(profile[key]) == "table" and profile[key] or {}
+                profile[key].showPortrait = false
+            end
+        end
         if themeKey == "retail" or themeKey == "forever" then
             profile.player = profile.player or {}
             profile.target = profile.target or {}

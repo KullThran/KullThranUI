@@ -18,6 +18,7 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local CUF = ns.ComboUnderFrame or {}
 ns.ComboUnderFrame = CUF
 CUF.live = CUF.live or {}
+CUF.extraLive = CUF.extraLive or {}
 
 local MAX_PIPS = 7
 
@@ -47,17 +48,17 @@ CUF.ATLAS = ATLAS
 --           plus modern pips under the target frame)
 -- Defaults (only while the key is unset):
 --   Forever : target ring + modern points under the Player frame
---   Retail  : target ring + modern pips under the Target frame
+--   Retail  : target ring only
 --   Classic : target ring (classic art) + classic points under the Player frame
 --   KUI     : target ring around the portrait
-function CUF.GetStyle(unit)
+local function LegacyStyle(unit)
     local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
     local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
         and KT.VisualThemes:GetRenderedTheme()
     if unit == "target" then
         local v = uf and uf.comboTargetStyle
         if v == "off" or v == "ring" or v == "both" or v == "modern" or v == "classic" then return v end
-        return theme == "retail" and "both" or "ring"
+        return "ring"
     end
     local v = uf and uf.comboUnderFrame
     if v == "off" or v == "modern" or v == "classic" then return v end
@@ -66,18 +67,36 @@ function CUF.GetStyle(unit)
     return "off"
 end
 
--- True when the Target shows the ring around its portrait.
-function CUF.ShowsRing(unit)
-    local style = CUF.GetStyle(unit)
-    return style == "ring" or style == "both"
+-- Independent displays are saved per visual style. Unedited profiles keep
+-- explicit legacy choices, while Retail's untouched default is ring only.
+function CUF.GetDisplays(unit)
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames or {}
+    local theme = KT.VisualThemes and KT.VisualThemes:GetRenderedTheme() or "kui"
+    local saved = uf.comboDisplays and uf.comboDisplays[theme] and uf.comboDisplays[theme][unit]
+    if saved then return saved end
+    local old = LegacyStyle(unit)
+    return { ring = unit == "target" and (old == "ring" or old == "both"),
+        modern = old == "modern" or old == "both", classic = old == "classic" }
 end
-
--- Style of the points drawn as a bar under / over the frame ("off" when none).
+function CUF.SetDisplay(unit, key, enabled)
+    local uf = KT.db.profile.unitFrames
+    local theme = KT.VisualThemes and KT.VisualThemes:GetRenderedTheme() or "kui"
+    local current = CUF.GetDisplays(unit)
+    uf.comboDisplays = uf.comboDisplays or {}
+    uf.comboDisplays[theme] = uf.comboDisplays[theme] or {}
+    local saved = { ring = current.ring == true, modern = current.modern == true, classic = current.classic == true }
+    saved[key] = enabled == true
+    uf.comboDisplays[theme][unit] = saved
+end
+function CUF.GetStyle(unit)
+    local selected = CUF.GetDisplays(unit)
+    if selected.ring then return (selected.modern or selected.classic) and "both" or "ring" end
+    return selected.modern and "modern" or selected.classic and "classic" or "off"
+end
+function CUF.ShowsRing(unit) return CUF.GetDisplays(unit).ring == true end
 function CUF.GetBarStyle(unit)
-    local style = CUF.GetStyle(unit)
-    if style == "ring" then return "off" end -- ring is drawn by KTTargetCombo
-    if style == "both" then return "modern" end
-    return style
+    local selected = CUF.GetDisplays(unit)
+    return selected.modern and "modern" or selected.classic and "classic" or "off"
 end
 -- Exposed on the core addon so other modules (Resource Bars) can query it.
 KT.GetComboUnderFrameStyle = CUF.GetStyle
@@ -228,6 +247,16 @@ function Widget:Place(anchor, style, width, pos, x, y, topAnchor)
     -- on the TOP edge of the name tab when the name sits above the bars (Classic stock art), else
     -- on the top edge of the health bar.
     local extraY, modernDy = 0, 0
+    if not above and topAnchor then
+        local hb = topAnchor.Health or topAnchor.health
+        if hb and ref.GetBottom and hb.GetBottom then
+            local bottom, barBottom = ref:GetBottom(), hb:GetBottom()
+            if bottom and barBottom then
+                y = y + bottom - barBottom
+                ref = hb
+            end
+        end
+    end
     if above and topAnchor then
         local hb = topAnchor.Health or topAnchor.health
         local nameFS = topAnchor._ktStockNameText or topAnchor.NameText or topAnchor.nameText or topAnchor.LeftText or topAnchor.name
@@ -328,10 +357,15 @@ end
 --  Live frames
 -------------------------------------------------------------------------------
 local function AnchorFor(unit, frame)
-    if unit == "target" and ns.KTTargetCombo and ns.KTTargetCombo._LowestRegion then
-        return ns.KTTargetCombo:_LowestRegion(frame)
+    local anchor = frame.Power and frame.Power:IsShown() and frame.Power or frame.Health or frame
+    local bottom = anchor.GetBottom and anchor:GetBottom()
+    for _, region in pairs({ frame.Debuffs, frame.Castbar and frame.Castbar.GetParent and frame.Castbar:GetParent() }) do
+        if region and region.IsShown and region:IsShown() and region.GetBottom then
+            local candidate = region:GetBottom()
+            if candidate and bottom and candidate < bottom then anchor, bottom = region, candidate end
+        end
     end
-    return frame.Power or frame.Health or frame
+    return anchor
 end
 
 function CUF:UpdateUnit(unit)
@@ -345,6 +379,7 @@ function CUF:UpdateUnit(unit)
     end
     if not show then
         if obj then obj.frame:Hide() end
+        if self.extraLive[unit] then self.extraLive[unit].frame:Hide() end
         return
     end
     if not obj then
@@ -362,6 +397,16 @@ function CUF:UpdateUnit(unit)
     local okCur, cur = pcall(UnitPower, "player", comboType)
     obj:SetValues(okCur and cur or 0, maxPower)
     obj.frame:Show()
+    local extra = self.extraLive[unit]
+    local selected = CUF.GetDisplays(unit)
+    if selected.modern and selected.classic then
+        if not extra then extra = CUF.Create(frame); self.extraLive[unit] = extra end
+        extra:SetStyle("classic")
+        local offset = (obj.frame:GetHeight() + 8) * (pos == "above" and 1 or -1)
+        extra:Place(anchor, "classic", frame.Health and frame.Health:GetWidth(), pos, px, py + offset, frame)
+        extra:SetValues(okCur and cur or 0, maxPower)
+        extra.frame:Show()
+    elseif extra then extra.frame:Hide() end
 end
 
 function CUF:RefreshAll()
@@ -425,9 +470,10 @@ function CUF.ApplyPreview(frame, unitKey)
         for _, holder in ipairs(ringPips) do holder:Hide() end
     end
 
-    if style == "both" then style = "modern" end
+    style = (unitKey == "player" or unitKey == "target") and CUF.GetBarStyle(unitKey) or "off"
     if style == "off" or style == "ring" then
         if obj then obj.frame:Hide() end
+        if frame._ktComboExtraPreview then frame._ktComboExtraPreview.frame:Hide() end
         return
     end
     if not obj then
@@ -443,9 +489,25 @@ function CUF.ApplyPreview(frame, unitKey)
         C_Timer.After(0.05, function()
             if obj.frame and obj.frame:IsShown() then
                 obj:Place(anchor, style, anchor:GetWidth(), pos, px, py, frame)
+                local extra = frame._ktComboExtraPreview
+                local selected = CUF.GetDisplays(unitKey)
+                if extra and extra.frame:IsShown() and selected.modern and selected.classic then
+                    local offset = (obj.frame:GetHeight() + 8) * (pos == "above" and 1 or -1)
+                    extra:Place(anchor, "classic", anchor:GetWidth(), pos, px, py + offset, frame)
+                end
             end
         end)
     end
     obj:SetValues(2, 5)
     obj.frame:Show()
+    local extra = frame._ktComboExtraPreview
+    local selected = CUF.GetDisplays(unitKey)
+    if selected.modern and selected.classic then
+        if not extra then extra = CUF.Create(frame); frame._ktComboExtraPreview = extra end
+        extra:SetStyle("classic")
+        local offset = (obj.frame:GetHeight() + 8) * (pos == "above" and 1 or -1)
+        extra:Place(anchor, "classic", anchor:GetWidth(), pos, px, py + offset, frame)
+        extra:SetValues(2, 5)
+        extra.frame:Show()
+    elseif extra then extra.frame:Hide() end
 end

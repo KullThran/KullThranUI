@@ -31,3 +31,7 @@
 - Unit Frames live previews show the complete Rare/Elite artwork beneath the level.
 - Cast Bar styles use Avant Garde text, with style icons in the tabs and preview.
 - Fixed Hide Alerts suppressing loot-roll windows; pending rolls remain visible and selectable.
+- Unit Frame combo displays can be toggled independently and combined; Target defaults to the portrait ring, with correctly aligned optional rows.
+- Retail-style nameplates keep stable atlas geometry as camera scale changes.
+- Fixed Nameplate Tip of the Spear and Whirlwind tracking on player lifecycle and spellcast events.
+- Applying KUI Style on Retail keeps Unit Frame portraits disabled, including previously saved style settings.

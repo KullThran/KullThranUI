@@ -1631,30 +1631,28 @@ function ns.BuildComboPicker(container, W, by, unitKey)
     local CUF = ns.ComboUnderFrame
     local db = GetDB()
     local isTarget = unitKey == 'target'
-    local dbKey = isTarget and 'comboTargetStyle' or 'comboUnderFrame'
     local _, lh = W:Label(container, isTarget and 'Combo Points (Target)' or 'Combo Points Under Player Frame', -by, 12)
     by = by + lh
+    local _, hintHeight = W:Label(container, "Click each display to enable or disable it. Multiple displays can be active together.", -by, 10)
+    by = by + hintHeight
     local holder = CreateFrame("Frame", nil, container)
     holder:SetPoint("TOPLEFT", 10, -by)
     holder:SetSize(310, 96)
     local buttons = {}
     local function Current()
-        return db[dbKey] or (CUF and CUF.GetStyle(unitKey)) or 'off'
+        return CUF and CUF.GetDisplays(unitKey) or {}
     end
     local function PaintButtons()
         local current = Current()
         local ar, ag, ab = CurrentAccentColor()
         for key, btn in pairs(buttons) do
-            local on = current == key
+            local on = current[key] == true
             btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
             btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
         end
     end
-    local defs = { { key = 'off', label = 'Off', hint = 'Hidden' } }
-    if isTarget then
-        defs[#defs + 1] = { key = 'ring', label = 'Ring' }
-        defs[#defs + 1] = { key = 'both', label = 'Ring + Pips' }
-    end
+    local defs = {}
+    if isTarget then defs[#defs + 1] = { key = 'ring', label = 'Ring' } end
     defs[#defs + 1] = { key = 'modern', label = 'Modern' }
     defs[#defs + 1] = { key = 'classic', label = 'Classic' }
     local count = #defs
@@ -1709,7 +1707,9 @@ function ns.BuildComboPicker(container, W, by, unitKey)
         fs:SetPoint("BOTTOM", 0, 8)
         fs:SetText(LText(def.label))
         btn:SetScript("OnClick", function()
-            SetAndRefresh(function() db[dbKey] = def.key end)
+            SetAndRefresh(function()
+                if CUF then CUF.SetDisplay(unitKey, def.key, not Current()[def.key]) end
+            end)
             PaintButtons()
         end)
         buttons[def.key] = btn

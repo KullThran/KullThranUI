@@ -3658,11 +3658,11 @@ ns._PipResourceResolvers = {
         return c, m, false
     end,
     TIP_OF_THE_SPEAR = function()
-        local c, m = KullThranUI.GetTipOfTheSpear()
+        local c, m = KullThranUI:GetTipOfTheSpear()
         return c, m, false
     end,
     WHIRLWIND_STACKS = function()
-        local c, m = KullThranUI.GetWhirlwindStacks()
+        local c, m = KullThranUI:GetWhirlwindStacks()
         return c, m, false
     end,
 }
@@ -4010,10 +4010,10 @@ local function EnableClassPowerWatcher()
             if _G._ERB_AceDB then return end
             if not KullThranUI then return end
             if KullThranUI.HandleTipOfTheSpear then
-                KullThranUI.HandleTipOfTheSpear(event, ...)
+                KullThranUI:HandleTipOfTheSpear(event, ...)
             end
             if KullThranUI.HandleWhirlwindStacks then
-                KullThranUI.HandleWhirlwindStacks(event, ...)
+                KullThranUI:HandleWhirlwindStacks(event, ...)
             end
         end
 
@@ -4049,7 +4049,7 @@ local function EnableClassPowerWatcher()
             end,
             PLAYER_REGEN_ENABLED = function(event)
                 if not _G._ERB_AceDB and KullThranUI and KullThranUI.HandleWhirlwindStacks then
-                    KullThranUI.HandleWhirlwindStacks(event)
+                    KullThranUI:HandleWhirlwindStacks(event)
                 end
                 RefreshClassPower()
             end,
@@ -4738,14 +4738,28 @@ function NameplateFrame:LayoutCoreBars(unit)
 
     -- Barra de salud y absorb: mismas dimensiones, centradas en la placa
     self.health:ClearAllPoints()
-    PP.Point(self.health, "CENTER", self, "CENTER", 0, yOffset)
-    PP.Size(self.health, barW, barH)
-    PP.Size(self.absorb, barW, barH)
+    local nativeRetail = ns.NameplateStyle and ns.NameplateStyle() == "retail"
+    if nativeRetail then
+        -- Keep the atlas and its fill in the same logical geometry. Rounding
+        -- dimensions again as world scale changes stretches the border in steps.
+        self.health:SetPoint("CENTER", self, "CENTER", 0, yOffset)
+        self.health:SetSize(barW, barH)
+        self.absorb:SetSize(barW, barH)
+    else
+        PP.Point(self.health, "CENTER", self, "CENTER", 0, yOffset)
+        PP.Size(self.health, barW, barH)
+        PP.Size(self.absorb, barW, barH)
+    end
 
     -- Barra de casteo: anclada debajo de la barra de salud
     self.cast:ClearAllPoints()
-    PP.Size(self.cast, barW, castH)
-    PP.Point(self.cast, "TOPLEFT", self.health, "BOTTOMLEFT", 0, 0)
+    if nativeRetail then
+        self.cast:SetSize(barW, castH)
+        self.cast:SetPoint("TOPLEFT", self.health, "BOTTOMLEFT", 0, 0)
+    else
+        PP.Size(self.cast, barW, castH)
+        PP.Point(self.cast, "TOPLEFT", self.health, "BOTTOMLEFT", 0, 0)
+    end
 
     -- Icono de hechizo: cuadrado del tamaño del casteo, a la izquierda
     self.castIconFrame:ClearAllPoints()
@@ -4961,10 +4975,11 @@ function NameplateFrame:RefreshPixelPerfectLayout()
     end
     self._ktPixelScale = scale
 
-    -- La escala efectiva de una nameplate cambia con la distancia/angulo de
-    -- la camara. Reaplicar la geometria con esa escala evita que el texto,
-    -- barras y pips caigan entre pixeles fisicos.
-    self:LayoutCoreBars(self.unit)
+    -- Text and pips still follow physical pixels. Retail's atlas bars keep
+    -- their logical size; only explicit layout/settings changes resize them.
+    if not (ns.NameplateStyle and ns.NameplateStyle() == "retail") then
+        self:LayoutCoreBars(self.unit)
+    end
     self:RefreshStackBounds(self.nameplate)
     self:RefreshNamePosition()
     self:UpdateRaidIcon()
