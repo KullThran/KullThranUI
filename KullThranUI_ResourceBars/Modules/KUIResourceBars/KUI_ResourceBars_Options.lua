@@ -681,16 +681,11 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
     end
 
     local function CreatePreviewNavButton(parent, text, x)
-        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        local btn = CreateFrame("Button", nil, parent)
         btn:SetSize(82, 20)
         btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -26)
-        KT:AddBackdrop(btn, 0.05, 0.05, 0.06, 0.95)
-        KT:AddBorder(btn, 0.18, 0.18, 0.22, 1)
-        local fs = btn:CreateFontString(nil, "OVERLAY")
-        fs:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-        fs:SetPoint("CENTER")
-        fs:SetText(text)
-        btn.text = fs
+        -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua).
+        KT.NavTabs.StyleButton(btn, { label = text, fontSize = 9 })
         return btn
     end
 
@@ -710,26 +705,26 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
     local function UpdatePreviewModeButtons()
         local mode = PreviewMode()
-        local x = 10
+        local visible = {}
         for _, key in ipairs(previewModeOrder) do
             local btn = previewModeButtons[key]
             local available = previewModeAvailability[key] == true
             btn:SetShown(available)
+            KT.NavTabs.SetState(btn, available and key == mode)
             if available then
-                btn:ClearAllPoints()
-                btn:SetPoint("TOPLEFT", previewContainer, "TOPLEFT", x, -26)
-                x = x + 88
-            end
-
-            if available and key == mode then
-                local r, g, b = CurrentAccentColor()
-                KT:AddBorder(btn, r, g, b, 1)
-                btn.text:SetTextColor(1, 1, 1, 1)
-            else
-                KT:AddBorder(btn, 0.18, 0.18, 0.22, 1)
-                btn.text:SetTextColor(0.75, 0.75, 0.75, 1)
+                visible[#visible + 1] = btn
             end
         end
+        -- Pixel-snapped placement: 82-wide tabs, 6 apart, from (10, -26).
+        KT.NavTabs.Layout(previewContainer, visible, {
+            width = (#visible * 82) + (math.max(0, #visible - 1) * 6),
+            x = 10,
+            y = 26,
+            height = 20,
+            gap = 6,
+            fontSize = 9,
+            padding = 5,
+        })
     end
     for key, btn in pairs(previewModeButtons) do
         btn:SetScript("OnClick", function()

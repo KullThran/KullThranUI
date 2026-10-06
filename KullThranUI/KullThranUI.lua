@@ -94,7 +94,7 @@ KT.VERSION = KT.VERSION
 -- GetAddOnMetadata returns the literal "@project-version@" token.  Strip it
 -- so the in-game UI never displays the raw packager placeholder.
 if KT.VERSION and KT.VERSION:find("@", 1, true) then
-    KT.VERSION = "5.1.2"
+    KT.VERSION = "5.1.3"
 end
 
 function KT:IsBlizzardEditModeActive()
@@ -804,6 +804,40 @@ end
 
 local layoutBorder
 
+-- Los bordes de 1 unidad de UI caen entre pixeles fisicos cuando la escala
+-- efectiva es fraccionaria (0.71, 0.53, ...) y WoW redondea alguno a 0 px (el
+-- "borde izquierdo que falta"). Se ajusta el grosor a pixeles fisicos enteros.
+local function borderPixelSize(region)
+    local scale = (region and region.GetEffectiveScale and region:GetEffectiveScale()) or 1
+    if not scale or scale <= 0 then scale = 1 end
+    local factor
+    if PixelUtil and PixelUtil.GetPixelToUIUnitFactor then
+        local ok, f = pcall(PixelUtil.GetPixelToUIUnitFactor)
+        if ok and type(f) == "number" and f > 0 then factor = f end
+    end
+    if not factor then
+        local _, physH = GetPhysicalScreenSize()
+        factor = (physH and physH > 0) and (768 / physH) or 1
+    end
+    return factor / scale
+end
+
+local function snapBorderEdges(borderFrame)
+    local edges = borderFrame and borderFrame._edges
+    local size = borderFrame and borderFrame._edgeSize
+    if not (edges and size) then return end
+    local px = borderPixelSize(borderFrame)
+    -- Un hairpixel de margen: con el borde exactamente en un pixel entero y el
+    -- ancho a 1.0000 px menos un error de coma flotante, el redondeo de WoW deja
+    -- el borde con 0 px de ancho cuando su arista cae justo en x.5 (el "borde
+    -- izquierdo que falta" de los desplegables).
+    local edge = (max(1, floor(size / px + 0.5)) + 0.004) * px
+    edges[1]:SetHeight(edge)
+    edges[2]:SetHeight(edge)
+    edges[3]:SetWidth(edge)
+    edges[4]:SetWidth(edge)
+end
+
 local function ensureBorderFrame(owner, key, layer, sublevel)
     local borderFrame = owner[key]
     if borderFrame then
@@ -821,6 +855,8 @@ local function ensureBorderFrame(owner, key, layer, sublevel)
     for i = 1, 4 do
         borderFrame._edges[i] = borderFrame:CreateTexture(nil, borderFrame._edgeLayer, nil, borderFrame._edgeSublevel)
     end
+    borderFrame:SetScript("OnSizeChanged", snapBorderEdges)
+    borderFrame:SetScript("OnShow", snapBorderEdges)
 
     borderFrame.SetColor = borderFrame.SetColor or function(self, r, g, b, a)
         local size = self._edgeSize or 1
@@ -884,6 +920,7 @@ layoutBorder = function(borderFrame, target, size, r, g, b, a, layer, sublevel)
         edges[i]:Show()
     end
 
+    snapBorderEdges(borderFrame)
     borderFrame:Show()
     return borderFrame
 end

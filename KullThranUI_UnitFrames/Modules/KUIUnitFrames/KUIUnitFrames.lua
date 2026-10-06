@@ -5412,7 +5412,8 @@ local function ApplyClassicFrameArt(frame, unit)
     -- Pet frame: its own small stock box (Classic sheet / Forever-Retail mini
     -- atlas). Shape and texture are theme-owned; size, colours, fonts and
     -- texts stay editable.
-    if unit == "pet" and VT and VT.ApplyPetFrameArt and VT.ClearPetFrameArt then
+    if (unit == "pet" or unit == "targettarget" or unit == "focustarget")
+        and VT and VT.ApplyPetFrameArt and VT.ClearPetFrameArt then
         local petKind = classicActive and "classic"
             or ((renderedTheme == "forever" or renderedTheme == "retail") and "forever" or nil)
         local petSettings = GetSettingsForUnit(unit)
@@ -5431,10 +5432,11 @@ local function ApplyClassicFrameArt(frame, unit)
         end
     end
 
+    local artUnit = unit == "focus" and "target" or unit
     local usingClassicRealArt = false
     if VT and VT.ApplyClassicUnitFrameArt and VT.ClearClassicUnitFrameArt then
         if classicActive then
-            usingClassicRealArt = VT:ApplyClassicUnitFrameArt(frame, portraitRegion, unit) and true or false
+            usingClassicRealArt = VT:ApplyClassicUnitFrameArt(frame, portraitRegion, artUnit) and true or false
         else
             VT:ClearClassicUnitFrameArt(frame)
         end
@@ -5446,7 +5448,7 @@ local function ApplyClassicFrameArt(frame, unit)
         -- ceiling. The atlas itself renders gold instead of bronze on a
         -- genuine Retail client with no extra handling needed.
         if (renderedTheme == "forever" or renderedTheme == "retail") and not classicActive then
-            usingForeverRealArt = VT:ApplyForeverUnitFrameArt(frame, portraitRegion, unit) and true or false
+            usingForeverRealArt = VT:ApplyForeverUnitFrameArt(frame, portraitRegion, artUnit) and true or false
         else
             VT:ClearForeverUnitFrameArt(frame)
         end

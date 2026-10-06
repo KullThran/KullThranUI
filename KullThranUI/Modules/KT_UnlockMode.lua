@@ -345,7 +345,7 @@ GetUnlockTheme = function()
 end
 
 local function RefreshPanelButtonTheme(button)
-    if not button then return end
+    if not button or button._ktActionButton then return end
 
     local theme = GetUnlockTheme()
     if button.bgKT and not button.normalColor then
@@ -433,6 +433,29 @@ local function CreatePanelButton(parent, width, height, label)
             self.bgKT:SetColorTexture(self.normalColor[1], self.normalColor[2], self.normalColor[3], self.normalColor[4])
         end
     end)
+    return button
+end
+
+local function CreateActionButton(parent, width, height, label, kind)
+    -- Botones de accion del panel: mismo estilo que el resto de menus
+    -- (largo = KT.PortalButton, corto = KT.NavTabs variante "short").
+    local button = CreateFrame("Button", nil, parent)
+    button:SetSize(width, height)
+    button._ktActionButton = true
+    local text = button:CreateFontString(nil, "OVERLAY")
+    text:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    button.text = text
+    local upper = KT.NavTabs and KT.NavTabs.Upper
+    if upper then
+        local rawSetText = text.SetText
+        text.SetText = function(self, value) rawSetText(self, upper(value)) end
+    end
+    if kind == "short" and KT.NavTabs then
+        KT.NavTabs.StyleButton(button, { text = text, fontSize = 12, variant = "short" })
+    elseif KT.PortalButton then
+        KT.PortalButton.Style(button, { text = text, fontSize = 12 })
+    end
+    text:SetText(label or "")
     return button
 end
 
@@ -588,7 +611,7 @@ local function ApplySidebarPanelStyle(frame, variant)
 end
 
 local function StyleSidebarButton(button, variant, isActive)
-    if not button then return end
+    if not button or button._ktActionButton then return end
 
     local theme = GetUnlockTheme()
     local style
@@ -916,22 +939,45 @@ function UM:OnInitialize()
 
     StaticPopupDialogs["KULLTHRANUI_UNLOCKMODE_UNSAVED"] = {
         text = "Save KT UnlockMode changes before closing?",
-        button1 = "Save",
-        button2 = "Discard",
+        button1 = "Save & Exit",
+        button2 = "Save",
         button3 = "Cancel",
         OnAccept = function()
             UM:CloseUnlockMode(true, true)
         end,
         OnCancel = function()
-            UM:CloseUnlockMode(false, true)
+            UM:SaveChanges()
         end,
         OnAlt = function()
         end,
         timeout = 0,
         whileDead = 1,
         hideOnEscape = 1,
+        -- ESC dentro del dialogo = Cancel (no dispara OnCancel = Save).
+        noCancelOnEscape = 1,
         preferredIndex = 3,
     }
+end
+
+function UM:SaveChanges()
+    -- "Save" sin salir: confirma las posiciones y las toma como nueva base de Discard/ESC.
+    if not self.isOpen then return end
+    self:CommitPositions()
+    wipe(self.snapshotPositions)
+    wipe(self.snapshotSizes)
+    wipe(self.snapshotSnapTargets)
+    for _, key in ipairs(self.registryOrder) do
+        if not self:IsElementHidden(key) then
+            self.snapshotPositions[key] = self:CaptureCurrentPosition(key)
+            self.snapshotSnapTargets[key] = self:GetSnapTarget(key) or false
+            if self:CanEditElementSize(key) then
+                local width, height = self:GetEditableElementSize(key)
+                if width and height then
+                    self.snapshotSizes[key] = { width = width, height = height }
+                end
+            end
+        end
+    end
 end
 
 function UM:PromptCloseUnlockMode()
@@ -2605,7 +2651,7 @@ function UM:CreateSidebar()
     sidebar.controlsPanel:SetSize(190, 148)
     ApplySidebarPanelStyle(sidebar.controlsPanel, "controls")
 
-    sidebar.toggleGrid = CreatePanelButton(sidebar.contentGroup, 182, 28, "")
+    sidebar.toggleGrid = CreateActionButton(sidebar.contentGroup, 182, 28, "", "long")
     sidebar.toggleGrid:SetPoint("TOPLEFT", 14, -102)
     StyleSidebarButton(sidebar.toggleGrid, "toggle")
     sidebar.toggleGrid:SetScript("OnClick", function()
@@ -2620,7 +2666,7 @@ function UM:CreateSidebar()
         self:RefreshSidebar()
     end)
 
-    sidebar.toggleSnap = CreatePanelButton(sidebar.contentGroup, 182, 28, "")
+    sidebar.toggleSnap = CreateActionButton(sidebar.contentGroup, 182, 28, "", "long")
     sidebar.toggleSnap:SetPoint("TOPLEFT", sidebar.toggleGrid, "BOTTOMLEFT", 0, -6)
     StyleSidebarButton(sidebar.toggleSnap, "toggle")
     sidebar.toggleSnap:SetScript("OnClick", function()
@@ -2628,7 +2674,7 @@ function UM:CreateSidebar()
         self:RefreshSidebar()
     end)
 
-    sidebar.toggleDark = CreatePanelButton(sidebar.contentGroup, 182, 28, "")
+    sidebar.toggleDark = CreateActionButton(sidebar.contentGroup, 182, 28, "", "long")
     sidebar.toggleDark:SetPoint("TOPLEFT", sidebar.toggleSnap, "BOTTOMLEFT", 0, -6)
     StyleSidebarButton(sidebar.toggleDark, "toggle")
     sidebar.toggleDark:SetScript("OnClick", function()
@@ -2639,7 +2685,7 @@ function UM:CreateSidebar()
         self:RefreshSidebar()
     end)
 
-    sidebar.toggleCoords = CreatePanelButton(sidebar.contentGroup, 182, 28, "")
+    sidebar.toggleCoords = CreateActionButton(sidebar.contentGroup, 182, 28, "", "long")
     sidebar.toggleCoords:SetPoint("TOPLEFT", sidebar.toggleDark, "BOTTOMLEFT", 0, -6)
     StyleSidebarButton(sidebar.toggleCoords, "toggle")
     sidebar.toggleCoords:SetScript("OnClick", function()
@@ -2768,7 +2814,7 @@ function UM:CreateSidebar()
     sidebar.footerPanel:SetHeight(108)
     ApplySidebarPanelStyle(sidebar.footerPanel, "footer")
 
-    sidebar.restore = CreatePanelButton(sidebar.contentGroup, 180, 22, LText("Restore Defaults"))
+    sidebar.restore = CreateActionButton(sidebar.contentGroup, 180, 22, LText("Restore Defaults"), "long")
     sidebar.restore:SetPoint("BOTTOMLEFT", sidebar.footerPanel, "BOTTOMLEFT", 6, 70)
     StyleSidebarButton(sidebar.restore, "toggle")
     sidebar.restore:SetScript("OnClick", function()
@@ -2802,7 +2848,7 @@ function UM:CreateSidebar()
         StaticPopup_Show("KULLTHRANUI_UNLOCKMODE_RESTORE")
     end)
 
-    sidebar.import = CreatePanelButton(sidebar.contentGroup, 180, 22, LText("Import Profile"))
+    sidebar.import = CreateActionButton(sidebar.contentGroup, 180, 22, LText("Import Profile"), "long")
     sidebar.import:SetPoint("TOPLEFT", sidebar.restore, "BOTTOMLEFT", 0, -6)
     StyleSidebarButton(sidebar.import, "toggle")
     sidebar.import:SetScript("OnClick", function()
@@ -2823,18 +2869,14 @@ function UM:CreateSidebar()
         end
     end)
 
-    sidebar.discard = CreatePanelButton(sidebar.contentGroup, 86, 22, LText("Discard"))
+    sidebar.discard = CreateActionButton(sidebar.contentGroup, 86, 22, LText("Discard"), "short")
     sidebar.discard:SetPoint("BOTTOMLEFT", sidebar.footerPanel, "BOTTOMLEFT", 6, 6)
     StyleSidebarButton(sidebar.discard, "footer_red")
     sidebar.discard:SetScript("OnClick", function()
-        if self.hasChanges then
-            StaticPopup_Show("KULLTHRANUI_UNLOCKMODE_UNSAVED")
-            return
-        end
         self:CloseUnlockMode(false, true)
     end)
 
-    sidebar.save = CreatePanelButton(sidebar.contentGroup, 86, 22, LText("Save"))
+    sidebar.save = CreateActionButton(sidebar.contentGroup, 86, 22, LText("Save"), "short")
     sidebar.save:SetPoint("BOTTOMRIGHT", sidebar.footerPanel, "BOTTOMRIGHT", -6, 6)
     StyleSidebarButton(sidebar.save, "footer_green")
     sidebar.save:SetScript("OnClick", function()

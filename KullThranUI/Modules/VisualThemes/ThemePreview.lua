@@ -1103,27 +1103,19 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
     card:SetSize(width, height)
     card:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 1)
 
-    -- Flat fill, no textured surface background (KT:ApplyTexturedSurface):
-    -- a texture reads as visual noise here. The card body is a single flat
-    -- dark color with no wash or texture at all, relying on the hairline
-    -- border and the stage-vs-card contrast for its "clean" look instead.
-    Solid(card, "BACKGROUND", { 0.055, 0.065, 0.080, 0.98 })
-
-    local band = card:CreateTexture(nil, "ARTWORK")
-    band:SetHeight(3)
-    band:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-    band:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
-    band:SetColorTexture(accent[1], accent[2], accent[3], 0.95)
+    local fx = KT.BrutalCard and KT.BrutalCard.Style(card, { accent = accent, inUse = inUse })
+    local body = fx and fx.body or card
+    if not fx then Solid(card, "BACKGROUND", { 0.055, 0.065, 0.080, 0.98 }) end
 
     -- No OUTLINE on all three: an un-outlined typography hierarchy reads
     -- cleaner at the larger sizes above.
-    local title = card:CreateFontString(nil, "OVERLAY")
+    local title = body:CreateFontString(nil, "OVERLAY")
     title:SetFont(GetPreviewFont(), metrics.titleSize)
-    title:SetPoint("TOP", card, "TOP", 0, -(6 + math.ceil(metrics.titleSize * 0.6)))
+    title:SetPoint("TOP", body, "TOP", 0, -(6 + math.ceil(metrics.titleSize * 0.6)))
     title:SetText(T(theme.name))
     title:SetTextColor(accent[1], accent[2], accent[3], 1)
 
-    local tag = card:CreateFontString(nil, "OVERLAY")
+    local tag = body:CreateFontString(nil, "OVERLAY")
     tag:SetFont(GetPreviewFont(), metrics.tagSize)
     tag:SetPoint("TOP", title, "BOTTOM", 0, -3)
     tag:SetText(T(theme.shortName or ""))
@@ -1134,7 +1126,7 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
     -- It is now a small pill on the subtitle line, placed right after the
     -- subtitle text itself, so the two can never overlap; the pair is
     -- re-centered as a group so the card stays visually balanced.
-    local badge = CreateFrame("Frame", nil, card)
+    local badge = CreateFrame("Frame", nil, body)
     local badgeLabel = badge:CreateFontString(nil, "OVERLAY")
     badgeLabel:SetFont(GetPreviewFont(), math.max(8, metrics.tagSize - 1))
     badgeLabel:SetText(T("IN USE"))
@@ -1169,9 +1161,9 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
     -- ~12px tag->stage (was 5).
     local stageTop = 5 + math.ceil(metrics.titleSize * 1.35) + 3
         + math.ceil(metrics.tagSize * 1.5) + 12
-    local stage = CreateFrame("Frame", nil, card)
-    stage:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -stageTop)
-    stage:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -stageTop)
+    local stage = CreateFrame("Frame", nil, body)
+    stage:SetPoint("TOPLEFT", body, "TOPLEFT", 8, -stageTop)
+    stage:SetPoint("TOPRIGHT", body, "TOPRIGHT", -8, -stageTop)
     stage:SetHeight(metrics.stageHeight)
     local preview = self:CreatePreview(stage, themeKey, {
         width = math.max(80, width - 16),
@@ -1182,11 +1174,11 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
     -- art goes in its place instead.
     -- Lifted a little (the card keeps its height, so the extra room opens
     -- up above the Apply button): Classic's oversized end caps used to touch it.
-    AddEndCapArt(card, SCENES[themeKey] or SCENES.kui, stage, math.max(1, metrics.captionPad - 5), metrics.capRowHeight)
+    AddEndCapArt(body, SCENES[themeKey] or SCENES.kui, stage, math.max(1, metrics.captionPad - 5), metrics.capRowHeight)
 
-    local button = CreateFrame("Button", nil, card)
+    local button = CreateFrame("Button", nil, body)
     button:SetSize(width - 16, metrics.buttonHeight)
-    button:SetPoint("BOTTOM", card, "BOTTOM", 0, metrics.buttonPad + extraHeight)
+    button:SetPoint("BOTTOM", body, "BOTTOM", 0, metrics.buttonPad + extraHeight)
 
     -- Primary action: a dark base tinted with the card's own accent, a
     -- hairline accent border, a soft top highlight and a 2px accent bar
@@ -1238,12 +1230,15 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
 
     local function Paint()
         local lit = inUse or hovered
-        PaintBorder(card._ktPreviewCardBorder, lit and accent or { 1, 1, 1, 0.16 }, lit and 2 or 1)
+        if not fx then PaintBorder(card._ktPreviewCardBorder, lit and accent or { 1, 1, 1, 0.16 }, lit and 2 or 1) end
         PaintButton()
-        band:SetAlpha(lit and 1 or 0.75)
+        if fx then
+            KT.BrutalCard.SetInUse(card, inUse)
+            KT.BrutalCard.SetHover(card, hovered)
+        end
     end
 
-    card._ktPreviewCardBorder = MakeBorder(card, "_ktPreviewCardBorder", { 1, 1, 1, 0.16 }, 1)
+    if not fx then card._ktPreviewCardBorder = MakeBorder(card, "_ktPreviewCardBorder", { 1, 1, 1, 0.16 }, 1) end
 
     local function Apply()
         if inUse then return end
@@ -1254,18 +1249,10 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
     card:SetScript("OnEnter", function(self)
         hovered = true
         Paint()
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(T(theme.name))
-        GameTooltip:AddLine(T(theme.description or ""), 0.85, 0.87, 0.92, true)
-        if inUse then
-            GameTooltip:AddLine(T("Currently in use."), accent[1], accent[2], accent[3])
-        end
-        GameTooltip:Show()
     end)
     card:SetScript("OnLeave", function()
         hovered = false
         Paint()
-        GameTooltip:Hide()
     end)
 
     button:SetScript("OnClick", Apply)
@@ -1347,12 +1334,12 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
             RefreshUnitFrames()
         end
 
-        local toggleRow = CreateFrame("Frame", nil, card)
+        local toggleRow = CreateFrame("Frame", nil, body)
         local rowWidth = width - 16
         local gap = 4
         local half = (rowWidth - gap) / 2
         toggleRow:SetSize(rowWidth, healthToggleHeight)
-        toggleRow:SetPoint("BOTTOM", card, "BOTTOM", 0, metrics.buttonPad)
+        toggleRow:SetPoint("BOTTOM", body, "BOTTOM", 0, metrics.buttonPad)
 
         -- Segmented control: one shared dark track with two halves. The
         -- active half gets a tinted background, a 2px color bar along its
@@ -1477,29 +1464,19 @@ function KT.VisualThemes:CreateThemeCard(parent, themeKey, options)
         classOpt:SetScript("OnEnter", function()
             classHovered = true
             PaintToggle()
-            GameTooltip:SetOwner(classOpt, "ANCHOR_RIGHT")
-            GameTooltip:SetText(T("Class Color"))
-            GameTooltip:AddLine(T("Use your class color for health."), 0.85, 0.87, 0.92, true)
-            GameTooltip:Show()
         end)
         classOpt:SetScript("OnLeave", function()
             classHovered = false
             PaintToggle()
-            GameTooltip:Hide()
         end)
 
         swatchOpt:SetScript("OnEnter", function()
             swatchHovered = true
             PaintToggle()
-            GameTooltip:SetOwner(swatchOpt, "ANCHOR_RIGHT")
-            GameTooltip:SetText(T("Health Color"))
-            GameTooltip:AddLine(T("Click to pick any color."), 0.85, 0.87, 0.92, true)
-            GameTooltip:Show()
         end)
         swatchOpt:SetScript("OnLeave", function()
             swatchHovered = false
             PaintToggle()
-            GameTooltip:Hide()
         end)
 
         PaintToggle()

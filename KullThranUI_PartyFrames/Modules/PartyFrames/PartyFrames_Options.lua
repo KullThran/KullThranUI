@@ -266,11 +266,6 @@ local classOrderForRandomization = {
 
 local function RandomizePartyMemberColors()
     memberColorOverrides = {}
-    ns.PF_TestStatusOverrides = {}
-    local statusOverrides = ns.PF_TestStatusOverrides
-    statusOverrides[1] = math.random(1, 2) == 1 and "Offline" or "Dead"
-    ns.PF_TestNoDispelOverlay = { [2] = true, [5] = true }
-    previewDebuffSeed = math.random(1, 100000)
     local shuffledClasses = {}
     for i = 1, #classOrderForRandomization do
         shuffledClasses[i] = classOrderForRandomization[i]
@@ -285,6 +280,7 @@ local function RandomizePartyMemberColors()
     for i = 1, 40 do
         memberColorOverrides[i] = shuffledClasses[((i - 1) % #classOrderForRandomization) + 1]
     end
+    ns.PF_TestClassOverrides = memberColorOverrides
 end
 
 local function GetPreviewDebuffSample(unitIndex, iconIndex, mode, offset)
@@ -450,7 +446,11 @@ end
 local function GetPreviewUnit(index, count, mode, includePlayer)
     local middle = math.floor(count / 2) + 1
     if includePlayer and index == middle then
-        return PREVIEW_UNITS[3]
+        local result = {}
+        for key, value in pairs(PREVIEW_UNITS[3]) do result[key] = value end
+        local _, classToken = _G.UnitClass("player")
+        result.class = classToken or result.class
+        return result
     end
     local sample
     if mode == "raid" or mode == "raid40" then
@@ -460,6 +460,10 @@ local function GetPreviewUnit(index, count, mode, includePlayer)
         sample = PREVIEW_UNITS[index] or PREVIEW_UNITS[((index - 1) % #PREVIEW_UNITS) + 1]
         if sample.isPlayer then sample = PREVIEW_UNITS[1] end
     end
+    local randomized = {}
+    for key, value in pairs(sample) do randomized[key] = value end
+    randomized.class = (ns.PF_TestClassOverrides and ns.PF_TestClassOverrides[index]) or memberColorOverrides[index] or sample.class
+    sample = randomized
     local statusOverrides = ns.PF_TestStatusOverrides
     if statusOverrides then
         local result = {}
@@ -497,6 +501,10 @@ local function GetPreviewMissingBuffRule(cfg)
 end
 
 local function GetPreviewColor(sample, cfg, index, count, includePlayer)
+    if cfg and cfg.colorByClass == false and cfg.customHealthColor then
+        local c = cfg.customHealthColor
+        return { c.r, c.g, c.b }
+    end
     -- Si es el player, siempre usa su color de clase REAL
     if sample.isPlayer then
         if cfg and cfg.colorByClass ~= false then
@@ -509,7 +517,7 @@ local function GetPreviewColor(sample, cfg, index, count, includePlayer)
     -- Para otros miembros, usar colores randomizados si colorByClass está activo
     if cfg and cfg.colorByClass ~= false then
         -- Obtener la clase randomizada para este índice
-        local randomClass = memberColorOverrides[index]
+        local randomClass = (ns.PF_TestClassOverrides and ns.PF_TestClassOverrides[index]) or memberColorOverrides[index]
         if randomClass then
             local c = CLASS_COLORS[randomClass]
             if c then return c end
@@ -810,7 +818,6 @@ local function EnsureUnit(preview, index)
     unit:SetHighlightTexture("")
     unit:EnableMouse(true)
     AddSimpleBorder(unit, 0.88)
-    SetEdgeBorder(unit, 0.00, 0.55, 0.78, 0.85)
 
     unit.portraitFrame = CreateFrame("Frame", nil, unit)
     unit.portraitFrame:SetFrameStrata("MEDIUM")
@@ -954,12 +961,27 @@ local function EnsureUnit(preview, index)
 end
 
 local function RefreshLivePreview(preview)
+    if not next(memberColorOverrides) then RandomizePartyMemberColors() end
     local mod = GetMod()
     local mode = preview.mode or activeMode
     local configMode = mode
     local cfg = mod and mod.GetLayoutConfig and mod:GetLayoutConfig(configMode) or nil
     local db = mod and mod.GetModeDB and mod:GetModeDB(configMode) or nil
     cfg = cfg or db or {}
+    if preview.cardSample then
+        local sampleCfg = {}
+        for key, value in pairs(cfg) do sampleCfg[key] = value end
+        sampleCfg.showPortrait, sampleCfg.portraitStyle, sampleCfg.portraitMode = true, "circular", "2d"
+        if preview.styleOverride == "kui" then sampleCfg.showPortrait, sampleCfg.portraitStyle = false, "none" end
+        sampleCfg.showPowerBar, sampleCfg.showAuras, sampleCfg.showDispelOverlay = true, false, false
+        sampleCfg.nameFontSize, sampleCfg.healthTextFontSize = 10, 8
+        sampleCfg.portraitSize, sampleCfg.portraitX, sampleCfg.portraitY = 0, 0, 0
+        if ns.PF_Styles and ns.PF_Styles.GetHealthSettings then
+            local color = ns.PF_Styles.GetHealthSettings(preview.styleOverride)
+            sampleCfg.colorByClass, sampleCfg.customHealthColor = color.colorByClass, color.customHealthColor
+        end
+        cfg = sampleCfg
+    end
 
     local includePlayer = configMode ~= "raid" and cfg.showPlayer ~= false
     local count = includePlayer and 5 or 4
@@ -987,8 +1009,8 @@ local function RefreshLivePreview(preview)
     local isRaidMode = configMode == "raid" or configMode == "raid40"
     local grouped = isRaidMode and cfg.raidUseGroups ~= false
 
-    local canvasW = math.max(240, preview.canvas:GetWidth() or 240)
-    local canvasH = math.max(112, preview.canvas:GetHeight() or 112)
+    local canvasW = math.max(1, preview.canvas:GetWidth() or 240)
+    local canvasH = math.max(1, preview.canvas:GetHeight() or 112)
     local cols, rows
     local ppg = tonumber(cfg.raidPlayersPerRow) or 5
     local maxGroups = tonumber(cfg.raidGroupsPerRow) or 8
@@ -1009,10 +1031,16 @@ local function RefreshLivePreview(preview)
         rows = 1
     end
 
+    local previewStyle = preview.styleOverride or (ns.PF_Styles and ns.PF_Styles.Current()) or "kui"
+    local leftRoom, rightRoom = 0, 0
+    if previewStyle == "kui" and cfg.showPortrait == true and cfg.portraitStyle ~= "none" then
+        local portraitRoom = (rawH + (tonumber(cfg.portraitSize) or 0) + 10) * 0.5 + 16
+        if cfg.portraitSide == "right" then rightRoom = portraitRoom else leftRoom = portraitRoom end
+    end
     local targetW = rawW * scale
     local targetH = rawH * scale
     local targetAuraReserve = GetPreviewExternalAuraReserve(cfg, configMode) * scale
-    local fitW = (canvasW - ((cols - 1) * math.max(0, spacing))) / cols
+    local fitW = (canvasW - ((cols - 1) * math.max(0, spacing))) / (cols + (leftRoom + rightRoom) / rawW)
     local fitH = (canvasH - ((rows - 1) * math.max(0, spacing))) / rows
     local fitLimit = preview.allowUpscale == false and 1 or 1.25
     local fit = math.min(fitLimit, fitW / targetW, fitH / targetH)
@@ -1031,7 +1059,7 @@ local function RefreshLivePreview(preview)
     end
     local gridW = (cols * w) + ((cols - 1) * gap)
     local gridH = (rows * (h + auraReserve)) + ((rows - 1) * layoutGap)
-    local startX = math.floor((canvasW - gridW) * 0.5)
+    local startX = math.floor((canvasW - gridW - (leftRoom + rightRoom) * scale * fit) * 0.5 + leftRoom * scale * fit)
     local startY = -math.floor((canvasH - gridH) * 0.5)
 
     if preview.title then
@@ -1067,9 +1095,18 @@ local function RefreshLivePreview(preview)
         if preview.stopBtn then preview.stopBtn:SetPoint("LEFT", preview.raid40Btn, "RIGHT", 8, 0) end
     end
 
+    local previewDispelShown = false
     for i = 1, count do
         local unit = EnsureUnit(preview, i)
         local sample = GetPreviewUnit(i, count, mode, includePlayer)
+        if preview.cardSample then
+            local cardUnit = {}
+            for key, value in pairs(sample) do cardUnit[key] = value end
+            cardUnit.status, cardUnit.health, cardUnit.power = nil, 0.82, 0.70
+            cardUnit.name, cardUnit.class = "Party Member", GetPlayerRealClass()
+            cardUnit.isPlayer = true
+            sample = cardUnit
+        end
         local col, row
         if isRaidMode and grouped then
             local groupIndex = math.floor((i - 1) / ppg)
@@ -1116,7 +1153,7 @@ local function RefreshLivePreview(preview)
         end
         local portraitX = (tonumber(cfg.portraitX) or 0) * fit
         local portraitY = (tonumber(cfg.portraitY) or 0) * fit
-        local portraitSize = math.max(16, h + (tonumber(cfg.portraitSize) or 0) * fit)
+        local portraitSize = math.max(12, h + (tonumber(cfg.portraitSize) or 0) * fit)
         if portraitStyle == "circular" or portraitStyle == "detached" then portraitSize = portraitSize + math.floor(10 * fit) end
         local portraitOverlap = portraitStyle == "circular" and portraitSize * 0.5 or 0
         local portraitInset = portraitStyle == "attached" and portraitSize or 0
@@ -1262,9 +1299,9 @@ local function RefreshLivePreview(preview)
         unit.absorb:SetValue((sample.absorb or 0) * 100)
         unit.absorb:SetShown(cfg.showAbsorbBar ~= false and (sample.absorb or 0) > 0)
 
-        local auraSize = math.max(10, math.min(28, math.floor((tonumber(cfg.auraIconSize) or 20) * fit)))
+        local auraSize = math.max(1, math.floor(math.max(10, math.min(28, tonumber(cfg.auraIconSize) or 20)) * fit))
         local auraGap = math.max(0, math.min(8, math.floor((tonumber(cfg.auraIconSpacing) or 0) * fit)))
-        local missingSize = math.max(14, math.min(44, math.floor((tonumber(cfg.missingBuffIconSize) or 30) * fit)))
+        local missingSize = math.max(1, math.floor(math.max(14, math.min(44, tonumber(cfg.missingBuffIconSize) or 30)) * fit))
         local fitBuffs, fitDebuffs = 5, 5
         if ns.GetAuraFitLimits then
             fitBuffs, fitDebuffs = ns.GetAuraFitLimits(w, cfg, configMode)
@@ -1282,36 +1319,37 @@ local function RefreshLivePreview(preview)
         local debuffAnchor = ANCHOR_VALUES[cfg.debuffAnchor] and cfg.debuffAnchor or (isRaidMode and "BOTTOMLEFT" or "CENTER")
         local debuffGrowthH = FLOW_VALUES[cfg.debuffGrowthH] and cfg.debuffGrowthH or "RIGHT"
         local debuffGrowthV = FLOW_VALUES[cfg.debuffGrowthV] and cfg.debuffGrowthV or "DOWN"
+        local sampleAuraCount = 1 + (i % 2)
+        local previewDebuffCount = math.min(maxDebuffs, sampleAuraCount)
         local debuffStartX = debuffX
-        if debuffAnchor == "CENTER" and maxDebuffs > 1 then
-            local centerShift = ((maxDebuffs - 1) * (math.max(auraSize, isRaidMode and 22 or 24) + auraGap)) * 0.5
+        if debuffAnchor == "CENTER" and previewDebuffCount > 1 then
+            local centerShift = ((previewDebuffCount - 1) * (math.max(auraSize, math.floor((isRaidMode and 22 or 24) * fit)) + auraGap)) * 0.5
             debuffStartX = debuffX + (debuffGrowthH == "LEFT" and centerShift or -centerShift)
         end
-        if configMode == "party" and direction == "VERTICAL" then
-            buffY = buffY + math.floor(PARTY_VERTICAL_BUFF_TOP_OFFSET * fit)
-        end
         local canShowAuras = not sample.status
+        local sampleCC = i == 3
+        local sampleMissing = i == 2
         for j, icon in ipairs(unit.buffIcons or {}) do
             icon:ClearAllPoints()
             local iconSize = auraSize
             icon:SetSize(iconSize, iconSize)
             if j == 1 then
-                icon:SetPoint("TOPRIGHT", unit.health, "TOPRIGHT", -3 + buffX, -3 + buffY)
+                icon:SetPoint("TOPRIGHT", unit.health, "TOPRIGHT", -3 * fit + buffX, -3 * fit + buffY)
             else
                 icon:SetPoint("RIGHT", unit.buffIcons[j - 1], "LEFT", -auraGap, 0)
             end
             local sampleIndex = ((i + j - 2) % #AURA_SAMPLE_BUFFS) + 1
             local spellID = AURA_SAMPLE_BUFF_IDS[sampleIndex]
             local spellVisible = not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, spellID) ~= false
-            local show = canShowAuras and spellVisible and cfg.showAuras ~= false and j <= maxBuffs and j <= 2 + (i % 2)
+            local show = canShowAuras and spellVisible and cfg.showAuras ~= false and j <= maxBuffs and j <= sampleAuraCount and not sampleCC and not sampleMissing
             RenderPreviewAuraIcon(icon, show and AURA_SAMPLE_BUFFS[sampleIndex] or nil)
         end
         for j, icon in ipairs(unit.debuffIcons or {}) do
             icon:ClearAllPoints()
-            local iconSize = math.max(auraSize, isRaidMode and 22 or 24)
+            local iconSize = math.max(auraSize, math.floor((isRaidMode and 22 or 24) * fit))
             icon:SetSize(iconSize, iconSize)
             if j == 1 then
-                icon:SetPoint(debuffAnchor, unit.health, debuffAnchor, debuffStartX, debuffY + (isRaidMode and -3 or 0))
+                icon:SetPoint(debuffAnchor, unit.health, debuffAnchor, debuffStartX, debuffY + (isRaidMode and -3 * fit or 0))
             elseif debuffGrowthH == "LEFT" then
                 icon:SetPoint("RIGHT", unit.debuffIcons[j - 1], "LEFT", -auraGap, 0)
             else
@@ -1319,29 +1357,32 @@ local function RefreshLivePreview(preview)
             end
             local sampleDebuff = GetPreviewDebuffSample(i, j, configMode)
             local spellVisible = not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, sampleDebuff.spellID) ~= false
-            local show = canShowAuras and spellVisible and cfg.showAuras ~= false and cfg.showDebuffs ~= false and j <= maxDebuffs
+            local show = canShowAuras and spellVisible and cfg.showAuras ~= false and cfg.showDebuffs ~= false and j <= maxDebuffs and j <= sampleAuraCount and not sampleCC and not sampleMissing
             RenderPreviewAuraIcon(icon, show and sampleDebuff.icon or nil, show and sampleDebuff.color or nil)
         end
         unit.ccIcon:ClearAllPoints()
-        unit.ccIcon:SetSize(math.max(auraSize, isRaidMode and 16 or 18), math.max(auraSize, isRaidMode and 16 or 18))
+        unit.ccIcon:SetSize(math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)), math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)))
         unit.ccIcon:SetPoint("CENTER", unit.health, "CENTER", auraX, auraY)
         local ccVisible = not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, 118) ~= false
-        RenderPreviewAuraIcon(unit.ccIcon, canShowAuras and ccVisible and cfg.showAuras ~= false and cfg.showCrowdControl ~= false and i % 3 == 1 and 136071 or nil, { r = 1, g = 0.12, b = 0.12 })
+        RenderPreviewAuraIcon(unit.ccIcon, canShowAuras and ccVisible and cfg.showAuras ~= false and cfg.showCrowdControl ~= false and sampleCC and 136071 or nil, { r = 1, g = 0.12, b = 0.12 })
         unit.missingBuffIcon:ClearAllPoints()
         if isRaidMode then
             unit.missingBuffIcon:SetSize(missingSize, missingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         else
-            local partyMissingSize = math.min(missingSize, 29)
+            local partyMissingSize = math.min(missingSize, math.max(1, math.floor(29 * fit)))
             unit.missingBuffIcon:SetSize(partyMissingSize, partyMissingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         end
         local missingRule = GetPreviewMissingBuffRule(cfg)
         local missingVisible = missingRule and (not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, missingRule.spellID) ~= false)
-        RenderPreviewAuraIcon(unit.missingBuffIcon, canShowAuras and missingVisible and cfg.showAuras ~= false and i % 5 == 2 and missingRule.icon or nil, { r = 1, g = 0.08, b = 0.08 })
+        RenderPreviewAuraIcon(unit.missingBuffIcon, canShowAuras and missingVisible and cfg.showAuras ~= false and sampleMissing and missingRule.icon or nil, { r = 1, g = 0.08, b = 0.08 })
         if unit.dispelOverlay then
             local overlayDebuff = GetPreviewDebuffSample(i, 1, configMode, 3)
-            if canShowAuras and cfg.showDispelOverlay ~= false and not (ns.PF_TestNoDispelOverlay and ns.PF_TestNoDispelOverlay[i]) then
+            if canShowAuras and cfg.showDispelOverlay ~= false
+                and (configMode ~= "party" or previewStyle ~= "kui" or not previewDispelShown)
+                and not (ns.PF_TestNoDispelOverlay and ns.PF_TestNoDispelOverlay[i]) then
+                previewDispelShown = true
                 unit.dispelOverlay:Hide()
                 SetPreviewDispelBorder(unit, overlayDebuff.color, tonumber(cfg.dispelOverlayAlpha) or 1.0, tonumber(cfg.dispelBorderThickness) or 2, tonumber(cfg.dispelGradientAlpha) or 1.0, tonumber(cfg.dispelGradientSize) or 0.5)
             else
@@ -1371,8 +1412,8 @@ local function RefreshLivePreview(preview)
             unit.statusIcon:SetAlpha(1)
             unit.name:SetAlpha(1)
         end
-        local maxName = isRaidMode and math.floor(h * 0.40) or nil
-        local maxValue = isRaidMode and math.floor(h * 0.35) or nil
+        local maxName = math.max(6, math.floor((tonumber(cfg.nameFontSize) or (isRaidMode and 11 or 15)) * fit))
+        local maxValue = math.max(6, math.floor((tonumber(cfg.healthTextFontSize) or (isRaidMode and 11 or 12)) * fit))
         ApplyPreviewFont(unit.name, cfg, "nameFontSize", isRaidMode and 11 or 15, maxName)
         ApplyPreviewFont(unit.value, cfg, "healthTextFontSize", isRaidMode and 11 or 12, maxValue)
         ApplyPreviewFont(unit.status, cfg, "healthTextFontSize", isRaidMode and 11 or 12, maxValue)
@@ -1384,7 +1425,7 @@ local function RefreshLivePreview(preview)
 
         local innerWidth = math.max(1, w - (padding * 2) - portraitLeftInset - portraitRightInset)
         local roleIconAtRight = portraitShow
-        local roleIconRightReserve = roleIconAtRight and 28 or 0
+        local roleIconRightReserve = roleIconAtRight and math.floor(28 * fit) or 0
         local textInnerWidth = math.max(1, innerWidth - roleIconRightReserve)
         unit.name:ClearAllPoints()
         unit.value:ClearAllPoints()
@@ -1474,7 +1515,7 @@ local function RefreshLivePreview(preview)
             end
         end
         unit.roleIcon:ClearAllPoints()
-        unit.roleIcon:SetSize(18, 18)
+        unit.roleIcon:SetSize(math.max(8, 18 * fit), math.max(8, 18 * fit))
         if roleIconAtRight then
             unit.roleIcon:SetPoint("RIGHT", unit, "RIGHT", -6, -4)
         else
@@ -1483,10 +1524,10 @@ local function RefreshLivePreview(preview)
         unit.roleIcon:SetShown(true)
 
         unit.leaderIcon:ClearAllPoints()
-        unit.leaderIcon:SetSize(12, 12)
+        unit.leaderIcon:SetSize(math.max(6, 12 * fit), math.max(6, 12 * fit))
         unit.leaderIcon:SetPoint("TOPLEFT", unit, "TOPLEFT", 0, 1)
         unit.raidTargetIcon:ClearAllPoints()
-        unit.raidTargetIcon:SetSize(16, 16)
+        unit.raidTargetIcon:SetSize(math.max(8, 16 * fit), math.max(8, 16 * fit))
         unit.raidTargetIcon:SetPoint("BOTTOMRIGHT", unit, "BOTTOMRIGHT", roleIconAtRight and -28 or -2, 2)
         unit.readyCheckIcon:ClearAllPoints()
         unit.readyCheckIcon:SetSize(16, 16)
@@ -1559,7 +1600,35 @@ local function RefreshLivePreview(preview)
         else
             unit.readyCheckIcon:Hide()
         end
+        if ns.PF_Styles then
+            ns.PF_Styles.Apply(unit, cfg, configMode, true, true, preview.styleOverride)
+            if unit._pfNativeStyle then
+                local _, size = unit.name:GetFont()
+                local chars = math.max(3, math.floor(unit.name:GetWidth() / (math.max(6, size or 10) * 0.58)))
+                unit.name:SetText(FitText(sample.name or "Party Member", chars))
+            end
+        end
+        if preview.cardSample then
+            local _, size = unit.name:GetFont()
+            unit.name:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, size or 10, "OUTLINE")
+            unit.name:SetTextColor(1, 1, 1, 1)
+        end
+        if preview.cardSample and ns.PF_Styles and ns.PF_Styles.PreviewCardLevel then
+            ns.PF_Styles.PreviewCardLevel(unit, previewStyle, fit)
+        end
+        if configMode == "party" and previewStyle == "kui" and unit.levelText then unit.levelText:Hide() end
         unit:SetAlpha(sample.status == "Offline" and 0.50 or (sample.status == "Dead" and 0.62 or 1))
+    end
+
+    local descriptiveFont = KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH
+    if preview.title then preview.title:SetFont(descriptiveFont, 11, "OUTLINE") end
+    for _, key in ipairs({ "partyBtn", "raidBtn", "raid40Btn", "arenaBtn", "arenaEnemyBtn", "stopBtn", "scaleDown", "scaleUp" }) do
+        if preview[key] and preview[key].text then preview[key].text:SetFont(descriptiveFont, 10, "OUTLINE") end
+    end
+    if preview.controlsEnabled == false then
+        for _, key in ipairs({ "partyBtn", "raidBtn", "raid40Btn", "arenaBtn", "arenaEnemyBtn", "stopBtn", "scaleDown", "scaleUp" }) do
+            if preview[key] then preview[key]:Hide() end
+        end
     end
 
     if preview.units then
@@ -1575,6 +1644,8 @@ local function CreateLivePreview(parent, y, options)
     frame:SetPoint("TOPLEFT", options.x or 10, -(y or options.y or 10))
     frame:SetSize(options.width or (parent:GetWidth() - 20), options.height or 285)
     AddSimpleBorder(frame, 0.88)
+    frame.controlsEnabled = options.controls ~= false
+    frame.styleOverride, frame.cardSample = options.styleOverride, options.cardSample
     frame.mode = options.modeOverride or activeMode
     frame.directionOverride = options.directionOverride
     frame.countOverride = options.countOverride
@@ -1608,10 +1679,8 @@ local function CreateLivePreview(parent, y, options)
     local partyBtn = CreateFrame("Button", nil, frame)
     partyBtn:SetSize(102, 24)
     partyBtn:SetPoint("BOTTOMLEFT", 12, 12)
-    AddSimpleBorder(partyBtn, 0.82)
-    SetEdgeBorder(partyBtn, 0.35, 0.35, 0.40, 1)
-    partyBtn.text = partyBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    partyBtn.text:SetAllPoints()
+    partyBtn.text = partyBtn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(partyBtn, "test", 11)
     partyBtn.text:SetText(LText("Party Test"))
     partyBtn:SetScript("OnClick", function()
         RandomizePartyMemberColors()
@@ -1626,10 +1695,8 @@ local function CreateLivePreview(parent, y, options)
     local raidBtn = CreateFrame("Button", nil, frame)
     raidBtn:SetSize(102, 24)
     raidBtn:SetPoint("LEFT", partyBtn, "RIGHT", 8, 0)
-    AddSimpleBorder(raidBtn, 0.82)
-    SetEdgeBorder(raidBtn, 0.35, 0.35, 0.40, 1)
-    raidBtn.text = raidBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    raidBtn.text:SetAllPoints()
+    raidBtn.text = raidBtn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(raidBtn, "test", 11)
     raidBtn.text:SetText(LText("Raid Test"))
     raidBtn:SetScript("OnClick", function()
         RandomizePartyMemberColors()
@@ -1644,10 +1711,8 @@ local function CreateLivePreview(parent, y, options)
     local raid40Btn = CreateFrame("Button", nil, frame)
     raid40Btn:SetSize(102, 24)
     raid40Btn:SetPoint("LEFT", raidBtn, "RIGHT", 8, 0)
-    AddSimpleBorder(raid40Btn, 0.82)
-    SetEdgeBorder(raid40Btn, 0.35, 0.35, 0.40, 1)
-    raid40Btn.text = raid40Btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    raid40Btn.text:SetAllPoints()
+    raid40Btn.text = raid40Btn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(raid40Btn, "test", 11)
     raid40Btn.text:SetText(LText("Raid 40 Test"))
     raid40Btn:SetScript("OnClick", function()
         RandomizePartyMemberColors()
@@ -1662,10 +1727,8 @@ local function CreateLivePreview(parent, y, options)
     local arenaBtn = CreateFrame("Button", nil, frame)
     arenaBtn:SetSize(102, 24)
     arenaBtn:SetPoint("BOTTOMLEFT", 12, 12)
-    AddSimpleBorder(arenaBtn, 0.82)
-    SetEdgeBorder(arenaBtn, 0.35, 0.35, 0.40, 1)
-    arenaBtn.text = arenaBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    arenaBtn.text:SetAllPoints()
+    arenaBtn.text = arenaBtn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(arenaBtn, "test", 11)
     arenaBtn.text:SetText(LText("Arena Test"))
     arenaBtn:SetScript("OnClick", function()
         RandomizePartyMemberColors()
@@ -1680,10 +1743,8 @@ local function CreateLivePreview(parent, y, options)
     local arenaEnemyBtn = CreateFrame("Button", nil, frame)
     arenaEnemyBtn:SetSize(115, 24)
     arenaEnemyBtn:SetPoint("LEFT", arenaBtn, "RIGHT", 8, 0)
-    AddSimpleBorder(arenaEnemyBtn, 0.82)
-    SetEdgeBorder(arenaEnemyBtn, 0.35, 0.35, 0.40, 1)
-    arenaEnemyBtn.text = arenaEnemyBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    arenaEnemyBtn.text:SetAllPoints()
+    arenaEnemyBtn.text = arenaEnemyBtn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(arenaEnemyBtn, "test", 11)
     arenaEnemyBtn.text:SetText(LText("Enemy Arena Test"))
     arenaEnemyBtn:SetScript("OnClick", function()
         RandomizePartyMemberColors()
@@ -1698,10 +1759,8 @@ local function CreateLivePreview(parent, y, options)
     local stopBtn = CreateFrame("Button", nil, frame)
     stopBtn:SetSize(102, 24)
     stopBtn:SetPoint("LEFT", raid40Btn, "RIGHT", 8, 0)
-    AddSimpleBorder(stopBtn, 0.82)
-    SetEdgeBorder(stopBtn, 0.35, 0.35, 0.40, 1)
-    stopBtn.text = stopBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    stopBtn.text:SetAllPoints()
+    stopBtn.text = stopBtn:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(stopBtn, "test", 11)
     stopBtn.text:SetText(LText("Stop Tests"))
     stopBtn:SetScript("OnClick", function()
         local mod = GetMod()
@@ -1714,10 +1773,8 @@ local function CreateLivePreview(parent, y, options)
     local scaleDown = CreateFrame("Button", nil, frame)
     scaleDown:SetSize(78, 24)
     scaleDown:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -98, 12)
-    AddSimpleBorder(scaleDown, 0.82)
-    SetEdgeBorder(scaleDown, 0.35, 0.35, 0.40, 1)
-    scaleDown.text = scaleDown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    scaleDown.text:SetAllPoints()
+    scaleDown.text = scaleDown:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(scaleDown, "short", 11)
     scaleDown.text:SetText(LText("Scale -"))
     scaleDown:SetScript("OnClick", function()
         NudgeValue(frame.mode or activeMode, "frameScale", -0.05, 0.5, 2)
@@ -1726,10 +1783,8 @@ local function CreateLivePreview(parent, y, options)
     local scaleUp = CreateFrame("Button", nil, frame)
     scaleUp:SetSize(78, 24)
     scaleUp:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
-    AddSimpleBorder(scaleUp, 0.82)
-    SetEdgeBorder(scaleUp, 0.35, 0.35, 0.40, 1)
-    scaleUp.text = scaleUp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    scaleUp.text:SetAllPoints()
+    scaleUp.text = scaleUp:CreateFontString(nil, "OVERLAY")
+    KT.StyleActionButton(scaleUp, "short", 11)
     scaleUp.text:SetText(LText("Scale +"))
     scaleUp:SetScript("OnClick", function()
         NudgeValue(frame.mode or activeMode, "frameScale", 0.05, 0.5, 2)
@@ -1748,9 +1803,12 @@ local function CreateLivePreview(parent, y, options)
         scaleUp:Hide()
     end
     -- Randomizar colores de los miembros del party al abrir el preview
-    RandomizePartyMemberColors()
+    -- Keep portrait class and bar color consistent across refreshes.
     frame.Refresh = RefreshLivePreview
-    frame:SetScript("OnSizeChanged", function(self) self:Refresh() end)
+    frame:SetScript("OnSizeChanged", function(self)
+        self:Refresh()
+        if self.LayoutStyleCards then self.LayoutStyleCards() end
+    end)
     frame:Refresh()
     if options.attachSticky ~= false and KT and KT.AttachStickyPreview then
         KT:AttachStickyPreview(frame, {
@@ -1758,7 +1816,7 @@ local function CreateLivePreview(parent, y, options)
             relativePoint = "TOPLEFT",
             x = 10,
             y = -10,
-            height = 285,
+            height = options.height or 285,
             extraPad = 10,
         })
     end
@@ -1766,6 +1824,143 @@ local function CreateLivePreview(parent, y, options)
         livePreview = frame
     end
     return frame, (options.height or 285) + 28
+end
+
+local function CreateStyleCards(parent, y)
+    if not ns.PF_Styles then return nil, 0 end
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -y)
+    frame:SetSize(parent:GetWidth() - 20, 132)
+        frame.styleCards = {}
+        local function PaintStyleCard(card)
+            local r, g, b = KT.C_R or 1, KT.C_G or 0.5, KT.C_B or 0.3
+            if KT.GetStyleAccentRGB then r, g, b = KT:GetStyleAccentRGB() end
+            local selected = ns.PF_Styles.Current() == card.key
+            SetEdgeBorder(card, r, g, b, (selected or card.hovered) and 1 or 0.45)
+            card.hoverGlow:SetColorTexture(r, g, b, card.hovered and 0.14 or (selected and 0.05 or 0))
+        end
+        local function LayoutStyleCards()
+            local width = (frame:GetWidth() - 36) / 4
+            for index, card in ipairs(frame.styleCards) do
+                card:ClearAllPoints()
+                card:SetPoint("TOPLEFT", frame, "TOPLEFT", 12 + (index - 1) * (width + 4), -4)
+                card:SetSize(width, 88)
+                if card.preview then card.preview:SetWidth(width - 8); card.preview:Refresh() end
+                if card.label then card.label:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, 10, "OUTLINE"); card.label:SetTextColor(1, 1, 1, 1) end
+                if card.colorSelector then
+                    card.colorSelector:SetSize(width, 28)
+                    for _, button in ipairs(card.colorButtons) do button:SetSize((width - 4) / 2, 28) end
+                    card.PaintColors()
+                end
+                PaintStyleCard(card)
+            end
+        end
+        for _, style in ipairs(ns.PF_Styles.tabs) do
+            local card = CreateFrame("Button", nil, frame)
+            card.key = style.id
+            card:SetSize((frame:GetWidth() - 36) / 4, 88)
+            AddSimpleBorder(card, 0.9)
+            card.hoverGlow = card:CreateTexture(nil, "BACKGROUND", nil, 2)
+            card.hoverGlow:SetPoint("TOPLEFT", 1, -1)
+            card.hoverGlow:SetPoint("BOTTOMRIGHT", -1, 1)
+            card:SetScript("OnEnter", function(self)
+                self.hovered = true
+                PaintStyleCard(self)
+            end)
+            card:SetScript("OnLeave", function(self)
+                self.hovered = nil
+                PaintStyleCard(self)
+            end)
+            local label = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            label:SetPoint("TOP", card, "TOP", 0, -5); label:SetText(style.label)
+            card.label = label
+            local sample = CreateLivePreview(card, 22, {
+                x = 4, width = card:GetWidth() - 8, height = 60, modeOverride = "party",
+                countOverride = 1, directionOverride = "HORIZONTAL", frameWidthOverride = 160,
+                frameHeightOverride = style.id == "kui" and 46 or 70, frameScaleOverride = 1,
+                controls = false, cards = false, styleOverride = style.id, cardSample = true,
+                attachSticky = false, registerGlobal = false, allowUpscale = false,
+            })
+            sample.title:Hide()
+            sample.canvas:ClearAllPoints(); sample.canvas:SetAllPoints(sample)
+            sample:EnableMouse(false)
+            if sample.units then
+                for _, unit in ipairs(sample.units) do unit:EnableMouse(false) end
+            end
+            card.preview = sample
+            local selector = CreateFrame("Frame", nil, frame)
+            selector:SetPoint("TOPLEFT", card, "BOTTOMLEFT", 0, -4)
+            card.colorSelector, card.colorButtons = selector, {}
+            local function PaintColors()
+                local settings = ns.PF_Styles.GetHealthSettings(style.id)
+                local r, g, b = KT.C_R or 1, KT.C_G or 0.5, KT.C_B or 0.3
+                if KT.GetStyleAccentRGB then r, g, b = KT:GetStyleAccentRGB() end
+                for _, button in ipairs(card.colorButtons) do
+                    local active = settings.colorByClass == button.classColor
+                    button.fill:SetColorTexture(r, g, b, active and 0.22 or (button.hovered and 0.12 or 0.03))
+                    SetEdgeBorder(button, r, g, b, active and 1 or 0.35)
+                    button.label:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, 9, "OUTLINE")
+                    button.label:SetTextColor(1, 1, 1, active and 1 or 0.75)
+                    local c = settings.customHealthColor
+                    if button.classColor then
+                        local cc = CLASS_COLORS[playerRealClass] or {1,1,1}
+                        button.chip:SetColorTexture(cc[1], cc[2], cc[3], 1)
+                    else button.chip:SetColorTexture(c.r, c.g, c.b, 1) end
+                end
+            end
+            card.PaintColors = PaintColors
+            local function Commit(classColored, color)
+                ns.PF_Styles.SetHealthColor(style.id, classColored, color)
+                sample:Refresh()
+                if livePreview then livePreview:Refresh() end
+                PaintColors()
+            end
+            for index, classColored in ipairs({false, true}) do
+                local button = CreateFrame("Button", nil, selector)
+                button.classColor = classColored
+                button:SetPoint(index == 1 and "LEFT" or "RIGHT", selector, index == 1 and "LEFT" or "RIGHT", 0, 0)
+                button.fill = button:CreateTexture(nil, "BACKGROUND"); button.fill:SetAllPoints()
+                button.chip = button:CreateTexture(nil, "ARTWORK")
+                button.chip:SetSize(8, 8); button.chip:SetPoint("LEFT", 7, 0)
+                button.label = button:CreateFontString(nil, "OVERLAY")
+                button.label:SetPoint("LEFT", 20, 0)
+                button.label:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, 9, "OUTLINE")
+                button.label:SetText(LText(classColored and "CLASS" or "COLOR"))
+                button:SetScript("OnEnter", function(self) self.hovered = true; PaintColors() end)
+                button:SetScript("OnLeave", function(self) self.hovered = nil; PaintColors() end)
+                button:SetScript("OnClick", function()
+                    if classColored then Commit(true); return end
+                    local original = ns.PF_Styles.GetHealthSettings(style.id).customHealthColor
+                    Commit(false)
+                    local picker = _G.ColorPickerFrame
+                    if not picker then return end
+                    local function Picked()
+                        local r, g, b = picker:GetColorRGB()
+                        Commit(false, { r = r, g = g, b = b })
+                    end
+                    local function Cancel() Commit(false, original) end
+                    if picker.SetupColorPickerAndShow then
+                        picker:SetupColorPickerAndShow({r=original.r,g=original.g,b=original.b,hasOpacity=false,swatchFunc=Picked,cancelFunc=Cancel})
+                    else
+                        picker.func, picker.cancelFunc, picker.hasOpacity = Picked, Cancel, false
+                        picker:SetColorRGB(original.r, original.g, original.b)
+                        picker:Hide(); picker:Show()
+                    end
+                end)
+                card.colorButtons[#card.colorButtons + 1] = button
+            end
+            card:SetScript("OnClick", function()
+                local _, reason = ns.PF_Styles.Select(style.id)
+                if reason == "combat" then PrintStatus("Party Frames style saved. It will be applied after combat.") end
+                if livePreview then livePreview:Refresh() end
+                LayoutStyleCards()
+            end)
+            frame.styleCards[#frame.styleCards + 1] = card
+        end
+        frame.LayoutStyleCards = LayoutStyleCards
+        LayoutStyleCards()
+    frame:SetScript("OnSizeChanged", frame.LayoutStyleCards)
+    return frame, 140
 end
 
 _G.KullThranUI_PartyFramesOptions = _G.KullThranUI_PartyFramesOptions or {}
@@ -3318,11 +3513,14 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         return y
     end
 
+    RandomizePartyMemberColors() -- Reopening the module starts a fresh class rotation.
     local previewMode = activeMode == "manage" and rosterMode or activeMode
     local oldActiveMode = activeMode
     activeMode = previewMode
     _, h = CreateLivePreview(sc, y); y = y + h
     activeMode = oldActiveMode
+
+    _, h = CreateStyleCards(sc, y); y = y + h
 
     _, h = W:SectionHeader(sc, "Party Frames", -y); y = y + h
 

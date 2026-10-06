@@ -2,7 +2,7 @@
 ## Title: KullThranUI
 ## Notes: UI Replacement Logic
 ## Author: KullThran
-## Version: @project-version@
+## Version: 5.1.3
 ## X-Curse-Project-ID: 1448826
 ## X-Wago-ID: rNkye4Ka
 ## SavedVariables: KullThranDB, KullThranUINameplatesDB, KUIAuraRemindersDB, KUISpellDurationDB
@@ -50,12 +50,21 @@ Libraries\AuraKit.lua
 KullThranUI.lua
 Config.lua
 Widgets.lua
+NavTabs.lua
+PortalButton.lua
+TestButton.lua
+ProfileTransferButton.lua
+SolidButton.lua
+BlobButton.lua
+PressButton.lua
+ShineButton.lua
 Modules\VisualThemes\ThemeCatalog.lua
 Modules\VisualThemes\ThemeSlots.lua
 Modules\VisualThemes\ThemeRegistry.lua
 Modules\VisualThemes\ThemeEngine.lua
 Modules\VisualThemes\ThemeBorderKit.lua
 Modules\VisualThemes\ThemeClientAssets.lua
+Modules\VisualThemes\ThemeBrutalCard.lua
 Modules\VisualThemes\ThemePreview.lua
 Modules\VisualThemes\ThemeSelector.lua
 Modules\VisualThemes\Adapters\UnitFrames.lua
@@ -68,8 +77,9 @@ Modules\VisualThemes\Adapters\PartyFrames.lua
 Modules\VisualThemes\Adapters\DamageMeter.lua
 Modules\VisualThemes\Adapters\Minimap.lua
 Modules\VisualThemes\Adapters\Skin.lua
+SearchInput.lua
 Options.lua
-Core.lua                        
+Core.lua
 Modules\PortraitCamera.lua
 Locales\Core.lua
 Locales\Languages\enUS.lua
@@ -97,7 +107,7 @@ Locales\Modules\VisualStyles.lua
 Locales\Modules\CooldownManager.lua
 Locales\Modules\AuraReminders.lua
 Locales\Generated.lua
-Modules\Defaults\Defaults.lua               
+Modules\Defaults\Defaults.lua
 
 ## Callbacks
 Modules\RefreshCallbacks.lua
@@ -116,7 +126,7 @@ Classes\Editors.lua
 # --- MAIN MODULES ---
 Modules\GlobalFont.lua
 Modules\FontsColors.lua
-Modules\KT_UnlockMode.lua        
+Modules\KT_UnlockMode.lua
 Modules\Profiles.lua
 Modules\AddonConflictDetector.lua
 Modules\KUIMove\KUIMove.lua

@@ -16,8 +16,7 @@ S.styleIcons = {
 }
 function S:ApplyStyleIcon(icon, key)
     icon:SetTexture(self.styleIcons[key] or self.styleIcons.kui)
-    if key == "kui" then icon:SetVertexColor(1, 0.08, 0.34, 1)
-    else icon:SetVertexColor(1, 1, 1, 1) end
+    icon:SetVertexColor(1, 1, 1, 1)
 end
 S.ownedPaths = { "castbarStyle", "width", "height", "scale", "autoWidth", "texture",
     "iconShape", "iconPosition", "showIcon", "classColor", "colorMode", "color", "frameArtKit",

@@ -117,6 +117,12 @@ local PREVIEW_STOCK_GEOMETRY = {
         },
     },
 }
+-- Focus uses Target's stock frame; ToT / Focus Target use the native mini
+-- frame. These aliases only select artwork, never a live unit or its settings.
+for _, kit in pairs(PREVIEW_STOCK_GEOMETRY) do
+    kit.focus = kit.target
+    kit.totPet, kit.focustarget = kit.pet, kit.pet
+end
 PREVIEW_STOCK_GEOMETRY.retail = PREVIEW_STOCK_GEOMETRY.forever
 
 -- Forward declarations. ApplyStockPreviewColors (below) needs these two, but
@@ -372,9 +378,12 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
     if not geom then return false end
 
     local scale = (settings.frameScale or 100) / 100
-    if unitKey == "pet" then
-        -- Same rule as the live pet art: frame width scales the stock box (101 = default).
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        -- Same rule as the live mini art: frame width scales the stock box (101 = default).
         scale = scale * math.max(0.5, math.min(3, (tonumber(settings.frameWidth) or 101) / 101))
+    end
+    if unitKey == "focus" then
+        scale = scale * math.max(0.5, math.min(3, (tonumber(settings.frameWidth) or geom.w) / geom.w))
     end
     frame:ClearAllPoints()
     frame:SetSize(geom.w * scale, geom.h * scale)
@@ -461,7 +470,7 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
     local applyPortraitTexture = ApplyPreviewPortraitTexture or _G.ApplyPreviewPortraitTexture
     if applyPortraitTexture then
         local facing = (KT.ResolvePortraitFacing and KT.ResolvePortraitFacing(unitKey))
-            or settings.portraitFacing or (unitKey == "target" and "flipped" or "normal")
+            or settings.portraitFacing or ((unitKey == "target" or unitKey == "focus") and "flipped" or "normal")
         applyPortraitTexture(frame.portrait, unitKey, facing)
     end
     ns.ApplyPreview3D(frame, unitKey, settings, true, portraitSize, settings.showPortrait ~= false, true)
@@ -493,7 +502,7 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
     frame.value:SetPoint("TOPRIGHT", frame, "TOPRIGHT",
         -(geom.w - (geom.name.x + geom.name.w)) * scale, geom.name.y * scale)
     frame.value:Show()
-    if unitKey == "pet" then
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
         -- Small frame: value (when enabled) sits on the bar; no level badge.
         frame.value:ClearAllPoints()
         frame.value:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
@@ -562,7 +571,7 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
         frame.portraitFill:Hide()
     end
 
-    if unitKey == "pet" then
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
         if frame.levelCircle then frame.levelCircle:Hide() end
         if frame.levelText then frame.levelText:Hide() end
         return true
@@ -598,7 +607,7 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
     end
     frame.levelText:ClearAllPoints()
     frame.levelText:SetSize(18 * scale, 14 * scale)
-    if unitKey == "target" then
+    if unitKey == "target" or unitKey == "focus" then
         frame.levelCircle:SetPoint("CENTER", frame, "BOTTOMRIGHT", -ox * scale + levelXNudge, oy * scale)
         frame.levelText:SetPoint("CENTER", frame, "BOTTOMRIGHT",
             -ox * scale + levelTextXNudge + levelXNudge, oy * scale)
@@ -853,7 +862,6 @@ local function BuildTabBar(sc, yOff)
     local container
     if _tabBarFrame and _tabBarFrame:GetParent() == sc then
         container = _tabBarFrame
-        for _, child in ipairs({ container:GetChildren() }) do child:Hide() end
     else
         if _tabBarFrame then _tabBarFrame:Hide() end
         container = CreateFrame("Frame", nil, sc)
@@ -865,41 +873,22 @@ local function BuildTabBar(sc, yOff)
     container:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -20, yOff)
     container:Show()
 
-    local scW = GetSCSafeWidth(sc) - 30
-    local totalWidth = math.max(1, scW)
-    local usableWidth = totalWidth - ((#tabs - 1) * TAB_GAP)
-    local tabWidth = math.floor(usableWidth / #tabs)
-    local usedWidth = (tabWidth * #tabs) + ((#tabs - 1) * TAB_GAP)
-    local remainder = totalWidth - usedWidth
-
-    local previousButton
-    for i, tab in ipairs(tabs) do
-        local isActive = (tab.id == ufActiveTab)
-        local btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-        btn:SetHeight(TAB_H)
-        btn:SetWidth(tabWidth + ((i == #tabs) and remainder or 0))
-        if i == 1 then
-            btn:SetPoint("LEFT", container, "LEFT", 0, 0)
-        else
-            btn:SetPoint("LEFT", previousButton, "RIGHT", TAB_GAP, 0)
-        end
-
-        local lbl = btn:CreateFontString(nil, "OVERLAY")
-        lbl:SetFont(PREVIEW_DEFAULT_FONT, 11, "OUTLINE")
-        lbl:SetText(tab.label); lbl:SetAllPoints(); lbl:SetJustifyH("CENTER")
-        btn._kuiPageLabel = lbl
-        StyleModernPageButton(btn, isActive and "active" or "inactive", 11)
-
-        local tid = tab.id
-        btn:SetScript("OnClick", function()
-            ufActiveTab = tid; if KT.RefreshPage then KT:RefreshPage(true) end
-        end)
-        btn:Show()
-        previousButton = btn
-    end
-    return container, containerH + 8
+    -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua), pixel-snapped.
+    local usedH = KT.NavTabs.Populate(container, tabs, {
+        selectedId = ufActiveTab,
+        width = math.max(1, GetSCSafeWidth(sc) - 30),
+        y = 3,
+        height = TAB_H - 4,
+        gap = 6,
+        fontSize = 11,
+        onSelect = function(tid)
+            ufActiveTab = tid
+            if KT.RefreshPage then KT:RefreshPage(true) end
+        end,
+    })
+    container:SetHeight(usedH + 6)
+    return container, usedH + 6 + 8
 end
-
 
 local function RefreshFrames()
     local Mod = GetModule()

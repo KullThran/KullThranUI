@@ -4113,7 +4113,6 @@ local function BuildCDMSubTabBar(sc, yOff)
     local container
     if _subTabBarFrame and _subTabBarFrame:GetParent() == sc then
         container = _subTabBarFrame
-        for _, child in ipairs({ container:GetChildren() }) do child:Hide() end
     else
         if _subTabBarFrame then _subTabBarFrame:Hide() end
         container = CreateFrame("Frame", nil, sc)
@@ -4125,48 +4124,22 @@ local function BuildCDMSubTabBar(sc, yOff)
     container:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -4, yOff)
     container:Show()
 
-    local TAB_GAP = 4
+    -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua), pixel-snapped.
     local scW = sc:GetWidth() > 0 and sc:GetWidth() or 500
-    local totalWidth = math.max(1, scW - 6)
-    local usableWidth = totalWidth - ((#subTabs - 1) * TAB_GAP)
-    local tabWidth = math.floor(usableWidth / #subTabs)
-    local usedWidth = (tabWidth * #subTabs) + ((#subTabs - 1) * TAB_GAP)
-    local remainder = totalWidth - usedWidth
-
-    local previousButton
-    for i, tab in ipairs(subTabs) do
-        local isActive = (tab.id == cdmActiveSubTab)
-        local btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-        btn:SetHeight(containerH)
-        btn:SetWidth(tabWidth + ((i == #subTabs) and remainder or 0))
-        if i == 1 then
-            btn:SetPoint("LEFT", container, "LEFT", 0, 0)
-        else
-            btn:SetPoint("LEFT", previousButton, "RIGHT", TAB_GAP, 0)
-        end
-
-        local lbl = btn:CreateFontString(nil, "OVERLAY")
-        lbl:SetFont(KT and KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-        lbl:SetText(LText(tab.label))
-        lbl:SetAllPoints()
-        lbl:SetJustifyH("CENTER")
-        
-        if StyleModernPageButton then
-            StyleModernPageButton(btn, isActive and "active" or "inactive", 10)
-        else
-            if KT and KT.AddBackdrop then KT:AddBackdrop(btn, 0.1, 0.1, 0.1, isActive and 0.9 or 0.4) end
-            if KT and KT.AddBorder then KT:AddBorder(btn, 0, 0, 0, 1) end
-        end
-
-        local tid = tab.id
-        btn:SetScript("OnClick", function()
+    local usedH = KT.NavTabs.Populate(container, subTabs, {
+        localize = LText,
+        selectedId = cdmActiveSubTab,
+        width = math.max(1, scW - 6),
+        height = containerH,
+        gap = 4,
+        fontSize = 10,
+        onSelect = function(tid)
             cdmActiveSubTab = tid
             if KT and KT.RefreshPage then KT:RefreshPage(true) end
-        end)
-        btn:Show()
-        previousButton = btn
-    end
-    return container, containerH + 8
+        end,
+    })
+    container:SetHeight(usedH)
+    return container, usedH + 8
 end
 
 -- PESTANA: CUSTOM BARS
@@ -6951,7 +6924,6 @@ local function BuildTabBar(sc, yOff)
     local container
     if _tabBarFrame and _tabBarFrame:GetParent() == sc then
         container = _tabBarFrame
-        for _, child in ipairs({ container:GetChildren() }) do child:Hide() end
     else
         if _tabBarFrame then _tabBarFrame:Hide() end
         container = CreateFrame("Frame", nil, sc)
@@ -6963,39 +6935,22 @@ local function BuildTabBar(sc, yOff)
     container:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -4, yOff)
     container:Show()
 
-    local scW = GetSCSafeWidth(sc)
-    local totalWidth = math.max(1, scW - 6)
-    local usableWidth = totalWidth - ((#tabs - 1) * TAB_GAP)
-    local tabWidth = math.floor(usableWidth / #tabs)
-    local usedWidth = (tabWidth * #tabs) + ((#tabs - 1) * TAB_GAP)
-    local remainder = totalWidth - usedWidth
-
-    local previousButton
-    for i, tab in ipairs(tabs) do
-        local isActive = (tab.id == cdmActiveTab)
-        local btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-        btn:SetHeight(TAB_H)
-        btn:SetWidth(tabWidth + ((i == #tabs) and remainder or 0))
-        if i == 1 then
-            btn:SetPoint("LEFT", container, "LEFT", 0, 0)
-        else
-            btn:SetPoint("LEFT", previousButton, "RIGHT", TAB_GAP, 0)
-        end
-
-        local lbl = btn:CreateFontString(nil, "OVERLAY")
-        lbl:SetFont(FONT_PATH, 11, "OUTLINE")
-        lbl:SetText(LText(tab.label)); lbl:SetAllPoints(); lbl:SetJustifyH("CENTER")
-        btn._kuiPageLabel = lbl
-        StyleModernPageButton(btn, isActive and "active" or "inactive", 11)
-
-        local tid = tab.id
-        btn:SetScript("OnClick", function()
-            cdmActiveTab = tid; if KT.RefreshPage then KT:RefreshPage(true) end
-        end)
-        btn:Show()
-        previousButton = btn
-    end
-    return container, containerH + 8
+    -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua), pixel-snapped.
+    local usedH = KT.NavTabs.Populate(container, tabs, {
+        localize = LText,
+        selectedId = cdmActiveTab,
+        width = math.max(1, GetSCSafeWidth(sc) - 6),
+        y = 3,
+        height = TAB_H,
+        gap = TAB_GAP,
+        fontSize = 11,
+        onSelect = function(tid)
+            cdmActiveTab = tid
+            if KT.RefreshPage then KT:RefreshPage(true) end
+        end,
+    })
+    container:SetHeight(usedH + 6)
+    return container, usedH + 6 + 8
 end
 
 -- ============================================================================

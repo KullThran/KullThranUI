@@ -1745,11 +1745,10 @@ initFrame:SetScript("OnEvent", function(self)
             classIcon:ClearAllPoints()
             local clXOff, clYOff = 0, 0
             if clPos ~= "none" then
-                clXOff = DBVal(clPos .. "SlotXOffset") or 0
-                clYOff = DBVal(clPos .. "SlotYOffset") or 0
+                clXOff = tonumber(DBVal("classificationXOffset")) or 0
+                clYOff = tonumber(DBVal("classificationYOffset")) or 0
             end
-            local reIconSz = (clPos ~= "none") and (DBVal(clPos .. "SlotSize") or defaults[clPos .. "SlotSize"] or 20) or
-            20
+            local reIconSz = tonumber(DBVal("rareEliteIconSize")) or defaults.rareEliteIconSize or 20
             local showCL = showClassificationPreview or _sliderDragShowClassification
             classIcon:SetSize(reIconSz, reIconSz)
             if clPos == "none" or not showCL then
@@ -2636,6 +2635,9 @@ initFrame:SetScript("OnEvent", function(self)
             -- The preview wears the active nameplate style (bars, border, level and quest icon)
             if ns.ApplyThemePreview then
                 ns.ApplyThemePreview(pf, health, healthBG, cast, castBG, nameFS, levelFS, borderFrame, simpleBorderFrame)
+                if clPos == "topright" and ns.AnchorClassificationAdornment then
+                    ns.AnchorClassificationAdornment(classIcon, clPos, clXOff, clYOff, cpPush, pf._themeProxy)
+                end
             end
         end
 
@@ -4619,82 +4621,34 @@ initFrame:SetScript("OnEvent", function(self)
 
         local pad, gap, btnH = 6, 6, 28
         local perRow = (outerW >= 680) and #tabs or 4
-        local rows = math.ceil(#tabs / perRow)
-        local btnW = math.floor((outerW - (pad * 2) - (gap * (perRow - 1))) / perRow)
 
         local bar = CreateFrame("Frame", nil, parent, "BackdropTemplate")
         bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -4)
         bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -8, -4)
-        bar:SetHeight((rows * btnH) + ((rows - 1) * gap) + (pad * 2))
+        bar:SetHeight(btnH + (pad * 2))
         if KT.AddBackdrop then KT:AddBackdrop(bar, 0.035, 0.035, 0.045, 0.92) end
         if KT.AddBorder then KT:AddBorder(bar, 0.16, 0.16, 0.19, 0.9) end
 
-        local function ApplyCompactTabStyle(button, selected, danger)
-            local accentR, accentG, accentB = NPPreviewAccentRGB()
-            if not button._kuiMenuBg then
-                button._kuiMenuBg = button:CreateTexture(nil, "BACKGROUND", nil, -2)
-                button._kuiMenuBg:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
-                button._kuiMenuBg:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
-                button._kuiMenuBg:SetTexture("Interface\\Buttons\\WHITE8x8")
-            end
-            if not button._kuiMenuBorder then
-                button._kuiMenuBorder = {}
-                local top = button:CreateTexture(nil, "BORDER")
-                local bottom = button:CreateTexture(nil, "BORDER")
-                local left = button:CreateTexture(nil, "BORDER")
-                local right = button:CreateTexture(nil, "BORDER")
-                top:SetTexture("Interface\\Buttons\\WHITE8x8")
-                bottom:SetTexture("Interface\\Buttons\\WHITE8x8")
-                left:SetTexture("Interface\\Buttons\\WHITE8x8")
-                right:SetTexture("Interface\\Buttons\\WHITE8x8")
-                top:SetHeight(1); bottom:SetHeight(1)
-                left:SetWidth(1); right:SetWidth(1)
-                top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT")
-                bottom:SetPoint("BOTTOMLEFT"); bottom:SetPoint("BOTTOMRIGHT")
-                left:SetPoint("TOPLEFT"); left:SetPoint("BOTTOMLEFT")
-                right:SetPoint("TOPRIGHT"); right:SetPoint("BOTTOMRIGHT")
-                button._kuiMenuBorder[1] = top
-                button._kuiMenuBorder[2] = bottom
-                button._kuiMenuBorder[3] = left
-                button._kuiMenuBorder[4] = right
-            end
-
-            local alpha = selected and 1 or 0.42
-            local r, g, b = accentR, accentG, accentB
-            if danger then
-                r, g, b = 0.90, 0.18, 0.22
-                alpha = selected and 1 or 0.62
-            end
-            if selected then
-                button._kuiMenuBg:SetColorTexture(r * 0.32, g * 0.18, b * 0.22, 0.82)
-            else
-                button._kuiMenuBg:SetColorTexture(0.025, 0.025, 0.035, 0.92)
-            end
-            for _, tex in ipairs(button._kuiMenuBorder or {}) do
-                tex:SetVertexColor(r, g, b, alpha)
-            end
-        end
-
-        local function StyleButton(btn, selected, danger)
-            ApplyCompactTabStyle(btn, selected, danger)
-            if btn.txt then btn.txt:SetTextColor(selected and 1 or 0.84, selected and 1 or 0.84, selected and 1 or 0.84, 1) end
-        end
-
+        local entries = {}
         for i, name in ipairs(tabs) do
-            local isReset = name == "Restore Defaults"
-            local btn = CreateFrame("Button", nil, bar, "BackdropTemplate")
-            local row = math.floor((i - 1) / perRow)
-            local col = (i - 1) % perRow
-            btn:SetSize(btnW, btnH)
-            btn:SetPoint("TOPLEFT", bar, "TOPLEFT", pad + col * (btnW + gap), -pad - row * (btnH + gap))
-            btn:SetHighlightTexture("")
-            btn.txt = btn:CreateFontString(nil, "OVERLAY")
-            btn.txt:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-            btn.txt:SetPoint("CENTER")
-            btn.txt:SetText(LText(name))
-            StyleButton(btn, KT._npOptionsActiveTab == name, isReset)
-            btn:SetScript("OnClick", function()
-                if isReset then
+            entries[i] = { id = name, label = name, danger = (name == "Restore Defaults") }
+        end
+
+        -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua); every edge is
+        -- snapped to whole pixels so no border is lost at fractional UI scales.
+        local usedH = KT.NavTabs.Populate(bar, entries, {
+            localize = LText,
+            selectedId = KT._npOptionsActiveTab,
+            width = outerW - 16 - (pad * 2),
+            x = pad,
+            y = pad,
+            height = btnH,
+            gap = gap,
+            perRow = perRow,
+            fontSize = 9,
+            padding = 6,
+            onSelect = function(name)
+                if name == "Restore Defaults" then
                     StaticPopup_Show("KUI_NAMEPLATES_RESTORE_DEFAULTS")
                     return
                 end
@@ -4706,109 +4660,34 @@ initFrame:SetScript("OnEvent", function(self)
                     _colorPreviewRandomizeAll()
                 end
                 if KT.RefreshPage then KT:RefreshPage() end
-            end)
-            btn:SetScript("OnEnter", function()
-                if KT._npOptionsActiveTab ~= name then
-                    ApplyCompactTabStyle(btn, true, isReset)
-                    if btn.txt then btn.txt:SetTextColor(1, 1, 1, 1) end
-                end
-            end)
-            btn:SetScript("OnLeave", function()
-                StyleButton(btn, KT._npOptionsActiveTab == name, isReset)
-            end)
-        end
+            end,
+        })
+        bar:SetHeight(usedH + (pad * 2))
 
         return bar:GetHeight() + 6
     end
 
     local function BuildCompactModeSelector(parent)
         local modes = {
-            { key = "enemy", label = "Enemy" },
-            { key = "friendly", label = "Friendly" },
+            { id = "enemy", label = "Enemy" },
+            { id = "friendly", label = "Friendly" },
         }
         local w = (parent.GetWidth and parent:GetWidth()) or 300
-        local gap, btnH = 6, 22
-        local btnW = math.floor((w - gap) / 2)
-        for i, mode in ipairs(modes) do
-            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-            btn:SetSize(btnW, btnH)
-            btn:SetPoint("TOPLEFT", parent, "TOPLEFT", (i - 1) * (btnW + gap), 0)
-            btn.txt = btn:CreateFontString(nil, "OVERLAY")
-            btn.txt:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-            btn.txt:SetPoint("CENTER")
-            btn.txt:SetText(LText(mode.label))
-            local selected = (_displayPageMode or "enemy") == mode.key
-            local accentR, accentG, accentB = NPPreviewAccentRGB()
-            local bg = btn:CreateTexture(nil, "BACKGROUND", nil, -2)
-            bg:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
-            bg:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
-            bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-            bg:SetColorTexture(selected and (accentR * 0.32) or 0.025, selected and (accentG * 0.18) or 0.025, selected and (accentB * 0.22) or 0.035, selected and 0.82 or 0.92)
-            btn._kuiMenuBg = bg
-            local slices = {}
-            for sliceIndex = 1, 9 do
-                local tex = btn:CreateTexture(nil, "BACKGROUND")
-                tex:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\MenuButtonTab.png")
-                slices[sliceIndex] = tex
-            end
-            local TL, TR, BL, BR = slices[1], slices[2], slices[3], slices[4]
-            local T, B, L, R, C = slices[5], slices[6], slices[7], slices[8], slices[9]
-            local cornerScreen = 4
-            local minX, maxX = 12 / 601, 586 / 601
-            local minY, maxY = 8 / 147, 136 / 147
-            local cx, cy = 8 / 601, 8 / 147
-            TL:SetSize(cornerScreen, cornerScreen); TR:SetSize(cornerScreen, cornerScreen)
-            BL:SetSize(cornerScreen, cornerScreen); BR:SetSize(cornerScreen, cornerScreen)
-            TL:SetPoint("TOPLEFT"); TR:SetPoint("TOPRIGHT")
-            BL:SetPoint("BOTTOMLEFT"); BR:SetPoint("BOTTOMRIGHT")
-            T:SetPoint("TOPLEFT", TL, "TOPRIGHT"); T:SetPoint("BOTTOMRIGHT", TR, "BOTTOMLEFT")
-            B:SetPoint("TOPLEFT", BL, "TOPRIGHT"); B:SetPoint("BOTTOMRIGHT", BR, "BOTTOMLEFT")
-            L:SetPoint("TOPLEFT", TL, "BOTTOMLEFT"); L:SetPoint("BOTTOMRIGHT", BL, "TOPRIGHT")
-            R:SetPoint("TOPLEFT", TR, "BOTTOMLEFT"); R:SetPoint("BOTTOMRIGHT", BR, "TOPRIGHT")
-            C:SetPoint("TOPLEFT", TL, "BOTTOMRIGHT"); C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT")
-            TL:SetTexCoord(minX, minX + cx, minY, minY + cy)
-            TR:SetTexCoord(maxX - cx, maxX, minY, minY + cy)
-            BL:SetTexCoord(minX, minX + cx, maxY - cy, maxY)
-            BR:SetTexCoord(maxX - cx, maxX, maxY - cy, maxY)
-            T:SetTexCoord(minX + cx, maxX - cx, minY, minY + cy)
-            B:SetTexCoord(minX + cx, maxX - cx, maxY - cy, maxY)
-            L:SetTexCoord(minX, minX + cx, minY + cy, maxY - cy)
-            R:SetTexCoord(maxX - cx, maxX, minY + cy, maxY - cy)
-            C:SetTexCoord(minX + cx, maxX - cx, minY + cy, maxY - cy)
-            for _, tex in ipairs(slices) do
-                tex:SetVertexColor(accentR, accentG, accentB, selected and 1 or 0.42)
-            end
-            btn._kuiMenuSlices = slices
-            if selected then
-                btn.txt:SetTextColor(1, 1, 1, 1)
-            else
-                btn.txt:SetTextColor(0.82, 0.82, 0.82, 1)
-            end
-            btn:SetScript("OnEnter", function(self)
-                if self._kuiMenuBg then
-                    self._kuiMenuBg:SetColorTexture(accentR * 0.30, accentG * 0.18, accentB * 0.22, 0.78)
-                end
-                for _, tex in ipairs(self._kuiMenuSlices or {}) do
-                    tex:SetVertexColor(accentR, accentG, accentB, 1)
-                end
-                if self.txt then self.txt:SetTextColor(1, 1, 1, 1) end
-            end)
-            btn:SetScript("OnLeave", function(self)
-                local isSelected = (_displayPageMode or "enemy") == mode.key
-                if self._kuiMenuBg then
-                    self._kuiMenuBg:SetColorTexture(isSelected and (accentR * 0.32) or 0.025, isSelected and (accentG * 0.18) or 0.025, isSelected and (accentB * 0.22) or 0.035, isSelected and 0.82 or 0.92)
-                end
-                for _, tex in ipairs(self._kuiMenuSlices or {}) do
-                    tex:SetVertexColor(accentR, accentG, accentB, isSelected and 1 or 0.42)
-                end
-                if self.txt then self.txt:SetTextColor(isSelected and 1 or 0.82, isSelected and 1 or 0.82, isSelected and 1 or 0.82, 1) end
-            end)
-            btn:SetScript("OnClick", function()
-                if _displayPageMode == mode.key then return end
-                _displayPageMode = mode.key
+        if not w or w <= 0 then w = 300 end
+        local btnH = KT.NavTabs.Populate(parent, modes, {
+            localize = LText,
+            selectedId = _displayPageMode or "enemy",
+            width = w,
+            height = 22,
+            gap = 6,
+            fontSize = 9,
+            padding = 6,
+            onSelect = function(key)
+                if _displayPageMode == key then return end
+                _displayPageMode = key
                 if KT and KT.RefreshPage then KT:RefreshPage() end
-            end)
-        end
+            end,
+        })
         parent:SetHeight(btnH)
         return btnH
     end
@@ -6206,17 +6085,21 @@ initFrame:SetScript("OnEvent", function(self)
         -- Now using slot-based offsets: pos .. "SlotXOffset" / "SlotYOffset"
 
         local function CorePosXGet(pos)
+            if GetElementAtPosition(pos) == "classification" then return DBVal("classificationXOffset") or 0 end
             return DBVal(pos .. "SlotXOffset") or 0
         end
         local function CorePosYGet(pos)
+            if GetElementAtPosition(pos) == "classification" then return DBVal("classificationYOffset") or 0 end
             return DBVal(pos .. "SlotYOffset") or 0
         end
         local function CorePosXSet(pos, v)
-            DB()[pos .. "SlotXOffset"] = v
+            local key = GetElementAtPosition(pos) == "classification" and "classificationXOffset" or pos .. "SlotXOffset"
+            DB()[key] = v
             RefreshAllSlots()
         end
         local function CorePosYSet(pos, v)
-            DB()[pos .. "SlotYOffset"] = v
+            local key = GetElementAtPosition(pos) == "classification" and "classificationYOffset" or pos .. "SlotYOffset"
+            DB()[key] = v
             RefreshAllSlots()
         end
         local function CorePosOffDisabled(pos)
@@ -6644,7 +6527,7 @@ initFrame:SetScript("OnEvent", function(self)
             end)
             btn:SetScript("OnClick", function(self)
                 if CorePosOffDisabled(posKey) then return end
-                local sizeKey = posKey .. "SlotSize"
+                local sizeKey = GetElementAtPosition(posKey) == "classification" and "rareEliteIconSize" or posKey .. "SlotSize"
                 local growthKey = posKey .. "SlotGrowth"
                 local growthValues
                 if posKey == "topleft" then
@@ -6661,7 +6544,7 @@ initFrame:SetScript("OnEvent", function(self)
                     }
                 end
                 local opts = {
-                    title = slotLabel .. " Slot Settings",
+                    title = GetElementAtPosition(posKey) == "classification" and LText("Elite/Rare Indicator") or slotLabel .. " Slot Settings",
                     xGet = function() return CorePosXGet(posKey) end,
                     xSet = function(v) CorePosXSet(posKey, v) end,
                     yGet = function() return CorePosYGet(posKey) end,
@@ -6673,7 +6556,7 @@ initFrame:SetScript("OnEvent", function(self)
                     sizeMin = 10,
                     sizeMax = 50,
                 }
-                if growthValues then
+                if growthValues and GetElementAtPosition(posKey) ~= "classification" then
                     opts.growthGet    = function() return DBVal(growthKey) or defaults[growthKey] end
                     opts.growthSet    = function(v)
                         DB()[growthKey] = v; RefreshAllSlots(); UpdatePreview()

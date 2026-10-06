@@ -2253,6 +2253,11 @@ local function BuildSystemAccordion(parent, W, db, startY)
     local y = startY
     local h
 
+    if KT.CreateAddonPerformanceReadout then
+        _, h = KT:CreateAddonPerformanceReadout(parent, -y)
+        y = y + h + 10
+    end
+
     _, h = AddAccordionSection(parent, "system_actions", LText("System Optimizations: Presets"), BuildSystemPresetSection, true, W, db, -y)
     y = y + h + 10
     _, h = AddAccordionSection(parent, "system_graphics", LText("Graphics Quality"), BuildSystemGraphicsSection, false, W, db, -y)

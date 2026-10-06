@@ -31,6 +31,10 @@ local function Region(parent, kind)
     function r:SetTextColor(...) self.textColor = {...} end
     function r:SetShadowOffset() end
     function r:SetJustifyH(v) self.justify = v end
+    function r:SetJustifyV(v) self.justifyV = v end
+    function r:SetClipsChildren(v) self.clips = v end
+    function r:SetFontString(v) self.fontString = v end
+    function r:IsEnabled() return self.enabled ~= false end
     function r:SetDrawLayer(layer, sublevel) self.layer, self.sublevel = layer, sublevel end
     function r:SetDesaturated(v) self.desaturated = v end
     function r:SetWordWrap() end
@@ -241,11 +245,17 @@ for i = first+1, #frames do
     if f.kind == "StatusBar" then preview = f end
 end
 assert(apply and preview)
+assert(apply.slices and #apply.slices == 9, "Apply uses the addon button skin")
+eq(apply.fontString.font[3], "OUTLINE", "Apply font outline")
 for key, tab in pairs(tabs) do
     eq(tab.styleIcon.texture, S.styleIcons[key])
     eq(tab.label.font[1], "AAA_ITC_Avant_Garde")
-    if key == "kui" then eq(tab.styleIcon.tint[2], .08); eq(tab.styleIcon.tint[3], .34) end
+    if key == "kui" then eq(tab.styleIcon.tint[2], 1); eq(tab.styleIcon.tint[3], 1); eq(tab.styleIcon.width, 22) end
 end
+KT.ResolveFontPath = function() return "User Global Font" end
+tabs.kui.scripts.OnClick()
+eq(apply.fontString.font[1], "User Global Font", "Apply follows the configured global font")
+eq(tabs.kui.label.font[1], "User Global Font", "style tabs follow the configured global font")
 for _, key in ipairs({ "classic", "forever", "retail" }) do
     tabs[key].scripts.OnClick()
     eq(db.castbarStyle, "kui", "browsing never changes the live style")

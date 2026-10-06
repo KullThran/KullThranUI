@@ -1,37 +1,15 @@
-## 5.1.2 (2026-10-05)
+## 5.1.3 (2026-10-06)
 
-- Cast Bar now offers KUI, Classic, Forever and Retail preview tabs with Apply controls; native styles use Blizzard casting art and colors. Classic has no icon, outlined text and a properly layered frame.
-- New Visual Style selector (KUI, Classic, Retail, Forever) in the General tab and in the Installer. Applying a style restyles Unit Frames, Party Frames, Nameplates, Action Bars, Resource Bars, Cast Bar, Cooldown Manager, Minimap and Skins together, shows a live preview and reloads the interface.
-- The Installer's color step is now Visual Style & Color and returns to that page after the reload.
-- Nameplates: style presets in Nameplates > General with a preview of each. Classic has the original bronze border, a gold level pill and larger bars; Retail uses Blizzard's own nameplate art with the level inside the bar; Forever has taller bars with the name above, a bronze border and the level in a yellow box beside the bar.
-- Nameplates mark enemies you still need for a quest with a yellow "!" in every style.
-- The nameplate live preview shows the selected visual style.
-- Unit Frames: authentic player, target and pet frame art per style, Blizzard-style name and level text, combat and resting icons, a frame-size option, and Rare/Elite indicators.
-- Combo points under the Player and Target frames can be Off, Modern or Classic (Target also has a portrait ring), as circles or pips, placed below or above the frame with X/Y offsets. Each style picks its own look by default.
-- Incoming heal prediction, combat text on the portrait (with an off toggle and a white-numbers option) and an aggro glow toggle that also lights the Target portrait overlays.
-- Party Frames: portraits can be 2D, 3D or Class Theme, with zoom, rotation, offset, side, facing and border options.
-- 3D portraits in circular Unit Frame portraits.
-- Action Bars: Action Bar Art selector with live previews (Forever or Classic end caps); cooldown swipes follow the button shape.
-- Cooldown Manager: per-ability visibility rules (right-click an icon) such as hidden or glowing while on cooldown, usable-only display and charge controls; the KUI Tracker adapts to every style.
-- Minimap: frame rings per style with a selector and Live Preview.
-- The Objective Tracker headers show an accent-colored gradient bar in the Blizzard-art styles.
-- Chat: left-click a channel tag to start typing in that channel.
-- Redesigned Mail skin.
-- Profiles remember whether they come from Retail or Forever; importing a string from the other variant works with a notice, and UI scale is no longer part of exported or imported profiles.
-- KUI no longer changes your UI scale unless you choose a scale yourself, and module on/off toggles apply correctly.
-- The changelog button now sits in the General tab header.
-- Fixed KUI Tracker icons briefly showing a green swipe.
-- Profile import notices, nameplate style prompts and visual style messages are now available in every supported language.
-- KUI Style target combo points now form a separate row above the portrait.
-- Classic Rare/Elite overlays fit KUI circular portraits without the stock level socket.
-- Classic player health and power percentages appear inside their bars.
-- Blue quest-objective nameplates use a darker shade in Classic.
-- Aggro glow illuminates the complete Classic Rare/Elite decoration.
-- Target arrows respect the frame and level badges in every nameplate style.
-- Unit Frames live previews show the complete Rare/Elite artwork beneath the level.
-- Cast Bar styles use Avant Garde text, with style icons in the tabs and preview.
-- Fixed Hide Alerts suppressing loot-roll windows; pending rolls remain visible and selectable.
-- Unit Frame combo displays can be toggled independently and combined; Target defaults to the portrait ring, with correctly aligned optional rows.
-- Retail-style nameplates keep stable atlas geometry as camera scale changes.
-- Fixed Nameplate Tip of the Spear and Whirlwind tracking on player lifecycle and spellcast events.
-- Applying KUI Style on Retail keeps Unit Frame portraits disabled, including previously saved style settings.
+- Party Frames now offer KUI, Forever, Retail and Classic style cards with independent class-color or health-color selections.
+- Reworked Party Test and live previews to match the selected style, with randomized classes appropriate to the client.
+- Fixed KUI party portrait layering and aura placement; sample dispel overlays are limited to one frame.
+- Forever, Retail and Classic party frames are 25% larger by default. KUI frame sizing remains unchanged.
+- Debuff overlays default to disabled for Forever, Retail and Classic party styles.
+- Raid group movers are available in Unlock Mode outside an active raid.
+- Elite and Rare nameplate indicators fit the upper-right corner without reducing their size and support manual X/Y offsets.
+- Focus, Target of Target and Focus Target frames and previews use matching frame artwork for the selected style.
+- Cast Bar style controls have clearer icons and an Apply Style button matching the options interface.
+- Refined the Profiles page layout and module export/import controls, with accent-colored borders and clearer text.
+- Visual Style cards use rounded surfaces and a subtle hover effect, with no card tooltips.
+- Refined the options search bar to fit the header; performance readings are now in Enhancements > System Tuning.
+- Test buttons use transparent backgrounds, clean white text and outlined borders. Options text follows the global font.

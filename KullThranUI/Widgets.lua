@@ -1438,7 +1438,7 @@ function W:MultiSwatch(parent, text, yOffset, swatches)
     f.Refresh = Refresh
     return f, 38
 end
-function W:Button(parent, text, yOffset, func, btnWidth, confirm, confirmText, align, btnHeight)
+function W:Button(parent, text, yOffset, func, btnWidth, confirm, confirmText, align, btnHeight, variant)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(FW(parent), 42)
     f:SetPoint("TOPLEFT", 10, yOffset)
@@ -1459,93 +1459,28 @@ function W:Button(parent, text, yOffset, func, btnWidth, confirm, confirmText, a
         btn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
     end
 
-    local function Apply9SliceSkin(btn)
-        local visual = CreateFrame("Frame", nil, btn)
-        visual:SetAllPoints()
-        visual:SetFrameLevel(btn:GetFrameLevel() - 1)
-        visual:SetClipsChildren(false)
-
-        local tex = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\MenuButton.png"
-        local minX = 12 / 601
-        local maxX = 586 / 601
-        local minY = 8 / 147
-        local maxY = 136 / 147
-        local cx = 8 / 601
-        local cy = 8 / 147
-        local cornerScreen = 4
-
-        local slices = {}
-        for i = 1, 9 do
-            local t = visual:CreateTexture(nil, "BACKGROUND")
-            t:SetTexture(tex)
-            slices[i] = t
-        end
-        local TL, TR, BL, BR, T, B, L, R, C = unpack(slices)
-
-        TL:SetSize(cornerScreen, cornerScreen)
-        TR:SetSize(cornerScreen, cornerScreen)
-        BL:SetSize(cornerScreen, cornerScreen)
-        BR:SetSize(cornerScreen, cornerScreen)
-        
-        TL:SetPoint("TOPLEFT")
-        TR:SetPoint("TOPRIGHT")
-        BL:SetPoint("BOTTOMLEFT")
-        BR:SetPoint("BOTTOMRIGHT")
-
-        T:SetPoint("TOPLEFT", TL, "TOPRIGHT")
-        T:SetPoint("BOTTOMRIGHT", TR, "BOTTOMLEFT")
-        B:SetPoint("TOPLEFT", BL, "TOPRIGHT")
-        B:SetPoint("BOTTOMRIGHT", BR, "BOTTOMLEFT")
-        L:SetPoint("TOPLEFT", TL, "BOTTOMLEFT")
-        L:SetPoint("BOTTOMRIGHT", BL, "TOPRIGHT")
-        R:SetPoint("TOPLEFT", TR, "BOTTOMLEFT")
-        R:SetPoint("BOTTOMRIGHT", BR, "TOPRIGHT")
-        C:SetPoint("TOPLEFT", TL, "BOTTOMRIGHT")
-        C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT")
-
-        TL:SetTexCoord(minX, minX + cx, minY, minY + cy)
-        TR:SetTexCoord(maxX - cx, maxX, minY, minY + cy)
-        BL:SetTexCoord(minX, minX + cx, maxY - cy, maxY)
-        BR:SetTexCoord(maxX - cx, maxX, maxY - cy, maxY)
-        T:SetTexCoord(minX + cx, maxX - cx, minY, minY + cy)
-        B:SetTexCoord(minX + cx, maxX - cx, maxY - cy, maxY)
-        L:SetTexCoord(minX, minX + cx, minY + cy, maxY - cy)
-        R:SetTexCoord(maxX - cx, maxX, minY + cy, maxY - cy)
-        C:SetTexCoord(minX + cx, maxX - cx, minY + cy, maxY - cy)
-
-        btn.slices = slices
+    -- Botones largos (ancho completo) y cortos (ancho fijo pequeno o mitad de
+    -- fila) comparten el motor de KT.NavTabs, pero con aspecto distinto.
+    if not variant then
+        variant = (type(btnWidth) == "number" and btnWidth < 200) and "short" or "long"
+    end
+    if KT.TestButton and tostring(text or ""):lower():find("%f[%a]test") then
+        variant = "test"
+    end
+    if variant == "moduleProfile" and KT.ProfileTransferButton then
+        KT.ProfileTransferButton.Style(btn, { label = LText(text), fontSize = 12 })
+    elseif variant == "test" and KT.TestButton then
+        KT.TestButton.Style(btn, { label = LText(text), fontSize = 13 })
+    elseif variant == "long" and KT.PortalButton then
+        KT.PortalButton.Style(btn, { label = LText(text), fontSize = 13 })
+    elseif KT.NavTabs then
+        KT.NavTabs.StyleButton(btn, {
+            label = LText(text),
+            fontSize = 13,
+            variant = (variant == "short") and "short" or nil,
+        })
     end
 
-    Apply9SliceSkin(btn)
-    
-    do
-        local ar, ag, ab = CurrentAccentColor()
-        for _, t in ipairs(btn.slices) do
-            t:SetVertexColor(ar, ag, ab, 0.5)
-        end
-    end
-
-    local lbl = btn:CreateFontString(nil, "OVERLAY")
-    lbl:SetFont(CurrentFont(), 11, "OUTLINE")
-    lbl:SetText(LText(text))
-    do
-        local tr, tg, tb = CurrentTextColor()
-        lbl:SetTextColor(tr, tg, tb, 1)
-    end
-    lbl:SetAllPoints(); lbl:SetJustifyH("CENTER"); lbl:SetJustifyV("MIDDLE")
-
-    btn:SetScript("OnEnter", function(self)
-        local ar, ag, ab = CurrentAccentColor()
-        for _, t in ipairs(self.slices) do
-            t:SetVertexColor(ar, ag, ab, 1)
-        end
-    end)
-    btn:SetScript("OnLeave", function(self)
-        local ar, ag, ab = CurrentAccentColor()
-        for _, t in ipairs(self.slices) do
-            t:SetVertexColor(ar, ag, ab, 0.5)
-        end
-    end)
     btn:SetScript("OnClick", function()
         if confirm then
             StaticPopupDialogs["KT_CONFIRM_ACTION"] = {
@@ -1689,7 +1624,7 @@ function W:DualRow(parent, yOffset, leftData, rightData)
         elseif d.type == "multiSwatch" then
             ctrl, h = W:MultiSwatch(p, d.text, 0, d.swatches)
         elseif d.type == "button" then
-            ctrl, h = W:Button(p, d.text, 0, d.onClick, nil, nil, nil, "CENTER")
+            ctrl, h = W:Button(p, d.text, 0, d.onClick, nil, nil, nil, "CENTER", nil, d.variant or "short")
         end
         p._control = ctrl
         return h

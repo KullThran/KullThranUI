@@ -173,7 +173,7 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
         text:SetPoint("CENTER", button, "CENTER", 8, 0); text:SetText(LText(Styles.labels[key]))
         text:SetFont(FetchFont("AAA_ITC_Avant_Garde"), 11, "OUTLINE")
         local icon = button:CreateTexture(nil, "OVERLAY")
-        icon:SetSize(16, 16); icon:SetPoint("LEFT", button, "LEFT", 7, 0)
+        icon:SetSize(key == "kui" and 22 or 16, key == "kui" and 22 or 16); icon:SetPoint("LEFT", button, "LEFT", key == "kui" and 4 or 7, 0)
         Styles:ApplyStyleIcon(icon, key)
         button.styleIcon = icon
         button.label, button.key = text, key
@@ -184,14 +184,88 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
         end)
         tabs[#tabs + 1] = button
     end
-    local apply = CreateFrame("Button", nil, prevContainer, "UIPanelButtonTemplate")
+    local function ApplyStyleButtonSkin(btn)
+        local visual = CreateFrame("Frame", nil, btn)
+        visual:SetAllPoints()
+        visual:SetFrameLevel(btn:GetFrameLevel() - 1)
+        visual:SetClipsChildren(false)
+
+        local tex = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\MenuButton.png"
+        local minX = 12 / 601
+        local maxX = 586 / 601
+        local minY = 8 / 147
+        local maxY = 136 / 147
+        local cx = 8 / 601
+        local cy = 8 / 147
+        local cornerScreen = 4
+
+        local slices = {}
+        for i = 1, 9 do
+            local t = visual:CreateTexture(nil, "BACKGROUND")
+            t:SetTexture(tex)
+            slices[i] = t
+        end
+        local TL, TR, BL, BR, T, B, L, R, C = unpack(slices)
+
+        TL:SetSize(cornerScreen, cornerScreen)
+        TR:SetSize(cornerScreen, cornerScreen)
+        BL:SetSize(cornerScreen, cornerScreen)
+        BR:SetSize(cornerScreen, cornerScreen)
+
+        TL:SetPoint("TOPLEFT")
+        TR:SetPoint("TOPRIGHT")
+        BL:SetPoint("BOTTOMLEFT")
+        BR:SetPoint("BOTTOMRIGHT")
+
+        T:SetPoint("TOPLEFT", TL, "TOPRIGHT")
+        T:SetPoint("BOTTOMRIGHT", TR, "BOTTOMLEFT")
+        B:SetPoint("TOPLEFT", BL, "TOPRIGHT")
+        B:SetPoint("BOTTOMRIGHT", BR, "BOTTOMLEFT")
+        L:SetPoint("TOPLEFT", TL, "BOTTOMLEFT")
+        L:SetPoint("BOTTOMRIGHT", BL, "TOPRIGHT")
+        R:SetPoint("TOPLEFT", TR, "BOTTOMLEFT")
+        R:SetPoint("BOTTOMRIGHT", BR, "TOPRIGHT")
+        C:SetPoint("TOPLEFT", TL, "BOTTOMRIGHT")
+        C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT")
+
+        TL:SetTexCoord(minX, minX + cx, minY, minY + cy)
+        TR:SetTexCoord(maxX - cx, maxX, minY, minY + cy)
+        BL:SetTexCoord(minX, minX + cx, maxY - cy, maxY)
+        BR:SetTexCoord(maxX - cx, maxX, maxY - cy, maxY)
+        T:SetTexCoord(minX + cx, maxX - cx, minY, minY + cy)
+        B:SetTexCoord(minX + cx, maxX - cx, maxY - cy, maxY)
+        L:SetTexCoord(minX, minX + cx, minY + cy, maxY - cy)
+        R:SetTexCoord(maxX - cx, maxX, minY + cy, maxY - cy)
+        C:SetTexCoord(minX + cx, maxX - cx, minY + cy, maxY - cy)
+
+        btn.slices = slices
+    end
+
+    local apply = CreateFrame("Button", nil, prevContainer)
+    ApplyStyleButtonSkin(apply)
+    local applyLabel = apply:CreateFontString(nil, "OVERLAY")
+    applyLabel:SetAllPoints()
+    applyLabel:SetJustifyH("CENTER")
+    applyLabel:SetJustifyV("MIDDLE")
+    apply:SetFontString(applyLabel)
+    local function PaintApplyButton(hover)
+        local enabled = apply:IsEnabled()
+        local r, g, b = PreviewAccentColor()
+        for _, slice in ipairs(apply.slices) do
+            slice:SetVertexColor(r, g, b, enabled and (hover and 1 or 0.5) or 0.25)
+        end
+        applyLabel:SetTextColor(enabled and 1 or 0.55, enabled and 1 or 0.55, enabled and 1 or 0.55, 1)
+    end
+    apply:SetScript("OnEnter", function() PaintApplyButton(true) end)
+    apply:SetScript("OnLeave", function() PaintApplyButton(false) end)
+
     apply:SetSize(150, 24)
     apply:SetPoint("BOTTOM", prevContainer, "BOTTOM", 0, 8)
     local dimensions = prevContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     dimensions:SetPoint("BOTTOM", apply, "TOP", 0, 5)
     dimensions:SetFont(FetchFont("AAA_ITC_Avant_Garde"), 10, "OUTLINE")
     local styleIcon = prevContainer:CreateTexture(nil, "OVERLAY")
-    styleIcon:SetSize(16, 16)
+    styleIcon:SetSize(20, 20)
     styleIcon:SetPoint("RIGHT", dimensions, "LEFT", -5, 0)
     fakeBar.StyleIcon = styleIcon
     apply:SetScript("OnClick", function()
@@ -284,7 +358,12 @@ KT:RegisterPage("castbar", "Cast Bar", 12, function(sc, W)
         local applied = selectedStyle == Styles:GetStyle(KT.db.profile.castbar)
         apply:SetText(LText(applied and "Applied" or "Apply Style"))
         apply:SetEnabled(not applied)
+        local globalFont = KT.ResolveFontPath and KT:ResolveFontPath() or FetchFont("AAA_ITC_Avant_Garde")
+        applyLabel:SetFont(globalFont, 11, "OUTLINE")
+        dimensions:SetFont(globalFont, 10, "OUTLINE")
+        PaintApplyButton(false)
         for _, button in ipairs(tabs) do
+            button.label:SetFont(globalFont, 11, "OUTLINE")
             local on = button.key == selectedStyle
             local r, g, b = PreviewAccentColor()
             if KT.AddBorder then KT:AddBorder(button, on and r or 0, on and g or 0, on and b or 0, 1) end

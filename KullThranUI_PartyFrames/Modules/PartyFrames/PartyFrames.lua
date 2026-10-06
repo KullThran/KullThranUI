@@ -1814,7 +1814,7 @@ local function GetTestUnitData(fakeUnit, mode)
         result[key] = value
     end
     result.name = fakeUnit.isPlayer and "Player" or data.name
-    result.isPlayer = fakeUnit.isPlayer or data.isPlayer
+    result.isPlayer = fakeUnit.isPlayer == true
     result.role = fakeUnit.isPlayer and "DAMAGER" or result.role
     local testStatusOverrides = ns.PF_TestStatusOverrides
     if fakeUnit.isPlayer then
@@ -1828,7 +1828,12 @@ local function GetTestUnitData(fakeUnit, mode)
         end
     end
     local testClasses = {"HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR", "DRUID", "DEATHKNIGHT", "MONK", "DEMONHUNTER", "EVOKER"}
-    result.class = fakeUnit.isPlayer and "PALADIN" or testClasses[((index - 1) % #testClasses) + 1]
+    result.class = (ns.PF_TestClassOverrides and ns.PF_TestClassOverrides[index]) or testClasses[((index - 1) % #testClasses) + 1]
+    if fakeUnit.isPlayer then
+        local _, playerClass = UnitClass("player")
+        result.class = playerClass or result.class
+        result.name = (UnitName and UnitName("player")) or "Player"
+    end
     return result
 end
 
@@ -4409,6 +4414,8 @@ local function GetTestAuraState(fakeUnit, mode, db, seed)
     local index = fakeUnit and fakeUnit.index or 1
     local result = { buffs = {}, debuffs = {}, cc = nil, missingBuff = nil, dispelType = nil, dispelAuraInstanceID = nil }
     local noDispelOverlay = ns.PF_TestNoDispelOverlay
+    -- Demonstrate the overlay on a single member; keep debuff icons on others.
+    result.suppressDispelOverlay = index ~= 1 or (noDispelOverlay and noDispelOverlay[index]) == true
     if not db or db.showAuras == false then return result end
 
     local maxBuffs = math.max(0, math.min(5, tonumber(db.auraMaxBuffs) or 3))
@@ -4438,7 +4445,7 @@ local function GetTestAuraState(fakeUnit, mode, db, seed)
         local seedOffset = tonumber(seed) or 0
         for i = 1, #TEST_AURA_DEBUFFS do
             local sample = TEST_AURA_DEBUFFS[(((index * 7) + (i * 11) + seedOffset) % #TEST_AURA_DEBUFFS) + 1]
-            if db.showDispelOverlay ~= false and not (noDispelOverlay and noDispelOverlay[index]) then
+            if db.showDispelOverlay ~= false and not result.suppressDispelOverlay then
                 TrackDispel(result, sample.dispelType, sample.spellID)
             end
             if AuraSpellIsVisible(db, sample.spellID) then
@@ -4452,7 +4459,7 @@ local function GetTestAuraState(fakeUnit, mode, db, seed)
     -- showed no CC icon at all.
     if db.showCrowdControl ~= false and index % 3 == 1 and AuraSpellIsVisible(db, 118) then
         result.cc = { icon = 136071, spellID = 118, dispelType = "Magic" }
-        if not (noDispelOverlay and noDispelOverlay[index]) then
+        if db.showDispelOverlay ~= false and not result.suppressDispelOverlay then
             TrackDispel(result, "Magic")
         end
     end
@@ -5110,7 +5117,7 @@ function Mod:UpdateFrameAuras(frame)
         HideAuraIcon(frame.missingBuffIcon)
         if frame.dispelOverlay then frame.dispelOverlay:Hide() end
         local borderColor = nil
-        if db.showDispelOverlay ~= false then
+        if db.showDispelOverlay ~= false and not state.suppressDispelOverlay then
             borderColor = (state.dispelType and DISPEL_COLORS[state.dispelType]) or GetAuraDispelColor(frame.unit, state.dispelAuraInstanceID, tonumber(db.dispelOverlayAlpha) or 1.0)
         end
         SetDispelFrameBorder(frame, borderColor, tonumber(db.dispelOverlayAlpha) or 1.0, tonumber(db.dispelBorderThickness) or 2, tonumber(db.dispelGradientAlpha) or 1.0, tonumber(db.dispelGradientSize) or 0.5)
@@ -5151,7 +5158,7 @@ function Mod:UpdateFrameAuras(frame)
 
     if frame.dispelOverlay then frame.dispelOverlay:Hide() end
     local borderColor = nil
-    if db.showDispelOverlay ~= false then
+    if db.showDispelOverlay ~= false and not state.suppressDispelOverlay then
         borderColor = (state.dispelType and DISPEL_COLORS[state.dispelType]) or GetAuraDispelColor(frame.unit, state.dispelAuraInstanceID, tonumber(db.dispelOverlayAlpha) or 1.0)
         
         -- 255 loop removed, relying on GetAuraDispelColor logic or state.dispelType
@@ -5893,6 +5900,16 @@ function Mod:GetLayoutCount(mode, units)
     return count
 end
 
+-- The unit frames module spawns KullThranUI_UF_Boss1..5 and clears their
+-- unit attribute when its boss frames are disabled, so a bound unit means
+-- those frames own the encounter bosses.
+function Mod:IsUnitFramesBossActive()
+    local frame = _G.KullThranUI_UF_Boss1
+    if not (frame and frame.GetAttribute) then return false end
+    local ok, unit = pcall(frame.GetAttribute, frame, "unit")
+    return ok and unit ~= nil
+end
+
 function Mod:GetModeVisibility(mode)
     local db = self:GetModeDB(mode)
     if self.testMode and self.testMode[mode] then return true end
@@ -5903,6 +5920,9 @@ function Mod:GetModeVisibility(mode)
         return inArena
     end
     if mode == "boss" then
+        -- KullThranUI_UnitFrames already draws boss1..boss5; showing this
+        -- pool as well renders every encounter boss twice.
+        if self:IsUnitFramesBossActive() then return false end
         return IsEncounterInProgress and IsEncounterInProgress() == true
     end
     local liveMode = GetLiveGroupMode()
@@ -6291,6 +6311,9 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         local cr, cg, cb
         if db.colorByClass ~= false then
             cr, cg, cb = GetTestClassColor(data.class, role)
+        elseif db.customHealthColor then
+            local c = db.customHealthColor
+            cr, cg, cb = c.r, c.g, c.b
         else
             cr, cg, cb = GetRoleColor(role)
         end
@@ -6314,7 +6337,10 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         end
         frame.power:SetShown(db.showPowerBar == true)
         frame.absorb:SetStatusBarTexture(ResolveStatusbarTexture(db.absorbBarTexture))
-        frame.absorb:SetStatusBarColor(DEFAULT_ABSORB_COLOR.r, DEFAULT_ABSORB_COLOR.g, DEFAULT_ABSORB_COLOR.b, DEFAULT_ABSORB_COLOR.a)
+        local absorbColor = db.absorbBarColor or DEFAULT_ABSORB_COLOR
+        frame.absorb:SetStatusBarColor(absorbColor.r or DEFAULT_ABSORB_COLOR.r,
+            absorbColor.g or DEFAULT_ABSORB_COLOR.g, absorbColor.b or DEFAULT_ABSORB_COLOR.b,
+            absorbColor.a or DEFAULT_ABSORB_COLOR.a)
         frame.absorb:SetMinMaxValues(0, 100)
         frame.absorb:SetValue((data.absorb or 0) * 100)
         frame.absorb:SetShown(db.showAbsorbBar ~= false and (data.absorb or 0) > 0)
@@ -6331,7 +6357,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
             frame.statusIcon:Hide()
             frame.nameText:SetAlpha(1)
         end
-        frame.nameText:SetText(FitText(data.isPlayer and "Player" or data.name, frame._nameMaxChars))
+        frame.nameText:SetText(FitText(data.name, frame._nameMaxChars))
         frame.nameText:Show()
         local frameH = tonumber(db.frameHeight) or 64
         local frameW = (tonumber(db.frameWidth) or 125) * (tonumber(db.frameScale) or 1)
@@ -6422,6 +6448,9 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     local r, g, b
     if db.colorByClass ~= false then
         r, g, b = GetClassColor(unit)
+    elseif db.customHealthColor then
+        local c = db.customHealthColor
+        r, g, b = c.r, c.g, c.b
     else
         r, g, b = GetRoleColor(role)
     end
@@ -6716,6 +6745,8 @@ function Mod:ApplyLayout(mode)
         if (visible or reserveSecureUnits) and unit then
             local slot = type(unit) == "table" and unit.slot or index
             self:PositionFrame(frame, container, slot, layoutCount, mode, visibleLayoutCount)
+            frame._ktRosterSlot = slot
+            frame._ktStandby = nil
             frame.mode = mode
             self:SetFrameUnit(frame, unit)
             if mode == 'arenaEnemy' and not frame.fakeUnit then
@@ -6728,6 +6759,7 @@ function Mod:ApplyLayout(mode)
             self:UpdateFrameVisual(frame)
         else
             self:SetFrameUnit(frame, nil)
+            frame._ktStandby = nil
             self:ClearFrameAuras(frame)
             frame:Hide()
         end
@@ -6738,9 +6770,10 @@ function Mod:ApplyLayout(mode)
     for _, frame in ipairs(frames) do
         frame._ktRosterUnitKey = self:GetRosterUnitKey(frame.fakeUnit or frame.unit)
     end
+    local hasStandby = self:BindPartyStandbyFrames(mode, container, frames, units, layoutCount, visible)
     -- Keep the enemy container prepared outside arenas; its children remain hidden
     -- until arena visibility is active, then show throughout the preparation phase.
-    container:SetShown((visible and #units > 0) or reserveSecureUnits)
+    container:SetShown((visible and (self:CountRosterUnits(units) > 0 or hasStandby)) or reserveSecureUnits)
     self:ApplyOwnGroupLayout(mode, ownGroupUnits, visible)
     self:ArmAuraDurationDriver()
     ScheduleExternalPartyFramesRefresh()
@@ -6789,6 +6822,78 @@ function Mod:HideRosterMode(mode)
     if container then container:Hide() end
     local ownGroup = self.ownGroupContainers and self.ownGroupContainers[mode]
     if ownGroup then ownGroup:Hide() end
+    if InCombatLockdown and InCombatLockdown() then return end
+    for _, frame in ipairs((self.frames and self.frames[mode]) or {}) do
+        if frame._ktStandby then
+            self:SetFrameUnit(frame, nil)
+            frame._ktStandby = nil
+            frame._ktRosterUnitKey = nil
+            frame._ktRosterSlot = nil
+        end
+    end
+end
+
+-- Centered layouts place units at fixed slots ({ [2] = party1, [3] = player }),
+-- so the list has holes and #units may legally return 0 for a duo. That hid
+-- the whole party container until a third member joined.
+function Mod:CountRosterUnits(units)
+    local count = 0
+    if type(units) ~= "table" then return 0 end
+    for key in pairs(units) do
+        if type(key) == "number" then count = count + 1 end
+    end
+    return count
+end
+
+-- Unit attributes cannot change during combat lockdown, so a group joined in
+-- combat had no frame to show until PLAYER_REGEN_ENABLED. Out of combat, bind
+-- every free party slot to a party token that is not present yet; UnitWatch
+-- (secure, combat-safe) reveals the frame as soon as that member exists, and
+-- the regular roster refresh re-sorts the slots once combat ends.
+function Mod:BindPartyStandbyFrames(mode, container, frames, units, layoutCount, visible)
+    if mode ~= "party" or not visible then return false end
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if self.testMode and self.testMode[mode] then return false end
+    if self:IsArenaContext() or (IsInRaid and IsInRaid()) then return false end
+
+    local used = {}
+    for _, unit in pairs(units or {}) do
+        local token = type(unit) == "table" and unit.unit or unit
+        if type(token) == "string" then used[token] = true end
+    end
+    local free = {}
+    for i = 1, 4 do
+        if not used["party" .. i] then free[#free + 1] = "party" .. i end
+    end
+
+    local bound = false
+    local nextToken = 1
+    for index, frame in ipairs(frames or {}) do
+        if not free[nextToken] then break end
+        if not units[index] and not frame.fakeUnit then
+            local count = math.max(tonumber(layoutCount) or 0, index)
+            self:PositionFrame(frame, container, index, count, mode, count)
+            frame.mode = mode
+            self:SetFrameUnit(frame, free[nextToken])
+            frame._ktStandby = true
+            frame._ktRosterUnitKey = nil
+            frame._ktRosterSlot = nil
+            nextToken = nextToken + 1
+            bound = true
+        end
+    end
+    return bound
+end
+
+-- Paint standby frames whose member appeared during combat. Only visual
+-- (non-protected) work happens here; UnitWatch already handles visibility.
+function Mod:PaintStandbyFrames()
+    for _, frame in ipairs((self.frames and self.frames.party) or {}) do
+        if frame._ktStandby and frame.unit and IsUnitUsable(frame.unit) then
+            self:UpdateFrameVisual(frame)
+            self:UpdateFrameRange(frame, true)
+        end
+    end
 end
 
 function Mod:RefreshRosterLayout(mode)
@@ -6824,7 +6929,14 @@ function Mod:RefreshRosterLayout(mode)
             local slot = type(unit) == "table" and unit.slot or index
             local unitKey = self:GetRosterUnitKey(unit)
             local occupantChanged = frame._ktRosterUnitKey ~= unitKey
-            if layoutChanged then self:PositionFrame(frame, container, slot, layoutCount, mode, visibleLayoutCount) end
+            -- A slot filled for the first time (or after a standby binding) needs
+            -- its anchor even when the layout key did not change: centered
+            -- layouts keep the same key for a duo and a full party.
+            if layoutChanged or frame._ktRosterSlot ~= slot or frame:GetNumPoints() == 0 then
+                self:PositionFrame(frame, container, slot, layoutCount, mode, visibleLayoutCount)
+                frame._ktRosterSlot = slot
+            end
+            frame._ktStandby = nil
             frame.mode = mode
             local token = type(unit) == "table" and unit.unit or unit
             if frame.unit ~= token or frame.fakeUnit ~= (type(unit) == "table" and unit.fake and unit or nil) then
@@ -6854,12 +6966,14 @@ function Mod:RefreshRosterLayout(mode)
         elseif frame.unit or frame.fakeUnit or frame:IsShown() then
             self:SetFrameUnit(frame, nil)
             frame._ktRosterUnitKey = nil
+            frame._ktStandby = nil
             self:ClearFrameAuras(frame)
             frame:Hide()
         end
     end
     if layoutChanged then self:UpdateGroupHeaders(container, mode, layoutCount) end
-    container:SetShown((visible and #units > 0) or reserveSecureUnits)
+    local hasStandby = self:BindPartyStandbyFrames(mode, container, frames, units, layoutCount, visible)
+    container:SetShown((visible and (self:CountRosterUnits(units) > 0 or hasStandby)) or reserveSecureUnits)
     self:ApplyOwnGroupLayout(mode, self:GetOwnGroupUnits(mode), visible)
 
     if pendingPaint and #pendingPaint > 0 then
@@ -6905,6 +7019,7 @@ function Mod:RefreshLiveRoster()
     if self.db and self.db.enable == false then return end
     if InCombatLockdown and InCombatLockdown() then
         self.pendingRoster = true
+        self:PaintStandbyFrames()
         return false, "combat"
     end
     self:EnsureDB()
@@ -6942,9 +7057,13 @@ function Mod:GetLiveRosterSignature()
         signature[#signature + 1] = mode
         signature[#signature + 1] = tostring(units.layoutCount or #units)
         signature[#signature + 1] = tostring(units.visibleLayoutCount or #units)
-        for index, unit in ipairs(units) do
-            signature[#signature + 1] = tostring(index)
-            signature[#signature + 1] = self:GetRosterUnitKey(unit) or "-"
+        -- Walk by slot: centered layouts leave holes that stop ipairs early.
+        for index = 1, math.max(tonumber(units.layoutCount) or 0, #units) do
+            local unit = units[index]
+            if unit then
+                signature[#signature + 1] = tostring(index)
+                signature[#signature + 1] = self:GetRosterUnitKey(unit) or "-"
+            end
         end
     end
     return table.concat(signature, "|")
@@ -7002,6 +7121,8 @@ function Mod:OnGroupRosterUpdate()
     C_Timer.After(0.75, function()
         if token ~= self._rosterRefreshToken then return end
         self:RefreshAllIndicators()
+        -- Names/classes of a member joined in combat can settle late.
+        if InCombatLockdown and InCombatLockdown() then self:PaintStandbyFrames() end
     end)
 end
 
@@ -7424,6 +7545,16 @@ function Mod:PLAYER_REGEN_DISABLED()
     end
 end
 
+function Mod:RandomizeTestClasses()
+    local classes = IS_FOREVER_CLIENT and {"DRUID", "HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR"}
+        or {"HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR", "DRUID", "DEATHKNIGHT", "MONK", "DEMONHUNTER", "EVOKER"}
+    for index = #classes, 2, -1 do
+        local other = math.random(1, index)
+        classes[index], classes[other] = classes[other], classes[index]
+    end
+    ns.PF_TestClassOverrides = {}
+    for index = 1, 40 do ns.PF_TestClassOverrides[index] = classes[((index - 1) % #classes) + 1] end
+end
 function Mod:SetTestMode(mode, enabled)
     mode = NormalizeMode(mode)
     if InCombatLockdown and InCombatLockdown() then
@@ -7437,6 +7568,7 @@ function Mod:SetTestMode(mode, enabled)
             self.testMode[otherMode] = nil
         end
         self.testAuraSeeds[mode] = math.random(1, 100000)
+        self:RandomizeTestClasses()
     end
     self.testMode[mode] = enabled and true or nil
     self.auraCache = {}
@@ -7635,6 +7767,8 @@ function Mod:RegisterUnlockElements()
     local labels = {
         party = "Party Frames - Party",
         raid = "Party Frames - Raid",
+        raid40 = "Party Frames - Raid 40",
+        boss = "Party Frames - Boss",
         raidOwnGroup = "Party Frames - Own Group",
         arena = "Party Frames - Arena",
         arenaEnemy = "Party Frames - Arena Enemies",
@@ -7651,11 +7785,15 @@ function Mod:RegisterUnlockElements()
             end,
             getSize = function()
                 local frame = self.containers[mode]
-                if frame then return frame:GetSize() end
+                if frame and frame:IsShown() then return frame:GetSize() end
                 return self:GetContainerSize(mode)
             end,
             isHidden = function()
                 local frame = self.containers[mode]
+                if IsRaidMode(mode) and KT._unlockActive then
+                    local db = self:GetModeDB(mode)
+                    return not frame or self.db.enabled == false or db.enabled == false
+                end
                 return not (frame and frame:IsShown())
             end,
             loadPosition = function()
@@ -7681,11 +7819,16 @@ function Mod:RegisterUnlockElements()
             end,
             getSize = function()
                 local frame = self.ownGroupContainers and self.ownGroupContainers[mode]
-                if frame then return frame:GetSize() end
+                if frame and frame:IsShown() then return frame:GetSize() end
                 return self:GetOwnGroupContainerSize(mode)
             end,
             isHidden = function()
                 local frame = self.ownGroupContainers and self.ownGroupContainers[mode]
+                if KT._unlockActive then
+                    local db = self:GetModeDB(mode)
+                    return not frame or self.db.enabled == false or db.enabled == false
+                        or db.raidPopOutOwnGroup ~= true or db.raidUseGroups == false
+                end
                 return not (frame and frame:IsShown())
             end,
             loadPosition = function()

@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Buffs & Debuffs
 ## Notes: KullThranUI module: Buffs & Debuffs
 ## Author: KullThran
-## Version: @project-version@
+## Version: 5.1.3
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 

@@ -1790,9 +1790,13 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
     if type(frame) ~= "table" or type(unitRegion) ~= "table" then return end
     local geom = PetArt.geom[kind]
     if not (geom and frame.Health) then return end
+    local atlasInfo
     if kind == "forever" then
-        local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(geom.atlas)
-        if not info then return end
+        local theme = self.GetRenderedTheme and self:GetRenderedTheme()
+        atlasInfo = (theme == "forever" and self:GetForeverAtlasPixels(geom.atlas))
+            or ResolveRetailAtlasOverride(geom.atlas)
+            or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(geom.atlas))
+        if not atlasInfo then return end
     end
     local scale = tonumber(opts and opts.scale) or 1
     scale = math.max(0.5, math.min(3, scale))
@@ -1831,10 +1835,18 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
         art:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.art.x * scale, geom.art.y * scale)
         art:SetSize(geom.art.w * scale, geom.art.h * scale)
     else
-        art:SetAtlas(geom.atlas)
+        if atlasInfo.file then
+            art:SetTexture(atlasInfo.file)
+            if atlasInfo.sheetW then
+                art:SetTexCoord(atlasInfo.left / atlasInfo.sheetW, atlasInfo.right / atlasInfo.sheetW,
+                    atlasInfo.top / atlasInfo.sheetH, atlasInfo.bottom / atlasInfo.sheetH)
+            else
+                art:SetTexCoord(atlasInfo.leftTexCoord, atlasInfo.rightTexCoord,
+                    atlasInfo.topTexCoord, atlasInfo.bottomTexCoord)
+            end
+        else art:SetAtlas(geom.atlas) end
         art:SetPoint("CENTER", host, "CENTER", 0, 0)
-        local info = C_Texture.GetAtlasInfo(geom.atlas)
-        art:SetSize((info.width or geom.w) * scale, (info.height or geom.h) * scale)
+        art:SetSize((atlasInfo.width or geom.w) * scale, (atlasInfo.height or geom.h) * scale)
     end
     art:Show()
 

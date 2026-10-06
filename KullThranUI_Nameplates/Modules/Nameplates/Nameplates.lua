@@ -444,7 +444,8 @@ targetIndicatorStyle = "arrow-double",
 castIconScale = 1,
 pandemicGlowStyle = 1,
 levelShadow = true,
-rareEliteIconSize = 20,
+rareEliteIconSize = 36,
+_classificationSizeMigrated_v2 = true,
 threatModName = false,
 textSlotCenterColor = {
 b = 1,
@@ -648,7 +649,10 @@ r = 0.9,
 topleftSlotYOffset = 0,
 castTargetSize = 10,
 friendlyPlayerHealthTexture = "Melli Reforged",
-classificationSlot = "topleft",
+classificationSlot = "topright",
+classificationXOffset = 0,
+classificationYOffset = 0,
+_classificationCornerMigrated_v1 = true,
 textSlotTopSize = 12,
 textSlotLeftColor = {
 b = 1,
@@ -1285,9 +1289,8 @@ local function GetClassificationSlot()
 end
 ns.GetClassificationSlot = GetClassificationSlot
 local function GetRareEliteIconSize()
-    local pos = KullThranUINameplatesDB and KullThranUINameplatesDB.classificationSlot or defaults.classificationSlot
-    if pos == "none" then return defaults.rareEliteIconSize or 20 end
-    return KullThranUINameplatesDB and KullThranUINameplatesDB[pos .. "SlotSize"] or defaults[pos .. "SlotSize"] or 20
+    return tonumber(KullThranUINameplatesDB and KullThranUINameplatesDB.rareEliteIconSize)
+        or defaults.rareEliteIconSize or 20
 end
 ns.GetRareEliteIconSize = GetRareEliteIconSize
 local function GetNameYOffset()
@@ -1996,6 +1999,10 @@ ns._AuraLayout = {
 --- Paso 1: resuelve offsets XY desde la DB para un slotKey de aura.
 --- Mapea slotKey → DB key → posición guardada → GetSlotOffsets.
 function ns._AuraLayout.ResolveOffsets(slotKey)
+    if slotKey == "classification" then
+        return tonumber(db and db.classificationXOffset) or 0,
+            tonumber(db and db.classificationYOffset) or 0
+    end
     local dbKey = ns._AuraLayout.SLOT_DB_MAP[slotKey]
     if not dbKey then return 0, 0 end
     local pos = (db and db[dbKey]) or defaults[dbKey]
@@ -2211,7 +2218,10 @@ function ns._AuraLayout.MeasureLateralExtent(plate)
     for _, s in ipairs(singles) do
         if s.frame and s.frame:IsShown() then
             local side = s.posFunc()
-            if side == "left" or side == "right" then
+            if side == "topright" and s.key == "classification" then
+                local xo = select(1, ns._AuraLayout.ResolveOffsets(s.key))
+                extR = math.max(extR, 2 + s.sizeFunc() * 0.5 + xo)
+            elseif side == "left" or side == "right" then
                 local sz = s.sizeFunc()
                 local xo = (select(1, ns._AuraLayout.ResolveOffsets(s.key)))
                 local ext = (side == "left") and (lateralPx + sz - xo) or (lateralPx + sz + xo)
@@ -2916,6 +2926,31 @@ local function InitDB()
         -- DoTs are visible on NPC and mob nameplates as well.
         KullThranUINameplatesDB.showAllDebuffs = true
         KullThranUINameplatesDB._showAllPlayerDebuffsMigrated_v1 = true
+    end
+    if not KullThranUINameplatesDB._classificationSizeMigrated_v2 then
+        local saved = KullThranUINameplatesDB
+        -- Before the corner change, classification inherited its assigned slot's size.
+        -- Repair the first corner migration's 20px fallback using the former default slot.
+        local oldSlot = saved._classificationCornerMigrated_v1 and "topleft"
+            or saved.classificationSlot or "topleft"
+        if not saved._classificationCornerMigrated_v1 or saved.rareEliteIconSize == nil
+            or saved.rareEliteIconSize == 20 then
+            saved.rareEliteIconSize = tonumber(saved[oldSlot .. "SlotSize"])
+                or defaults[oldSlot .. "SlotSize"] or defaults.rareEliteIconSize
+        end
+        saved._classificationSizeMigrated_v2 = true
+    end
+    if not KullThranUINameplatesDB._classificationCornerMigrated_v1 then
+        local saved = KullThranUINameplatesDB
+        local oldSlot = saved.classificationSlot or "topleft"
+        if oldSlot ~= "none" and oldSlot ~= "topright" then
+            -- Keep the displaced aura/marker enabled in the vacated slot.
+            for _, key in ipairs({ "debuffSlot", "buffSlot", "ccSlot", "raidMarkerPos" }) do
+                if (saved[key] or defaults[key]) == "topright" then saved[key] = oldSlot end
+            end
+            saved.classificationSlot = "topright"
+        end
+        saved._classificationCornerMigrated_v1 = true
     end
     for k, v in pairs(defaults) do
         if KullThranUINameplatesDB[k] == nil then
@@ -5515,8 +5550,16 @@ end
 
 local LEVEL_NAME_GAP = 4
 
-local function AnchorClassificationAdornment(frame, slot, xOffset, yOffset, topPush)
-    local parent = frame:GetParent()
+local function AnchorClassificationAdornment(frame, slot, xOffset, yOffset, topPush, parent)
+    parent = parent or frame:GetParent()
+    if slot == "topright" then
+        -- Center the existing-size ornament on the bar corner so it embraces the border.
+        -- Level badges and class power do not move this corner anchor.
+        frame:ClearAllPoints()
+        PP.Point(frame, "CENTER", parent.health, "TOPRIGHT",
+            2 + (xOffset or 0), 2 + (yOffset or 0))
+        return true
+    end
     if slot == "topleft"
         and UseDynamicNameplateLevelLayout()
         and parent.level and parent.level:IsShown() then
@@ -5532,6 +5575,7 @@ local function AnchorClassificationAdornment(frame, slot, xOffset, yOffset, topP
     -- Disabled mode deliberately uses the existing anchor unchanged.
     return AnchorPlateAdornment(frame, slot, xOffset, yOffset, topPush)
 end
+ns.AnchorClassificationAdornment = AnchorClassificationAdornment
 local function GetTopNameReservedWidth(frame, barWidth)
     local reservedWidth = 0
 
@@ -5540,7 +5584,12 @@ local function GetTopNameReservedWidth(frame, barWidth)
     end
 
     if frame.classFrame and frame.classFrame:IsShown() and GetClassificationSlot() ~= "none" then
-        reservedWidth = reservedWidth + GetRareEliteIconSize() + 4
+        local inset = GetRareEliteIconSize()
+        if GetClassificationSlot() == "topright" then
+            local x = select(1, ns._AuraLayout.ResolveOffsets("classification"))
+            inset = math.max(0, inset * 0.5 - 2 - x)
+        end
+        reservedWidth = reservedWidth + inset + 4
     end
 
     return math.max(barWidth - reservedWidth, 20)
@@ -7454,7 +7503,7 @@ do
             "auraDurationTextSize", "auraDurationTextColor",
             "auraStackTextSize", "auraStackTextColor",
             "buffTextSize", "buffTextColor", "ccTextSize", "ccTextColor",
-            "raidMarkerPos", "classificationSlot"
+            "raidMarkerPos", "classificationSlot", "classificationXOffset", "classificationYOffset", "rareEliteIconSize"
         )
         AddPresetKeys(
             "topSlotSize", "topSlotXOffset", "topSlotYOffset",

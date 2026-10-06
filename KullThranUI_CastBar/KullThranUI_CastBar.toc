@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Cast Bar
 ## Notes: KullThranUI module: Cast Bar
 ## Author: KullThran
-## Version: @project-version@
+## Version: 5.1.3
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 ## OptionalDeps: KullThranUI_ResourceBars, KullThranUI_CooldownManager

@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Minimap
 ## Notes: KullThranUI module: Minimap
 ## Author: KullThran
-## Version: @project-version@
+## Version: 5.1.3
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
