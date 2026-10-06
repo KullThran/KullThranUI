@@ -21,6 +21,14 @@ on:
           - beta
           - alpha
         default: release
+      reuse_tag:
+        description: 'Publish an existing release tag without recreating it'
+        type: boolean
+        default: false
+      notify_discord:
+        description: 'Send the release announcement to Discord'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -50,10 +58,15 @@ jobs:
             *)     tag="v${version}" ;;
           esac
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "Release $tag"
-          git push origin "$tag"
+          if [[ "${{ inputs.reuse_tag }}" == "true" ]]; then
+            git rev-parse --verify "refs/tags/$tag"
+            git checkout --detach "refs/tags/$tag"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "Release $tag"
+            git push origin "$tag"
+          fi
 
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
@@ -156,6 +169,7 @@ jobs:
       # - Release: aviso a todo el mundo (@everyone)
       # - Beta/Alpha: aviso sin @everyone, marcado claramente como prueba
       - name: Notificar a Discord
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.notify_discord) }}
         uses: Ilshidur/action-discord@master
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
