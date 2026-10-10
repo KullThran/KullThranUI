@@ -35,19 +35,13 @@ local function GetAccent()
         return db.customColor.r, db.customColor.g, db.customColor.b
     end
 
-    local skin = KT.db and KT.db.profile and KT.db.profile.skin
-    if skin and skin.kullthranUIColorByClass then
-        local _, class = UnitClass("player")
-        if class then
-            local r, g, b = GetClassColor(class)
-            if type(r) == "table" and r.r then
-                return r.r, r.g, r.b
-            elseif r and g and b then
-                return r, g, b
-            end
-        end
+    -- Follow the active visual style's accent (Classic gold, Retail class color,
+    -- KUI accent), the same resolution the rest of the UI uses.
+    if KT.GetStyleAccentRGB then
+        return KT:GetStyleAccentRGB()
     end
 
+    local skin = KT.db and KT.db.profile and KT.db.profile.skin
     local color = (skin and skin.accentColor) or KT.BRAND_COLOR or { r = 0, g = 0.6, b = 1 }
     return color.r, color.g, color.b
 end
