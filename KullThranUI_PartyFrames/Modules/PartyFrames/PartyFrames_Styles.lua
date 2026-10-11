@@ -386,7 +386,8 @@ function Styles.LayoutPvP(frame, opts, g, scale, preview)
     if not preview and InCombatLockdown and InCombatLockdown() then return end
     frame.pvpIcon:ClearAllPoints()
     frame.pvpIcon:SetPoint("CENTER", frame.portraitFrame, "BOTTOMLEFT",
-        3 * scale + (tonumber(opts.pvpX) or 0), 3 * scale + (tonumber(opts.pvpY) or 0))
+        3 * scale + (frame._pfNativePad or 0) + (tonumber(opts.pvpX) or 0),
+        3 * scale + (frame._pfNativePad or 0) + (tonumber(opts.pvpY) or 0))
 end
 function Styles.HideNativePartyReminder(frame, mode, key)
     if mode == "party" and (key == "classic" or key == "retail" or key == "forever") then
@@ -499,27 +500,19 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     frame.power:SetShown(cfg.showPowerBar == true)
     local p = g.portrait
     local size = math.max(16, p[3] * s + (tonumber(cfg.portraitSize) or 0))
-    Box(frame.portraitFrame, host, p[1] + (tonumber(cfg.portraitX) or 0) / s,
-        p[2] - (tonumber(cfg.portraitY) or 0) / s, size / s, size / s, s)
+    -- The ring opening is wider than the portrait slot and the portrait frame
+    -- clips its children, so the frame itself grows to the opening (same centre).
+    local pad = size * 0.075
+    frame._pfNativePad = pad
+    Box(frame.portraitFrame, host, p[1] + (tonumber(cfg.portraitX) or 0) / s - pad / s,
+        p[2] - (tonumber(cfg.portraitY) or 0) / s - pad / s, (size + 2 * pad) / s, (size + 2 * pad) / s, s)
     local portraitMask = frame._pfNativePortraitMask
     if not portraitMask then
         portraitMask = frame.portraitFrame:CreateMaskTexture()
         portraitMask:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        portraitMask:SetAllPoints(frame.portraitFrame)
         frame._pfNativePortraitMask = portraitMask
     end
-    -- The ring opening is wider than the portrait slot: grow the disc, its
-    -- circle mask and the model to the opening so no gap is left around it.
-    local pad = size * 0.075
-    local function Outset(region)
-        if not region then return end
-        region:ClearAllPoints()
-        region:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", -pad, pad)
-        region:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", pad, -pad)
-    end
-    Outset(portraitMask)
-    Outset(frame.portrait)
-    Outset(frame.portraitBG)
-    Outset(frame.portraitClass)
     if not frame._pfNativePortraitMaskApplied then
         for _, texture in ipairs({ frame.portrait, frame.portraitBG, frame.portraitClass }) do texture:AddMaskTexture(portraitMask) end
         frame._pfNativePortraitMaskApplied = true
@@ -529,7 +522,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     if model then
         -- The ring frame draws above the model and covers its square corners, so
         -- the model can fill the circle instead of leaving a visible gap.
-        local inset = math.floor(size * 0.04 + 0.5)
+        local inset = math.floor(size * 0.11 + 0.5)
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
         model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
@@ -570,7 +563,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     end
     if frame.levelText and (not Mod.db or not Mod.db.levelAnchor or Mod.db.levelAnchor == "AUTO") then
         frame.levelText:ClearAllPoints()
-        frame.levelText:SetPoint("BOTTOM", frame.portraitFrame, "BOTTOM", (Mod.db and Mod.db.levelX or 0), -2 * s + (Mod.db and Mod.db.levelY or 0))
+        frame.levelText:SetPoint("BOTTOM", frame.portraitFrame, "BOTTOM", (Mod.db and Mod.db.levelX or 0), -2 * s + (frame._pfNativePad or 0) + (Mod.db and Mod.db.levelY or 0))
     end
     Styles.LayoutPvP(frame, Mod.db, g, s, preview)
     if not frame._pfNativePowerText then
