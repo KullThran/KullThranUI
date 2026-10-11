@@ -502,7 +502,9 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     portraitMask:Show()
     local model = frame.portraitModel or frame.model3D
     if model then
-        local inset = math.floor(size * 0.18 + 0.5)
+        -- The ring frame draws above the model and covers its square corners, so
+        -- the model can fill the circle instead of leaving a visible gap.
+        local inset = math.floor(size * 0.12 + 0.5)
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
         model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
