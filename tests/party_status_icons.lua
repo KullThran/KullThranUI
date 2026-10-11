@@ -55,4 +55,15 @@ local preview={health=region(true),status=region(true),value=region(false),statu
 Styles.LayoutStatusIndicators(preview,{health={47,12,70,8}},1.25)
 assert(preview.statusIcon.point[2]==preview.status)
 assert(source:find("Styles.LayoutStatusIndicators(frame, g, s)",b,true))
+-- With a portrait the state icon sits on it and the label stays centred on the bar.
+do
+ local portrait=region(true); function portrait:GetWidth() return 40 end
+ local icon,status=region(true),region(true)
+ local frame={health=region(true),statusIcon=icon,statusText=status,valueText=region(false),
+  statusIconFrame=region(true),portraitFrame=portrait}
+ Styles.LayoutStatusIndicators(frame,{health={45,19,70,10}},1)
+ assert(icon.point[1]=="CENTER" and icon.point[2]==portrait and icon.point[3]=="CENTER","icon must sit on the portrait")
+ assert(status.point[2]==frame.health and status.point[4]==0,"label must stay centred on the bar")
+ assert(frame.statusIconFrame.level>=portrait:GetFrameLevel()+8,"icon must draw above the portrait")
+end
 print("PASS: native party Dead/Offline/AFK placement, scale, layering, healthy values and preview aliases")

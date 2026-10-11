@@ -289,18 +289,36 @@ function Styles.LayoutStatusIndicators(frame, g, scale)
         local iconWidth = (active and not hasLabel) and size * 2 or size
         local text = hasLabel and status or value
         local textWidth = math.max(1, math.min(40 * scale, g.health[3] * scale - iconWidth - gap))
+        -- Native styles keep the state icon on the portrait; only the label
+        -- (Dead, Offline) stays on the health bar.
+        local portrait = frame.portraitFrame
+        local onPortrait = portrait and portrait.GetWidth and portrait:GetWidth() > 0
+        if onPortrait then
+            local pw = portrait:GetWidth()
+            size = math.max(10, pw * 0.5)
+            iconWidth = (active and not hasLabel) and math.min(size * 2, pw * 0.9) or size
+            textWidth = math.max(1, math.min(g.health[3] * scale, 90 * scale))
+        end
         if active then
             text:ClearAllPoints()
-            text:SetPoint("CENTER", frame.health, "CENTER", (iconWidth + gap) * 0.5, 0)
+            text:SetPoint("CENTER", frame.health, "CENTER", onPortrait and 0 or (iconWidth + gap) * 0.5, 0)
             text:SetSize(textWidth, g.health[4] * scale)
             text:SetJustifyH("CENTER")
         end
         icon:ClearAllPoints()
         icon:SetSize(iconWidth, size)
         icon:SetTexCoord(0, 1, 0, 1)
-        icon:SetPoint("RIGHT", text, "LEFT", -gap, 0)
+        if onPortrait then
+            icon:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+        else
+            icon:SetPoint("RIGHT", text, "LEFT", -gap, 0)
+        end
         if frame.statusIconFrame then
-            frame.statusIconFrame:SetFrameLevel(frame.health:GetFrameLevel() + 2)
+            local level = frame.health:GetFrameLevel() + 2
+            if onPortrait and portrait.GetFrameLevel then
+                level = math.max(level, portrait:GetFrameLevel() + 8)
+            end
+            frame.statusIconFrame:SetFrameLevel(level)
         end
     end
     if frame.readyCheckIcon then
