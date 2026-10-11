@@ -446,8 +446,8 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
             local guildOK, _, count = pcall(GetNumGuildMembers)
             if guildOK and IsSafePreviewValue(count, "number") then onlineGuild = count end
         end
-        previewFriends:SetText(LText("Friends") .. ": " .. onlineFriends)
-        previewGuild:SetText(LText("Guild") .. ": |cff00ff00" .. onlineGuild .. "|r")
+        previewFriends:SetText(string.format(LText("Friends: %s"), tostring(onlineFriends)))
+        previewGuild:SetText(string.format(LText("Guild: %s"), "|cff00ff00" .. tostring(onlineGuild) .. "|r"))
 
         local zR, zG, zB = 1, 1, 1
         local pvpOK, pvpType = pcall(GetZonePVPInfo)
@@ -537,7 +537,7 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
                 local lbl = ringHolder:CreateFontString(nil, "OVERLAY")
                 lbl:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
                 lbl:SetPoint("TOPLEFT", 0, 0)
-                lbl:SetText("Minimap Frame Style")
+                lbl:SetText(LText("Minimap Frame Style"))
                 local MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
                 local tiles = {}
                 local function Current()
@@ -590,12 +590,12 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
                     local fs = btn:CreateFontString(nil, "OVERLAY")
                     fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
                     fs:SetPoint("BOTTOM", 0, 6)
-                    fs:SetText(def.label)
+                    fs:SetText(LText(def.label))
                     if def.key == "auto" then
                         local sub = btn:CreateFontString(nil, "OVERLAY")
                         sub:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
                         sub:SetPoint("CENTER", 0, 8)
-                        sub:SetText("follows the\nvisual style")
+                        sub:SetText(LText("follows the\nvisual style"))
                     end
                     btn:SetScript("OnClick", function()
                         if def.key == "auto" then

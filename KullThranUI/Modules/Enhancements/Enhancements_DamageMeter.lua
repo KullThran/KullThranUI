@@ -71,8 +71,16 @@ local function GetDamageMeterFont(cfg)
 end
 local function GetDamageMeterBarTexture(cfg)
     local path = cfg and cfg.barTexture
-    return DAMAGE_METER_TEXTURE_PATHS[path] and path or BAR_TEXTURE
+    if type(path) ~= "string" or path == "" then return BAR_TEXTURE end
+    if DAMAGE_METER_TEXTURE_PATHS[path] or path:sub(1, 10) == "Interface\\" then
+        return path
+    end
+    local media = LibStub("LibSharedMedia-3.0", true)
+    local fetched = media and media:Fetch("statusbar", path, true)
+    return type(fetched) == "string" and fetched ~= "" and fetched or BAR_TEXTURE
 end
+-- Live rows and the options preview must resolve the same saved selection.
+Mod.ResolveDamageMeterBarTexture = GetDamageMeterBarTexture
 local DAMAGE_METER_MEDIA = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\"
 local KUI_ICON_MEDIA = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\"
 local DROPDOWN_ARROW = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\downarrow.png"
@@ -160,8 +168,8 @@ local PREVIEW_DATA = {
     { name = "Mew", classFilename = "DEMONHUNTER", specIconID = 1247264, totalAmount = 3842000, amountPerSecond = 182300 },
     { name = "Ulkrad", classFilename = "WARRIOR", specIconID = 132355, totalAmount = 2746000, amountPerSecond = 130200 },
     { name = "Kullthran", classFilename = "MAGE", specIconID = 135932, totalAmount = 2194000, amountPerSecond = 104100 },
-    { name = "Rogue", classFilename = "ROGUE", specIconID = 136189, totalAmount = 1987000, amountPerSecond = 94400 },
-    { name = "Hunter", classFilename = "HUNTER", specIconID = 132164, totalAmount = 1712000, amountPerSecond = 81300 },
+    { name = LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE.ROGUE or "Rogue", classFilename = "ROGUE", specIconID = 136189, totalAmount = 1987000, amountPerSecond = 94400 },
+    { name = LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE.HUNTER or "Hunter", classFilename = "HUNTER", specIconID = 132164, totalAmount = 1712000, amountPerSecond = 81300 },
 }
 local PREVIEW_HEALING_DATA = {
     { name = "Vhii", classFilename = "PRIEST", specIconID = 135940, totalAmount = 3842000, amountPerSecond = 182300 },
@@ -206,10 +214,10 @@ end
 -- matter which color preset is selected. kui keeps the user's own accent.
 -- Row/class colors and the breakdown popup are untouched by this.
 local function GetHeaderChromeColor()
-    if KT.VisualThemes and KT.VisualThemes.GetDamageMeterAccentColor then
-        local r, g, b = KT.VisualThemes:GetDamageMeterAccentColor()
-        if r then return r, g, b end
-    end
+    local key = Mod.GetDamageMeterStyle and Mod:GetDamageMeterStyle()
+        or (KT.VisualThemes and KT.VisualThemes:GetRenderedTheme())
+    if key == "forever" then return 0.862745, 0.521569, 0.376471 end
+    if key == "classic" or key == "retail" then return 1, 0.82, 0.10 end
     return GetAccentColor()
 end
 
@@ -235,12 +243,9 @@ local METER_SKINS = {
     },
     retail = {
         panelBg = { 0.030, 0.035, 0.045, 0.94 },
-        rounded = { 0.30, 0.26, 0.16, 1 },
-        headerLine = { 1.00, 0.82, 0.10, 0.40 },
+        flat = true,
         title = { 1.00, 0.82, 0.10 },
         rowBg = { 0.02, 0.02, 0.03, 0.90 },
-        rowBorder = { 0, 0, 0, 1 },
-        iconBorder = { 0.70, 0.56, 0.14, 1 },
     },
     forever = {
         -- Lighter, warmer panel (the old near-black read as a hole), and the
@@ -259,7 +264,8 @@ local METER_SKINS = {
 
 local function GetMeterSkin()
     local vt = KT.VisualThemes
-    local key = vt and vt.GetRenderedTheme and vt:GetRenderedTheme()
+    local key = Mod.GetDamageMeterStyle and Mod:GetDamageMeterStyle()
+        or (vt and vt.GetRenderedTheme and vt:GetRenderedTheme())
     return key and METER_SKINS[key] or nil, key
 end
 
@@ -394,8 +400,60 @@ local function GetConfig()
     return db.damageMeter
 end
 
+function Mod:GetDamageMeterStyle()
+    local cfg = GetConfig()
+    local key = cfg.visualStyle
+    if key == "kui" or key == "retail" or key == "forever" or key == "classic" then return key end
+    local vt = KT.VisualThemes
+    return vt and vt.GetRenderedTheme and vt:GetRenderedTheme() or "kui"
+end
+
+function Mod:SetDamageMeterStyle(key)
+    if key ~= "kui" and key ~= "retail" and key ~= "forever" and key ~= "classic" then return false end
+    local cfg = GetConfig()
+    local previous = self:GetDamageMeterStyle()
+    if previous == key then cfg.visualStyle = key; return true end
+    cfg._ktDamageMeterStyleSlots = cfg._ktDamageMeterStyleSlots or {}
+    cfg._ktDamageMeterStyleSlots[previous] = {barTexture=cfg.barTexture, showBackground=cfg.showBackground}
+    local appearance = cfg._ktDamageMeterStyleSlots[key]
+    cfg.barTexture = appearance and appearance.barTexture or (key == "kui"
+        and "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga"
+        or "Interface\\TargetingFrame\\UI-StatusBar")
+    if appearance then cfg.showBackground = appearance.showBackground else cfg.showBackground = true end
+    cfg.visualStyle = key
+    self:RefreshDamageMeter()
+    return true
+end
+
+-- Only appearance follows the selected meter style; each window keeps its own
+-- mode, session, dimensions, position and dock. Remember per-theme choices.
+function Mod.SyncDamageMeterWindowTheme(cfg, primary, theme)
+    if cfg == primary then return cfg end
+    local previous = cfg._ktDamageMeterTheme
+    if previous == theme then return cfg end
+    cfg._ktDamageMeterThemeSlots = cfg._ktDamageMeterThemeSlots or {}
+    local slots = cfg._ktDamageMeterThemeSlots
+    if previous then
+        slots[previous] = { barTexture = cfg.barTexture, showBackground = cfg.showBackground }
+    elseif theme ~= "kui" then
+        -- Preserve the existing custom appearance for a later return to KUI.
+        slots.kui = { barTexture = cfg.barTexture, showBackground = cfg.showBackground }
+    end
+    local appearance = slots[theme]
+    if appearance then
+        cfg.barTexture, cfg.showBackground = appearance.barTexture, appearance.showBackground
+    elseif theme ~= "kui" or previous then
+        cfg.barTexture, cfg.showBackground = primary.barTexture, primary.showBackground
+    end
+    cfg._ktDamageMeterTheme = theme
+    return cfg
+end
 local function GetFrameConfig(frame)
-    return (frame and frame.damageMeterConfig) or GetConfig()
+    local primary = GetConfig()
+    local cfg = frame and frame.damageMeterConfig
+    if not cfg then return primary end
+    local theme = Mod:GetDamageMeterStyle()
+    return Mod.SyncDamageMeterWindowTheme(cfg, primary, theme)
 end
 
 local function NormalizeHistoryMode(mode)
@@ -775,8 +833,8 @@ local function StyleHeaderButton(button)
         return
     end
     local themedR, themedG, themedB
-    if KT.VisualThemes and KT.VisualThemes.GetDamageMeterAccentColor then
-        themedR, themedG, themedB = KT.VisualThemes:GetDamageMeterAccentColor()
+    if Mod:GetDamageMeterStyle() ~= "kui" then
+        themedR, themedG, themedB = GetHeaderChromeColor()
     end
     local skin = GetMeterSkin()
     if KT.AddBackdrop then
@@ -1219,7 +1277,7 @@ local function AddNativeTargets(session, frame, yieldStep)
         local targetName = targetSource.name
         local creatureID = targetSource.sourceCreatureID
         if not IsSecret(targetName) and type(targetName) == "string" and not IsSecret(creatureID) then
-            -- Match Blizzard/Details' target lookup: target-centric records
+            -- Match Blizzard's target lookup: target-centric records
             -- are addressed by creature ID, not by the transient unit GUID.
             local container = GetNativeSpells(frame, targetType, nil, creatureID)
             local combatSpells
@@ -2022,7 +2080,7 @@ local function PopulateBreakdownList(list, entries, total, session, click, mode)
                 -- Targets use a muted gold to distinguish them from spell rows.
                 r, g, b = 0.48, 0.40, 0.16
             else
-                -- WoW does not expose icon pixel colors. Use a neutral Details-like
+                -- WoW does not expose icon pixel colors. Use a neutral
                 -- spell bar, alternating slightly so adjacent abilities are clear.
                 local shade = entryIndex % 2 == 0 and 0.34 or 0.43
                 r, g, b = shade, shade, shade + 0.02
@@ -2452,9 +2510,10 @@ function Mod:MarkDamageMeterCurrentSessionFresh()
 end
 
 function Mod:DebugDamageMeter()
+    local debugTag = "|cff66ccff[ktdmdebug]|r "
     local frames = GetDamageMeterFrames()
     if #frames == 0 then
-        if KT and KT.Print then KT:Print("|cff66ccff[ktdmdebug]|r no damage meter frame") end
+        if KT and KT.Print then KT:Print(debugTag .. LText("No damage meter frame found.")) end
         return
     end
 
@@ -2481,9 +2540,9 @@ function Mod:DebugDamageMeter()
             suppressed and "yes" or "no"
         )
         if KT and KT.Print then
-            KT:Print("|cff66ccff[ktdmdebug]|r " .. line)
+            KT:Print(debugTag .. line)
         else
-            print("|cff66ccff[ktdmdebug]|r " .. line)
+            print(debugTag .. line)
         end
     end
 end
@@ -2752,6 +2811,146 @@ end
 --- Paints (or clears) the Visual Style skin on one meter window. Runs at the
 --- end of every style refresh, after the generic layout, and only recolors /
 --- adds chrome: it never moves rows or changes any data.
+-- Shared by the real meter and the options preview. Atlas availability is checked
+-- because older clients can lack individual pieces of the native meter art.
+function Mod.ApplyDamageMeterAtlasArt(frame, cfg, themeKey, iconGap)
+    local function atlas(texture, name)
+        local vt = KT.VisualThemes
+        local info = name and ((vt and vt.GetStyleAtlasInfo and vt:GetStyleAtlasInfo(name))
+            or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)))
+        if not info then texture:Hide(); return false end
+        if info.packaged then
+            texture:SetTexture(info.file)
+            texture:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+        else texture:SetAtlas(name) end
+        texture:SetVertexColor(1, 1, 1, 1)
+        texture:Show()
+        return true
+    end
+    local function piece(owner, key, parent, layer, level)
+        if not owner[key] then owner[key] = parent:CreateTexture(nil, layer or "OVERLAY", nil, level or 0) end
+        return owner[key]
+    end
+    -- Slice the swing frame into eight perimeter pieces. Its end ornaments stay
+    -- at native size when a meter is resized, instead of stretching vertically.
+    local function perimeter(owner, parent, target, enabled)
+        local vt = KT.VisualThemes
+        local info = enabled and ((vt and vt.GetStyleAtlasInfo and vt:GetStyleAtlasInfo("ui-swingtimerbar-frame"))
+            or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("ui-swingtimerbar-frame")))
+        local parts = owner._meterSwingEdges or {}
+        owner._meterSwingEdges = parts
+        if not info then
+            for _, texture in ipairs(parts) do texture:Hide() end
+            return false
+        end
+        local x = math.min(16, info.width / 3)
+        local y = math.min(8, info.height / 3)
+        local u = (info.rightTexCoord - info.leftTexCoord) * x / info.width
+        local v = (info.bottomTexCoord - info.topTexCoord) * y / info.height
+        local us = { info.leftTexCoord, info.leftTexCoord + u, info.rightTexCoord - u, info.rightTexCoord }
+        local vs = { info.topTexCoord, info.topTexCoord + v, info.bottomTexCoord - v, info.bottomTexCoord }
+        local slices = {
+            {1,1,"TOPLEFT",x,y}, {3,1,"TOPRIGHT",x,y},
+            {1,3,"BOTTOMLEFT",x,y}, {3,3,"BOTTOMRIGHT",x,y},
+            {2,1,"TOP",nil,y}, {2,3,"BOTTOM",nil,y},
+            {1,2,"LEFT",x}, {3,2,"RIGHT",x},
+        }
+        for index, slice in ipairs(slices) do
+            local texture = parts[index] or parent:CreateTexture(nil, "OVERLAY", nil, 5)
+            parts[index] = texture
+            texture:SetTexture(info.file)
+            texture:SetTexCoord(us[slice[1]], us[slice[1]+1], vs[slice[2]], vs[slice[2]+1])
+            texture:SetVertexColor(1,1,1,1)
+            texture:ClearAllPoints()
+            if index <= 4 then
+                local right = slice[1] == 3
+                local bottom = slice[2] == 3
+                texture:SetPoint(slice[3], target, slice[3], right and 4 or -4, bottom and -4 or 4)
+                texture:SetSize(x,y)
+            elseif index <= 6 then
+                local bottom = index == 6
+                texture:SetPoint(bottom and "BOTTOMLEFT" or "TOPLEFT", target, bottom and "BOTTOMLEFT" or "TOPLEFT", x-4, bottom and -4 or 4)
+                texture:SetPoint(bottom and "BOTTOMRIGHT" or "TOPRIGHT", target, bottom and "BOTTOMRIGHT" or "TOPRIGHT", 4-x, bottom and -4 or 4)
+                texture:SetHeight(y)
+            else
+                local right = index == 8
+                texture:SetPoint(right and "TOPRIGHT" or "TOPLEFT", target, right and "TOPRIGHT" or "TOPLEFT", right and 4 or -4, 4-y)
+                texture:SetPoint(right and "BOTTOMRIGHT" or "BOTTOMLEFT", target, right and "BOTTOMRIGHT" or "BOTTOMLEFT", right and 4 or -4, y-4)
+                texture:SetWidth(x)
+            end
+            texture:Show()
+        end
+        return true
+    end
+    local retail = themeKey == "retail"
+    local forever = themeKey == "forever"
+    local background = piece(frame, "_meterNativeBackground", frame, "BACKGROUND", 1)
+    background:SetAllPoints(frame)
+    if atlas(background, retail and "damagemeters-background") then
+        frame:SetBackdropColor(0,0,0,0)
+        background:SetAlpha(cfg.showBackground == false and 0 or 1)
+    end
+    if frame.borderKT and (retail or forever) then frame.borderKT:Hide() end
+    local header = piece(frame, "_meterNativeHeader", frame, "BACKGROUND", 4)
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,0)
+    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0,0)
+    header:SetHeight(32)
+    atlas(header, retail and "ui-damagemeters-header-bar")
+    if perimeter(frame, frame, frame, forever and cfg.showBackground ~= false) then
+        for _, edge in ipairs(frame._skinPanelEdges or {}) do edge:Hide() end
+    end
+    for _, button in pairs({frame.modeButton, frame.sessionButton}) do
+        if retail and button.text and GameFontNormalMed1 then button.text:SetFontObject(GameFontNormalMed1) end
+    end
+    for _, row in ipairs(frame.rows or {}) do
+        local parent = row.textLayer or row
+        local edge = piece(row, "_meterNativeEdge", parent, "OVERLAY", 4)
+        edge:ClearAllPoints()
+        edge:SetPoint("TOPLEFT", row.background, "TOPLEFT", -2,2)
+        edge:SetPoint("BOTTOMRIGHT", row.background, "BOTTOMRIGHT", 2,-2)
+        atlas(edge, retail and "ui-damagemeters-bar-shadowedge")
+        if retail then
+            -- Preview bars are textures; live bars are StatusBars. Setting the
+            -- atlas on the fill preserves the value and the live class tint.
+            local fill = row.bar.GetStatusBarTexture and row.bar:GetStatusBarTexture() or row.bar
+            local r,g,b,a = fill:GetVertexColor()
+            if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-CoolDownManager-Bar") then
+                atlas(fill, "UI-HUD-CoolDownManager-Bar")
+                fill:SetVertexColor(r,g,b,a)
+            end
+            atlas(row.background, "ui-damagemeters-bar-shadowbg")
+            if NumberFontNormal then
+                for _, key in ipairs({"rank","name","rate","amount","value"}) do
+                    if row[key] then row[key]:SetFontObject(NumberFontNormal) end
+                end
+            end
+        end
+        local ornament = piece(row, "_meterSwingFrame", parent, "OVERLAY", 5)
+        ornament:ClearAllPoints()
+        ornament:SetPoint("TOPLEFT", row.background, "TOPLEFT", -4,1)
+        ornament:SetPoint("BOTTOMRIGHT", row.background, "BOTTOMRIGHT", 4,-1)
+        atlas(ornament, forever and "ui-swingtimerbar-frame")
+        if forever and ornament:IsShown() then
+            for _, texture in ipairs(row._skinBarEdges or {}) do texture:Hide() end
+        end
+    end
+    local handle = frame.resizeHandle
+    if handle then
+        handle._meterNativeAtlas = retail and C_Texture and C_Texture.GetAtlasInfo
+            and C_Texture.GetAtlasInfo("damagemeters-scalehandle") and true or nil
+        handle:ClearAllPoints()
+        handle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", handle._meterNativeAtlas and 9 or 0, handle._meterNativeAtlas and -8 or 0)
+        handle:SetSize(handle._meterNativeAtlas and 60 or 16, handle._meterNativeAtlas and 60 or 16)
+        if handle._meterNativeAtlas then
+            atlas(handle.texture, "damagemeters-scalehandle")
+        else
+            handle.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            handle.texture:SetVertexColor(.78,.78,.82,.7)
+        end
+    end
+end
+
 local function ApplyDamageMeterSkin(frame, cfg, iconGap)
     local skin, themeKey = GetMeterSkin()
     local showPanel = cfg.showBackground ~= false
@@ -2844,7 +3043,9 @@ local function ApplyDamageMeterSkin(frame, cfg, iconGap)
         LayoutSkinEdges(row, "_skinIconEdges", row.textLayer, row.icon, 1,
             (skin and skin.iconBorder and iconGap > 0) and skin.iconBorder or nil, 0)
     end
+    Mod.ApplyDamageMeterAtlasArt(frame, cfg, themeKey, iconGap)
 end
+Mod.ApplyDamageMeterSkin = ApplyDamageMeterSkin
 
 function Mod:RefreshDamageMeterStyle(useCurrentSize, targetFrame)
     local frame = targetFrame or self.damageMeterFrame
@@ -2883,8 +3084,8 @@ function Mod:RefreshDamageMeterStyle(useCurrentSize, targetFrame)
     if frame.accentLine then
         -- Forever adds a bronze top border the default Blizzard/kui look
         -- doesn't have; classic/retail/kui stay borderless as before.
-        if KT.VisualThemes and KT.VisualThemes:GetRenderedTheme() == "forever" then
-            local r, g, b = KT.VisualThemes:GetDamageMeterAccentColor()
+        if Mod:GetDamageMeterStyle() == "forever" then
+            local r, g, b = GetHeaderChromeColor()
             frame.accentLine:SetColorTexture(r, g, b, 1)
             frame.accentLine:Show()
         else
@@ -3145,7 +3346,7 @@ function Mod:UpdateDamageMeterData(targetFrame)
     -- entries than it can display. This also handles ranks already visible.
     local pinnedRowIndex = nil
     if playerSource and #sources > visibleLimit and playerRank > (scrollOffset + visibleLimit) then
-        -- Match Details: keep the real scroll range untouched and replace the
+        -- Keep the real scroll range untouched and replace the
         -- last visible row only while the player is below the current range.
         pinnedRowIndex = visibleLimit
     end
@@ -3940,10 +4141,16 @@ local function CreateDamageMeterFrame(self, frameName, damageMeterConfig)
     frame.resizeHandle.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     frame.resizeHandle.texture:SetVertexColor(0.78, 0.78, 0.82, 0.7)
     frame.resizeHandle:SetScript("OnEnter", function(self)
-        self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+        if self._meterNativeAtlas then self.texture:SetAtlas("damagemeters-scalehandle-hover")
+        else self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight") end
         self.texture:SetVertexColor(1, 1, 1, 1)
     end)
     frame.resizeHandle:SetScript("OnLeave", function(self)
+        if self._meterNativeAtlas then
+            self.texture:SetAtlas("damagemeters-scalehandle")
+            self.texture:SetVertexColor(1,1,1,1)
+            return
+        end
         self.texture:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
         self.texture:SetVertexColor(0.78, 0.78, 0.82, 0.7)
     end)

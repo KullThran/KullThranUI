@@ -415,6 +415,7 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
         frame.stockArt:Show()
     else
         frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
     end
 
     local portraitGeom = geom.portrait
@@ -495,6 +496,14 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
     if frame.levelFrame then
         frame.name:SetParent(frame.levelFrame)
         frame.value:SetParent(frame.levelFrame)
+    end
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        -- Blizzard's mini box has no reputation strip behind the name (the
+        -- live mini art never draws one); only Target / Focus get it.
+        frame._ktNameReactionActive = nil
+        if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+    elseif KT.VisualThemes.ConfigureUnitFrameNameReaction then
+        KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, frame.stockArtFrame, unitKey, geom, scale, 0, 0, true)
     end
     frame.name:ClearAllPoints()
     frame.name:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
@@ -984,6 +993,7 @@ local function CreatePreviewUnit(parent)
     frame.stockArt = frame.stockArtFrame:CreateTexture(nil, "ARTWORK")
     frame.stockArt:SetAllPoints(frame)
     frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
 
     -- health/power's FrameLevel is left at its default here (unelevated,
     -- matching this preview's original kui-style behavior, where the
@@ -1137,7 +1147,7 @@ local function BindPreviewClick(frame, label, targetTab, getTargetBlock)
         KT:AddAccentBorder(self, 1)
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(label or LText("Unit Frame Preview"), 1, 1, 1)
+            GameTooltip:AddLine(label and LText(label) or LText("Unit Frame Preview"), 1, 1, 1)
             GameTooltip:AddLine(LText("Click to jump to its settings block."), 0.75, 0.82, 0.9, true)
             GameTooltip:Show()
         end
@@ -1237,6 +1247,7 @@ local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText
         return
     end
     frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
     if frame.name and frame.name:GetParent() ~= frame.health then frame.name:SetParent(frame.health) end
     if frame.value and frame.value:GetParent() ~= frame.health then frame.value:SetParent(frame.health) end
     -- Undo the Classic-only portrait treatment from the stock path.
@@ -2154,7 +2165,7 @@ local function CreateOptionBlock(parent, title, x, y, width)
     titleText:SetFont(KT.FONT_PATH, 10, "OUTLINE")
     KT:SetAccentTextColor(titleText, 1)
     titleText:SetPoint("TOPLEFT", 10, -8)
-    titleText:SetText(string.upper(title))
+    titleText:SetText(string.upper(LText(title)))
 
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", 0, -24)
@@ -2203,12 +2214,12 @@ local function CreateUnitFramesLivePreview(parent, options)
 
     preview.Refresh = function()
         local previewWidth = preview:GetWidth()
-        ns.ApplyPreviewUnit(playerPreview, "player", db.player, db, "Player", "100%")
-        ns.ApplyPreviewUnit(targetPreview, "target", db.target, db, "Target", "100%")
-        ns.ApplyPreviewUnit(focusPreview, "focus", db.focus, db, "Focus", "100%")
-        ns.ApplyPreviewUnit(petPreview, "pet", db.pet, db, "Pet", "100%")
-        ns.ApplyPreviewUnit(targetTargetPreview, "totPet", db.totPet, db, "ToT", "100%")
-        ns.ApplyPreviewUnit(focusTargetPreview, "focustarget", db.totPet, db, "Focus Target", "100%")
+        ns.ApplyPreviewUnit(playerPreview, "player", db.player, db, LText("Player"), "100%")
+        ns.ApplyPreviewUnit(targetPreview, "target", db.target, db, LText("Target"), "100%")
+        ns.ApplyPreviewUnit(focusPreview, "focus", db.focus, db, LText("Focus"), "100%")
+        ns.ApplyPreviewUnit(petPreview, "pet", db.pet, db, LText("Pet"), "100%")
+        ns.ApplyPreviewUnit(targetTargetPreview, "totPet", db.totPet, db, LText("ToT"), "100%")
+        ns.ApplyPreviewUnit(focusTargetPreview, "focustarget", db.totPet, db, LText("Focus Target"), "100%")
 
         playerPreview:ClearAllPoints()
         playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 18, -34)

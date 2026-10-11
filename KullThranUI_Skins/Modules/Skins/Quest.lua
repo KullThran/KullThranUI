@@ -190,7 +190,7 @@ local function FixQuestFontIfDark(fontString, useGold)
         end
     end
 
-    -- [FIX] Persistir formateo: como en spellbook, instalar hooks para que
+    -- Persistir formateo: como en spellbook, instalar hooks para que
     -- Blizzard no pueda resetear colores oscuros al actualizar texto dinámicamente.
     if not fontString._ktQuestFontHooked then
         fontString._ktQuestFontHooked = true
@@ -285,7 +285,7 @@ local function RefreshQuestReadableText(root)
     Visit(root, 0)
 end
 
--- [FIX] Funciones para limpiar colores oscuros incrustados en el texto
+-- Funciones para limpiar colores oscuros incrustados en el texto
 local function SkinQuestTitle(fontString)
     if not fontString then return end
     fontString:SetDrawLayer("OVERLAY", 7)
@@ -320,7 +320,7 @@ end
 
 S.RefreshQuestReadableText = RefreshQuestReadableText
 
--- [FIX] Función específica para botones de diálogo (Greeting/Gossip)
+-- Función específica para botones de diálogo (Greeting/Gossip)
 -- Combina la limpieza de color con el ajuste de iconos
 local function SkinGreetingText(fontString)
     if not fontString then return end
@@ -527,7 +527,7 @@ local function ColorizeObjectives()
     local questID = C_QuestLog.GetSelectedQuest()
     if not questID then return end
     
-    -- [FIX] 11.0 API Change: GetQuestObjectiveInfo removed, replaced by GetQuestObjectives
+    -- 11.0 API Change: GetQuestObjectiveInfo removed, replaced by GetQuestObjectives
     local questObjectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or nil
 
     for i = 1, _G.MAX_OBJECTIVES do

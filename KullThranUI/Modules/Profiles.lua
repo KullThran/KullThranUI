@@ -633,13 +633,13 @@ end
 
 local function EncodePayload(prefix, payload)
     if not LibDeflate then
-        return nil, "LibDeflate no disponible."
+        return nil, string.format(LText("%s not available."), "LibDeflate")
     end
 
     local serialized = Serializer.Serialize(payload)
     local compressed = LibDeflate:CompressDeflate(serialized)
     if not compressed then
-        return nil, "No se pudo comprimir la cadena."
+        return nil, LText("Could not compress the string.")
     end
 
     return prefix .. LibDeflate:EncodeForPrint(compressed)
@@ -647,32 +647,32 @@ end
 
 local function DecodePayload(prefix, importString)
     if not LibDeflate then
-        return nil, "LibDeflate no disponible."
+        return nil, string.format(LText("%s not available."), "LibDeflate")
     end
 
     importString = NormalizeImportString(importString)
     if not importString or importString == "" then
-        return nil, "Cadena vacia."
+        return nil, LText("The string is empty.")
     end
 
     if importString:sub(1, #prefix) ~= prefix then
-        return nil, "Prefijo invalido."
+        return nil, LText("Invalid prefix.")
     end
 
     local encoded = importString:sub(#prefix + 1)
     local decoded = LibDeflate:DecodeForPrint(encoded)
     if not decoded then
-        return nil, "No se pudo decodificar la cadena."
+        return nil, LText("Could not decode the string.")
     end
 
     local decompressed = LibDeflate:DecompressDeflate(decoded)
     if not decompressed then
-        return nil, "No se pudo descomprimir la cadena."
+        return nil, LText("Could not decompress the string.")
     end
 
     local payload = Serializer.Deserialize(decompressed)
     if type(payload) ~= "table" then
-        return nil, "No se pudo leer el payload."
+        return nil, LText("Could not read the payload.")
     end
 
     return payload
@@ -786,7 +786,7 @@ local function RemoveAssignedProfile(profileName)
 end
 
 local function PromptReloadPopup(message)
-    StaticPopup_Show("KT_PROFILE_RELOAD", message or "Se recomienda recargar la interfaz para aplicar todos los cambios.")
+    StaticPopup_Show("KT_PROFILE_RELOAD", message or LText("Reloading the interface is recommended to apply all changes."))
 end
 
 local function SyncCDMProfileBridge()
@@ -1340,14 +1340,14 @@ end
 
 function Mod:ApplyModulesFromProfile(profileName, moduleIDs)
     if not (KT and KT.db and KT.db.sv and KT.db.sv.profiles) then
-        return false, "Base de datos no disponible."
+        return false, LText("Database not available.")
     end
     local sourceRoot = KT.db.sv.profiles[profileName]
     if type(sourceRoot) ~= "table" then
-        return false, "Perfil de origen invalido."
+        return false, LText("Invalid source profile.")
     end
     if type(moduleIDs) ~= "table" or #moduleIDs == 0 then
-        return false, "Selecciona al menos un modulo."
+        return false, LText("Select at least one module.")
     end
 
     local modules = {}
@@ -1470,7 +1470,7 @@ end
 function Mod:ExportCurrentProfileString()
     local root = GetRootProfile()
     if not root then
-        return nil, "Perfil no disponible."
+        return nil, LText("Profile unavailable.")
     end
 
     local profileSnapshot = BuildTransferProfile(root)
@@ -1484,7 +1484,7 @@ end
 
 function Mod:ExportModulesString(moduleIDs)
     if type(moduleIDs) ~= "table" or #moduleIDs == 0 then
-        return nil, "Selecciona al menos un modulo."
+        return nil, LText("Select at least one module.")
     end
 
     local exported = {}
@@ -1496,7 +1496,7 @@ function Mod:ExportModulesString(moduleIDs)
     end
 
     if not next(exported) then
-        return nil, "No se pudo capturar ningun modulo."
+        return nil, LText("Could not capture any module.")
     end
 
     local payload = KT:GetProfileEnvelope()
@@ -1510,7 +1510,7 @@ end
 function Mod:ExportPageProfileString(pageID)
     local info = self:GetPageProfileInfo(pageID)
     if not info then
-        return nil, "Esta pagina no tiene un perfil de modulo registrado."
+        return nil, LText("This page has no registered module profile.")
     end
     return self:ExportModulesString(info.moduleIDs)
 end
@@ -1518,9 +1518,9 @@ end
 function Mod:ResetSubmoduleProfile(pageID)
     local key = pageID == "damagemeter" and "damageMeter"
         or pageID == "mythicplustimer" and "mplusTracker"
-    if not key then return false, "Unknown submodule profile." end
+    if not key then return false, LText("Unknown submodule profile.") end
     local root = GetRootProfile()
-    if not root then return false, "Profile unavailable." end
+    if not root then return false, LText("Profile unavailable.") end
     root.enhancements = root.enhancements or {}
     root.enhancements[key] = nil
     self:RefreshProfileRuntime()
@@ -1531,7 +1531,7 @@ end
 function Mod:ApplyFullProfile(profileData)
     local root = GetRootProfile()
     if type(root) ~= "table" or type(profileData) ~= "table" then
-        return false, "Perfil invalido."
+        return false, LText("Invalid profile.")
     end
 
     local transferProfile = BuildTransferProfile(profileData)
@@ -1553,7 +1553,7 @@ end
 function Mod:ApplyModules(moduleData)
     local root = GetRootProfile()
     if type(root) ~= "table" or type(moduleData) ~= "table" then
-        return false, "Modulo invalido."
+        return false, LText("Invalid module.")
     end
 
     for moduleID, snapshot in pairs(moduleData) do
@@ -1610,7 +1610,7 @@ end
 function Mod:ImportProfileString(importString)
     importString = NormalizeImportString(importString)
     if importString and importString:sub(1, #CDM_EXPORT_PREFIX) == CDM_EXPORT_PREFIX then
-        return false, "Esa cadena es un perfil CDM por especializacion. Usa el importador CDM."
+        return false, LText("That string is a per-specialization CDM profile. Use the CDM importer.")
     end
 
     local payload, err = DecodePayload(EXPORT_PREFIX, importString)
@@ -1641,24 +1641,24 @@ function Mod:ImportProfileString(importString)
         end
         SaveExternalProfileSnapshot(KT.db and KT.db:GetCurrentProfile())
     else
-        return false, "Tipo de importacion desconocido."
+        return false, LText("Unknown import type.")
     end
 
     FinishImportFlavor(payload, crossWarning)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("El perfil se ha importado correctamente." .. (crossWarning and (" " .. crossWarning) or ""))
+    PromptReloadPopup(LText("The profile was imported successfully.") .. (crossWarning and (" " .. crossWarning) or ""))
     return true
 end
 
 function Mod:ImportPageProfileString(pageID, importString)
     local info = self:GetPageProfileInfo(pageID)
     if not info then
-        return false, "Esta pagina no tiene un perfil de modulo registrado."
+        return false, LText("This page has no registered module profile.")
     end
 
     importString = NormalizeImportString(importString)
     if importString and importString:sub(1, #CDM_EXPORT_PREFIX) == CDM_EXPORT_PREFIX then
-        return false, "Esa cadena es un perfil CDM por especializacion."
+        return false, LText("That string is a per-specialization CDM profile.")
     end
 
     local payload, err = DecodePayload(EXPORT_PREFIX, importString)
@@ -1670,12 +1670,12 @@ function Mod:ImportPageProfileString(pageID, importString)
         return false, flavorError
     end
     if payload.type ~= "modules" then
-        return false, "Este importador solo acepta perfiles de modulos, no perfiles completos."
+        return false, LText("This importer only accepts module profiles, not full profiles.")
     end
 
     local sourceModules = payload.data and payload.data.modules
     if type(sourceModules) ~= "table" then
-        return false, "La cadena no contiene datos de modulos."
+        return false, LText("The string contains no module data.")
     end
 
     -- Apply only the scope owned by the open page. A string containing several
@@ -1690,7 +1690,7 @@ function Mod:ImportPageProfileString(pageID, importString)
         end
     end
     if not next(filtered) then
-        return false, "La cadena no contiene datos para " .. tostring(info.label) .. "."
+        return false, string.format(LText("The string contains no data for %s."), LText(tostring(info.label)))
     end
 
     local ok, applyErr = self:ApplyModules(filtered)
@@ -1724,12 +1724,12 @@ end
 
 function Mod:SaveCurrentAsProfile(name)
     if not KT or not KT.db then
-        return false, "Base de datos no disponible."
+        return false, LText("Database not available.")
     end
 
     name = name and strtrim(name) or ""
     if name == "" then
-        return false, "Escribe un nombre de perfil."
+        return false, LText("Enter a profile name.")
     end
 
     local currentName = KT.db:GetCurrentProfile()
@@ -1746,7 +1746,7 @@ function Mod:SaveCurrentAsProfile(name)
 
     local root = GetRootProfile()
     if type(root) ~= "table" then
-        return false, "No se pudo crear el nuevo perfil."
+        return false, LText("Could not create the new profile.")
     end
 
     WipeTable(root)
@@ -1779,11 +1779,11 @@ end
 
 function Mod:SwitchProfile(name)
     if not KT or not KT.db then
-        return false, "Base de datos no disponible."
+        return false, LText("Database not available.")
     end
 
     if not name or name == "" then
-        return false, "Perfil invalido."
+        return false, LText("Invalid profile.")
     end
 
     if KT.db:GetCurrentProfile() == name then
@@ -1795,21 +1795,21 @@ function Mod:SwitchProfile(name)
     KT.db:SetProfile(name)
     RestoreExternalProfileSnapshot(name)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("Se ha cambiado al perfil '" .. name .. "'.")
+    PromptReloadPopup(string.format(LText("Switched to profile '%s'."), name))
     return true
 end
 
 function Mod:DeleteProfile(name)
     if not KT or not KT.db then
-        return false, "Base de datos no disponible."
+        return false, LText("Database not available.")
     end
 
     if not name or name == "" then
-        return false, "Perfil invalido."
+        return false, LText("Invalid profile.")
     end
 
     if KT.db:GetCurrentProfile() == name then
-        return false, "No puedes borrar el perfil activo."
+        return false, LText("You cannot delete the active profile.")
     end
 
     KT.db:DeleteProfile(name, true)
@@ -1847,7 +1847,7 @@ function Mod:AssignCurrentSpec(profileName)
     local characterAssignments = GetCharacterSpecAssignments(true)
     local specID = GetCurrentSpecID()
     if not characterAssignments or not specID then
-        return false, "No se pudo detectar la especializacion actual."
+        return false, LText("Could not detect the current specialization.")
     end
 
     characterAssignments[tostring(specID)] = profileName
@@ -1858,7 +1858,7 @@ function Mod:ClearCurrentSpecAssignment()
     local characterAssignments = GetCharacterSpecAssignments(true)
     local specID = GetCurrentSpecID()
     if not characterAssignments or not specID then
-        return false, "No se pudo detectar la especializacion actual."
+        return false, LText("Could not detect the current specialization.")
     end
 
     characterAssignments[tostring(specID)] = false
@@ -1891,7 +1891,7 @@ function Mod:HandleSpecChange()
     KT.db:SetProfile(targetProfile)
     RestoreExternalProfileSnapshot(targetProfile)
     self:RefreshProfileRuntime()
-    PromptReloadPopup("Se ha asignado automaticamente el perfil '" .. targetProfile .. "' a tu especializacion actual.")
+    PromptReloadPopup(string.format(LText("Profile '%s' was automatically assigned to your current specialization."), targetProfile))
 end
 
 function Mod:GetCDMSpecEntries()
@@ -1931,14 +1931,14 @@ end
 
 function Mod:ExportCDMSpellsString(specKeys)
     if type(specKeys) ~= "table" or #specKeys == 0 then
-        return nil, "Selecciona al menos una especializacion."
+        return nil, LText("Select at least one specialization.")
     end
 
     CaptureCurrentCDMSpec()
 
     local cdmProfile = GetCDMProfile()
     if not cdmProfile or not cdmProfile.specProfiles then
-        return nil, "No hay perfiles CDM guardados."
+        return nil, LText("No saved CDM profiles.")
     end
 
     local exported = {}
@@ -1949,7 +1949,7 @@ function Mod:ExportCDMSpellsString(specKeys)
     end
 
     if not next(exported) then
-        return nil, "No hay datos CDM para las especializaciones seleccionadas."
+        return nil, LText("No CDM data for the selected specializations.")
     end
 
     local payload = KT:GetProfileEnvelope()
@@ -1961,7 +1961,7 @@ end
 function Mod:ImportCDMSpellsString(importString)
     importString = NormalizeImportString(importString)
     if importString and importString:sub(1, #EXPORT_PREFIX) == EXPORT_PREFIX then
-        return false, "Esa cadena es un perfil general o de modulos. Usa el importador de perfiles."
+        return false, LText("That string is a general or module profile. Use the profile importer.")
     end
 
     local payload, err = DecodePayload(CDM_EXPORT_PREFIX, importString)
@@ -1971,12 +1971,12 @@ function Mod:ImportCDMSpellsString(importString)
 
     local flavorOK, flavorError = ValidatePayloadFlavor(payload)
     if not flavorOK or payload.type ~= "cdm_spells" then
-        return false, flavorError or "Cadena CDM no valida."
+        return false, flavorError or LText("Invalid CDM string.")
     end
 
     local cdmProfile = GetCDMProfile()
     if not cdmProfile then
-        return false, "Perfil CDM no disponible."
+        return false, LText("CDM profile not available.")
     end
 
     cdmProfile.specProfiles = cdmProfile.specProfiles or {}
@@ -1990,6 +1990,6 @@ function Mod:ImportCDMSpellsString(importString)
     end
 
     self:RefreshProfileRuntime()
-    PromptReloadPopup("El perfil CDM se ha importado correctamente.")
+    PromptReloadPopup(LText("The CDM profile was imported successfully."))
     return true
 end

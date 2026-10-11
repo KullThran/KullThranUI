@@ -4,6 +4,7 @@ local function region()
     function r:ClearAllPoints() self.points = {} end
     function r:SetPoint(...) self.points[#self.points + 1] = {...} end
     function r:SetSize(w,h) self.w,self.h = w,h end
+    function r:SetScale(v) self.scale=v end
     function r:GetWidth() return self.w end
     function r:GetHeight() return self.h end
     function r:SetAllPoints(other) self.all = other end
@@ -25,6 +26,8 @@ local function region()
     function r:AddMaskTexture(v) self.masks[v] = true end
     function r:RemoveMaskTexture(v) self.masks[v] = nil end
     function r:GetStatusBarTexture() self.fill = self.fill or region(); return self.fill end
+    function r:GetStatusBarColor() return unpack(self.barColor or {1,1,1,1}) end
+    function r:SetStatusBarColor(...) self.barColor={...} end
     function r:GetFont() return "Fonts/FRIZQT__.TTF", 12, "OUTLINE" end
     function r:SetFont(path,size,outline) self.fontSize = size end
     function r:SetJustifyH(v) self.justify = v end
@@ -47,7 +50,12 @@ function mod:UpdateFrameVisual(frame) frame.originalPaint = true; return "paint"
 function mod:UpdateFramePowerEvent(frame, event) frame.power:SetShown(event ~= "hide"); return "power" end
 local kt = { GetModule = function() return mod end,
     VisualThemes = { GetRenderedTheme = function() return globalTheme end } }
-local ns = { PF_Portrait = {} }
+local ns = { PF_Portrait = { PlaceBadges=function(frame,opts)
+    if not opts.pvpAnchor or opts.pvpAnchor=="AUTO" then
+        frame.pvpIcon:ClearAllPoints()
+        frame.pvpIcon:SetPoint("RIGHT",frame.portraitFrame,"LEFT",-2,0)
+    end
+end } }
 local env = setmetatable({ LibStub = function() return { GetAddon = function() return kt end } end,
     CreateFrame = function() return region() end,
     InCombatLockdown = function() return combat end,
@@ -83,6 +91,24 @@ for _,key in ipairs({"retail","forever","classic"}) do
         assert(math.abs(g.w*s + x*2-size[1]) < 0.0001)
         assert(math.abs(g.h*s + y*2-size[2]) < 0.0001)
     end
+end
+-- Generic visual refreshes and combat must never replace native PvP anchors.
+for _,key in ipairs({"retail","forever","classic"}) do
+ S.Select(key);mod:PositionFrame(frame,nil,1,4,"party")
+ ns.PF_Portrait.PlaceBadges(frame,{pvpAnchor="AUTO",pvpX=2,pvpY=-1})
+ local point=frame.pvpIcon.points[1]
+ assert(point[1]=="CENTER" and point[2]==frame.portraitFrame and point[3]=="BOTTOMLEFT")
+ assert(point[4]==3*frame._pfNativeScale+2 and point[5]==3*frame._pfNativeScale-1)
+ combat=true
+ local clear=frame.pvpIcon.ClearAllPoints
+ frame.pvpIcon.ClearAllPoints=function() error("secure PvP anchor changed in combat") end
+ ns.PF_Portrait.PlaceBadges(frame,{pvpAnchor="AUTO"})
+ mod:UpdateFrameVisual(frame)
+ frame.pvpIcon.ClearAllPoints=clear;combat=false
+ -- Explicit anchors belong to the user's generic layout.
+ frame.pvpIcon:ClearAllPoints();frame.pvpIcon:SetPoint("TOPRIGHT",frame,"TOPRIGHT",9,8)
+ ns.PF_Portrait.PlaceBadges(frame,{pvpAnchor="TOPRIGHT"})
+ assert(frame.pvpIcon.points[1][1]=="TOPRIGHT" and frame.pvpIcon.points[1][4]==9)
 end
 S.Select("kui");mod:PositionFrame(frame,nil,1,4,"party")
 assert(not frame._pfNativeArt.shown and frame.borderKT.shown)
@@ -126,7 +152,9 @@ for _,key in ipairs({"retail","forever","classic"}) do
     end
     showSampleIcons()
     S.Apply(frame,cfg,"party",false,true,key)
-    for _,field in ipairs(previewIconFields) do assert(frame[field]:IsShown(),"live icons remain visible") end
+    for _,field in ipairs(previewIconFields) do
+        assert(frame[field]:IsShown()==(field~="missingBuffIcon"),"live icons preserve native reminder suppression")
+    end
 end
 showSampleIcons()
 S.Apply(frame,cfg,"party",true,true,"kui")
@@ -152,9 +180,9 @@ local kuiWidth,kuiHeight=mod:GetModeDB("party").frameWidth,mod:GetModeDB("party"
 for _,key in ipairs({"retail","forever","classic"}) do
     S.Select(key)
     local native=mod:GetModeDB("party")
-    assert(native.frameWidth==kuiWidth*1.25 and native.frameHeight==kuiHeight*1.25,"native defaults are 25 percent larger")
+    assert(native.frameWidth==kuiWidth*1.25*1.25 and native.frameHeight==kuiHeight*1.25*1.25,"native defaults include the existing size migration")
     mod:GetModeDB("party")
-    assert(native.frameWidth==kuiWidth*1.25,"refresh must not compound the size increase")
+    assert(native.frameWidth==kuiWidth*1.25*1.25,"refresh must not compound the size increase")
 end
 S.Select("retail");mod:SetConfigValue("party","frameWidth",320)
 S.Select("kui");assert(mod:GetModeDB("party").frameWidth==kuiWidth,"KUI size stays unchanged")
@@ -177,3 +205,76 @@ S.Select("classic");assert(not mod:GetModeDB("party").colorByClass)
 mod:SetConfigValue("party","colorByClass",true)
 assert(S.GetHealthSettings("classic").colorByClass,"existing class color option stays in sync")
 print("party_frame_styles: art, geometry, cleanup, preview skin and combat selection passed")
+-- Model secure child frames rejecting geometry changes during combat. Full
+-- repaint resets generic alignment/fills; the native skin must repair only paint.
+for _,key in ipairs({"retail","forever","classic"}) do
+    S.Select(key)
+    S.Apply(frame,cfg,"party",false,true)
+    local healthPoint=frame.health.points[1]
+    local powerPoint=frame.power.points[1]
+    local protected={frame,frame.health,frame.power,frame.portraitFrame,frame._pfNativeArt,frame.absorb}
+    local saved={}
+    for _,r in ipairs(protected) do
+        saved[r]={r.ClearAllPoints,r.SetPoint,r.SetSize}
+        r.ClearAllPoints=function() error("combat changed secure anchors") end
+        r.SetPoint=function() error("combat changed secure anchors") end
+        r.SetSize=function() error("combat changed secure size") end
+    end
+    combat=true
+    for _,state in ipairs({"Alive","AFK","Alive","Dead","Alive","Offline","Alive"}) do
+        frame.statusText:SetShown(state=="Dead" or state=="Offline")
+        frame.statusIcon:SetShown(state~="Alive")
+        frame.valueText:SetJustifyH("RIGHT")
+        frame.health:SetStatusBarTexture("generic")
+        mod:UpdateFrameVisual(frame)
+        assert(frame.valueText.justify=="CENTER",key.." health remains centered in combat")
+        assert(frame.valueText.points[1][2]==frame.health)
+        if state=="Alive" then assert(frame.valueText.w==70*frame._pfNativeScale,"status transition restores full health width") end
+        assert(frame.health.points[1]==healthPoint and frame.power.points[1]==powerPoint)
+        assert(frame.health.fill.texture==(key=="classic" and "Interface\\TargetingFrame\\UI-StatusBar" or "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Status"))
+    end
+    combat=false
+    for r,methods in pairs(saved) do r.ClearAllPoints,r.SetPoint,r.SetSize=unpack(methods) end
+end
+print("PASS: native party combat repaint preserves secure bar geometry, centered health, status transitions and fills")
+-- Execute the real UNIT_HEALTH fast path, including its unchanged-value return.
+-- A stale generic alignment must be repaired even when health stays at 100%.
+local core=assert(io.open(root.."/KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua"))
+local coreSource=core:read("*a");core:close()
+local a=assert(coreSource:find("function Mod:UpdateFrameHealthEvent(frame)",1,true))
+local b=assert(coreSource:find("function Mod:UpdateFramePowerEvent",a,true))
+env.Mod=mod;env.ns=ns
+env.IsUnitUsable=function() return true end
+env.SafeUnitBoolean=function(fn) return fn() end
+env.UnitIsDeadOrGhost=function() return false end
+env.UnitIsConnected=function() return true end
+env.UnitHealthPercent=function() return 100 end
+env.CurveConstants={ScaleTo100={}}
+env.IsSecretValue=function() return false end
+env.SetHealthText=function(text) text:SetText("1.4K/1.4K") end
+fn=assert(loadstring(coreSource:sub(a,b-1)));setfenv(fn,env);fn()
+function frame.health:SetValue(value) self.value=value end
+for _,key in ipairs({"retail","forever","classic"}) do
+    S.Select(key);S.Apply(frame,cfg,"party",false,true)
+    frame._ktEventDead=false;frame._ktEventConnected=true
+    frame.statusIcon:Hide();frame.statusText:Hide()
+    local healthPoint=frame.health.points[1]
+    for _,unchanged in ipairs({false,true}) do
+        frame._ktHealthPct=unchanged and 100 or 50
+        frame.valueText:SetJustifyH("RIGHT")
+        frame.valueText:ClearAllPoints()
+        frame.valueText:SetPoint("RIGHT",frame.health,"RIGHT",-6,0)
+        combat=true
+        mod:UpdateFrameHealthEvent(frame)
+        combat=false
+        assert(frame.valueText.justify=="CENTER",key.." fast health event centers text")
+        assert(frame.valueText.points[1][1]=="CENTER" and frame.valueText.points[1][4]==0)
+        assert(frame.valueText.w==70*frame._pfNativeScale)
+        assert(frame.health.points[1]==healthPoint,"health event must retain bar anchors")
+    end
+end
+S.Select("kui");S.Apply(frame,cfg,"party",false,true)
+frame.valueText:SetJustifyH("RIGHT");mod:UpdateFrameHealthEvent(frame)
+assert(frame.valueText.justify=="RIGHT","KUI health keeps its alignment")
+assert(coreSource:find('if centeredStatus or (frame.mode == "party" and frame._pfNativeStyle) then',1,true))
+print("PASS: real native UNIT_HEALTH path repairs alignment including unchanged health; KUI remains unchanged")

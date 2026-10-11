@@ -14,7 +14,7 @@ local function LText(text)
 end
 
 function Mod:OnEnable()
-    -- [FIX] Desactivado. El marco de durabilidad ha sido migrado al módulo BlizzardFrames.lua
+    -- Desactivado. El marco de durabilidad ha sido migrado al módulo BlizzardFrames.lua
     -- usando el sistema seguro UnlockMode, previniendo así taint en EditMode.
 end
 
@@ -48,7 +48,7 @@ function Mod:RegisterFrames()
 
     -- 1. DURABILITY FRAME (Panel de Armadura)
     if _G.DurabilityFrame then
-        -- [FIX] Impedir que el juego oculte el marco mientras lo editamos
+        -- Impedir que el juego oculte el marco mientras lo editamos
         hooksecurefunc(_G.DurabilityFrame, "Hide", function(self)
             if self.KT_ForcedShow then self:Show() end
         end)
@@ -56,7 +56,7 @@ function Mod:RegisterFrames()
             if self.KT_ForcedShow and alpha < 1 then self:SetAlpha(1) end
         end)
         
-        -- [FIX] Hook para mantener posición si Blizzard intenta moverlo
+        -- Hook para mantener posición si Blizzard intenta moverlo
         hooksecurefunc(_G.DurabilityFrame, "SetPoint", function(self)
             if self.KT_Moving then return end
             if _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsEditModeActive() then return end
@@ -87,7 +87,7 @@ function Mod:RegisterFrames()
             onEnter = function()
                 _G.DurabilityFrame.KT_ForcedShow = true
                 
-                -- [FIX] Si el padre está oculto (ej. MinimapCluster), reparentar a UIParent para verlo
+                -- Si el padre está oculto (ej. MinimapCluster), reparentar a UIParent para verlo
                 if _G.DurabilityFrame:GetParent() ~= _G.UIParent then
                     _G.DurabilityFrame.KT_OldParent = _G.DurabilityFrame:GetParent()
                     _G.DurabilityFrame:SetParent(_G.UIParent)
@@ -100,7 +100,7 @@ function Mod:RegisterFrames()
                 _G.DurabilityFrame:SetAlpha(1)
                 _G.DurabilityFrame:Show()
                 
-                -- [FIX] Forzar tamaño si está colapsado (100% durabilidad) para que se vea el recuadro
+                -- Forzar tamaño si está colapsado (100% durabilidad) para que se vea el recuadro
                 if _G.DurabilityFrame:GetWidth() < 20 or _G.DurabilityFrame:GetHeight() < 20 then
                     _G.DurabilityFrame:SetSize(60, 75)
                 end

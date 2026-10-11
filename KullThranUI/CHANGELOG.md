@@ -1,12 +1,39 @@
 # KullThranUI Changelog
 
-Current addon version: **@project-version@**
+Current addon version: **5.1.4**
 
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
 
-## 5.1.3 (2026-10-06)
+## 5.1.4 (2026-10-11)
 
+- Unlock Mode: right-clicking an element opens a complete Element Options menu. Width, height, X and Y have sliders and number boxes, and you can anchor the element to another one with its own offsets and extra width, pick the screen point positions are measured from, fade it on mouseover, center it, or reset its position and size.
+- Unlock Mode: Unit Frames, Cast Bar and Party Frames resize with the same width and height settings used on their option pages.
+- Unlock Mode: the unsaved changes dialog is back, with Exit Without Saving and Save & Exit. Esc or clicking outside returns you to editing.
+- Unlock Mode: movers are more opaque, the element list uses flat rows, and hovering a row highlights its element on screen while clicking it makes it flash. Elements also have new hover, click and selection animations.
+- Leaving Unlock Mode without saving no longer changes Unit Frame scale. The Player frame is restored once to 132% in the Classic, Forever and Retail styles.
+- Resource Bars: new Autoattack Bars that replace Blizzard's autoattack bars while enabled, with fill or empty direction, color, a test button and artwork that follows the selected visual style.
+- Damage Meter: new Visual Style selector (KUI, Retail, Forever, Classic). Only the look changes; every window keeps its own mode, session, size and position.
+- Classic style: Holy Power, Soul Shards, Runes, Essence, Chi and Arcane Charges use a classic gem tray under the Player frame, aligned like the combo points.
+- Retail and Forever styles keep Blizzard's own class resource art and animations under the Player frame.
+- Target of Target and Focus Target use the small Blizzard frame with power bar and portrait in the Classic, Forever and Retail styles, and their previews match.
+- Druid combo points are only shown in Cat Form, in every combo style.
+- Party Frames: in the Classic, Retail and Forever styles, debuffs sit centered below the frame instead of over the health bar when the debuff anchor is Center.
+- Cooldown Manager: the KUI Tracker no longer shows another class's interrupt or defensive (for example Kick on a Warlock) when characters share a profile.
+- Cooldown Manager: bars keep their exact position after being dragged in Unlock Mode and when arena layouts reset.
+- Unit Frames: AFK, Dead, Ghost and Offline badges update correctly when you switch target or focus.
+- Unit Frames: names written in Korean, Chinese or Japanese characters display correctly instead of empty boxes.
+- Target auras refresh reliably after target changes.
+- Bags: using an item from the bags in combat no longer triggers a blocked-action warning. The bag updates as soon as combat ends.
+- Bags: item categories (Equipment, Consumables, Reagents, Junk and the rest) are now built into KullThranUI and work on their own.
+- Armory: the Stats, Titles, Equipment and Progress bar only appears on the Character tab and stays hidden on Reputation and Currency.
+- Objective Tracker: the accent-colored bar under the Quests header is also shown in KUI style.
+- Nameplates: KUI style bars no longer keep the fill texture left by a previously applied style, and group threat colors stay readable.
+- Teleport Menu shows destination names in your client's language.
+- Minimap layout refreshes with your current settings after combat.
+- Tooltip, Installer previews, Inspect, Minimap and Aura Reminders texts are now translated in every supported language.
+
+## 5.1.3 (2026-10-06)
 - Party Frames now offer KUI, Forever, Retail and Classic style cards with independent class-color or health-color selections.
 - Reworked Party Test and live previews to match the selected style, with randomized classes appropriate to the client.
 - Fixed KUI party portrait layering and aura placement; sample dispel overlays are limited to one frame.
@@ -59,8 +86,6 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Applying KUI Style on Retail keeps Unit Frame portraits disabled, including previously saved style settings.
 
 ## 5.1.1 (2026-09-27)
-- KullThranUI 5.1.1
-- KullThranUI 5.1.1.
 - Added separate Only Name and instance-display controls for friendly players and NPCs, with KUI bars, name-only mode, and hidden friendly plates.
 - Reduced active friendly nameplate health-bar dimensions and stabilized custom overlays, font handling, and Blizzard-frame suppression.
 - Added a runtime /knpdebug comparison for nameplate ownership and layout.
@@ -72,10 +97,8 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Hardened the stable release workflow with explicit release, beta, and alpha classification and dynamic package versioning.
 
 ## 5.1.0 (2026-09-25)
-- KullThranUI 5.1.0
 - Added a dedicated gold border highlight for quest items in Bags, with container metadata and item-class fallback detection.
 - Corrected parent-scale handling for standard and friendly Nameplates so rendered plates keep the intended scale during reassignment and cleanup.
-- Updated KUI and every module to the 5.1.0 release version.
 
 ## 5.0.9 (2026-09-24)
 - Added persistent drag-and-drop ordering for Aura Reminders preview icons and runtime reminder icons.
@@ -87,9 +110,9 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Cleaned up interrupted Unit Frames cast bars so stale icons, text, and tint layers are removed immediately.
 - Added optional character-level display for Retail Nameplates, Unit Frames, and Party Frames, with independent font, size, outline, colour, and offset controls. The option remains disabled by default.
 - Added an optional PvP faction icon for Nameplates and player or target frames, shown only while PvP is active and configurable from the relevant module settings.
-- Integrated the former BlizzMove functionality as KUIMove with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.
+- Added KUIMove, the built-in window mover, with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.
 - Renamed KUIMove's user-facing and internal ownership paths throughout KullThranUI, including commands, profile handling, localization, options, and module loading.
-- Added migration support for existing BlizzMove and KUIMove SavedVariables so previous window layouts can continue to be used without imposing new level or PvP display settings.
+- Added migration support for saved window layouts from earlier versions so they can continue to be used without imposing new level or PvP display settings.
 - Reworked the legacy KUIMove configuration into a KUI-style layout with clearer Control Center, Movement & Memory, Frame Library, and Safe Defaults sections.
 - Removed duplicate KUIMove loading from the Enhancements package path, preventing conflicting ownership and reducing the chance of duplicate hooks or Lua errors.
 - Hardened level, PvP, protected-value, and secret-value handling across Nameplates, Party Frames, and Unit Frames for current Retail and WoW Forever API behaviour.
@@ -168,7 +191,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -308,7 +331,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -456,7 +479,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -596,7 +619,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -674,9 +697,9 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 ## 5.0.8 (2026-09-19)
 - Added optional character-level display for Retail Nameplates, Unit Frames, and Party Frames, with independent font, size, outline, colour, and offset controls. The option remains disabled by default.
 - Added an optional PvP faction icon for Nameplates and player or target frames, shown only while PvP is active and configurable from the relevant module settings.
-- Integrated the former BlizzMove functionality as KUIMove with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.
+- Added KUIMove, the built-in window mover, with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.
 - Renamed KUIMove's user-facing and internal ownership paths throughout KullThranUI, including commands, profile handling, localization, options, and module loading.
-- Added migration support for existing BlizzMove and KUIMove SavedVariables so previous window layouts can continue to be used without imposing new level or PvP display settings.
+- Added migration support for saved window layouts from earlier versions so they can continue to be used without imposing new level or PvP display settings.
 - Reworked the legacy KUIMove configuration into a KUI-style layout with clearer Control Center, Movement & Memory, Frame Library, and Safe Defaults sections.
 - Removed duplicate KUIMove loading from the Enhancements package path, preventing conflicting ownership and reducing the chance of duplicate hooks or Lua errors.
 - Hardened level, PvP, protected-value, and secret-value handling across Nameplates, Party Frames, and Unit Frames for current Retail and WoW Forever API behaviour.
@@ -755,7 +778,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -895,7 +918,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -1045,7 +1068,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.
@@ -1187,7 +1210,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.
 - Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.
 - Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.
-- Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
+- Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.
 - Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.
 - Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.
 - Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.

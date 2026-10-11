@@ -1,6 +1,6 @@
 local KT = _G.KT
 
--- [FALLBACK] Si core/buttonBar.lua no se ha cargado (por error de TOC),
+-- Si core/buttonBar.lua no se ha cargado (por error de TOC),
 -- restauramos esta clase para evitar el crash "attempt to index field 'Bar' (a nil value)".
 if KT.Bar then return end
 
@@ -8,7 +8,7 @@ local Bar = {}
 Bar.__index = Bar
 KT.Bar = Bar
 
--- [COMPATIBILIDAD] Añadimos :New para que funcione igual que ButtonBar
+-- Añadimos :New para que funcione igual que ButtonBar
 function Bar:New(name)
     return self:Create(name, name)
 end

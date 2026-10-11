@@ -21,8 +21,10 @@ local MOVER_R, MOVER_G, MOVER_B = 0.85, 0.15, 0.15
 local EMPTY = {}
 local GRID_SIZE = 32
 local SNAP_DISTANCE = 6
-local MOVER_HOVER_DURATION = 0.15
-local MOVER_HOVER_EXPANSION = 4
+local MOVER_HOVER_DURATION = 0.22
+local MOVER_HOVER_EXPANSION = 6
+local MOVER_SHEEN_DURATION = 0.55
+local MOVER_CLICK_DURATION = 0.5
 local SIDEBAR_WIDTH = 220
 local SIDEBAR_HEIGHT = 713
 local SIDEBAR_BG = { r = 0.01, g = 0.01, b = 0.01, a = 0.88 }
@@ -40,6 +42,17 @@ local SIDEBAR_BOTTOM_SAFE = 42
 local ICON_COG = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\cogs.png"
 local ICON_RESET = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\unlock-reset.png"
 local ICON_CENTER = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\unlock-center.png"
+-- Paleta fija y neutra para los menus del unlock mode. El tinte de fondo del
+-- estilo visual puede ser claro y, usado como relleno plano, dejaba el texto
+-- ilegible fuese cual fuese el accent. El accent queda para bordes y detalles.
+local MENU_BG = { 0.045, 0.045, 0.055, 0.97 }
+local MENU_ROW = { 0.10, 0.10, 0.12, 0.96 }
+local MENU_ROW_HOVER = { 0.17, 0.17, 0.20, 0.98 }
+local MENU_INPUT_BG = { 0.015, 0.015, 0.02, 0.98 }
+local MENU_TEXT = { 0.96, 0.96, 0.97, 1 }
+local MENU_LABEL = { 0.76, 0.76, 0.80, 1 }
+local MENU_HINT = { 0.55, 0.55, 0.60, 1 }
+local MENU_DIVIDER = { 1, 1, 1, 0.08 }
 local MOUSEOVER_SETTING_KEYS = {
     bar1 = { section = "actionbars", key = "fadeBar1" },
     bar2 = { section = "actionbars", key = "fadeBar2" },
@@ -122,7 +135,7 @@ local function SafeCall(func, ...)
     if type(func) ~= "function" then return end
     local ok, result = pcall(func, ...)
     if not ok and KT.db and KT.db.profile and KT.db.profile.debugMode then
-        print("|cFFFF0000[KT UnlockMode Error]|r", result)
+        print("|cFFFF0000[KT UnlockMode]|r " .. string.format(LText("Error: %s"), tostring(result)))
     end
     return ok, result
 end
@@ -463,16 +476,16 @@ local function StyleMenuInputBox(box)
     if not box then return end
 
     local theme = GetUnlockTheme()
-    KT:AddBackdrop(box, theme.background.r, theme.background.g, theme.background.b, 0.96)
-    KT:AddBorder(box, theme.soft.r, theme.soft.g, theme.soft.b, 1)
-    box:SetTextColor(theme.text.r, theme.text.g, theme.text.b, 1)
+    KT:AddBackdrop(box, MENU_INPUT_BG[1], MENU_INPUT_BG[2], MENU_INPUT_BG[3], MENU_INPUT_BG[4])
+    KT:AddBorder(box, theme.accent.r, theme.accent.g, theme.accent.b, 0.40)
+    box:SetTextColor(MENU_TEXT[1], MENU_TEXT[2], MENU_TEXT[3], 1)
 end
 
 local function CreateMenuInputBox(parent, width, height)
     local box = CreateFrame("EditBox", nil, parent)
     box:SetSize(width or 54, height or 18)
     box:SetAutoFocus(false)
-    box:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+    box:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     box:SetJustifyH("CENTER")
     box:SetTextInsets(4, 4, 1, 1)
     box:SetMaxLetters(8)
@@ -486,6 +499,49 @@ local function CreateMenuInputBox(parent, width, height)
         StyleMenuInputBox(self)
     end)
     return box
+end
+
+-- Botones del menu contextual / dialogo: relleno oscuro fijo, texto claro y
+-- borde accent. isActive = opcion marcada o accion principal.
+local function StyleMenuButton(button, isActive)
+    if not button then return end
+
+    local theme = GetUnlockTheme()
+    button._ktUnlockButtonStyle = nil
+    if isActive then
+        local r, g, b = BlendThemeColor(MENU_ROW[1], MENU_ROW[2], MENU_ROW[3], theme.accent.r, theme.accent.g, theme.accent.b, 0.38)
+        local hr, hg, hb = BlendThemeColor(MENU_ROW[1], MENU_ROW[2], MENU_ROW[3], theme.accent.r, theme.accent.g, theme.accent.b, 0.52)
+        button.normalColor = { r, g, b, 0.98 }
+        button.hoverColor = { hr, hg, hb, 1 }
+        button._ktMenuBorderAlpha = 0.95
+    else
+        button.normalColor = { MENU_ROW[1], MENU_ROW[2], MENU_ROW[3], MENU_ROW[4] }
+        button.hoverColor = { MENU_ROW_HOVER[1], MENU_ROW_HOVER[2], MENU_ROW_HOVER[3], MENU_ROW_HOVER[4] }
+        button._ktMenuBorderAlpha = 0.30
+    end
+
+    if button.bgKT then
+        button.bgKT:SetColorTexture(unpack(button._ktMenuHovered and button.hoverColor or button.normalColor))
+    end
+    KT:AddBorder(button, theme.accent.r, theme.accent.g, theme.accent.b, button._ktMenuHovered and 1 or button._ktMenuBorderAlpha)
+    if button.text then
+        button.text:SetFont(KT.FONT_PATH or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+        button.text:SetTextColor(MENU_TEXT[1], MENU_TEXT[2], MENU_TEXT[3], 1)
+    end
+
+    if not button._ktMenuHooks then
+        button._ktMenuHooks = true
+        button:HookScript("OnEnter", function(self)
+            self._ktMenuHovered = true
+            local hoverTheme = GetUnlockTheme()
+            KT:AddBorder(self, hoverTheme.accent.r, hoverTheme.accent.g, hoverTheme.accent.b, 1)
+        end)
+        button:HookScript("OnLeave", function(self)
+            self._ktMenuHovered = false
+            local hoverTheme = GetUnlockTheme()
+            KT:AddBorder(self, hoverTheme.accent.r, hoverTheme.accent.g, hoverTheme.accent.b, self._ktMenuBorderAlpha or 0.30)
+        end)
+    end
 end
 
 local function NormalizeMouseoverKey(value)
@@ -937,26 +993,8 @@ function UM:OnInitialize()
     self.isSuspended = false
     self.hasChanges = false
 
-    StaticPopupDialogs["KULLTHRANUI_UNLOCKMODE_UNSAVED"] = {
-        text = "Save KT UnlockMode changes before closing?",
-        button1 = "Save & Exit",
-        button2 = "Save",
-        button3 = "Cancel",
-        OnAccept = function()
-            UM:CloseUnlockMode(true, true)
-        end,
-        OnCancel = function()
-            UM:SaveChanges()
-        end,
-        OnAlt = function()
-        end,
-        timeout = 0,
-        whileDead = 1,
-        hideOnEscape = 1,
-        -- ESC dentro del dialogo = Cancel (no dispara OnCancel = Save).
-        noCancelOnEscape = 1,
-        preferredIndex = 3,
-    }
+    self.snapshotGenericSizes = {}
+    self.touchedNativeSizes = {}
 end
 
 function UM:SaveChanges()
@@ -966,6 +1004,8 @@ function UM:SaveChanges()
     wipe(self.snapshotPositions)
     wipe(self.snapshotSizes)
     wipe(self.snapshotSnapTargets)
+    self.snapshotGenericSizes = self:CopyGenericSizes()
+    wipe(self.touchedNativeSizes)
     for _, key in ipairs(self.registryOrder) do
         if not self:IsElementHidden(key) then
             self.snapshotPositions[key] = self:CaptureCurrentPosition(key)
@@ -980,14 +1020,126 @@ function UM:SaveChanges()
     end
 end
 
+function UM:HasUnsavedChanges()
+    return self.hasChanges == true
+end
+
+-- Aviso de cambios sin guardar. Antes era un StaticPopup: vive en la capa
+-- DIALOG, por debajo del overlay FULLSCREEN_DIALOG del unlock mode, y como el
+-- overlay propaga el teclado, el mismo ESC que lo abria llegaba despues al
+-- binding del juego, que cierra los StaticPopup con hideOnEscape. Resultado:
+-- nunca se veia. Ahora es un dialogo propio por encima de todo el unlock mode.
+function UM:StyleUnsavedDialog()
+    local dialog = self.unsavedDialog
+    if not dialog then return end
+    local theme = GetUnlockTheme()
+    local box = dialog.box
+    KT:AddBackdrop(box, MENU_BG[1], MENU_BG[2], MENU_BG[3], 0.98)
+    KT:AddBorder(box, theme.accent.r, theme.accent.g, theme.accent.b, 0.9)
+    box.topAccent:SetColorTexture(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+    box.title:SetTextColor(1, 1, 1, 1)
+    box.body:SetTextColor(MENU_LABEL[1], MENU_LABEL[2], MENU_LABEL[3], 1)
+    box.hint:SetTextColor(MENU_HINT[1], MENU_HINT[2], MENU_HINT[3], 1)
+    StyleMenuButton(box.discard)
+    StyleMenuButton(box.save, true)
+end
+
+function UM:CreateUnsavedDialog()
+    if self.unsavedDialog then
+        return self.unsavedDialog
+    end
+
+    local parent = self.unlockFrame or UIParent
+    local dialog = CreateFrame("Button", "KullThranUIUnlockModeUnsavedDialog", parent)
+    dialog:SetAllPoints(UIParent)
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(parent:GetFrameLevel() + 400)
+    dialog:SetToplevel(true)
+    dialog:EnableMouse(true)
+    dialog:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    dialog.shade = dialog:CreateTexture(nil, "BACKGROUND")
+    dialog.shade:SetAllPoints()
+    dialog.shade:SetColorTexture(0, 0, 0, 0.55)
+    -- Clic fuera del cuadro = seguir editando (igual que ESC).
+    dialog:SetScript("OnClick", function(widget)
+        widget:Hide()
+    end)
+
+    local box = CreateFrame("Frame", nil, dialog)
+    box:SetSize(360, 140)
+    box:SetPoint("CENTER", UIParent, "CENTER", 0, 90)
+    box:EnableMouse(true)
+    dialog.box = box
+
+    box.topAccent = box:CreateTexture(nil, "ARTWORK")
+    box.topAccent:SetPoint("TOPLEFT", 1, -1)
+    box.topAccent:SetPoint("TOPRIGHT", -1, -1)
+    box.topAccent:SetHeight(2)
+
+    box.title = CreateText(box, 15)
+    box.title:SetPoint("TOP", 0, -18)
+    box.title:SetText(LText("Unsaved Changes"))
+
+    box.body = CreateText(box, 11)
+    box.body:SetPoint("TOP", box.title, "BOTTOM", 0, -10)
+    box.body:SetWidth(320)
+    box.body:SetText(LText("You have unsaved position changes.") .. "\n" .. LText("What would you like to do?"))
+
+    box.discard = CreatePanelButton(box, 156, 26, LText("Exit Without Saving"))
+    box.discard:SetPoint("BOTTOMLEFT", 18, 26)
+    box.discard:SetScript("OnClick", function()
+        dialog:Hide()
+        UM:CloseUnlockMode(false, true)
+    end)
+
+    box.save = CreatePanelButton(box, 156, 26, LText("Save & Exit"))
+    box.save:SetPoint("BOTTOMRIGHT", -18, 26)
+    box.save:SetScript("OnClick", function()
+        dialog:Hide()
+        UM:CloseUnlockMode(true, true)
+    end)
+
+    box.hint = CreateText(box, 9)
+    box.hint:SetPoint("BOTTOM", 0, 9)
+    box.hint:SetText(LText("ESC: keep editing"))
+
+    dialog:Hide()
+    self.unsavedDialog = dialog
+    return dialog
+end
+
 function UM:PromptCloseUnlockMode()
-    StaticPopup_Show("KULLTHRANUI_UNLOCKMODE_UNSAVED")
+    if not self.isOpen then return end
+    if not self:HasUnsavedChanges() then
+        self:CloseUnlockMode(false, true)
+        return
+    end
+
+    local dialog = self:CreateUnsavedDialog()
+    self:StyleUnsavedDialog()
+    if self.moverMenu then
+        self.moverMenu:Hide()
+    end
+    dialog:SetFrameLevel((self.unlockFrame and self.unlockFrame:GetFrameLevel() or 0) + 400)
+    dialog:Show()
+    dialog:Raise()
 end
 
 function UM:OnEnable()
     self:EnsureDB()
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")
+    if not self.sizeEventFrame then
+        self.sizeEventFrame = CreateFrame("Frame")
+        self.sizeEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        self.sizeEventFrame:SetScript("OnEvent", function()
+            C_Timer.After(2.5, function()
+                if not UM.isOpen then
+                    UM:ApplyAllStoredSizes()
+                end
+            end)
+        end)
+    end
     self:RegisterEvent("UI_SCALE_CHANGED", "OnUnlockDisplayScaleChanged")
     self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUnlockDisplayScaleChanged")
 
@@ -1024,6 +1176,8 @@ function UM:UpdateRegistry()
     if self.isOpen then
         self:RefreshMovers()
         self:RefreshSidebar()
+    elseif self.db and type(self.db.sizes) == "table" and next(self.db.sizes) then
+        self:ApplyAllStoredSizes()
     end
 end
 
@@ -1274,9 +1428,16 @@ function UM:ApplyStoredPositionToElement(key, pos)
     local frame = self:GetElementFrame(key)
     if not frame then return end
 
-    if def and type(def.setScale) == "function" and pos.scale then
+    -- El unlock mode no edita la escala: solo se reaplica si de verdad es
+    -- distinta. Reaplicarla siempre (al descartar, al resetear) reescribia
+    -- frameScale en los Unit Frames y pisaba el 132% de los temas.
+    local currentScale = self:GetElementScale(key)
+    local scaleChanged = pos.scale and abs(pos.scale - (currentScale or 1)) > 0.001
+    if not scaleChanged then
+        -- misma escala: nada que hacer
+    elseif def and type(def.setScale) == "function" then
         SafeCall(def.setScale, key, pos.scale)
-    elseif pos.scale and frame.SetScale then
+    elseif frame.SetScale then
         frame:SetScale(pos.scale)
     end
 
@@ -1359,7 +1520,7 @@ function UM:GetSnapTargetLabel(key)
         return LText("Auto")
     end
 
-    return def.label or targetKey
+    return LText(def.label or targetKey)
 end
 
 function UM:GetMoverStoredXY(key)
@@ -1410,12 +1571,48 @@ function UM:SetMoverStoredXY(key, x, y)
     mover:RefreshCoords()
 end
 
-function UM:CanEditElementSize(key)
+function UM:HasNativeElementSize(key)
     local def = self:GetElementDef(key)
     return def
         and type(def.setEditableSize) == "function"
         and (type(def.getEditableSize) == "function" or type(def.getSize) == "function")
         and true or false
+end
+
+-- Tamano generico: los elementos sin soporte nativo
+-- (setEditableSize) se redimensionan sobre su propio frame y el override se
+-- guarda en editMode.sizes. Los frames protegidos (cabeceras seguras, barras
+-- de accion) los recoloca su layout seguro, asi que quedan fuera.
+function UM:CanUseGenericSize(key)
+    local def = self:GetElementDef(key)
+    if not def or def.noResize or def.disableSizeEdit then
+        return false
+    end
+    local frame = self:GetElementFrame(key)
+    if not (frame and frame.SetSize and frame.GetWidth and frame.GetHeight) then
+        return false
+    end
+    if frame.IsProtected and frame:IsProtected() then
+        return false
+    end
+    return true
+end
+
+function UM:CanEditElementSize(key)
+    return self:HasNativeElementSize(key) or self:CanUseGenericSize(key)
+end
+
+function UM:GetGenericSizeEntry(key)
+    local sizes = self.db and self.db.sizes
+    local entry = type(sizes) == "table" and sizes[key] or nil
+    if type(entry) == "table" and tonumber(entry.width) and tonumber(entry.height) then
+        return entry
+    end
+    return nil
+end
+
+function UM:HasGenericSizeOverride(key)
+    return (not self:HasNativeElementSize(key)) and self:GetGenericSizeEntry(key) ~= nil
 end
 
 function UM:GetEditableElementSize(key)
@@ -1424,16 +1621,32 @@ function UM:GetEditableElementSize(key)
         return nil, nil
     end
 
-    if type(def.getEditableSize) == "function" then
-        local ok, width, height = pcall(def.getEditableSize, key)
-        if ok and type(width) == "number" and type(height) == "number" then
-            return Round(width), Round(height)
+    if self:HasNativeElementSize(key) then
+        if type(def.getEditableSize) == "function" then
+            local ok, width, height = pcall(def.getEditableSize, key)
+            if ok and type(width) == "number" and type(height) == "number" then
+                return Round(width), Round(height)
+            end
         end
+
+        if type(def.getSize) == "function" then
+            local ok, width, height = pcall(def.getSize, key)
+            if ok and type(width) == "number" and type(height) == "number" then
+                return Round(width), Round(height)
+            end
+        end
+
+        return nil, nil
     end
 
-    if type(def.getSize) == "function" then
-        local ok, width, height = pcall(def.getSize, key)
-        if ok and type(width) == "number" and type(height) == "number" then
+    if self:CanUseGenericSize(key) then
+        local entry = self:GetGenericSizeEntry(key)
+        if entry then
+            return Round(entry.width), Round(entry.height)
+        end
+        local frame = self:GetElementFrame(key)
+        local width, height = frame:GetWidth(), frame:GetHeight()
+        if type(width) == "number" and type(height) == "number" then
             return Round(width), Round(height)
         end
     end
@@ -1441,9 +1654,105 @@ function UM:GetEditableElementSize(key)
     return nil, nil
 end
 
+local function EnforceGenericSize(frame)
+    if not frame or frame._ktUnlockSizing then return end
+    local key = frame._ktUnlockSizeKey
+    local entry = key and UM:GetGenericSizeEntry(key)
+    if not entry then return end
+    local width, height = frame:GetWidth(), frame:GetHeight()
+    if width and height and abs(width - entry.width) < 0.5 and abs(height - entry.height) < 0.5 then
+        return
+    end
+    frame._ktUnlockSizing = true
+    frame:SetSize(entry.width, entry.height)
+    frame._ktUnlockSizing = nil
+end
+
+function UM:HookGenericSize(key, frame)
+    if not frame then return end
+    frame._ktUnlockSizeKey = key
+    if frame._ktUnlockSizeHooked then return end
+    frame._ktUnlockSizeHooked = true
+    -- El modulo dueno puede volver a fijar el tamano en cada refresco: el
+    -- override se vuelve a imponer justo despues mientras exista.
+    hooksecurefunc(frame, "SetSize", EnforceGenericSize)
+    hooksecurefunc(frame, "SetWidth", EnforceGenericSize)
+    hooksecurefunc(frame, "SetHeight", EnforceGenericSize)
+end
+
+function UM:ApplyGenericSize(key)
+    local entry = self:GetGenericSizeEntry(key)
+    if not entry or not self:CanUseGenericSize(key) then return end
+    local frame = self:GetElementFrame(key)
+    self:HookGenericSize(key, frame)
+    frame._ktUnlockSizing = true
+    frame:SetSize(entry.width, entry.height)
+    frame._ktUnlockSizing = nil
+end
+
+function UM:ApplyAllStoredSizes()
+    self:EnsureDB()
+    local sizes = self.db and self.db.sizes
+    if type(sizes) ~= "table" then return end
+    for key in pairs(sizes) do
+        if self:GetElementDef(key) and not self:HasNativeElementSize(key) then
+            self:ApplyGenericSize(key)
+        end
+    end
+end
+
+function UM:CopyGenericSizes()
+    local copy = {}
+    local sizes = self.db and self.db.sizes
+    if type(sizes) == "table" then
+        for key, entry in pairs(sizes) do
+            if type(entry) == "table" then
+                copy[key] = {
+                    width = entry.width,
+                    height = entry.height,
+                    origWidth = entry.origWidth,
+                    origHeight = entry.origHeight,
+                }
+            end
+        end
+    end
+    return copy
+end
+
+function UM:RestoreGenericSizeEntry(key, before)
+    self.db.sizes = self.db.sizes or {}
+    local now = self.db.sizes[key]
+    if before then
+        self.db.sizes[key] = {
+            width = before.width,
+            height = before.height,
+            origWidth = before.origWidth,
+            origHeight = before.origHeight,
+        }
+        self:ApplyGenericSize(key)
+    elseif type(now) == "table" then
+        self.db.sizes[key] = nil
+        local frame = self:GetElementFrame(key)
+        if frame and now.origWidth and now.origHeight and self:CanUseGenericSize(key) then
+            frame:SetSize(now.origWidth, now.origHeight)
+        end
+    end
+end
+
+function UM:ResetElementSize(key)
+    if not self:GetGenericSizeEntry(key) then return end
+    self:RestoreGenericSizeEntry(key, nil)
+    self.hasChanges = true
+
+    local mover = self.movers and self.movers[key]
+    if mover and mover.Sync then
+        mover:Sync()
+    end
+end
+
 function UM:SetEditableElementSize(key, width, height)
     local def = self:GetElementDef(key)
-    if not (def and type(def.setEditableSize) == "function") then
+    if not def then
         return
     end
 
@@ -1452,8 +1761,34 @@ function UM:SetEditableElementSize(key, width, height)
     if not (width and height) then
         return
     end
+    width = Round(max(1, width))
+    height = Round(max(1, height))
 
-    SafeCall(def.setEditableSize, key, Round(max(1, width)), Round(max(1, height)))
+    if self:HasNativeElementSize(key) then
+        local currentWidth, currentHeight = self:GetEditableElementSize(key)
+        if currentWidth == width and currentHeight == height then
+            return
+        end
+        SafeCall(def.setEditableSize, key, width, height)
+        self.touchedNativeSizes[key] = true
+    elseif self:CanUseGenericSize(key) then
+        self:EnsureDB()
+        self.db.sizes = self.db.sizes or {}
+        local entry = self.db.sizes[key]
+        if type(entry) ~= "table" then
+            local frame = self:GetElementFrame(key)
+            entry = {
+                origWidth = Round(frame:GetWidth() or width),
+                origHeight = Round(frame:GetHeight() or height),
+            }
+            self.db.sizes[key] = entry
+        end
+        entry.width = width
+        entry.height = height
+        self:ApplyGenericSize(key)
+    else
+        return
+    end
     self.hasChanges = true
 
     local mover = self.movers and self.movers[key]
@@ -1479,6 +1814,18 @@ function UM:CommitPositions()
 end
 
 function UM:RevertPositions()
+    if self.snapshotGenericSizes and self.db then
+        self.db.sizes = self.db.sizes or {}
+        local touched = {}
+        for key in pairs(self.db.sizes) do touched[key] = true end
+        for key in pairs(self.snapshotGenericSizes) do touched[key] = true end
+        for key in pairs(touched) do
+            if not self:HasNativeElementSize(key) then
+                self:RestoreGenericSizeEntry(key, self.snapshotGenericSizes[key])
+            end
+        end
+    end
+
     for key, targetKey in pairs(self.snapshotSnapTargets or {}) do
         if targetKey and targetKey ~= false then
             self.db.snapTargets[key] = targetKey
@@ -1487,9 +1834,11 @@ function UM:RevertPositions()
         end
     end
 
+    -- Solo se deshacen los tamanos nativos tocados en esta sesion: reaplicarlos
+    -- todos relanzaba el layout de cada modulo (Unit Frames) al descartar.
     for key, size in pairs(self.snapshotSizes or {}) do
         local def = self:GetElementDef(key)
-        if def and type(def.setEditableSize) == "function" and size and size.width and size.height then
+        if self.touchedNativeSizes[key] and def and type(def.setEditableSize) == "function" and size and size.width and size.height then
             SafeCall(def.setEditableSize, key, size.width, size.height)
         end
     end
@@ -1502,6 +1851,7 @@ function UM:RevertPositions()
         end
     end
     wipe(self.pendingPositions)
+    wipe(self.touchedNativeSizes)
     self.hasChanges = false
 end
 
@@ -1563,11 +1913,129 @@ function UM:ToggleMoverSelection(key)
     self:RefreshSidebarSelection()
 end
 
+-- Lista de elementos del panel izquierdo: filas planas en vez de botones con
+-- relieve. Cabecera de grupo = texto pequeno en accent con una regla; fila =
+-- texto con barra de accent a la izquierda al pasar el raton o seleccionarla.
+local SIDEBAR_ROW_HEIGHT = 20
+local SIDEBAR_HEADER_HEIGHT = 24
+
+local function StyleSidebarRow(row)
+    if not row then return end
+    local theme = GetUnlockTheme()
+    local selected = row.isSelected
+    local hovered = row.isHovered
+
+    if selected then
+        row.bg:SetColorTexture(theme.accent.r, theme.accent.g, theme.accent.b, hovered and 0.30 or 0.22)
+        row.bar:SetColorTexture(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+        row.bar:Show()
+        row.text:SetTextColor(1, 1, 1, 1)
+    elseif hovered then
+        row.bg:SetColorTexture(1, 1, 1, 0.06)
+        row.bar:SetColorTexture(theme.accent.r, theme.accent.g, theme.accent.b, 0.55)
+        row.bar:Show()
+        row.text:SetTextColor(1, 1, 1, 1)
+    else
+        row.bg:SetColorTexture(0, 0, 0, 0)
+        row.bar:Hide()
+        row.text:SetTextColor(MENU_LABEL[1], MENU_LABEL[2], MENU_LABEL[3], 1)
+    end
+end
+
+local function StyleSidebarHeader(header)
+    if not header then return end
+    local theme = GetUnlockTheme()
+    header.text:SetTextColor(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+    ApplyTextureGradient(header.rule, "HORIZONTAL",
+        theme.accent.r, theme.accent.g, theme.accent.b, 0.35,
+        theme.accent.r, theme.accent.g, theme.accent.b, 0)
+end
+
+function UM:AcquireSidebarHeader(index)
+    local sidebar = self.sidebar
+    sidebar.headerPool = sidebar.headerPool or {}
+    local header = sidebar.headerPool[index]
+    if not header then
+        header = CreateFrame("Frame", nil, sidebar.content)
+        header:SetSize(178, SIDEBAR_HEADER_HEIGHT)
+        header.text = CreateText(header, 10, "LEFT")
+        header.text:SetPoint("BOTTOMLEFT", 2, 5)
+        header.rule = header:CreateTexture(nil, "ARTWORK")
+        header.rule:SetTexture(WHITE8X8)
+        header.rule:SetHeight(1)
+        header.rule:SetPoint("LEFT", header.text, "RIGHT", 6, 0)
+        header.rule:SetPoint("RIGHT", header, "RIGHT", -2, 0)
+        sidebar.headerPool[index] = header
+    end
+    return header
+end
+
+function UM:AcquireSidebarRow(index)
+    local sidebar = self.sidebar
+    sidebar.rowPool = sidebar.rowPool or {}
+    local row = sidebar.rowPool[index]
+    if not row then
+        row = CreateFrame("Button", nil, sidebar.content)
+        row:SetSize(178, SIDEBAR_ROW_HEIGHT)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        row.bar = row:CreateTexture(nil, "ARTWORK")
+        row.bar:SetPoint("TOPLEFT", 0, 0)
+        row.bar:SetPoint("BOTTOMLEFT", 0, 0)
+        row.bar:SetWidth(2)
+        row.text = CreateText(row, 11, "LEFT")
+        row.text:SetPoint("LEFT", 10, 0)
+        row.text:SetPoint("RIGHT", -6, 0)
+        row.text:SetWordWrap(false)
+        row:SetScript("OnEnter", function(widget)
+            widget.isHovered = true
+            StyleSidebarRow(widget)
+            local mover = widget.key and UM.movers and UM.movers[widget.key]
+            if mover and mover.SetLocatorHover then
+                mover:SetLocatorHover(true)
+            end
+        end)
+        row:SetScript("OnLeave", function(widget)
+            widget.isHovered = false
+            StyleSidebarRow(widget)
+            local mover = widget.key and UM.movers and UM.movers[widget.key]
+            if mover and mover.SetLocatorHover then
+                mover:SetLocatorHover(false)
+            end
+        end)
+        row:SetScript("OnClick", function(widget, button)
+            local key = widget.key
+            if not key then return end
+            if IsShiftKeyDown() then
+                UM:ToggleMoverSelection(key)
+            else
+                UM:SelectMover(key)
+            end
+            local mover = UM.movers and UM.movers[key]
+            if mover then
+                mover:SetFrameLevel(UM.unlockFrame:GetFrameLevel() + 60)
+                if mover.Locate then
+                    mover:Locate()
+                end
+                if button == "RightButton" then
+                    UM:OpenMoverMenu(key, mover)
+                end
+            end
+        end)
+        sidebar.rowPool[index] = row
+    end
+    return row
+end
+
 function UM:RefreshSidebarSelection()
     if not self.sidebar or not self.sidebar.itemButtons then return end
-    for _, button in ipairs(self.sidebar.itemButtons) do
-        if button.key then
-            StyleSidebarButton(button, "item", self:IsMoverSelected(button.key))
+    for _, row in ipairs(self.sidebar.itemButtons) do
+        if row.key then
+            row.isSelected = self:IsMoverSelected(row.key) and true or false
+            StyleSidebarRow(row)
+        elseif row.rule then
+            StyleSidebarHeader(row)
         end
     end
 end
@@ -1734,7 +2202,7 @@ function UM:CreateMover(key)
     mover:SetClampedToScreen(true)
 
     local theme = GetUnlockTheme()
-    KT:AddBackdrop(mover, 0, 0, 0, 0.22)
+    KT:AddBackdrop(mover, 0.02, 0.02, 0.025, 0.58)
     KT:AddBorder(mover, theme.accent.r, theme.accent.g, theme.accent.b, 1)
 
     mover.label = CreateText(mover, 10)
@@ -1787,6 +2255,55 @@ function UM:CreateMover(key)
         mover.hoverGlow[index] = edge
     end
 
+    -- Accent wash that fades in with the hover.
+    mover.hoverTint = mover:CreateTexture(nil, "BACKGROUND", nil, 3)
+    mover.hoverTint:SetAllPoints()
+    mover.hoverTint:SetTexture(WHITE8X8)
+    mover.hoverTint:Hide()
+
+    -- Light sweep that crosses the element once when the cursor enters.
+    mover.sheenClip = CreateFrame("Frame", nil, mover)
+    mover.sheenClip:SetAllPoints()
+    mover.sheenClip:SetClipsChildren(true)
+    mover.sheenHolder = CreateFrame("Frame", nil, mover.sheenClip)
+    mover.sheenHolder:SetSize(44, 10)
+    mover.sheenHolder:Hide()
+    mover.sheenA = mover.sheenHolder:CreateTexture(nil, "OVERLAY")
+    mover.sheenA:SetTexture(WHITE8X8)
+    mover.sheenA:SetPoint("TOPLEFT")
+    mover.sheenA:SetPoint("BOTTOMLEFT")
+    mover.sheenA:SetWidth(22)
+    mover.sheenB = mover.sheenHolder:CreateTexture(nil, "OVERLAY")
+    mover.sheenB:SetTexture(WHITE8X8)
+    mover.sheenB:SetPoint("TOPRIGHT")
+    mover.sheenB:SetPoint("BOTTOMRIGHT")
+    mover.sheenB:SetWidth(22)
+    mover.sheenAnimator = CreateFrame("Frame", nil, mover)
+
+    -- Ripple + flash played on click.
+    mover.pulseEdges = {}
+    for index = 1, 4 do
+        local edge = mover:CreateTexture(nil, "OVERLAY", nil, 6)
+        edge:SetTexture(WHITE8X8)
+        edge:Hide()
+        mover.pulseEdges[index] = edge
+    end
+    mover.pulseFlash = mover:CreateTexture(nil, "ARTWORK", nil, 6)
+    mover.pulseFlash:SetAllPoints()
+    mover.pulseFlash:SetTexture(WHITE8X8)
+    mover.pulseFlash:Hide()
+    mover.pulseAnimator = CreateFrame("Frame", nil, mover)
+
+    -- Soft breathing outline while the element is selected.
+    mover.selEdges = {}
+    for index = 1, 4 do
+        local edge = mover:CreateTexture(nil, "OVERLAY", nil, 5)
+        edge:SetTexture(WHITE8X8)
+        edge:Hide()
+        mover.selEdges[index] = edge
+    end
+    mover.selAnimator = CreateFrame("Frame", nil, mover)
+
     mover.hoverAnimator = CreateFrame("Frame", nil, mover)
     mover.hoverProgress = 0
     mover.hoverTarget = 0
@@ -1796,7 +2313,8 @@ function UM:CreateMover(key)
         progress = max(0, min(progress or 0, 1))
         s.hoverProgress = progress
 
-        local eased = progress * progress * (3 - (2 * progress))
+        -- smootherstep: no velocity jump at either end, so enter/leave feel soft.
+        local eased = progress * progress * progress * (progress * ((progress * 6) - 15) + 10)
         local borderR = MOVER_R + ((1 - MOVER_R) * eased)
         local borderG = MOVER_G + ((1 - MOVER_G) * eased)
         local borderB = MOVER_B + ((1 - MOVER_B) * eased)
@@ -1810,16 +2328,29 @@ function UM:CreateMover(key)
         end
 
         if s.bgKT then
+            -- Overlays mas opacos: el contenido del juego ya no se come la
+            -- etiqueta del elemento ni hace dificil ver sus limites.
             if self.db.unlockDarkOverlays then
-                local baseAlpha = s.isSelected and 0.30 or 0.22
+                local baseAlpha = s.isSelected and 0.66 or 0.58
                 s.bgKT:SetColorTexture(
-                    0.03 * eased,
-                    0.03 * eased,
-                    0.03 * eased,
-                    baseAlpha + ((0.34 - baseAlpha) * eased)
+                    0.02 + (0.04 * eased),
+                    0.02 + (0.04 * eased),
+                    0.025 + (0.045 * eased),
+                    baseAlpha + ((0.74 - baseAlpha) * eased)
                 )
             else
-                s.bgKT:SetColorTexture(0.03 * eased, 0.03 * eased, 0.03 * eased, 0.02 + (0.06 * eased))
+                local baseAlpha = s.isSelected and 0.30 or 0.22
+                s.bgKT:SetColorTexture(0.03 * eased, 0.03 * eased, 0.03 * eased, baseAlpha + ((0.34 - baseAlpha) * eased))
+            end
+        end
+
+        if s.hoverTint then
+            if eased > 0.01 then
+                local tintTheme = GetUnlockTheme()
+                s.hoverTint:SetVertexColor(tintTheme.accent.r, tintTheme.accent.g, tintTheme.accent.b, 0.16 * eased)
+                s.hoverTint:Show()
+            else
+                s.hoverTint:Hide()
             end
         end
 
@@ -1885,7 +2416,219 @@ function UM:CreateMover(key)
         end
     end
 
+    -- Localizador: resalta el elemento al pasar el raton por su fila del
+    -- panel izquierdo y parpadea al pulsarla, para encontrarlo en pantalla.
+    mover.locatorEdges = {}
+    for index = 1, 4 do
+        local edge = mover:CreateTexture(nil, "OVERLAY", nil, 7)
+        edge:SetTexture(WHITE8X8)
+        edge:Hide()
+        mover.locatorEdges[index] = edge
+    end
+    mover.locatorFill = mover:CreateTexture(nil, "ARTWORK", nil, 7)
+    mover.locatorFill:SetAllPoints()
+    mover.locatorFill:SetTexture(WHITE8X8)
+    mover.locatorFill:Hide()
+    mover.locatorAnimator = CreateFrame("Frame", nil, mover)
+
+    mover.UpdateLocator = function(s, wave)
+        local strength = 0
+        if wave then
+            strength = 0.30 + (0.70 * wave)
+        elseif s.locatorHover then
+            strength = 0.85
+        end
+
+        local edges = s.locatorEdges
+        if strength <= 0 then
+            for _, edge in ipairs(edges) do
+                edge:Hide()
+            end
+            s.locatorFill:Hide()
+            return
+        end
+
+        local themeNow = GetUnlockTheme()
+        local r, g, b = themeNow.accent.r, themeNow.accent.g, themeNow.accent.b
+        local extent = 3
+        local thickness = 2
+
+        edges[1]:ClearAllPoints()
+        edges[1]:SetPoint("BOTTOMLEFT", s, "TOPLEFT", -extent, extent - thickness)
+        edges[1]:SetPoint("BOTTOMRIGHT", s, "TOPRIGHT", extent, extent - thickness)
+        edges[1]:SetHeight(thickness)
+
+        edges[2]:ClearAllPoints()
+        edges[2]:SetPoint("TOPLEFT", s, "BOTTOMLEFT", -extent, -extent + thickness)
+        edges[2]:SetPoint("TOPRIGHT", s, "BOTTOMRIGHT", extent, -extent + thickness)
+        edges[2]:SetHeight(thickness)
+
+        edges[3]:ClearAllPoints()
+        edges[3]:SetPoint("TOPRIGHT", s, "TOPLEFT", -extent + thickness, extent)
+        edges[3]:SetPoint("BOTTOMRIGHT", s, "BOTTOMLEFT", -extent + thickness, -extent)
+        edges[3]:SetWidth(thickness)
+
+        edges[4]:ClearAllPoints()
+        edges[4]:SetPoint("TOPLEFT", s, "TOPRIGHT", extent - thickness, extent)
+        edges[4]:SetPoint("BOTTOMLEFT", s, "BOTTOMRIGHT", extent - thickness, -extent)
+        edges[4]:SetWidth(thickness)
+
+        for _, edge in ipairs(edges) do
+            edge:SetVertexColor(r, g, b, strength)
+            edge:Show()
+        end
+        s.locatorFill:SetVertexColor(r, g, b, 0.22 * strength)
+        s.locatorFill:Show()
+    end
+
+    mover.SetLocatorHover = function(s, enabled)
+        s.locatorHover = enabled and true or false
+        if enabled then
+            s:SetFrameLevel(self.unlockFrame:GetFrameLevel() + 60)
+        end
+        if not s.locatorElapsed then
+            s:UpdateLocator()
+        end
+    end
+
+    mover.StopLocator = function(s)
+        s.locatorAnimator:SetScript("OnUpdate", nil)
+        s.locatorElapsed = nil
+        s.locatorHover = false
+        s:UpdateLocator()
+    end
+
+    mover.Locate = function(s)
+        local duration = 1.6
+        local period = 0.4
+        s.locatorElapsed = 0
+        s.locatorAnimator:SetScript("OnUpdate", function(animator, elapsed)
+            s.locatorElapsed = (s.locatorElapsed or 0) + elapsed
+            if s.locatorElapsed >= duration then
+                animator:SetScript("OnUpdate", nil)
+                s.locatorElapsed = nil
+                s:UpdateLocator()
+                return
+            end
+            local wave = 0.5 + (0.5 * math.cos(s.locatorElapsed * math.pi * 2 / period))
+            s:UpdateLocator(wave)
+        end)
+        s:UpdateLocator(1)
+    end
+
+    mover.PlaySheen = function(s)
+        local width = s:GetWidth() or 0
+        if width < 60 then return end
+        local themeNow = GetUnlockTheme()
+        local r, g, b = themeNow.accent.r, themeNow.accent.g, themeNow.accent.b
+        ApplyTextureGradient(s.sheenA, "HORIZONTAL", r, g, b, 0, 1, 1, 1, 0.22)
+        ApplyTextureGradient(s.sheenB, "HORIZONTAL", 1, 1, 1, 0.22, r, g, b, 0)
+        s.sheenHolder:SetHeight(max(s:GetHeight() or 0, 1))
+        s.sheenElapsed = 0
+        s.sheenHolder:Show()
+        s.sheenAnimator:SetScript("OnUpdate", function(animator, elapsed)
+            s.sheenElapsed = s.sheenElapsed + elapsed
+            local t = s.sheenElapsed / MOVER_SHEEN_DURATION
+            if t >= 1 then
+                animator:SetScript("OnUpdate", nil)
+                s.sheenHolder:Hide()
+                return
+            end
+            local out = 1 - ((1 - t) * (1 - t))
+            local w = s:GetWidth() or width
+            s.sheenHolder:ClearAllPoints()
+            s.sheenHolder:SetPoint("LEFT", s.sheenClip, "LEFT", -44 + ((w + 44) * out), 0)
+        end)
+    end
+
+    mover.PlayClickPulse = function(s)
+        s.pulseElapsed = 0
+        s.pulseAnimator:SetScript("OnUpdate", function(animator, elapsed)
+            s.pulseElapsed = (s.pulseElapsed or 0) + elapsed
+            local t = s.pulseElapsed / MOVER_CLICK_DURATION
+            local edges = s.pulseEdges
+            if t >= 1 then
+                animator:SetScript("OnUpdate", nil)
+                s.pulseElapsed = nil
+                for _, edge in ipairs(edges) do edge:Hide() end
+                s.pulseFlash:Hide()
+                return
+            end
+            local out = 1 - ((1 - t) * (1 - t) * (1 - t))
+            local fade = (1 - t) * (1 - t)
+            local themeNow = GetUnlockTheme()
+            local r, g, b = themeNow.accent.r, themeNow.accent.g, themeNow.accent.b
+            local extent = 2 + (20 * out)
+            local thickness = max(1, 3 - (2 * t))
+
+            edges[1]:ClearAllPoints()
+            edges[1]:SetPoint("BOTTOMLEFT", s, "TOPLEFT", -extent, extent)
+            edges[1]:SetPoint("BOTTOMRIGHT", s, "TOPRIGHT", extent, extent)
+            edges[1]:SetHeight(thickness)
+            edges[2]:ClearAllPoints()
+            edges[2]:SetPoint("TOPLEFT", s, "BOTTOMLEFT", -extent, -extent)
+            edges[2]:SetPoint("TOPRIGHT", s, "BOTTOMRIGHT", extent, -extent)
+            edges[2]:SetHeight(thickness)
+            edges[3]:ClearAllPoints()
+            edges[3]:SetPoint("TOPRIGHT", s, "TOPLEFT", -extent, extent)
+            edges[3]:SetPoint("BOTTOMRIGHT", s, "BOTTOMLEFT", -extent, -extent)
+            edges[3]:SetWidth(thickness)
+            edges[4]:ClearAllPoints()
+            edges[4]:SetPoint("TOPLEFT", s, "TOPRIGHT", extent, extent)
+            edges[4]:SetPoint("BOTTOMLEFT", s, "BOTTOMRIGHT", extent, -extent)
+            edges[4]:SetWidth(thickness)
+            for _, edge in ipairs(edges) do
+                edge:SetColorTexture(r, g, b, 0.9 * fade)
+                edge:Show()
+            end
+            s.pulseFlash:SetColorTexture(r, g, b, 0.34 * fade)
+            s.pulseFlash:Show()
+        end)
+    end
+
+    mover.UpdateSelectedGlow = function(s)
+        local edges = s.selEdges
+        if not (s.isSelected and not s.isDragging and s:IsShown()) then
+            s.selActive = false
+            s.selAnimator:SetScript("OnUpdate", nil)
+            for _, edge in ipairs(edges) do edge:Hide() end
+            return
+        end
+        if s.selActive then return end
+        s.selActive = true
+        s.selPhase = 0
+        local extent = 3
+        edges[1]:ClearAllPoints()
+        edges[1]:SetPoint("BOTTOMLEFT", s, "TOPLEFT", -extent, extent - 1)
+        edges[1]:SetPoint("BOTTOMRIGHT", s, "TOPRIGHT", extent, extent - 1)
+        edges[1]:SetHeight(1)
+        edges[2]:ClearAllPoints()
+        edges[2]:SetPoint("TOPLEFT", s, "BOTTOMLEFT", -extent, -extent + 1)
+        edges[2]:SetPoint("TOPRIGHT", s, "BOTTOMRIGHT", extent, -extent + 1)
+        edges[2]:SetHeight(1)
+        edges[3]:ClearAllPoints()
+        edges[3]:SetPoint("TOPRIGHT", s, "TOPLEFT", -extent + 1, extent)
+        edges[3]:SetPoint("BOTTOMRIGHT", s, "BOTTOMLEFT", -extent + 1, -extent)
+        edges[3]:SetWidth(1)
+        edges[4]:ClearAllPoints()
+        edges[4]:SetPoint("TOPLEFT", s, "TOPRIGHT", extent - 1, extent)
+        edges[4]:SetPoint("BOTTOMLEFT", s, "BOTTOMRIGHT", extent - 1, -extent)
+        edges[4]:SetWidth(1)
+        s.selAnimator:SetScript("OnUpdate", function(_, elapsed)
+            s.selPhase = (s.selPhase or 0) + elapsed
+            local themeNow = GetUnlockTheme()
+            local alpha = 0.32 + (0.28 * (0.5 + (0.5 * math.sin(s.selPhase * 2.6))))
+            for _, edge in ipairs(edges) do
+                edge:SetColorTexture(themeNow.accent.r, themeNow.accent.g, themeNow.accent.b, alpha)
+                edge:Show()
+            end
+        end)
+    end
+
     mover.SetHoverTarget = function(s, target)
+        if target and s.hoverTarget ~= 1 and s.hoverProgress < 0.25 then
+            s:PlaySheen()
+        end
         s.hoverTarget = target and 1 or 0
         if abs(s.hoverProgress - s.hoverTarget) < 0.001 then
             s.hoverProgress = s.hoverTarget
@@ -1932,6 +2675,7 @@ function UM:CreateMover(key)
     mover.RefreshStyle = function(s)
         s:ApplyHoverVisual(s.hoverProgress or 0)
         s:RefreshCoords()
+        s:UpdateSelectedGlow()
     end
 
     mover.Sync = function(s)
@@ -1939,7 +2683,7 @@ function UM:CreateMover(key)
         local left, top, width, height = self:GetElementRect(s.key)
         s:SetSize(max(width, 32), max(height, 24))
         SetFrameTopLeft(s, left, top)
-        s.label:SetText(def and (def.label or s.key) or s.key)
+        s.label:SetText(LText(def and (def.label or s.key) or s.key))
         if s.close then
             if def and type(def.unlockClose) == "function" then
                 s.close:Show()
@@ -1966,6 +2710,7 @@ function UM:CreateMover(key)
             self:SelectMover(s.key)
         end
         s.isDragging = true
+        s:PlayClickPulse()
         local scale = UIParent:GetEffectiveScale()
         s.dragStartX, s.dragStartY = GetCursorPosition()
         s.dragStartX = s.dragStartX / scale
@@ -2010,6 +2755,7 @@ function UM:CreateMover(key)
 
     mover:SetScript("OnMouseUp", function(s, button)
         if button == "RightButton" then
+            s:PlayClickPulse()
             self:OpenMoverMenu(s.key, s)
             return
         end
@@ -2038,6 +2784,13 @@ function UM:CreateMover(key)
 
     mover:SetScript("OnHide", function(s)
         s:ResetHoverAnimation()
+        s:StopLocator()
+        s.pulseAnimator:SetScript("OnUpdate", nil)
+        s.sheenAnimator:SetScript("OnUpdate", nil)
+        s.sheenHolder:Hide()
+        s.pulseFlash:Hide()
+        for _, edge in ipairs(s.pulseEdges) do edge:Hide() end
+        s:UpdateSelectedGlow()
     end)
 
     mover.cog:SetScript("OnClick", function()
@@ -2123,7 +2876,14 @@ function UM:ResetMover(key)
 
     mover:Sync()
     self.pendingPositions[key] = nil
-    self.hasChanges = next(self.pendingPositions) ~= nil
+    -- Un reset nativo ya ha escrito en el store del modulo: cuenta como cambio
+    -- para que el aviso de salida no lo pierda. Tampoco se pisan cambios de
+    -- tamano o de snap hechos antes sobre otros elementos.
+    if handled then
+        self.hasChanges = true
+    elseif next(self.pendingPositions) ~= nil then
+        self.hasChanges = true
+    end
 
     if self.BackupPersistedPositionsToGlobal then
         self:BackupPersistedPositionsToGlobal()
@@ -2133,6 +2893,137 @@ function UM:ResetMover(key)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Menu de clic derecho: tamano, posicion relativa a un
+-- punto de la pantalla, anclaje a otro elemento con offsets y ancho extra.
+-- Cada valor se edita con slider + caja numerica.
+-- ---------------------------------------------------------------------------
+local RELATIVE_POINTS = {
+    { value = "TOPLEFT", label = "Top Left" },
+    { value = "TOP", label = "Top" },
+    { value = "TOPRIGHT", label = "Top Right" },
+    { value = "LEFT", label = "Left" },
+    { value = "CENTER", label = "Center" },
+    { value = "RIGHT", label = "Right" },
+    { value = "BOTTOMLEFT", label = "Bottom Left" },
+    { value = "BOTTOM", label = "Bottom" },
+    { value = "BOTTOMRIGHT", label = "Bottom Right" },
+}
+
+-- Fraccion horizontal / vertical de un punto de anclaje (0 = izquierda/abajo).
+local function PointFractions(point)
+    point = point or "CENTER"
+    local fx = point:find("LEFT") and 0 or (point:find("RIGHT") and 1 or 0.5)
+    local fy = point:find("BOTTOM") and 0 or (point:find("TOP") and 1 or 0.5)
+    return fx, fy
+end
+
+function UM:GetMenuRelativePoint()
+    local point = self.db and self.db.unlockRelativePoint
+    for _, option in ipairs(RELATIVE_POINTS) do
+        if option.value == point then
+            return point, option.label
+        end
+    end
+    return "CENTER", "Center"
+end
+
+-- X/Y del elemento medidos desde el punto elegido de la pantalla hasta el
+-- mismo punto del elemento, en pixeles de UIParent.
+function UM:GetRelativeXY(key)
+    local mover = self.movers and self.movers[key]
+    local left, top = mover and mover:GetLeft(), mover and mover:GetTop()
+    if not (left and top) then
+        return 0, 0
+    end
+    local uiWidth, uiHeight = GetUIRect()
+    local fx, fy = PointFractions(self:GetMenuRelativePoint())
+    local width, height = mover:GetWidth(), mover:GetHeight()
+    local x = (left + (width * fx)) - (uiWidth * fx)
+    local y = ((top - height) + (height * fy)) - (uiHeight * fy)
+    return Round(x), Round(y)
+end
+
+function UM:SetRelativeXY(key, x, y)
+    local mover = self.movers and self.movers[key]
+    if not mover then return end
+    local uiWidth, uiHeight = GetUIRect()
+    local fx, fy = PointFractions(self:GetMenuRelativePoint())
+    local width, height = mover:GetWidth(), mover:GetHeight()
+    local left = (tonumber(x) or 0) + (uiWidth * fx) - (width * fx)
+    local bottom = (tonumber(y) or 0) + (uiHeight * fy) - (height * fy)
+    SetFrameTopLeft(mover, left, bottom + height)
+    self:ApplyMoverToElement(key, mover)
+    mover:RefreshCoords()
+end
+
+-- Offset respecto al elemento elegido como anclaje ("Snap Target"): distancia
+-- entre las esquinas superiores izquierdas de ambos movers.
+function UM:GetSnapOffset(key)
+    local targetKey = self:GetSnapTarget(key)
+    local mover = self.movers and self.movers[key]
+    local targetMover = targetKey and self.movers and self.movers[targetKey]
+    if not (mover and targetMover and targetMover:IsShown()) then
+        return nil, nil
+    end
+    local left, top = mover:GetLeft(), mover:GetTop()
+    local targetLeft, targetTop = targetMover:GetLeft(), targetMover:GetTop()
+    if not (left and top and targetLeft and targetTop) then
+        return nil, nil
+    end
+    return Round(left - targetLeft), Round(top - targetTop)
+end
+
+function UM:SetSnapOffset(key, offsetX, offsetY)
+    local targetKey = self:GetSnapTarget(key)
+    local mover = self.movers and self.movers[key]
+    local targetMover = targetKey and self.movers and self.movers[targetKey]
+    if not (mover and targetMover) then return end
+    local targetLeft, targetTop = targetMover:GetLeft(), targetMover:GetTop()
+    if not (targetLeft and targetTop) then return end
+    SetFrameTopLeft(mover, targetLeft + (tonumber(offsetX) or 0), targetTop + (tonumber(offsetY) or 0))
+    self:ApplyMoverToElement(key, mover)
+    mover:RefreshCoords()
+end
+
+-- Ancho extra: diferencia de ancho (en pixeles de pantalla) entre el elemento
+-- y el elemento al que esta anclado. Al editarlo se ajusta el ancho real.
+function UM:GetExtraWidth(key)
+    local targetKey = self:GetSnapTarget(key)
+    local mover = self.movers and self.movers[key]
+    local targetMover = targetKey and self.movers and self.movers[targetKey]
+    if not (mover and targetMover and targetMover:IsShown()) then
+        return nil
+    end
+    return Round(mover:GetWidth() - targetMover:GetWidth())
+end
+
+function UM:SetExtraWidth(key, extra)
+    local targetKey = self:GetSnapTarget(key)
+    local mover = self.movers and self.movers[key]
+    local targetMover = targetKey and self.movers and self.movers[targetKey]
+    local frame = self:GetElementFrame(key)
+    if not (mover and targetMover and frame and self:CanEditElementSize(key)) then return end
+    local width, height = self:GetEditableElementSize(key)
+    if not (width and height) then return end
+    local pixelsPerUnit = (frame:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+    if pixelsPerUnit <= 0 then pixelsPerUnit = 1 end
+    local desired = targetMover:GetWidth() + (tonumber(extra) or 0)
+    local newWidth = width + ((desired - mover:GetWidth()) / pixelsPerUnit)
+    self:SetEditableElementSize(key, newWidth, height)
+end
+
+local function SetMenuInputValue(input, value)
+    if not input or input:HasFocus() then return end
+    input:SetText(value ~= nil and tostring(value) or "")
+    input:SetCursorPosition(0)
+end
+
+local function SliderRange(current, minimum, maximum)
+    current = tonumber(current) or 0
+    return min(minimum, current), max(maximum, current)
+end
+
 function UM:RefreshMoverMenuFields()
     local menuFrame = self.moverMenu
     if not (menuFrame and menuFrame.activeKey) then
@@ -2140,238 +3031,411 @@ function UM:RefreshMoverMenuFields()
     end
 
     local key = menuFrame.activeKey
+    local def = self:GetElementDef(key)
     local theme = GetUnlockTheme()
     local canEditSize = self:CanEditElementSize(key)
     local width, height = self:GetEditableElementSize(key)
-    local x, y = self:GetMoverStoredXY(key)
+    local x, y = self:GetRelativeXY(key)
+    local offsetX, offsetY = self:GetSnapOffset(key)
+    local extraWidth = canEditSize and self:GetExtraWidth(key) or nil
+    local sizeLabels = def and type(def.sizeLabels) == "table" and def.sizeLabels or nil
+    local uiWidth, uiHeight = GetUIRect()
+    local _, relativeLabel = self:GetMenuRelativePoint()
 
-    menuFrame.fadeTargetID = ResolveMouseoverTargetID(key, self:GetElementDef(key))
+    menuFrame.fadeTargetID = ResolveMouseoverTargetID(key, def)
+    menuFrame.canEditSize = canEditSize and width ~= nil
+    menuFrame.hasAnchor = offsetX ~= nil
+    menuFrame.hasExtraWidth = extraWidth ~= nil
+    menuFrame.hasGenericSize = self:HasGenericSizeOverride(key)
 
-    if menuFrame.widthRow then
-        menuFrame.widthRow:SetShown(canEditSize)
-        if canEditSize then
-            menuFrame.widthRow.input:SetText(tostring(width or ""))
-        end
-        menuFrame.widthRow.label:SetTextColor(theme.muted.r, theme.muted.g, theme.muted.b, 1)
-        StyleMenuInputBox(menuFrame.widthRow.input)
+    KT:AddBackdrop(menuFrame, MENU_BG[1], MENU_BG[2], MENU_BG[3], MENU_BG[4])
+    KT:AddBorder(menuFrame, theme.accent.r, theme.accent.g, theme.accent.b, 0.85)
+    menuFrame.topAccent:SetColorTexture(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+
+    menuFrame.hint:SetTextColor(MENU_HINT[1], MENU_HINT[2], MENU_HINT[3], 1)
+    menuFrame.title:SetText(LText("Element Options") .. ":  " .. LText(def and (def.label or key) or key))
+    menuFrame.title:SetTextColor(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+    menuFrame.noSize:SetTextColor(MENU_HINT[1], MENU_HINT[2], MENU_HINT[3], 1)
+    for _, divider in ipairs(menuFrame.dividers) do
+        divider:SetColorTexture(MENU_DIVIDER[1], MENU_DIVIDER[2], MENU_DIVIDER[3], MENU_DIVIDER[4])
     end
-    if menuFrame.heightRow then
-        menuFrame.heightRow:SetShown(canEditSize)
-        if canEditSize then
-            menuFrame.heightRow.input:SetText(tostring(height or ""))
-        end
-        menuFrame.heightRow.label:SetTextColor(theme.muted.r, theme.muted.g, theme.muted.b, 1)
-        StyleMenuInputBox(menuFrame.heightRow.input)
-    end
-    if menuFrame.xRow then
-        menuFrame.xRow.input:SetText(tostring(x or 0))
-        menuFrame.xRow.label:SetTextColor(theme.muted.r, theme.muted.g, theme.muted.b, 1)
-        StyleMenuInputBox(menuFrame.xRow.input)
-    end
-    if menuFrame.yRow then
-        menuFrame.yRow.input:SetText(tostring(y or 0))
-        menuFrame.yRow.label:SetTextColor(theme.muted.r, theme.muted.g, theme.muted.b, 1)
-        StyleMenuInputBox(menuFrame.yRow.input)
+    for _, row in ipairs(menuFrame.valueRows) do
+        row:ApplyStyle()
     end
 
-    if menuFrame.snapHeader then
-        menuFrame.snapHeader:SetTextColor(theme.muted.r, theme.muted.g, theme.muted.b, 1)
-    end
-    if menuFrame.snapButton then
-        RefreshPanelButtonTheme(menuFrame.snapButton)
-        menuFrame.snapButton.text:SetText(self:GetSnapTargetLabel(key))
-        menuFrame.snapButton.text:SetTextColor(theme.text.r, theme.text.g, theme.text.b, 1)
-        if menuFrame.snapButton.arrow then
-            menuFrame.snapButton.arrow:SetTextColor(theme.soft.r, theme.soft.g, theme.soft.b, 1)
-        end
+    menuFrame.widthRow.label:SetText(LText(sizeLabels and sizeLabels.width or "Width"))
+    menuFrame.heightRow.label:SetText(LText(sizeLabels and sizeLabels.height or "Height"))
+    if menuFrame.canEditSize then
+        menuFrame.widthRow:SetRange(SliderRange(width, 1, max(600, (width or 0) * 2)))
+        menuFrame.widthRow:SetValue(width)
+        menuFrame.heightRow:SetRange(SliderRange(height, 1, max(300, (height or 0) * 2)))
+        menuFrame.heightRow:SetValue(height)
     end
 
-    if menuFrame.fade and menuFrame.fade.SetVisualState then
-        RefreshPanelButtonTheme(menuFrame.fade)
+    menuFrame.xRow:SetRange(SliderRange(x, -Round(uiWidth), Round(uiWidth)))
+    menuFrame.xRow:SetValue(x)
+    menuFrame.yRow:SetRange(SliderRange(y, -Round(uiHeight), Round(uiHeight)))
+    menuFrame.yRow:SetValue(y)
+
+    if menuFrame.hasExtraWidth then
+        menuFrame.extraWidthRow:SetRange(SliderRange(extraWidth, -300, 300))
+        menuFrame.extraWidthRow:SetValue(extraWidth)
+    end
+    if menuFrame.hasAnchor then
+        menuFrame.offsetXRow:SetRange(SliderRange(offsetX, -500, 500))
+        menuFrame.offsetXRow:SetValue(offsetX)
+        menuFrame.offsetYRow:SetRange(SliderRange(offsetY, -500, 500))
+        menuFrame.offsetYRow:SetValue(offsetY)
+    end
+
+    StyleMenuButton(menuFrame.anchorButton)
+    menuFrame.anchorButton.text:SetText(LText("Anchored to") .. ":  " .. (self:GetSnapTarget(key) and self:GetSnapTargetLabel(key) or LText("Screen")))
+    menuFrame.anchorButton.arrow:SetTextColor(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+    StyleMenuButton(menuFrame.relativeButton)
+    menuFrame.relativeButton.text:SetText(LText("Relative to Screen") .. ":  " .. LText(relativeLabel))
+    menuFrame.relativeButton.arrow:SetTextColor(theme.accent.r, theme.accent.g, theme.accent.b, 1)
+
+    StyleMenuButton(menuFrame.fade)
+    if menuFrame.fadeTargetID then
         menuFrame.fade:SetVisualState(GetMouseoverSetting(menuFrame.fadeTargetID))
     end
-    if menuFrame.center then
-        RefreshPanelButtonTheme(menuFrame.center)
-    end
-    if menuFrame.reset then
-        RefreshPanelButtonTheme(menuFrame.reset)
-    end
+    StyleMenuButton(menuFrame.configure)
+    StyleMenuButton(menuFrame.center)
+    StyleMenuButton(menuFrame.reset)
+    StyleMenuButton(menuFrame.resetSize)
 
-    if menuFrame.UpdateLayout then
-        menuFrame:UpdateLayout()
-    end
+    KT:AddBackdrop(menuFrame.list, MENU_BG[1], MENU_BG[2], MENU_BG[3], MENU_BG[4])
+    KT:AddBorder(menuFrame.list, theme.accent.r, theme.accent.g, theme.accent.b, 0.85)
 
-    if menuFrame.snapList and menuFrame.snapList:IsShown() then
-        self:ToggleMoverSnapList(nil, true)
-    end
+    menuFrame:UpdateLayout()
 end
 
-function UM:ToggleMoverSnapList(anchorButton, forceRefresh)
+-- Lista desplegable compartida (anclaje y punto de referencia).
+function UM:ShowMoverMenuList(anchorButton, listKind, options, currentValue, onSelect)
     local menuFrame = self.moverMenu
-    local snapList = menuFrame and menuFrame.snapList
-    if not (menuFrame and snapList and menuFrame.activeKey) then
+    local list = menuFrame and menuFrame.list
+    if not list then return end
+
+    if list:IsShown() and list.kind == listKind and list.anchorButton == anchorButton then
+        list:Hide()
         return
     end
+    list.kind = listKind
+    list.anchorButton = anchorButton
 
-    if snapList:IsShown() and not forceRefresh then
-        snapList:Hide()
-        return
-    end
-
-    snapList.buttons = snapList.buttons or {}
-    for _, button in ipairs(snapList.buttons) do
+    local content = list.content
+    list.buttons = list.buttons or {}
+    for _, button in ipairs(list.buttons) do
         button:Hide()
     end
 
-    local theme = GetUnlockTheme()
-    local options = self:GetSnapTargetOptions(menuFrame.activeKey)
-    local currentTarget = self:GetSnapTarget(menuFrame.activeKey)
-    local buttonWidth = 170
+    local buttonWidth = anchorButton:GetWidth()
     local buttonHeight = 20
-
+    local spacing = 2
     for index, option in ipairs(options) do
-        local button = snapList.buttons[index]
+        local button = list.buttons[index]
         if not button then
-            button = CreatePanelButton(snapList, buttonWidth, buttonHeight, "")
+            button = CreatePanelButton(content, buttonWidth, buttonHeight, "")
             button.text:ClearAllPoints()
             button.text:SetPoint("LEFT", 8, 0)
             button.text:SetPoint("RIGHT", -8, 0)
             button.text:SetJustifyH("LEFT")
-            snapList.buttons[index] = button
+            list.buttons[index] = button
         end
-
-        button:SetPoint("TOPLEFT", 5, -(5 + ((index - 1) * (buttonHeight + 2))))
-        button.text:SetText(option.label or "")
-        local isSelected = (option.value == nil and currentTarget == nil) or option.value == currentTarget
-        if isSelected then
-            button.normalColor = { theme.active.r, theme.active.g, theme.active.b, 0.96 }
-            button.hoverColor = { theme.activeHover.r, theme.activeHover.g, theme.activeHover.b, 1.0 }
-            if button.bgKT then
-                button.bgKT:SetColorTexture(unpack(button.normalColor))
-            end
-            KT:AddBorder(button, theme.accent.r, theme.accent.g, theme.accent.b, 1)
-            button.text:SetTextColor(1, 1, 1, 1)
-        else
-            button.normalColor = { theme.background.r, theme.background.g, theme.background.b, 0.94 }
-            button.hoverColor = { theme.hover.r, theme.hover.g, theme.hover.b, 0.98 }
-            if button.bgKT then
-                button.bgKT:SetColorTexture(unpack(button.normalColor))
-            end
-            KT:AddBorder(button, theme.soft.r, theme.soft.g, theme.soft.b, 1)
-            button.text:SetTextColor(theme.text.r, theme.text.g, theme.text.b, 1)
-        end
-        button:Show()
-
+        button:SetWidth(buttonWidth)
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", 0, -((index - 1) * (buttonHeight + spacing)))
+        button.text:SetText(LText(option.label or ""))
+        StyleMenuButton(button, option.value == currentValue)
         button:SetScript("OnClick", function()
-            self:SetSnapTarget(menuFrame.activeKey, option.value)
-            snapList:Hide()
+            list:Hide()
+            onSelect(option.value)
             self:RefreshMoverMenuFields()
         end)
+        button:Show()
     end
 
-    snapList:SetSize(buttonWidth + 10, 10 + (#options * (buttonHeight + 2)))
-    snapList:ClearAllPoints()
-    snapList:SetPoint("TOPLEFT", anchorButton or menuFrame.snapButton, "BOTTOMLEFT", 0, -4)
-    snapList:Show()
+    local contentHeight = (#options * (buttonHeight + spacing)) - spacing
+    content:SetSize(buttonWidth, max(contentHeight, 1))
+    list:SetSize(buttonWidth + 12, min(contentHeight, 286) + 12)
+    list.scroll:SetVerticalScroll(0)
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", -6, -2)
+    list:Show()
+    list:Raise()
+end
+
+-- Compatibilidad: el nombre antiguo abre la lista de anclaje.
+function UM:ToggleMoverSnapList(anchorButton)
+    local menuFrame = self.moverMenu
+    if not (menuFrame and menuFrame.activeKey) then return end
+    local key = menuFrame.activeKey
+    local options = self:GetSnapTargetOptions(key)
+    if options[1] and options[1].value == nil then
+        options[1].label = "Screen"
+    end
+    self:ShowMoverMenuList(anchorButton or menuFrame.anchorButton, "anchor", options, self:GetSnapTarget(key), function(value)
+        self:SetSnapTarget(key, value)
+    end)
+end
+
+local function CreateMenuSlider(parent)
+    local slider = CreateFrame("Slider", nil, parent)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetHeight(16)
+    slider:SetHitRectInsets(0, 0, -3, -3)
+    slider:SetValueStep(1)
+    if slider.SetObeyStepOnDrag then
+        slider:SetObeyStepOnDrag(true)
+    end
+    slider:EnableMouseWheel(true)
+
+    slider.track = slider:CreateTexture(nil, "BACKGROUND")
+    slider.track:SetTexture(WHITE8X8)
+    slider.track:SetPoint("LEFT", 0, 0)
+    slider.track:SetPoint("RIGHT", 0, 0)
+    slider.track:SetHeight(4)
+
+    slider.fill = slider:CreateTexture(nil, "ARTWORK")
+    slider.fill:SetTexture(WHITE8X8)
+    slider.fill:SetPoint("LEFT", slider.track, "LEFT", 0, 0)
+    slider.fill:SetHeight(4)
+
+    slider.thumb = slider:CreateTexture(nil, "OVERLAY")
+    slider.thumb:SetTexture(WHITE8X8)
+    slider.thumb:SetSize(6, 14)
+    slider:SetThumbTexture(slider.thumb)
+
+    slider.UpdateFill = function(s)
+        local minValue, maxValue = s:GetMinMaxValues()
+        local value = s:GetValue()
+        local percent = (maxValue > minValue) and ((value - minValue) / (maxValue - minValue)) or 0
+        s.fill:SetWidth(max(1, (s:GetWidth() or 1) * max(0, min(1, percent))))
+    end
+    slider:SetScript("OnSizeChanged", function(s)
+        s:UpdateFill()
+    end)
+    return slider
 end
 
 function UM:OpenMoverMenu(key, anchor)
     local menuFrame = self.moverMenu
     if not menuFrame then
+        local MENU_WIDTH = 300
+        local INNER_WIDTH = MENU_WIDTH - 24
+
         menuFrame = CreateFrame("Frame", "KullThranUIUnlockModeMenu", self.unlockFrame)
-        menuFrame:SetSize(190, 190)
+        menuFrame:SetSize(MENU_WIDTH, 200)
         menuFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-        menuFrame:SetFrameLevel(self.unlockFrame:GetFrameLevel() + 80)
+        menuFrame:SetFrameLevel(self.unlockFrame:GetFrameLevel() + 120)
         menuFrame:SetClampedToScreen(true)
-        KT:AddBackdrop(menuFrame, 0.02, 0.03, 0.04, 0.96)
-        
-        local theme = GetUnlockTheme()
-        menuFrame.shadowArt = menuFrame:CreateTexture(nil, "BACKGROUND", nil, -8)
-        menuFrame.shadowArt:SetPoint("TOPLEFT", menuFrame, "TOPLEFT", 6, -6)
-        menuFrame.shadowArt:SetPoint("BOTTOMRIGHT", menuFrame, "BOTTOMRIGHT", 6, -6)
-        menuFrame.shadowArt:SetTexture(SIDEBAR_TEXTURE)
-        menuFrame.shadowArt:SetVertexColor(theme.accent.r, theme.accent.g, theme.accent.b, 0.5)
+        menuFrame:EnableMouse(true)
+        KT:AddBackdrop(menuFrame, MENU_BG[1], MENU_BG[2], MENU_BG[3], MENU_BG[4])
+        KT:AddBorder(menuFrame, MOVER_R, MOVER_G, MOVER_B, 0.85)
 
-        menuFrame.bgArt = menuFrame:CreateTexture(nil, "BACKGROUND", nil, -7)
-        menuFrame.bgArt:SetAllPoints()
-        menuFrame.bgArt:SetTexture(SIDEBAR_TEXTURE)
-        menuFrame.bgArt:SetVertexColor(theme.background.r, theme.background.g, theme.background.b, 0.98)
-        KT:AddBorder(menuFrame, MOVER_R, MOVER_G, MOVER_B, 1)
+        menuFrame.topAccent = menuFrame:CreateTexture(nil, "ARTWORK")
+        menuFrame.topAccent:SetPoint("TOPLEFT", 1, -1)
+        menuFrame.topAccent:SetPoint("TOPRIGHT", -1, -1)
+        menuFrame.topAccent:SetHeight(2)
 
-        local function CreateValueRow(parent, labelText)
-            local row = CreateFrame("Frame", nil, parent)
-            row:SetSize(174, 20)
-            row.label = CreateText(row, 10, "LEFT")
-            row.label:SetPoint("LEFT", 2, 0)
+        menuFrame.dividers = {}
+        menuFrame.valueRows = {}
+
+        menuFrame.hint = CreateText(menuFrame, 10, "CENTER")
+        menuFrame.hint:SetWidth(INNER_WIDTH)
+        menuFrame.hint:SetText(LText("Use arrow keys to move the selected element 1px in any direction. Shift+Arrows moves 10px."))
+
+        menuFrame.title = CreateText(menuFrame, 12, "LEFT")
+        menuFrame.title:SetWidth(INNER_WIDTH)
+        menuFrame.title:SetWordWrap(false)
+
+        menuFrame.noSize = CreateText(menuFrame, 10, "LEFT")
+        menuFrame.noSize:SetWidth(INNER_WIDTH)
+        menuFrame.noSize:SetText(LText("This element's size is set by its own module."))
+
+        local function CreateDivider()
+            local divider = menuFrame:CreateTexture(nil, "ARTWORK")
+            divider:SetHeight(1)
+            divider:SetWidth(INNER_WIDTH)
+            tinsert(menuFrame.dividers, divider)
+            return divider
+        end
+
+        -- Fila: etiqueta | slider | caja numerica. El slider aplica en vivo
+        -- (con un pequeno throttle) y la caja acepta valores exactos.
+        local function CreateValueRow(labelText)
+            local row = CreateFrame("Frame", nil, menuFrame)
+            row:SetSize(INNER_WIDTH, 22)
+            row.label = CreateText(row, 11, "LEFT")
+            row.label:SetPoint("LEFT", 0, 0)
+            row.label:SetWidth(84)
+            row.label:SetWordWrap(false)
             row.label:SetText(LText(labelText))
-            row.input = CreateMenuInputBox(row, 62, 18)
-            row.input:SetPoint("RIGHT", -2, 0)
-            row.CommitValue = function(selfRow)
-                if not (menuFrame and menuFrame.activeKey and selfRow.applyValue) then
-                    return
+            row.input = CreateMenuInputBox(row, 54, 20)
+            row.input:SetPoint("RIGHT", 0, 0)
+            row.slider = CreateMenuSlider(row)
+            row.slider:SetPoint("LEFT", 88, 0)
+            row.slider:SetPoint("RIGHT", row.input, "LEFT", -10, 0)
+
+            row.ApplyStyle = function(selfRow)
+                local rowTheme = GetUnlockTheme()
+                selfRow.label:SetTextColor(MENU_LABEL[1], MENU_LABEL[2], MENU_LABEL[3], 1)
+                selfRow.slider.track:SetVertexColor(1, 1, 1, 0.12)
+                selfRow.slider.fill:SetVertexColor(rowTheme.accent.r, rowTheme.accent.g, rowTheme.accent.b, 0.85)
+                selfRow.slider.thumb:SetVertexColor(1, 1, 1, 1)
+                if not selfRow.input:HasFocus() then
+                    StyleMenuInputBox(selfRow.input)
                 end
-                local value = tonumber(selfRow.input:GetText())
-                if not value then
-                    UM:RefreshMoverMenuFields()
-                    return
-                end
-                selfRow.applyValue(Round(value))
-                UM:RefreshMoverMenuFields()
             end
-            row.input:SetScript("OnEnterPressed", function(self)
-                row:CommitValue()
-                self:ClearFocus()
+
+            row.SetRange = function(selfRow, minValue, maxValue)
+                if selfRow.isDragging then return end
+                selfRow.slider._ktSetting = true
+                selfRow.slider:SetMinMaxValues(minValue, maxValue)
+                selfRow.slider._ktSetting = nil
+            end
+
+            row.SetValue = function(selfRow, value)
+                if selfRow.isDragging then return end
+                selfRow.slider._ktSetting = true
+                selfRow.slider:SetValue(tonumber(value) or 0)
+                selfRow.slider._ktSetting = nil
+                selfRow.slider:UpdateFill()
+                SetMenuInputValue(selfRow.input, value)
+            end
+
+            row.Apply = function(selfRow, value)
+                if not (menuFrame.activeKey and selfRow.applyValue) then return end
+                selfRow.applyValue(Round(value))
+            end
+
+            row.FlushPending = function(selfRow)
+                local value = selfRow.pendingValue
+                selfRow.pendingValue = nil
+                if value ~= nil then
+                    selfRow:Apply(value)
+                end
+            end
+
+            row.slider:SetScript("OnValueChanged", function(slider, value)
+                slider:UpdateFill()
+                if slider._ktSetting then return end
+                value = Round(value)
+                SetMenuInputValue(row.input, value)
+                row.pendingValue = value
+                if not row.applyQueued then
+                    row.applyQueued = true
+                    C_Timer.After(0.06, function()
+                        row.applyQueued = nil
+                        row:FlushPending()
+                        if not row.isDragging then
+                            UM:RefreshMoverMenuFields()
+                        end
+                    end)
+                end
             end)
-            row.input:SetScript("OnEscapePressed", function(self)
-                self:ClearFocus()
+            row.slider:SetScript("OnMouseDown", function()
+                row.isDragging = true
+            end)
+            row.slider:SetScript("OnMouseUp", function()
+                row.isDragging = nil
+                row:FlushPending()
                 UM:RefreshMoverMenuFields()
             end)
-            row.input:HookScript("OnEditFocusLost", function()
-                row:CommitValue()
+            row.slider:SetScript("OnMouseWheel", function(slider, delta)
+                local step = IsShiftKeyDown() and 10 or 1
+                local minValue, maxValue = slider:GetMinMaxValues()
+                slider:SetValue(max(minValue, min(maxValue, Round(slider:GetValue()) + (delta * step))))
             end)
+
+            row.input:SetScript("OnEnterPressed", function(box)
+                box:ClearFocus()
+            end)
+            row.input:SetScript("OnTabPressed", function(box)
+                box:ClearFocus()
+            end)
+            row.input:SetScript("OnEscapePressed", function(box)
+                box._ktSkipCommit = true
+                box:ClearFocus()
+                UM:RefreshMoverMenuFields()
+            end)
+            row.input:HookScript("OnEditFocusLost", function(box)
+                if box._ktSkipCommit then
+                    box._ktSkipCommit = nil
+                    return
+                end
+                local value = tonumber(box:GetText())
+                if value then
+                    row:Apply(value)
+                end
+                UM:RefreshMoverMenuFields()
+            end)
+
+            tinsert(menuFrame.valueRows, row)
             return row
         end
 
-        menuFrame.widthRow = CreateValueRow(menuFrame, "Width")
+        local function CreateSelectButton()
+            local button = CreatePanelButton(menuFrame, INNER_WIDTH, 22, "")
+            button.text:ClearAllPoints()
+            button.text:SetPoint("LEFT", 8, 0)
+            button.text:SetPoint("RIGHT", -20, 0)
+            button.text:SetJustifyH("LEFT")
+            button.arrow = CreateText(button, 12, "RIGHT")
+            button.arrow:SetPoint("RIGHT", -8, 0)
+            button.arrow:SetText(">")
+            return button
+        end
+
+        menuFrame.hintDivider = CreateDivider()
+        menuFrame.titleDivider = CreateDivider()
+
+        menuFrame.widthRow = CreateValueRow("Width")
         menuFrame.widthRow.applyValue = function(value)
             local _, currentHeight = self:GetEditableElementSize(menuFrame.activeKey)
             self:SetEditableElementSize(menuFrame.activeKey, value, currentHeight or value)
         end
-
-        menuFrame.heightRow = CreateValueRow(menuFrame, "Height")
+        menuFrame.heightRow = CreateValueRow("Height")
         menuFrame.heightRow.applyValue = function(value)
             local currentWidth = self:GetEditableElementSize(menuFrame.activeKey)
             self:SetEditableElementSize(menuFrame.activeKey, currentWidth or value, value)
         end
-
-        menuFrame.xRow = CreateValueRow(menuFrame, "X Position")
+        menuFrame.xRow = CreateValueRow("X Position")
         menuFrame.xRow.applyValue = function(value)
-            local _, currentY = self:GetMoverStoredXY(menuFrame.activeKey)
-            self:SetMoverStoredXY(menuFrame.activeKey, value, currentY)
+            local _, currentY = self:GetRelativeXY(menuFrame.activeKey)
+            self:SetRelativeXY(menuFrame.activeKey, value, currentY)
         end
-
-        menuFrame.yRow = CreateValueRow(menuFrame, "Y Position")
+        menuFrame.yRow = CreateValueRow("Y Position")
         menuFrame.yRow.applyValue = function(value)
-            local currentX = self:GetMoverStoredXY(menuFrame.activeKey)
-            self:SetMoverStoredXY(menuFrame.activeKey, currentX, value)
+            local currentX = self:GetRelativeXY(menuFrame.activeKey)
+            self:SetRelativeXY(menuFrame.activeKey, currentX, value)
         end
 
-        menuFrame.snapHeader = CreateText(menuFrame, 10, "LEFT")
-        menuFrame.snapHeader:SetText(LText("Select Snap Target"))
+        menuFrame.extraDivider = CreateDivider()
+        menuFrame.extraWidthRow = CreateValueRow("Extra Width")
+        menuFrame.extraWidthRow.applyValue = function(value)
+            self:SetExtraWidth(menuFrame.activeKey, value)
+        end
 
-        menuFrame.snapButton = CreatePanelButton(menuFrame, 174, 22, "")
-        menuFrame.snapButton.text:ClearAllPoints()
-        menuFrame.snapButton.text:SetPoint("LEFT", 8, 0)
-        menuFrame.snapButton.text:SetPoint("RIGHT", -18, 0)
-        menuFrame.snapButton.text:SetJustifyH("LEFT")
-        menuFrame.snapButton.arrow = CreateText(menuFrame.snapButton, 12, "RIGHT")
-        menuFrame.snapButton.arrow:SetPoint("RIGHT", -8, 0)
-        menuFrame.snapButton.arrow:SetText(">")
-        menuFrame.snapButton:SetScript("OnClick", function(button)
+        menuFrame.anchorDivider = CreateDivider()
+        menuFrame.anchorButton = CreateSelectButton()
+        menuFrame.anchorButton:SetScript("OnClick", function(button)
             self:ToggleMoverSnapList(button)
         end)
+        menuFrame.offsetXRow = CreateValueRow("Offset X")
+        menuFrame.offsetXRow.applyValue = function(value)
+            local _, currentY = self:GetSnapOffset(menuFrame.activeKey)
+            self:SetSnapOffset(menuFrame.activeKey, value, currentY or 0)
+        end
+        menuFrame.offsetYRow = CreateValueRow("Offset Y")
+        menuFrame.offsetYRow.applyValue = function(value)
+            local currentX = self:GetSnapOffset(menuFrame.activeKey)
+            self:SetSnapOffset(menuFrame.activeKey, currentX or 0, value)
+        end
 
-        menuFrame.fade = CreatePanelButton(menuFrame, 174, 22, LText("Fade on Mouseover"))
+        menuFrame.actionsDivider = CreateDivider()
+
+        menuFrame.fade = CreatePanelButton(menuFrame, INNER_WIDTH, 22, LText("Fade on Mouseover"))
         menuFrame.fade.text:ClearAllPoints()
         menuFrame.fade.text:SetPoint("LEFT", 8, 0)
         menuFrame.fade.text:SetJustifyH("LEFT")
@@ -2381,10 +3445,10 @@ function UM:OpenMoverMenu(key, anchor)
             button.isChecked = enabled == true
             if button.isChecked then
                 button.indicator:SetText(LText("ON"))
-                button.indicator:SetTextColor(0.72, 1, 0.76, 1)
+                button.indicator:SetTextColor(0.55, 1, 0.62, 1)
             else
                 button.indicator:SetText(LText("OFF"))
-                button.indicator:SetTextColor(1, 0.82, 0.82, 1)
+                button.indicator:SetTextColor(1, 0.55, 0.55, 1)
             end
         end
         menuFrame.fade:SetScript("OnClick", function(button)
@@ -2399,7 +3463,7 @@ function UM:OpenMoverMenu(key, anchor)
             RefreshMouseoverModules(targetID)
         end)
 
-        menuFrame.configure = CreatePanelButton(menuFrame, 174, 22, LText("Open Configuration"))
+        menuFrame.configure = CreatePanelButton(menuFrame, INNER_WIDTH, 22, LText("Open Configuration"))
         menuFrame.configure:SetScript("OnClick", function()
             local activeKey = menuFrame.activeKey
             local def = activeKey and self:GetElementDef(activeKey)
@@ -2414,7 +3478,7 @@ function UM:OpenMoverMenu(key, anchor)
             end
         end)
 
-        menuFrame.center = CreatePanelButton(menuFrame, 174, 22, LText("Center on Screen"))
+        menuFrame.center = CreatePanelButton(menuFrame, INNER_WIDTH, 22, LText("Center on Screen"))
         menuFrame.center:SetScript("OnClick", function()
             if menuFrame.activeKey then
                 self:CenterMover(menuFrame.activeKey)
@@ -2422,7 +3486,7 @@ function UM:OpenMoverMenu(key, anchor)
             end
         end)
 
-        menuFrame.reset = CreatePanelButton(menuFrame, 174, 22, LText("Reset Position"))
+        menuFrame.reset = CreatePanelButton(menuFrame, INNER_WIDTH, 22, LText("Reset Position"))
         menuFrame.reset:SetScript("OnClick", function()
             if menuFrame.activeKey then
                 self:ResetMover(menuFrame.activeKey)
@@ -2430,57 +3494,123 @@ function UM:OpenMoverMenu(key, anchor)
             end
         end)
 
-        menuFrame.snapList = CreateFrame("Frame", nil, self.unlockFrame)
-        menuFrame.snapList:SetFrameStrata("FULLSCREEN_DIALOG")
-        menuFrame.snapList:SetFrameLevel(menuFrame:GetFrameLevel() + 5)
-        menuFrame.snapList:SetClampedToScreen(true)
-        KT:AddBackdrop(menuFrame.snapList, 0.02, 0.03, 0.04, 0.98)
-        KT:AddBorder(menuFrame.snapList, MOVER_R, MOVER_G, MOVER_B, 1)
-        menuFrame.snapList:Hide()
+        menuFrame.resetSize = CreatePanelButton(menuFrame, INNER_WIDTH, 22, LText("Reset Size"))
+        menuFrame.resetSize:SetScript("OnClick", function()
+            if menuFrame.activeKey then
+                self:ResetElementSize(menuFrame.activeKey)
+                self:RefreshMoverMenuFields()
+            end
+        end)
+
+        menuFrame.relativeDivider = CreateDivider()
+        menuFrame.relativeButton = CreateSelectButton()
+        menuFrame.relativeButton:SetScript("OnClick", function(button)
+            local current = self:GetMenuRelativePoint()
+            self:ShowMoverMenuList(button, "relative", RELATIVE_POINTS, current, function(value)
+                self.db.unlockRelativePoint = value
+            end)
+        end)
+
+        local list = CreateFrame("Frame", nil, self.unlockFrame)
+        list:SetFrameStrata("FULLSCREEN_DIALOG")
+        list:SetFrameLevel(menuFrame:GetFrameLevel() + 10)
+        list:SetClampedToScreen(true)
+        list:EnableMouse(true)
+        list.scroll = CreateFrame("ScrollFrame", nil, list)
+        list.scroll:SetPoint("TOPLEFT", 6, -6)
+        list.scroll:SetPoint("BOTTOMRIGHT", -6, 6)
+        list.content = CreateFrame("Frame", nil, list.scroll)
+        list.content:SetSize(INNER_WIDTH, 1)
+        list.scroll:SetScrollChild(list.content)
+        list:EnableMouseWheel(true)
+        list:SetScript("OnMouseWheel", function(widget, delta)
+            local scroll = widget.scroll
+            local maxScroll = max(0, widget.content:GetHeight() - scroll:GetHeight())
+            scroll:SetVerticalScroll(max(0, min(maxScroll, scroll:GetVerticalScroll() - (delta * 44))))
+        end)
+        list:Hide()
+        menuFrame.list = list
+        menuFrame.snapList = list
 
         menuFrame.UpdateLayout = function(frame)
-            local y = -8
+            local y = -10
 
-            local function PlaceRow(row, extraGap)
-                if not (row and row:IsShown()) then
-                    return
-                end
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", 8, y)
-                y = y - row:GetHeight() - (extraGap or 4)
+            local function Place(region, height, gap)
+                region:ClearAllPoints()
+                region:SetPoint("TOPLEFT", 12, y)
+                region:Show()
+                y = y - height - (gap or 4)
             end
 
-            PlaceRow(frame.widthRow)
-            PlaceRow(frame.heightRow)
-            PlaceRow(frame.xRow)
-            PlaceRow(frame.yRow, 6)
+            local function Hide(region)
+                region:Hide()
+            end
 
-            frame.snapHeader:ClearAllPoints()
-            frame.snapHeader:SetPoint("TOPLEFT", 10, y)
-            y = y - 14
+            Place(frame.hint, max(frame.hint:GetStringHeight() or 0, 24), 8)
+            Place(frame.hintDivider, 1, 8)
+            Place(frame.title, 14, 8)
+            Place(frame.titleDivider, 1, 8)
 
-            frame.snapButton:ClearAllPoints()
-            frame.snapButton:SetPoint("TOPLEFT", 8, y)
-            y = y - 26
-
-            if frame.fadeTargetID then
-                frame.fade:Show()
-                frame.fade:SetVisualState(GetMouseoverSetting(frame.fadeTargetID))
-                PlaceRow(frame.fade)
+            if frame.canEditSize then
+                Hide(frame.noSize)
+                Place(frame.widthRow, 22, 3)
+                Place(frame.heightRow, 22, 3)
             else
-                frame.fade:Hide()
+                Hide(frame.widthRow)
+                Hide(frame.heightRow)
+                Place(frame.noSize, 12, 6)
+            end
+            Place(frame.xRow, 22, 3)
+            Place(frame.yRow, 22, 6)
+
+            if frame.hasExtraWidth then
+                Place(frame.extraDivider, 1, 6)
+                Place(frame.extraWidthRow, 22, 6)
+            else
+                Hide(frame.extraDivider)
+                Hide(frame.extraWidthRow)
             end
 
-            PlaceRow(frame.configure)
-            PlaceRow(frame.center)
-            PlaceRow(frame.reset)
+            Place(frame.anchorDivider, 1, 6)
+            Place(frame.anchorButton, 22, 4)
+            if frame.hasAnchor then
+                Place(frame.offsetXRow, 22, 3)
+                Place(frame.offsetYRow, 22, 6)
+            else
+                Hide(frame.offsetXRow)
+                Hide(frame.offsetYRow)
+                y = y - 2
+            end
 
-            frame:SetHeight(abs(y) + 8)
+            Place(frame.actionsDivider, 1, 6)
+            if frame.fadeTargetID then
+                Place(frame.fade, 22, 4)
+            else
+                Hide(frame.fade)
+            end
+            Place(frame.configure, 22, 4)
+            Place(frame.center, 22, 4)
+            Place(frame.reset, 22, 4)
+            if frame.hasGenericSize then
+                Place(frame.resetSize, 22, 4)
+            else
+                Hide(frame.resetSize)
+            end
+
+            Place(frame.relativeDivider, 1, 6)
+            Place(frame.relativeButton, 22, 4)
+
+            frame:SetHeight(abs(y) + 6)
         end
 
         menuFrame:SetScript("OnHide", function(frame)
-            if frame.snapList then
-                frame.snapList:Hide()
+            frame.list:Hide()
+            for _, row in ipairs(frame.valueRows) do
+                row.isDragging = nil
+                row.pendingValue = nil
+                row.input._ktSkipCommit = true
+                row.input:ClearFocus()
+                row.input._ktSkipCommit = nil
             end
         end)
 
@@ -2493,14 +3623,14 @@ function UM:OpenMoverMenu(key, anchor)
         return
     end
 
+    menuFrame:Hide()
     menuFrame.activeKey = key
-    if menuFrame.snapList then
-        menuFrame.snapList:Hide()
-    end
+    menuFrame.list:Hide()
     self:RefreshMoverMenuFields()
     menuFrame:ClearAllPoints()
     menuFrame:SetPoint("TOPLEFT", anchor or self.movers[key] or self.unlockFrame, "TOPRIGHT", 6, 0)
     menuFrame:Show()
+    menuFrame:Raise()
 end
 
 function UM:RefreshMovers()
@@ -2896,48 +4026,40 @@ function UM:RefreshSidebar()
     self.sidebar.toggleCoords.text:SetText(LText("Coords: ") .. (self.db.unlockCoords and "On" or "Off"))
 
     local content = self.sidebar.content
-    for _, button in ipairs(self.sidebar.itemButtons) do
-        button:Hide()
+    for _, widget in ipairs(self.sidebar.itemButtons) do
+        widget:Hide()
     end
     wipe(self.sidebar.itemButtons)
 
-    local offsetY = -2
+    local offsetY = 0
     local lastGroup
+    local headerIndex, rowIndex = 0, 0
     for _, key in ipairs(self.registryOrder) do
         if not self:IsElementHidden(key) then
             local def = self:GetElementDef(key)
             local group = def.group or "Other"
             if group ~= lastGroup then
-                local groupButton = CreatePanelButton(content, 178, 24, string.upper(group))
-                groupButton:SetPoint("TOPLEFT", 0, offsetY)
-                StyleSidebarButton(groupButton, "group")
-                groupButton:Disable()
-                groupButton.text:SetJustifyH("LEFT")
-                groupButton.text:SetPoint("LEFT", 0, 0)
-                tinsert(self.sidebar.itemButtons, groupButton)
-                offsetY = offsetY - 22
+                headerIndex = headerIndex + 1
+                local header = self:AcquireSidebarHeader(headerIndex)
+                header:ClearAllPoints()
+                header:SetPoint("TOPLEFT", 0, offsetY)
+                header.text:SetText(string.upper(LText(group)))
+                header:Show()
+                tinsert(self.sidebar.itemButtons, header)
+                offsetY = offsetY - SIDEBAR_HEADER_HEIGHT
                 lastGroup = group
             end
 
-            local item = CreatePanelButton(content, 178, 24, def.label or key)
-            item.key = key
-            item:SetPoint("TOPLEFT", 0, offsetY)
-            StyleSidebarButton(item, "item")
-            item.text:SetJustifyH("LEFT")
-            item.text:SetPoint("LEFT", 6, 0)
-            item:SetScript("OnClick", function()
-                if IsShiftKeyDown() then
-                    self:ToggleMoverSelection(key)
-                else
-                    self:SelectMover(key)
-                end
-                local mover = self.movers[key]
-                if mover then
-                    mover:SetFrameLevel(self.unlockFrame:GetFrameLevel() + 60)
-                end
-            end)
-            tinsert(self.sidebar.itemButtons, item)
-            offsetY = offsetY - 22
+            rowIndex = rowIndex + 1
+            local row = self:AcquireSidebarRow(rowIndex)
+            row.key = key
+            row.isHovered = false
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", 0, offsetY)
+            row.text:SetText(LText(def.label or key))
+            row:Show()
+            tinsert(self.sidebar.itemButtons, row)
+            offsetY = offsetY - SIDEBAR_ROW_HEIGHT - 1
         end
     end
 
@@ -3246,26 +4368,40 @@ function UM:CreateUnlockFrame()
     self.guideHorizontal:SetHeight(1)
     self.guideHorizontal:Hide()
 
-    frame:SetScript("OnKeyDown", function(_, key)
+    frame:SetScript("OnKeyDown", function(widget, key)
+        local consume = false
+        local dialogShown = self.unsavedDialog and self.unsavedDialog:IsShown()
+
         if key == "ESCAPE" then
-            if self.hasChanges then
+            -- ESC se consume aqui: si llegaba al binding del juego abria el
+            -- menu de juego y cerraba cualquier aviso nada mas abrirse.
+            consume = true
+            if dialogShown then
+                self.unsavedDialog:Hide()
+            elseif self.moverMenu and self.moverMenu:IsShown() then
+                self.moverMenu:Hide()
+            elseif self:HasUnsavedChanges() then
                 self:PromptCloseUnlockMode()
             else
                 self:CloseUnlockMode(false, true)
             end
-            return
+        elseif self.selectedKey and not dialogShown
+            and (key == "LEFT" or key == "RIGHT" or key == "UP" or key == "DOWN") then
+            consume = true
+            local delta = IsShiftKeyDown() and 10 or 1
+            if key == "LEFT" then
+                self:NudgeSelected(-delta, 0)
+            elseif key == "RIGHT" then
+                self:NudgeSelected(delta, 0)
+            elseif key == "UP" then
+                self:NudgeSelected(0, delta)
+            else
+                self:NudgeSelected(0, -delta)
+            end
         end
 
-        if not self.selectedKey then return end
-        local delta = IsShiftKeyDown() and 10 or 1
-        if key == "LEFT" then
-            self:NudgeSelected(-delta, 0)
-        elseif key == "RIGHT" then
-            self:NudgeSelected(delta, 0)
-        elseif key == "UP" then
-            self:NudgeSelected(0, delta)
-        elseif key == "DOWN" then
-            self:NudgeSelected(0, -delta)
+        if not InCombatLockdown() then
+            widget:SetPropagateKeyboardInput(not consume)
         end
     end)
 
@@ -3438,7 +4574,7 @@ end
 function UM:OpenUnlockMode()
     if self.isOpen or InCombatLockdown() or (KT.IsBlizzardEditModeTransitionActive and KT:IsBlizzardEditModeTransitionActive()) then
         if InCombatLockdown() then
-            KT:Print("UnlockMode is unavailable in combat.")
+            KT:Print(LText("UnlockMode is unavailable in combat."))
         end
         return
     end
@@ -3459,6 +4595,8 @@ function UM:OpenUnlockMode()
     wipe(self.snapshotSizes)
     wipe(self.snapshotSnapTargets)
     wipe(self.pendingPositions)
+    self.snapshotGenericSizes = self:CopyGenericSizes()
+    wipe(self.touchedNativeSizes)
     self.hasChanges = false
 
     KT._unlockActive = true
@@ -3543,7 +4681,7 @@ function UM:CloseUnlockMode(saveChanges, force)
 
     if saveChanges then
         self:CommitPositions()
-    elseif not force and self.hasChanges then
+    elseif not force and self:HasUnsavedChanges() then
         self:PromptCloseUnlockMode()
         return
     else
@@ -3555,9 +4693,18 @@ function UM:CloseUnlockMode(saveChanges, force)
     self._unlockReferenceWidth = nil
     self._unlockReferenceHeight = nil
     KT._unlockActive = false
+    if type(_G.KUI_CDM_OnUnlockModeChanged) == "function" then
+        pcall(_G.KUI_CDM_OnUnlockModeChanged, false)
+    end
     -- Drop keyboard capture immediately so the fade-out window (and any
     -- interrupted close) never leaves bindings/ESC dead.
     self:SetUnlockKeyboardCapture(false)
+    if self.unsavedDialog then
+        self.unsavedDialog:Hide()
+    end
+    if self.moverMenu then
+        self.moverMenu:Hide()
+    end
     self.selectedKey = nil
     wipe(self.selectedKeys)
     self:HideGuides()

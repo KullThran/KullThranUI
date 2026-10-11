@@ -57,7 +57,7 @@ local function UpdateMemoryInfo()
     if not isWindowVisible or not debugFrame then return end
     
     local data, totalKUMemory = GetKullThranUIMemory()
-    local text = "|cff00FF88KullThranUI Memory Profiler|r\n\n"
+    local text = "|cff00FF88" .. LText("KullThranUI Memory Profiler") .. "|r\n\n"
     
     local addons = {}
     for name, mem in pairs(data) do
@@ -71,7 +71,7 @@ local function UpdateMemoryInfo()
         text = text .. addons[i].name .. ": " .. FormatMemory(addons[i].mem) .. "\n"
     end
     
-    text = text .. "\n|cffFFAA00Total: " .. FormatMemory(totalKUMemory) .. "|r"
+    text = text .. "\n|cffFFAA00" .. string.format(LText("Total: %s"), FormatMemory(totalKUMemory)) .. "|r"
     
     memoryFontString:SetText(text)
 end
@@ -190,7 +190,7 @@ end
 
 local function DumpMemoryInfo()
     local data, total = GetKullThranUIMemory()
-    local text = "KullThranUI Manual Memory Dump (" .. date("%Y-%m-%d %H:%M:%S") .. ")\n\n"
+    local text = string.format(LText("KullThranUI Manual Memory Dump (%s)"), date("%Y-%m-%d %H:%M:%S")) .. "\n\n"
     
     local list = {}
     for name, mem in pairs(data) do
@@ -201,16 +201,16 @@ local function DumpMemoryInfo()
     for i = 1, #list do
         text = text .. list[i].name .. ": " .. FormatMemory(list[i].mem) .. "\n"
     end
-    text = text .. "\nTotal: " .. FormatMemory(total)
+    text = text .. "\n" .. string.format(LText("Total: %s"), FormatMemory(total))
     
-    ShowDumpWindow("KullThranUI Detailed Memory Dump", text)
+    ShowDumpWindow(LText("KullThranUI Detailed Memory Dump"), text)
 end
 
 local lastCombatText = ""
 
 local function ProcessCombatEnd()
     local endData, endTotal = GetKullThranUIMemory()
-    local text = "KullThranUI Combat Memory Dump (" .. date("%Y-%m-%d %H:%M:%S") .. ")\n\n"
+    local text = string.format(LText("KullThranUI Combat Memory Dump (%s)"), date("%Y-%m-%d %H:%M:%S")) .. "\n\n"
     
     local list = {}
     local totalDiff = 0
@@ -225,27 +225,27 @@ local function ProcessCombatEnd()
     for i = 1, #list do
         if list[i].diff > 0.1 or list[i].diff < -0.1 then
             local diffSign = list[i].diff > 0 and "+" or ""
-            text = text .. list[i].name .. ": " .. diffSign .. FormatMemory(list[i].diff) .. " (End: " .. FormatMemory(list[i].endMem) .. ")\n"
+            text = text .. list[i].name .. ": " .. diffSign .. FormatMemory(list[i].diff) .. " " .. string.format(LText("(End: %s)"), FormatMemory(list[i].endMem)) .. "\n"
         end
     end
     
     local totalSign = totalDiff > 0 and "+" or ""
-    text = text .. "\nTotal Combat Growth: " .. totalSign .. FormatMemory(totalDiff)
+    text = text .. "\n" .. string.format(LText("Total Combat Growth: %s"), totalSign .. FormatMemory(totalDiff))
     
     lastCombatText = text
-    ShowDumpWindow("KullThranUI Combat Memory Dump", text)
+    ShowDumpWindow(LText("KullThranUI Combat Memory Dump"), text)
 end
 
 eventFrame:SetScript("OnEvent", function(self, event)
     if not combatRecordEnabled then return end
     if event == "PLAYER_REGEN_DISABLED" then
         combatStartMemory, _ = GetKullThranUIMemory()
-        print("|cff00FF88[KT Profiler]|r Combat started, memory snapshot taken.")
+        print("|cff00FF88[KT Profiler]|r " .. LText("Combat started, memory snapshot taken."))
     elseif event == "PLAYER_REGEN_ENABLED" then
-        print("|cff00FF88[KT Profiler]|r Combat ended, calculating difference...")
+        print("|cff00FF88[KT Profiler]|r " .. LText("Combat ended, calculating difference..."))
         local ok, err = pcall(ProcessCombatEnd)
         if not ok then
-            print("|cffFF0000[KT Profiler Error]|r " .. tostring(err))
+            print("|cffFF0000[KT Profiler]|r " .. string.format(LText("Error: %s"), tostring(err)))
         end
     end
 end)
@@ -257,20 +257,20 @@ SlashCmdList["KUIDEBUG"] = function(msg)
         DumpMemoryInfo()
     elseif msg and string.lower(msg) == "lastcombat" then
         if lastCombatText and lastCombatText ~= "" then
-            ShowDumpWindow("KullThranUI Combat Memory Dump", lastCombatText)
+            ShowDumpWindow(LText("KullThranUI Combat Memory Dump"), lastCombatText)
         else
-            print("|cffFFAA00[KT Profiler]|r No hay registros de combate guardados.")
+            print("|cffFFAA00[KT Profiler]|r " .. LText("No saved combat records."))
         end
     elseif msg and string.lower(msg) == "combat" then
         combatRecordEnabled = not combatRecordEnabled
         if combatRecordEnabled then
             eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
             eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-            print("|cff00FF88[KT Profiler]|r Modo Combate Automático: |cff00FF00ACTIVADO|r")
+            print("|cff00FF88[KT Profiler]|r " .. string.format(LText("Automatic combat mode: %s"), "|cff00FF00" .. LText("ENABLED") .. "|r"))
         else
             eventFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
             eventFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
-            print("|cff00FF88[KT Profiler]|r Modo Combate Automático: |cffFF0000DESACTIVADO|r")
+            print("|cff00FF88[KT Profiler]|r " .. string.format(LText("Automatic combat mode: %s"), "|cffFF0000" .. LText("DISABLED") .. "|r"))
         end
     else
         ToggleDebugWindow()

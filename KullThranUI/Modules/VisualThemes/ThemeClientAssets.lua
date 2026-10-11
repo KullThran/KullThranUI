@@ -275,6 +275,61 @@ function KT.VisualThemes:ApplyBlizzardBarText(fs, scale, maxHeight, fontName)
     if fs.SetShadowOffset then fs:SetShadowOffset(scale, -scale) end
 end
 
+-- GameFontNormalSmall is a font FAMILY: Blizzard draws Korean and Chinese
+-- names with 2002 / ARKai / blei00d. SetFont with its roman path drops those
+-- members and CJK names turn into squares, so the name text uses an equivalent
+-- family. The client picks the member by alphabet, which also works for secret
+-- names that Lua cannot inspect.
+local nameFontFamilies, nameFontFamilyCount = {}, 0
+local function GetNameFontFamily(path, size, flags)
+    if type(_G.CreateFontFamily) ~= "function" then return nil end
+    size = math.floor(size * 2 + 0.5) / 2
+    flags = flags or ""
+    local key = path .. "|" .. size .. "|" .. flags
+    local cached = nameFontFamilies[key]
+    if cached ~= nil then return cached or nil end
+    local cjkSize = size * 1.3
+    local members = {
+        { alphabet = "roman", file = path, height = size, flags = flags },
+        { alphabet = "russian", file = "Fonts\\FRIZQT___CYR.TTF", height = size, flags = flags },
+        { alphabet = "korean", file = "Fonts\\2002.TTF", height = size, flags = flags },
+        { alphabet = "simplifiedchinese", file = "Fonts\\ARKai_T.ttf", height = cjkSize, flags = flags },
+        { alphabet = "traditionalchinese", file = "Fonts\\blei00d.TTF", height = cjkSize, flags = flags },
+    }
+    nameFontFamilyCount = nameFontFamilyCount + 1
+    local ok, obj = pcall(_G.CreateFontFamily, "KTBlizzardNameFont" .. nameFontFamilyCount, members)
+    nameFontFamilies[key] = (ok and obj) or false
+    return ok and obj or nil
+end
+
+local function GetReadableText(fs)
+    if not fs.GetText then return nil end
+    local ok, text = pcall(fs.GetText, fs)
+    if not ok or (issecretvalue and issecretvalue(text)) then return nil end
+    return text
+end
+
+-- Applies the Blizzard name look at `size`, keeping CJK glyphs drawable.
+-- Japanese kana has no font-family alphabet, so a readable kana name gets the
+-- client's 2002 face directly.
+local function SetBlizzardNameFont(fs, b, size)
+    local text = GetReadableText(fs)
+    local cjk = KT.DetectCJKScript and KT:DetectCJKScript(text)
+    fs._ktBlizzNameKana = cjk == "kana"
+    if cjk == "kana" then
+        fs:SetFont(KT:GetCJKFontForScript(cjk) or b.path, size, b.flags)
+        return
+    end
+    fs:SetFont(b.path, size, b.flags)
+    local family = fs.SetFontObject and GetNameFontFamily(b.path, size, b.flags)
+    if family and pcall(fs.SetFontObject, fs, family) then
+        -- A font object brings its own colour; keep Blizzard yellow.
+        fs:SetTextColor(1, 0.82, 0)
+    elseif cjk and KT.IsCJKCapableFont and not KT:IsCJKCapableFont(b.path) then
+        fs:SetFont(KT:GetCJKFontForScript(cjk) or b.path, size, b.flags)
+    end
+end
+
 function KT.VisualThemes:ApplyBlizzardNameText(fs, scale, maxWidth)
     if fs then fs._ktBlizzBar = nil end
     if type(fs) ~= "table" or type(fs.SetFont) ~= "function" then return end
@@ -302,12 +357,24 @@ function KT.VisualThemes:ApplyBlizzardNameText(fs, scale, maxWidth)
             local b = self._ktBlizzName
             if not b or self._ktBlizzBusy then return end
             local want = (type(s3) == "number" and s3 < b.size) and s3 or b.size
-            if p3 ~= b.path or f3 ~= b.flags or s3 ~= want then
-                self._ktBlizzBusy = true
-                self:SetFont(b.path, want, b.flags)
-                self._ktBlizzBusy = nil
-            end
+            -- Always re-apply: even a same-path SetFont (the width fit) drops
+            -- the CJK members of the name font family.
+            self._ktBlizzBusy = true
+            SetBlizzardNameFont(self, b, want)
+            self._ktBlizzBusy = nil
         end)
+        local function onNameText(self)
+            local b = self._ktBlizzName
+            if not b or self._ktBlizzBusy then return end
+            local cjk = KT.DetectCJKScript and KT:DetectCJKScript(GetReadableText(self))
+            if (cjk == "kana") == (self._ktBlizzNameKana == true) then return end
+            local _, current = self:GetFont()
+            self._ktBlizzBusy = true
+            SetBlizzardNameFont(self, b, (type(current) == "number" and current < b.size) and current or b.size)
+            self._ktBlizzBusy = nil
+        end
+        hooksecurefunc(fs, "SetText", onNameText)
+        if fs.SetFormattedText then hooksecurefunc(fs, "SetFormattedText", onNameText) end
         hooksecurefunc(fs, "SetTextColor", function(self)
             if not self._ktBlizzName or self._ktBlizzBusy then return end
             self._ktBlizzBusy = true
@@ -316,7 +383,7 @@ function KT.VisualThemes:ApplyBlizzardNameText(fs, scale, maxWidth)
         end)
     end
     fs._ktBlizzBusy = true
-    fs:SetFont(path, size, flags)
+    SetBlizzardNameFont(fs, fs._ktBlizzName, size)
     fs:SetTextColor(1, 0.82, 0)
     fs._ktBlizzBusy = nil
     if fs.SetShadowOffset then
@@ -703,9 +770,163 @@ end
 --- @param frame Frame the unit frame's outer frame
 --- @param unitRegion Frame|Region the portrait region
 --- @param unit string|nil unit key
+-- Coalesce protected layout updates, including delayed atlas retries.
+function KT.VisualThemes:DeferUnitFrameArt(frame, unitRegion, unit, method)
+    self._pendingUnitFrameArt = self._pendingUnitFrameArt or {}
+    self._pendingUnitFrameArt[frame] = { region = unitRegion, unit = unit, method = method }
+    if not self._unitFrameArtCombatWaiter then
+        self._unitFrameArtCombatWaiter = CreateFrame("Frame")
+        self._unitFrameArtCombatWaiter:SetScript("OnEvent", function(waiter)
+            if InCombatLockdown() then return end
+            waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            local pending = self._pendingUnitFrameArt
+            self._pendingUnitFrameArt = {}
+            for target, request in pairs(pending) do
+                if target._refreshForeverMetadata then
+                    target._refreshForeverMetadata()
+                elseif self[request.method] then
+                    self[request.method](self, target, request.region, request.unit)
+                end
+            end
+        end)
+    end
+    self._unitFrameArtCombatWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
+-- The reaction strip is independent of health/class colours and protected layout.
+function KT.VisualThemes:UpdateUnitFrameNameReaction(frame, unit)
+    local strip = frame._ktNameReaction
+    if not strip then return end
+    if unit == "player" or not frame._ktNameReactionActive or (self.GetRenderedTheme and self:GetRenderedTheme() == "kui") then
+        strip:Hide()
+        return
+    end
+    local modern = self.GetRenderedTheme and (self:GetRenderedTheme() == "retail" or self:GetRenderedTheme() == "forever")
+    local unreadable
+    local function Read(fn, ...)
+        if not fn then return end
+        local ok, value = pcall(fn, ...)
+        if ok and not (issecretvalue and issecretvalue(value)) then return value end
+        unreadable = true
+    end
+    local r, g, b
+    local classic = self.GetRenderedTheme and self:GetRenderedTheme() == "classic"
+    if classic and not frame._ktNameReactionPreview then
+        -- Vanilla TargetFrame_CheckFaction: player-controlled units have
+        -- asymmetric PvP rules; NPCs use reaction, with tap denial in grey.
+        if Read(UnitPlayerControlled, unit) == true then
+            local attacksPlayer = Read(UnitCanAttack, unit, "player")
+            local playerAttacks = Read(UnitCanAttack, "player", unit)
+            if attacksPlayer then
+                if playerAttacks then r, g, b = 1, 0, 0
+                else r, g, b = 0, 0, 1 end
+            elseif playerAttacks then r, g, b = 1, 1, 0
+            elseif Read(UnitIsPVP, unit) then r, g, b = 0, 1, 0
+            else r, g, b = 0, 0, 1 end
+        else
+            local denied = Read(UnitIsTapDenied, unit)
+            if denied == nil then
+                denied = Read(UnitIsTapped, unit) == true and Read(UnitIsTappedByPlayer, unit) == false
+            end
+            if denied then r, g, b = 0.5, 0.5, 0.5
+            else
+                local reaction = Read(UnitReaction, unit, "player")
+                if type(reaction) ~= "number" then r, g, b = 0, 0, 1
+                elseif reaction >= 5 then r, g, b = 0, 1, 0
+                elseif reaction == 4 then r, g, b = 1, 1, 0
+                elseif reaction == 3 then r, g, b = 1, 0.5, 0
+                else r, g, b = 1, 0, 0 end
+            end
+        end
+        -- Historical civilian override affects only the name background here.
+        if Read(UnitIsCivilian, unit) == true then r, g, b = 1, 1, 1 end
+        if unreadable then strip:Hide(); return end
+    end
+    if modern and not frame._ktNameReactionPreview then
+        -- Match TargetFrameMixin:CheckFaction, including tapped NPCs.
+        if Read(UnitPlayerControlled, unit) == false and Read(UnitIsTapDenied, unit) == true then
+            r, g, b = 0.5, 0.5, 0.5
+        elseif UnitSelectionColor then
+            local ok, sr, sg, sb = pcall(UnitSelectionColor, unit)
+            if ok and not (issecretvalue and (issecretvalue(sr) or issecretvalue(sg) or issecretvalue(sb)))
+                and type(sr) == "number" and type(sg) == "number" and type(sb) == "number" then
+                r, g, b = sr, sg, sb
+            end
+        end
+    end
+    if not r then
+        local reaction
+        if frame._ktNameReactionPreview then reaction = unit == "target" and 2 or 5
+        elseif unit == "pet" then reaction = 5
+        else
+            reaction = Read(UnitReaction, unit, "player")
+            if type(reaction) ~= "number" then
+                if Read(UnitIsFriend, "player", unit) == true then reaction = 5
+                elseif Read(UnitCanAttack, "player", unit) == true then reaction = 2 end
+            end
+        end
+        if type(reaction) ~= "number" then strip:Hide(); return end
+        if reaction >= 5 then r, g, b = 0, 1, 0
+        elseif reaction == 4 then r, g, b = 1, 1, 0
+        elseif reaction == 3 then r, g, b = 1, 0.5, 0
+        else r, g, b = 1, 0, 0 end
+    end
+    -- The texture carries its native shading; do not dim it with vertex alpha.
+    strip:SetVertexColor(r, g, b, 1)
+    strip:Show()
+end
+
+function KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, host, unit, geom, scale, shift, extension, preview)
+    if unit == "player" then
+        frame._ktNameReactionActive = nil
+        if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+        return
+    end
+    if not (geom and geom.name and geom.health) then return end
+    local strip = frame._ktNameReaction
+    if not strip then
+        strip = host:CreateTexture(nil, "ARTWORK", nil, -7)
+        frame._ktNameReaction = strip
+    end
+    local theme = self.GetRenderedTheme and self:GetRenderedTheme()
+    local modern = theme == "retail" or theme == "forever"
+    if modern then
+        -- Original Retail ReputationColor pixels; a bundled sheet avoids
+        -- Forever's atlas remapping and keeps preview identical to live art.
+        strip:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\unitframes\\UIUnitFrame-Retail.blp")
+        -- The name plate is 135px wide above the 124px health track.
+        -- Its last 11px curve into the portrait. Keep that native cutout;
+        -- cropping it to a rectangle leaves the grey wedge exposed.
+        strip:SetTexCoord(195 / 1024, 330 / 1024, 235 / 512, 249 / 512)
+    else
+        strip:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-LevelBackground")
+        strip:SetTexCoord(0, 1, 0, 1)
+    end
+    -- The mirrored Player artwork has a grey name panel. Tint its interior
+    -- above that panel, with a one-pixel inset to preserve the native rim.
+    if strip.SetDrawLayer then strip:SetDrawLayer("ARTWORK", -7) end
+    strip:SetBlendMode("BLEND")
+    if strip.SetParent then strip:SetParent(host) end
+    frame._ktNameReactionActive = true
+    frame._ktNameReactionHost = host
+    frame._ktNameReactionPreview = preview
+    local height = geom.name.h or 14
+    local inset = modern and 1 or 0
+    local portraitCurve = modern and unit == "target" and 11 or 0
+    strip:ClearAllPoints()
+    strip:SetPoint("TOPLEFT", frame, "TOPLEFT",
+        (geom.health.x + (shift or 0) + inset) * scale, -(geom.health.y - height + inset) * scale)
+    strip:SetSize((geom.health.w + (extension or 0) + portraitCurve - inset * 2) * scale, (height - inset * 2) * scale)
+    self:UpdateUnitFrameNameReaction(frame, unit)
+end
+
 function KT.VisualThemes:ApplyClassicUnitFrameArt(frame, unitRegion, unit)
     if type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then return end
     if type(unitRegion) ~= "table" then return end
+    if InCombatLockdown() then
+        self:DeferUnitFrameArt(frame, unitRegion, unit, "ApplyClassicUnitFrameArt")
+        return
+    end
 
     local host = EnsureArtHost(frame, "_ktClassicArtHost")
     if not host then return end
@@ -852,6 +1073,7 @@ function KT.VisualThemes:ApplyClassicUnitFrameArt(frame, unitRegion, unit)
     -- and handed over via frame._ktStockNameText -- falling back to
     -- frame.LeftText, KUI's own default assignment, when that isn't set
     -- (e.g. in the test harness, or before KUIUnitFrames.lua resolves it).
+    self:ConfigureUnitFrameNameReaction(frame, host, unit, geom, scale, -portraitExtension, portraitExtension)
     local nameText = frame._ktStockNameText or frame.LeftText
     if nameText and geom.name then
         -- frame.Health has SetClipsChildren(true) (CreateAbsorbBar, so the
@@ -916,6 +1138,10 @@ end
 --- @param frame Frame|Region the unit frame passed to ApplyClassicUnitFrameArt
 function KT.VisualThemes:ClearClassicUnitFrameArt(frame)
     if type(frame) ~= "table" then return end
+    if frame._ktNameReaction and frame._ktNameReactionHost == frame._ktClassicArtHost then
+        frame._ktNameReactionActive = nil
+        frame._ktNameReaction:Hide()
+    end
     local art = frame._ktClassicPortraitArt
     if art then
         art:Hide()
@@ -1273,6 +1499,10 @@ KT.ResolveRetailAtlasOverride = ResolveRetailAtlasOverride
 function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     if type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then return end
     if type(unitRegion) ~= "table" then return end
+    if InCombatLockdown() then
+        self:DeferUnitFrameArt(frame, unitRegion, unit, "ApplyForeverUnitFrameArt")
+        return
+    end
 
     local renderedTheme = self.GetRenderedTheme and self:GetRenderedTheme()
     local isRetailTheme = renderedTheme == "retail"
@@ -1600,6 +1830,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- and handed over via frame._ktStockNameText -- falling back to
     -- frame.LeftText, KUI's own default assignment, when that isn't set
     -- (e.g. in the test harness, or before KUIUnitFrames.lua resolves it).
+    self:ConfigureUnitFrameNameReaction(frame, host, unit, geom, scale, barShiftX, portraitExtension)
     local nameText = frame._ktStockNameText or frame.LeftText
     if geom.name and type(nameText) == "table" and nameText.ClearAllPoints then
         local point = geom.name.point or "TOPLEFT"
@@ -1686,6 +1917,10 @@ end
 --- @param frame Frame|Region the unit frame passed to ApplyForeverUnitFrameArt
 function KT.VisualThemes:ClearForeverUnitFrameArt(frame)
     if type(frame) ~= "table" then return end
+    if frame._ktNameReaction and frame._ktNameReactionHost == frame._ktForeverArtHost then
+        frame._ktNameReactionActive = nil
+        frame._ktNameReaction:Hide()
+    end
     for _, fs in pairs({ frame.LeftText, frame.RightText, frame.CenterText,
         frame.Power and frame.Power._ppFS, frame._kuiLevelText }) do
         fs._ktBlizzBar = nil
@@ -1940,4 +2175,43 @@ function KT.VisualThemes:ClearPetFrameArt(frame)
             if fs and fs.SetParent then fs:SetParent(overlay) end
         end
     end
+end
+
+-- Original Forever swing sheet, used when the host client has no swing atlas.
+-- Shared by autoattacks, cast bars and every Damage Meter window/preview.
+KT.VisualThemes.ForeverSwingRegions = {
+    ["ui-swingtimerbar-frame"] = {1,427,1,31},
+    ["ui-swingtimerbar-background"] = {1,423,33,59},
+    ["ui-swingtimerbar-filling-mainhand"] = {1,419,61,83},
+    ["ui-swingtimerbar-filling-offhand"] = {1,419,85,107},
+    ["ui-swingtimerbar-filling-ranged"] = {1,419,109,131},
+    ["ui-swingtimerbar-textshadow-left"] = {1,172,133,154},
+    ["ui-swingtimerbar-pip"] = {1,11,156,210},
+}
+function KT.VisualThemes:GetStyleAtlasInfo(name)
+    local ok, info
+    if name and C_Texture and C_Texture.GetAtlasInfo then
+        ok, info = pcall(C_Texture.GetAtlasInfo, name)
+        if ok and info then return info end
+    end
+    local region = name and self.ForeverSwingRegions[name]
+    if not region then return nil end
+    return {
+        file = [[Interface\AddOns\KullThranUI\Libraries\texture\media\resourcebars\UISwingTimerBar-Forever.blp]],
+        width = (region[2] - region[1]) / 2, height = (region[4] - region[3]) / 2,
+        leftTexCoord = region[1] / 512, rightTexCoord = region[2] / 512,
+        topTexCoord = region[3] / 256, bottomTexCoord = region[4] / 256,
+        packaged = true,
+    }
+end
+function KT.VisualThemes:ApplyStyleAtlas(texture, name)
+    local info = self:GetStyleAtlasInfo(name)
+    if not info then return false end
+    if info.packaged then
+        texture:SetTexture(info.file)
+        texture:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+    else
+        texture:SetAtlas(name, false)
+    end
+    return true
 end

@@ -7,6 +7,11 @@ local type = type
 local issecretvalue = _G.issecretvalue
 local STACK_FIX_ENABLED = false
 
+local function Loc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local function IsSafeString(value)
     if type(value) ~= "string" then
         return false
@@ -188,7 +193,7 @@ function M:OnEnable()
             self._cmdRegistered = true
             KT:RegisterChatCommand("ktfixcounts", function()
                 if KT.Print then
-                    KT:Print("|cffff8844[ktfixcounts]|r desactivado por seguridad: estaba causando taint en marcos Blizzard.")
+                    KT:Print("|cffff8844[ktfixcounts]|r " .. Loc("Disabled for safety: it was causing taint in Blizzard frames."))
                 end
             end)
         end
@@ -204,7 +209,7 @@ function M:OnEnable()
         self._cmdRegistered = true
         KT:RegisterChatCommand("ktfixcounts", function()
             self:ApplyAll()
-            if KT.Print then KT:Print("|cff00FF88[ktfixcounts]|r aplicado.") end
+            if KT.Print then KT:Print("|cff00FF88[ktfixcounts]|r " .. Loc("Applied.")) end
         end)
     end
 

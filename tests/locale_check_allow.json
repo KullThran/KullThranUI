@@ -1,0 +1,2707 @@
+{
+ "sameAsEnglish": {
+  "reason": "Names, acronyms and slash commands that every client shows in English.",
+  "tokens": "\\b(?:KullThranUI|KullThran|KUI|KUIMove|BlizzMove|Blizzard|WoW|World of Warcraft|DPS|HPS|GCD|CDM|UI|ID|iLvl|ilvl|FPS|PvP|PvE|M\\+|Raider\\.IO|Wago|CurseForge|Discord|Details!?|ElvUI|Plater|OPie|BigWigs|DBM|WeakAuras|Masque|Baganator|Chattynator|Syndicator|DandersFrames|UnhaltedUnitFrames|UUF|SharedMedia|LibSharedMedia|Ace3|MDT|Edit Mode|Forever|Retail|Classic|Vanilla|BattleTag|Battle\\.net|CPU|RGB|HEX|XP|DR|AH|NPC|NPCs|AFK|DND|OK)\\b|/[a-z]+",
+  "keys": [],
+  "perLocale": [
+   {
+    "key": "Error: %s",
+    "locale": "esES",
+    "reason": "'Error' is the Spanish word too."
+   },
+   {
+    "key": "Total: %s",
+    "locale": "esES",
+    "reason": "'Total' is the same word in Spanish and Portuguese."
+   },
+   {
+    "key": "Total: %s",
+    "locale": "ptBR",
+    "reason": "'Total' is the same word in Spanish and Portuguese."
+   },
+   {
+    "key": "sections=%s",
+    "locale": "frFR",
+    "reason": "'sections' is the same word in French."
+   },
+   {
+    "key": "Auto",
+    "locale": "frFR",
+    "reason": "'Auto' is the standard French/Italian UI word."
+   },
+   {
+    "key": "Auto",
+    "locale": "itIT",
+    "reason": "'Auto' is the standard French/Italian UI word."
+   },
+   {
+    "key": "Actions",
+    "locale": "frFR",
+    "reason": "'Actions' is the same word in French."
+   },
+   {
+    "key": "Addon",
+    "locale": "esES",
+    "reason": "'Addon' is the established term in these clients."
+   },
+   {
+    "key": "Addon",
+    "locale": "deDE",
+    "reason": "'Addon' is the established term in these clients."
+   },
+   {
+    "key": "Addon",
+    "locale": "frFR",
+    "reason": "'Addon' is the established term in these clients."
+   },
+   {
+    "key": "Addon",
+    "locale": "itIT",
+    "reason": "'Addon' is the established term in these clients."
+   },
+   {
+    "key": "Addon",
+    "locale": "ptBR",
+    "reason": "'Addon' is the established term in these clients."
+   },
+   {
+    "key": "VERSION  %s",
+    "locale": "deDE",
+    "reason": "'VERSION' is the same word in German and French."
+   },
+   {
+    "key": "VERSION  %s",
+    "locale": "frFR",
+    "reason": "'VERSION' is the same word in German and French."
+   },
+   {
+    "key": "Tooltip",
+    "locale": "esES",
+    "reason": "Module name; 'Tooltip' is the term used by these communities."
+   },
+   {
+    "key": "Tooltip",
+    "locale": "deDE",
+    "reason": "Module name; 'Tooltip' is the term used by these communities."
+   },
+   {
+    "key": "Tooltip",
+    "locale": "itIT",
+    "reason": "Module name; 'Tooltip' is the term used by these communities."
+   },
+   {
+    "key": "Chat",
+    "locale": "esES",
+    "reason": "'Chat' is the same word in these languages."
+   },
+   {
+    "key": "Chat",
+    "locale": "deDE",
+    "reason": "'Chat' is the same word in these languages."
+   },
+   {
+    "key": "Chat",
+    "locale": "itIT",
+    "reason": "'Chat' is the same word in these languages."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "esES",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "deDE",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "frFR",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "itIT",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "ptBR",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "ruRU",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "koKR",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "zhCN",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Simplicity",
+    "locale": "zhTW",
+    "reason": "Name of the Simplicity texture pack/style; kept as a proper name in every client."
+   },
+   {
+    "key": "Modern",
+    "locale": "deDE",
+    "reason": "German adjective 'modern' is spelled the same as English."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "esES",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "deDE",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "frFR",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "itIT",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "ptBR",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Blizzard",
+    "locale": "ruRU",
+    "reason": "Company name; the Latin-script clients show it as Blizzard."
+   },
+   {
+    "key": "Mode %-10s showLeaderIcon = %s",
+    "locale": "frFR",
+    "reason": "\"Mode\" is the correct French word; showLeaderIcon is a setting identifier."
+   },
+   {
+    "key": "Helm",
+    "locale": "deDE",
+    "reason": "\"Helm\" is the German word for helmet."
+   },
+   {
+    "key": "Ring",
+    "locale": "deDE",
+    "reason": "\"Ring\" is the German word for ring."
+   },
+   {
+    "key": "IMM",
+    "locale": "deDE",
+    "reason": "Abbreviation of \"Immun\" (diminishing-returns immunity badge)."
+   },
+   {
+    "key": "IMM",
+    "locale": "frFR",
+    "reason": "Abbreviation of \"Immunisé\" (diminishing-returns immunity badge)."
+   },
+   {
+    "key": "IMM",
+    "locale": "itIT",
+    "reason": "Abbreviation of \"Immune\" (diminishing-returns immunity badge)."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "esES",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "deDE",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "itIT",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "ptBR",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "ruRU",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "RIO: ",
+    "locale": "koKR",
+    "reason": "RIO is the Raider.IO score abbreviation, kept as-is."
+   },
+   {
+    "key": "DPS / Tank",
+    "locale": "deDE",
+    "reason": "German clients use the English role terms DPS and Tank."
+   },
+   {
+    "key": "DPS / Tank",
+    "locale": "frFR",
+    "reason": "French clients use the English role terms DPS and Tank."
+   },
+   {
+    "key": "--- Auras ---",
+    "locale": "esES",
+    "reason": "'Auras' is the correct word in this language (same spelling as English)."
+   },
+   {
+    "key": "--- Auras ---",
+    "locale": "frFR",
+    "reason": "'Auras' is the correct word in this language (same spelling as English)."
+   },
+   {
+    "key": "--- Auras ---",
+    "locale": "ptBR",
+    "reason": "'Auras' is the correct word in this language (same spelling as English)."
+   },
+   {
+    "key": "Alliance",
+    "locale": "frFR",
+    "reason": "Official Blizzard faction name is spelled 'Alliance' in this language."
+   },
+   {
+    "key": "Horde",
+    "locale": "deDE",
+    "reason": "Official Blizzard faction name is spelled 'Horde' in this language."
+   },
+   {
+    "key": "Horde",
+    "locale": "frFR",
+    "reason": "Official Blizzard faction name is spelled 'Horde' in this language."
+   },
+   {
+    "key": "UUF Arena %d",
+    "locale": "esES",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena %d",
+    "locale": "deDE",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena %d",
+    "locale": "itIT",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena %d",
+    "locale": "ptBR",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Boss %d",
+    "locale": "deDE",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Boss %d",
+    "locale": "frFR",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Boss %d",
+    "locale": "itIT",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "Zone X",
+    "locale": "deDE",
+    "reason": "'Zone' is the correct word in this language; X is an axis letter."
+   },
+   {
+    "key": "Zone X",
+    "locale": "frFR",
+    "reason": "'Zone' is the correct word in this language; X is an axis letter."
+   },
+   {
+    "key": "Zone Y",
+    "locale": "deDE",
+    "reason": "'Zone' is the correct word in this language; Y is an axis letter."
+   },
+   {
+    "key": "Zone Y",
+    "locale": "frFR",
+    "reason": "'Zone' is the correct word in this language; Y is an axis letter."
+   },
+   {
+    "key": "Venthyr",
+    "locale": "esES",
+    "reason": "Official Blizzard covenant name is 'Venthyr' in this language."
+   },
+   {
+    "key": "Venthyr",
+    "locale": "deDE",
+    "reason": "Official Blizzard covenant name is 'Venthyr' in this language."
+   },
+   {
+    "key": "Venthyr",
+    "locale": "itIT",
+    "reason": "Official Blizzard covenant name is 'Venthyr' in this language."
+   },
+   {
+    "key": "Venthyr",
+    "locale": "ptBR",
+    "reason": "Official Blizzard covenant name is 'Venthyr' in this language."
+   },
+   {
+    "key": "Mage",
+    "locale": "frFR",
+    "reason": "Official Blizzard class name is 'Mage' in this language."
+   },
+   {
+    "key": "Paladin",
+    "locale": "deDE",
+    "reason": "Official Blizzard class name is 'Paladin' in this language."
+   },
+   {
+    "key": "Paladin",
+    "locale": "frFR",
+    "reason": "Official Blizzard class name is 'Paladin' in this language."
+   },
+   {
+    "key": "UUF Boss",
+    "locale": "deDE",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Boss",
+    "locale": "frFR",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Boss",
+    "locale": "itIT",
+    "reason": "UUF is the addon abbreviation and 'Boss' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena",
+    "locale": "esES",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena",
+    "locale": "deDE",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena",
+    "locale": "itIT",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "UUF Arena",
+    "locale": "ptBR",
+    "reason": "UUF is the addon abbreviation and 'Arena' is the official in-game term in this language."
+   },
+   {
+    "key": "Neutral",
+    "locale": "esES",
+    "reason": "Official Blizzard term for neutral faction is 'Neutral' in this language."
+   },
+   {
+    "key": "Neutral",
+    "locale": "deDE",
+    "reason": "Official Blizzard term for neutral faction is 'Neutral' in this language."
+   },
+   {
+    "key": "Mew",
+    "locale": "esES",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "deDE",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "frFR",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "itIT",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "ptBR",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "ruRU",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "koKR",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "zhCN",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Mew",
+    "locale": "zhTW",
+    "reason": "Sample character name shown in the Armory preview when no player name is available; names are not translated."
+   },
+   {
+    "key": "Poison",
+    "locale": "frFR",
+    "reason": "'Poison' is the official French term."
+   },
+   {
+    "key": "Focus",
+    "locale": "itIT",
+    "reason": "'Focus' is the official Italian term for the focus target."
+   },
+   {
+    "key": "BAGS_MODE_COMPACT",
+    "locale": "frFR",
+    "reason": "'Compact' is the correct French word."
+   },
+   {
+    "key": "BAGS_MODE_SECTIONS",
+    "locale": "frFR",
+    "reason": "'Sections' is the correct French word."
+   },
+   {
+    "key": "BAGS_CATEGORY_POTION",
+    "locale": "frFR",
+    "reason": "'Potion' is the official French term."
+   },
+   {
+    "key": "BAGS_CATEGORY_QUEST",
+    "locale": "deDE",
+    "reason": "'Quest' is the official German term."
+   },
+   {
+    "key": "General",
+    "locale": "esES",
+    "reason": "'General' is the correct Spanish word."
+   },
+   {
+    "key": "Cursor",
+    "locale": "esES",
+    "reason": "'Cursor' is the correct word in this language."
+   },
+   {
+    "key": "Cursor",
+    "locale": "ptBR",
+    "reason": "'Cursor' is the correct word in this language."
+   },
+   {
+    "key": "Position",
+    "locale": "deDE",
+    "reason": "'Position' is the correct word in this language."
+   },
+   {
+    "key": "Position",
+    "locale": "frFR",
+    "reason": "'Position' is the correct word in this language."
+   },
+   {
+    "key": "Color",
+    "locale": "esES",
+    "reason": "'Color' is the correct Spanish word."
+   },
+   {
+    "key": "XP: 65% / Rep: 3000/6000",
+    "locale": "ptBR",
+    "reason": "XP and Rep are the abbreviations Brazilian players use; numbers unchanged. The value comes from another batch (out_T3) that sets it equal to English."
+   },
+   {
+    "key": "Quests",
+    "locale": "deDE",
+    "reason": "'Quests' is the official German term."
+   },
+   {
+    "key": "Anti-Aliasing",
+    "locale": "itIT",
+    "reason": "Italian client uses the English technical term 'Anti-aliasing'"
+   },
+   {
+    "key": "Aura",
+    "locale": "esES",
+    "reason": "'Aura' is the identical word in this language (Blizzard uses it)"
+   },
+   {
+    "key": "Aura",
+    "locale": "deDE",
+    "reason": "'Aura' is the identical word in this language (Blizzard uses it)"
+   },
+   {
+    "key": "Aura",
+    "locale": "frFR",
+    "reason": "'Aura' is the identical word in this language (Blizzard uses it)"
+   },
+   {
+    "key": "Aura",
+    "locale": "itIT",
+    "reason": "'Aura' is the identical word in this language (Blizzard uses it)"
+   },
+   {
+    "key": "Aura",
+    "locale": "ptBR",
+    "reason": "'Aura' is the identical word in this language (Blizzard uses it)"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "esES",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "deDE",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "frFR",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "itIT",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "ptBR",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "ruRU",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "koKR",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "zhCN",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "Avant Garde",
+    "locale": "zhTW",
+    "reason": "Font family name (ITC Avant Garde); proper names are not translated"
+   },
+   {
+    "key": "...",
+    "locale": "esES",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "deDE",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "frFR",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "itIT",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "ptBR",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "ruRU",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "koKR",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "zhCN",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "...",
+    "locale": "zhTW",
+    "reason": "Ellipsis placeholder shown while loading; punctuation only"
+   },
+   {
+    "key": "Boss",
+    "locale": "deDE",
+    "reason": "Blizzard uses 'Boss' in this language"
+   },
+   {
+    "key": "Boss",
+    "locale": "frFR",
+    "reason": "Blizzard uses 'Boss' in this language"
+   },
+   {
+    "key": "Boss",
+    "locale": "itIT",
+    "reason": "Blizzard uses 'Boss' in this language"
+   },
+   {
+    "key": "CC",
+    "locale": "esES",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "deDE",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "frFR",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "itIT",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "ptBR",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "ruRU",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "CC",
+    "locale": "koKR",
+    "reason": "Universal crowd-control acronym; shown in a tiny aura icon"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "esES",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "deDE",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "frFR",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "itIT",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "ptBR",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Cataclysm Classic",
+    "locale": "ruRU",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "esES",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "deDE",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "frFR",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "itIT",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "ptBR",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Classic Era",
+    "locale": "ruRU",
+    "reason": "Official product name, not localized by Blizzard in this region"
+   },
+   {
+    "key": "Combat",
+    "locale": "frFR",
+    "reason": "'Combat' is the correct French word"
+   },
+   {
+    "key": "Combat %d",
+    "locale": "frFR",
+    "reason": "'Combat' is the correct French word"
+   },
+   {
+    "key": "Contacts",
+    "locale": "frFR",
+    "reason": "'Contacts' is the correct French word"
+   },
+   {
+    "key": "DUNGEON",
+    "locale": "deDE",
+    "reason": "German client uses 'Dungeon'"
+   },
+   {
+    "key": "Dialog",
+    "locale": "deDE",
+    "reason": "'Dialog' is the correct German word (frame strata DIALOG)"
+   },
+   {
+    "key": "Distance",
+    "locale": "frFR",
+    "reason": "'Distance' is the correct French word"
+   },
+   {
+    "key": "Dungeon",
+    "locale": "deDE",
+    "reason": "German client uses 'Dungeon'"
+   },
+   {
+    "key": "Elite",
+    "locale": "deDE",
+    "reason": "Blizzard uses 'Elite' in this language"
+   },
+   {
+    "key": "Elite",
+    "locale": "ptBR",
+    "reason": "Blizzard uses 'Elite' in this language"
+   },
+   {
+    "key": "%d online",
+    "locale": "deDE",
+    "reason": "'online' is the standard word used in this language's client"
+   },
+   {
+    "key": "%d online",
+    "locale": "itIT",
+    "reason": "'online' is the standard word used in this language's client"
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "esES",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "deDE",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "frFR",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "itIT",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "ptBR",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "ruRU",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "koKR",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "zhCN",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Fira Sans",
+    "locale": "zhTW",
+    "reason": "Font family name (proper noun), shown in a font picker."
+   },
+   {
+    "key": "Forces",
+    "locale": "frFR",
+    "reason": "Identical French word (forces ennemies)."
+   },
+   {
+    "key": "Horizontal",
+    "locale": "esES",
+    "reason": "Identical word in Spanish/German/French/Portuguese."
+   },
+   {
+    "key": "Horizontal",
+    "locale": "deDE",
+    "reason": "Identical word in Spanish/German/French/Portuguese."
+   },
+   {
+    "key": "Horizontal",
+    "locale": "frFR",
+    "reason": "Identical word in Spanish/German/French/Portuguese."
+   },
+   {
+    "key": "Horizontal",
+    "locale": "ptBR",
+    "reason": "Identical word in Spanish/German/French/Portuguese."
+   },
+   {
+    "key": "Important",
+    "locale": "frFR",
+    "reason": "Identical French word."
+   },
+   {
+    "key": "Info",
+    "locale": "deDE",
+    "reason": "Standard short form of information in German and Italian UIs."
+   },
+   {
+    "key": "Info",
+    "locale": "itIT",
+    "reason": "Standard short form of information in German and Italian UIs."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "esES",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "deDE",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "frFR",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "itIT",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "ptBR",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "ruRU",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "koKR",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "zhCN",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "KullThranUI",
+    "locale": "zhTW",
+    "reason": "Addon product name."
+   },
+   {
+    "key": "Macro",
+    "locale": "esES",
+    "reason": "Identical word in Spanish/French/Italian/Portuguese (WoW clients use 'Macro')."
+   },
+   {
+    "key": "Macro",
+    "locale": "frFR",
+    "reason": "Identical word in Spanish/French/Italian/Portuguese (WoW clients use 'Macro')."
+   },
+   {
+    "key": "Macro",
+    "locale": "itIT",
+    "reason": "Identical word in Spanish/French/Italian/Portuguese (WoW clients use 'Macro')."
+   },
+   {
+    "key": "Macro",
+    "locale": "ptBR",
+    "reason": "Identical word in Spanish/French/Italian/Portuguese (WoW clients use 'Macro')."
+   },
+   {
+    "key": "Melli",
+    "locale": "esES",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "deDE",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "frFR",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "itIT",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "ptBR",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "ruRU",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "koKR",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "zhCN",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Melli",
+    "locale": "zhTW",
+    "reason": "Status bar texture name (proper noun) in a texture picker."
+   },
+   {
+    "key": "Mode",
+    "locale": "frFR",
+    "reason": "Identical French word."
+   },
+   {
+    "key": "Multisampling",
+    "locale": "deDE",
+    "reason": "German WoW graphics settings use 'Multisampling'."
+   },
+   {
+    "key": "Offline",
+    "locale": "deDE",
+    "reason": "German WoW friends list uses 'Offline'."
+   },
+   {
+    "key": "Online",
+    "locale": "deDE",
+    "reason": "German WoW friends list uses 'Online'."
+   },
+   {
+    "key": "Pandaria Classic",
+    "locale": "esES",
+    "reason": "Game version/product name; Pandaria is spelled the same in es/de/it."
+   },
+   {
+    "key": "Pandaria Classic",
+    "locale": "deDE",
+    "reason": "Game version/product name; Pandaria is spelled the same in es/de/it."
+   },
+   {
+    "key": "Pandaria Classic",
+    "locale": "itIT",
+    "reason": "Game version/product name; Pandaria is spelled the same in es/de/it."
+   },
+   {
+    "key": "Poppins",
+    "locale": "esES",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "deDE",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "frFR",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "itIT",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "ptBR",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "ruRU",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "koKR",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "zhCN",
+    "reason": "font name"
+   },
+   {
+    "key": "Poppins",
+    "locale": "zhTW",
+    "reason": "font name"
+   },
+   {
+    "key": "Portrait",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Quest",
+    "locale": "deDE",
+    "reason": "official term in this client"
+   },
+   {
+    "key": "Raid",
+    "locale": "frFR",
+    "reason": "official term in this client"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "esES",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "deDE",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "frFR",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "itIT",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "ptBR",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "ruRU",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "koKR",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "zhCN",
+    "reason": "product name"
+   },
+   {
+    "key": "Raider.IO",
+    "locale": "zhTW",
+    "reason": "product name"
+   },
+   {
+    "key": "Raiders",
+    "locale": "ptBR",
+    "reason": "UNSET"
+   },
+   {
+    "key": "Retail",
+    "locale": "esES",
+    "reason": "standard community term for the live game in this language"
+   },
+   {
+    "key": "Retail",
+    "locale": "deDE",
+    "reason": "standard community term for the live game in this language"
+   },
+   {
+    "key": "Retail",
+    "locale": "frFR",
+    "reason": "standard community term for the live game in this language"
+   },
+   {
+    "key": "Retail",
+    "locale": "itIT",
+    "reason": "standard community term for the live game in this language"
+   },
+   {
+    "key": "Retail",
+    "locale": "ptBR",
+    "reason": "standard community term for the live game in this language"
+   },
+   {
+    "key": "Ring 1",
+    "locale": "deDE",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Ring 2",
+    "locale": "deDE",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "SSAO",
+    "locale": "esES",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "deDE",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "frFR",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "itIT",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "ptBR",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "ruRU",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "koKR",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "zhCN",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "SSAO",
+    "locale": "zhTW",
+    "reason": "technical acronym used by the game client in all languages"
+   },
+   {
+    "key": "Score ",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Sections",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Segment",
+    "locale": "deDE",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Segment",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Session",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Skins",
+    "locale": "deDE",
+    "reason": "common UI loanword in this language"
+   },
+   {
+    "key": "Social",
+    "locale": "esES",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Social",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Social",
+    "locale": "itIT",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Social",
+    "locale": "ptBR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Status",
+    "locale": "deDE",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Status",
+    "locale": "ptBR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "esES",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "deDE",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "frFR",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "itIT",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "ptBR",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "TBC Classic",
+    "locale": "ruRU",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Tank",
+    "locale": "deDE",
+    "reason": "official role name in this client"
+   },
+   {
+    "key": "Tank",
+    "locale": "frFR",
+    "reason": "official role name in this client"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "esES",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "deDE",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "frFR",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "itIT",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "ptBR",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "ruRU",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "koKR",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "zhCN",
+    "reason": "font name"
+   },
+   {
+    "key": "Tempesta Seven",
+    "locale": "zhTW",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "esES",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "deDE",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "frFR",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "itIT",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "ptBR",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "ruRU",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "koKR",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "zhCN",
+    "reason": "font name"
+   },
+   {
+    "key": "Ubuntu",
+    "locale": "zhTW",
+    "reason": "font name"
+   },
+   {
+    "key": "Version:",
+    "locale": "deDE",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Vertical",
+    "locale": "esES",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Vertical",
+    "locale": "frFR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "Vertical",
+    "locale": "ptBR",
+    "reason": "same word in this language"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "esES",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "deDE",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "frFR",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "itIT",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "ptBR",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "ruRU",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "koKR",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "zhCN",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever",
+    "locale": "zhTW",
+    "reason": "product/project name"
+   },
+   {
+    "key": "WoW Forever Beta",
+    "locale": "deDE",
+    "reason": "product name; Beta is the same word in this language"
+   },
+   {
+    "key": "WoW Forever Beta",
+    "locale": "itIT",
+    "reason": "product name; Beta is the same word in this language"
+   },
+   {
+    "key": "WoW Forever Beta",
+    "locale": "ptBR",
+    "reason": "product name; Beta is the same word in this language"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "esES",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "deDE",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "frFR",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "itIT",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "ptBR",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "WoW Remix",
+    "locale": "ruRU",
+    "reason": "product name used as-is"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "esES",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "deDE",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "frFR",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "itIT",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "ptBR",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "World of Warcraft",
+    "locale": "ruRU",
+    "reason": "official game title in Latin-script and Russian clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "esES",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "deDE",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "frFR",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "itIT",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "ptBR",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "Wrath Classic",
+    "locale": "ruRU",
+    "reason": "game version name kept in English by these clients"
+   },
+   {
+    "key": "iLvl",
+    "locale": "deDE",
+    "reason": "standard abbreviation in this language community"
+   },
+   {
+    "key": "Ring",
+    "locale": "deDE",
+    "reason": "Ring is the German word for a ring shape."
+   },
+   {
+    "key": "Normal",
+    "locale": "esES",
+    "reason": "Dungeon difficulty name, spelled the same in this language."
+   },
+   {
+    "key": "Normal",
+    "locale": "deDE",
+    "reason": "Dungeon difficulty name, spelled the same in this language."
+   },
+   {
+    "key": "Normal",
+    "locale": "frFR",
+    "reason": "Dungeon difficulty name, spelled the same in this language."
+   },
+   {
+    "key": "Normal",
+    "locale": "ptBR",
+    "reason": "Dungeon difficulty name, spelled the same in this language."
+   }
+  ]
+ },
+ "dataFiles": {
+  "reason": "Game data tables: item, toy and spell names used to match game objects; the client supplies the localized name at runtime.",
+  "files": [
+   "KullThranUI_TeleportMenu/Modules/TeleportMenu/TeleportMenu.lua",
+   "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua"
+  ]
+ },
+ "codeText": {
+  "reason": "Literals that are never shown to players (internal identifiers, frame names, data keys).",
+  "files": [],
+  "entries": [
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "  /ktcpu            ",
+    "reason": "Slash-command syntax column in the /ktcpu usage list; the description beside it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "  /ktcpu reset      ",
+    "reason": "Slash-command syntax column in the /ktcpu usage list; the description beside it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "  /ktcpu stop       ",
+    "reason": "Slash-command syntax column in the /ktcpu usage list; the description beside it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "  /ktcpu top 25     ",
+    "reason": "Slash-command syntax column in the /ktcpu usage list; the description beside it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "  /ktcpu watch 5 8  ",
+    "reason": "Slash-command syntax column in the /ktcpu usage list; the description beside it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "=<nil>",
+    "reason": "Diagnostic key=value dump of internal SavedVariables fields (/ktpersist)."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff00FF88[ktcpu]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff00FF88[ktminimapperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff00FF88[ktperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff00ff88===== END KTPERSIST DEBUG =====|r",
+    "reason": "Section marker of the /ktpersist developer dump (command name)."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff00ff88===== KTPERSIST DEBUG =====|r",
+    "reason": "Section marker of the /ktpersist developer dump (command name)."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff33ff99[KTUM]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff33ff99[POPUPS?]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[PERSIST]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktbaddebug]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktbaddebug]|r DebuffFrame=",
+    "reason": "Diagnostic key=value dump of internal variable/frame names (/ktbaddebug); not prose."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktbaddebug]|r DebuffFrame=nil",
+    "reason": "Diagnostic key=value dump of internal variable/frame names (/ktbaddebug); not prose."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktbaddebug]|r addonLoaded=",
+    "reason": "Diagnostic key=value dump of internal variable/frame names (/ktbaddebug); not prose."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktbaddebug]|r debuffChildren=",
+    "reason": "Diagnostic key=value dump of internal variable/frame names (/ktbaddebug); not prose."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cff66ccff[ktdmdebug]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFF4444[ktcdmstats]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFF4444[ktcpu]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFF4444[ktminimapperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFF4444[ktperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFFAA00[ktminimapperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Core.lua",
+    "text": "|cffFFAA00[ktperf]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/CombatCPUProfiler.lua",
+    "text": "|cff00ff88[ktcombat]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/EscapeMenu.lua",
+    "text": "GameMenuButtonKUIUnlockMode",
+    "reason": "Global frame name passed to CreateFrame, never shown."
+   },
+   {
+    "file": "KullThranUI/Modules/EscapeMenu.lua",
+    "text": "GameMenuButtonKullThranUI",
+    "reason": "Global frame name passed to CreateFrame, never shown."
+   },
+   {
+    "file": "KullThranUI/Modules/EscapeMenu.lua",
+    "text": "[EscapeDbg] ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/EscapeMenu.lua",
+    "text": "|cff00c8ff[EscapeDbg]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/EscapeMenu.lua",
+    "text": "|cffFF4444UnlockMode|r: ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/KT_UnlockMode.lua",
+    "text": "|cFFFF0000[KT UnlockMode]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/KT_UnlockMode.lua",
+    "text": "|cff33ff99[KTUM]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/KT_UnlockMode.lua",
+    "text": "|cff33ff99[KTUWATCH]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/KT_UnlockMode.lua",
+    "text": "|cff33ff99[UM diag]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/Profilehandlers/Profilehandlers.lua",
+    "text": "BetterCooldownManager",
+    "reason": "Internal step id that indexes the profile data table (also the addon's name)."
+   },
+   {
+    "file": "KullThranUI/Modules/Profilehandlers/Profilehandlers.lua",
+    "text": "DandersFrames",
+    "reason": "Internal step id that indexes the profile data table (also the addon's name)."
+   },
+   {
+    "file": "KullThranUI/Modules/Profilehandlers/Profilehandlers.lua",
+    "text": "UnhaltedUnitFrames",
+    "reason": "Internal step id that indexes the profile data table (also the addon's name)."
+   },
+   {
+    "file": "KullThranUI/Modules/Profiler.lua",
+    "text": "|cff00FF88[KT Profiler]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/Profiler.lua",
+    "text": "|cffFF0000[KT Profiler]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/Profiler.lua",
+    "text": "|cffFFAA00[KT Profiler]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/Profiles.lua",
+    "text": "BlizzMove",
+    "reason": "Module/product name shown as-is in every client."
+   },
+   {
+    "file": "KullThranUI/Modules/Profiles.lua",
+    "text": "KUIMove",
+    "reason": "Module/product name shown as-is in every client."
+   },
+   {
+    "file": "KullThranUI/Modules/StackCountFix.lua",
+    "text": "|cff00FF88[ktfixcounts]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/StackCountFix.lua",
+    "text": "|cffff8844[ktfixcounts]|r ",
+    "reason": "Fixed colored chat prefix naming the command/module; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI/Modules/VisualThemes/ThemeCatalog.lua",
+    "text": "WOW CLASSIC",
+    "reason": "Client/product name of the visual style (rendered through T(), kept as product name)."
+   },
+   {
+    "file": "KullThranUI/Modules/VisualThemes/ThemeCatalog.lua",
+    "text": "WOW FOREVER",
+    "reason": "Client/product name of the visual style (rendered through T(), kept as product name)."
+   },
+   {
+    "file": "KullThranUI/Modules/VisualThemes/ThemeCatalog.lua",
+    "text": "WOW RETAIL",
+    "reason": "Client/product name of the visual style (rendered through T(), kept as product name)."
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "KUI Move",
+    "reason": "Module/product name shown as-is in every client."
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "KUIMove",
+    "reason": "Module/product name shown as-is in every client."
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "KullThranUI Discord",
+    "reason": "Product names only (addon name + Discord)."
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "|cff",
+    "reason": "Color-code prefix of the version label; the rest is a version number."
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "Improved the in-game changelog window so its complete “Don’t show again” row is clickable, the current patch suppression state is restored correctly, and enabling or disabling the option is saved immediately.",
+    "reason": "release notes"
+   },
+   {
+    "file": "KullThranUI/Options.lua",
+    "text": "Reduced Cooldown Manager background work by replacing continuous glow polling with coalesced event-driven updates, refreshing only affected bars when possible, and avoiding redundant transition passes once Blizzard’s Cooldown Viewer pools have stabilized.",
+    "reason": "release notes"
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "LittleWigs",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "SharedMedia",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Syndicator",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Northern Sky Raid Tools",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "BigWigs",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Opie",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Plumber",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Waypoint UI",
+    "reason": "Third-party addon product name shown as-is (names are not translated)."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Jaina Proudmoore",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Thrall",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Sylvanas Windrunner",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Anduin Wrynn",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Malfurion Stormrage",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Illidan Stormrage",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Arthas Menethil",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Varian Wrynn",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Uther Lightbringer",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Valeera Sanguinar",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Gul'dan",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Chen Stormstout",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Scalecommander Emberthal",
+    "reason": "Sample character name shown as a player name row in the damage meter preview; player names are not translated."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Friz Quadrata TT",
+    "reason": "Font name from LibSharedMedia, compared against the font list; not translatable."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "Friz Quadrata TT (Blizzard)",
+    "reason": "Font name label (product/font name), identical in every client."
+   },
+   {
+    "file": "KullThranUI_Installer/Modules/Installers/Installers.lua",
+    "text": "|cffd7f3ff144FPS|r | |cffffb34723MS|r",
+    "reason": "Sample FPS/latency numbers with unit abbreviations in the minimap preview; no words to translate."
+   },
+   {
+    "file": "KullThranUI_Nameplates/Modules/Nameplates/Nameplates_Friendly.lua",
+    "text": "|cff66ccffKNP debug|r ",
+    "reason": "Fixed coloured debug prefix kept outside the translated sentence."
+   },
+   {
+    "file": "KullThranUI_Nameplates/Modules/Nameplates/Nameplates_Options.lua",
+    "text": "<KullThranUI>",
+    "reason": "Sample guild tag (product name) in the friendly nameplate preview."
+   },
+   {
+    "file": "KullThranUI/Modules/KUIMove/KUIMove.lua",
+    "text": " |cff71d5ff|Haddon:kuimoveMuteWarning:",
+    "reason": "Hyperlink markup prefix; the visible link text is translated separately (L['Mute this warning'])."
+   },
+   {
+    "file": "KullThranUI/Modules/KUIMove/KUIMoveConfig.lua",
+    "text": "KUIMove",
+    "reason": "Module/product name used as the AceConfig options title."
+   },
+   {
+    "file": "KullThranUI_ActionBars/Modules/ActionBars/ActionBars.lua",
+    "text": "|cffff4444[KUPDEBUG]|r ",
+    "reason": "Fixed coloured debug prefix kept outside the translated sentence."
+   },
+   {
+    "file": "KullThranUI_ActionBars/Modules/ActionBars/ActionBars.lua",
+    "text": "KUI AB: ",
+    "reason": "Fixed debug prefix (module abbreviation) kept outside the translated sentence."
+   },
+   {
+    "file": "KullThranUI_ResourceBars/Modules/KUIResourceBars/KUIResourceBars.lua",
+    "text": "KUI RB ",
+    "reason": "Fixed debug prefix (module abbreviation) kept outside the translated sentence."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "|cff0cd29f[CDM Stacks]|r",
+    "reason": "Debug chat prefix tag; the message after it is translated or is a technical key=value dump."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "|cff00ff99[KUI Tracker]|r ",
+    "reason": "Debug chat prefix tag; the message after it is translated or is a technical key=value dump."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "|cff00ff99[CDM Custom]|r",
+    "reason": "Debug chat prefix tag; the message after it is translated or is a technical key=value dump."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUI_CooldownManager_Options.lua",
+    "text": "PlayerFrame",
+    "reason": "Blizzard frame name shown as the anchor source in the preview (identifier)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "|cFF00FFFF[KullThranUI]|r ",
+    "reason": "Chat prefix with the addon name; the message after it is translated."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Silvermoon Health Potion",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Refreshing Serum",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Algari Healing Potion",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Invigorating Healing Potion",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Fleeting Invigorating Healing Potion",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Demonic Healthstone",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICooldownManager.lua",
+    "text": "Healthstone",
+    "reason": "Fallback item name; displayed name is resolved from the client by spellID/itemID (C_Spell.GetSpellName / GetItemInfo)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Light's Potential",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Potion of Recklessness",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Invisibility Potion",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Time Spiral",
+    "reason": "English spell name of a glow-detected popular buff that has no aura spell ID to resolve a client name from; proper spell name (see notes)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Call Dreadstalkers",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Summon Demonic Tyrant",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Summon Vilefiend",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI_CooldownManager/Modules/KUICooldownManager/KUICdmBuffBars.lua",
+    "text": "Grimoire: Felguard",
+    "reason": "English fallback spell name; replaced at load by the client's localized C_Spell.GetSpellName(spellID)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Ulkrad",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Kullthran",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Vhii",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Shammy",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Lunara",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Aurelia",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Mewra",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Futnorris",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Qute",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Lunara",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Thragor",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Serelyn",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/EnhancedFriendList.lua",
+    "text": "Kaelith",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "STUN",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "INCAP",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "FEAR",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "SILENCE",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "ROOT",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "DISARM",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/ArenaDRData.lua",
+    "text": "KNOCK",
+    "reason": "DR category tag from DRList data; the label field is never rendered (only icon and color are used)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Mark of the Wild",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Power Word: Fortitude",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Arcane Intellect",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Battle Shout",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Skyfury",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Blessing of the Bronze",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Agony",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Shadow Word: Pain",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Wound Poison",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Rend",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Enrage",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Blind",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Tankerino",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Healsworth",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Alexandros",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Styles.lua",
+    "text": "KUI",
+    "reason": "Visual style name (product/client name); rendered through LText, kept as brand name."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Styles.lua",
+    "text": "Forever",
+    "reason": "Visual style name (product/client name); rendered through LText, kept as brand name."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Styles.lua",
+    "text": "Classic",
+    "reason": "Visual style name (product/client name); rendered through LText, kept as brand name."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Tankerino",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Healsworth",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Alexandros",
+    "reason": "Fake character name in preview/test data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Mark of the Wild",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Power Word: Fortitude",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Arcane Intellect",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Battle Shout",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Skyfury",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Blessing of the Bronze",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Baine",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Rexxar",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Valeera",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Velen",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Thrall",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Jaina",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Guldan",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI/Modules/Enhancements/Enhancements_DamageMeter.lua",
+    "text": "Malfurion",
+    "reason": "Fake character name in preview data (proper noun, not translatable)."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Windfury Totem",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames.lua",
+    "text": "Blessing of Kings",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Windfury Totem",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_Options.lua",
+    "text": "Blessing of Kings",
+    "reason": "Fallback/matching spell name; the displayed name comes from the client via the spell ID (C_Spell.GetSpellName) or the name is used to match game aura names."
+   },
+   {
+    "file": "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua",
+    "text": "|cff",
+    "reason": "Fixed chat prefix (colour code and addon/command tag); the message text after it goes through the locale layer."
+   },
+   {
+    "file": "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua",
+    "text": "[KUI AuraReminders Debug]|r",
+    "reason": "Fixed chat prefix (colour code and addon/command tag); the message text after it goes through the locale layer."
+   },
+   {
+    "file": "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua",
+    "text": "|cffff9900[KUIAR Combat]|r",
+    "reason": "Fixed chat prefix (colour code and addon/command tag); the message text after it goes through the locale layer."
+   },
+   {
+    "file": "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua",
+    "text": "|cffff9900[KUIAR]|r ",
+    "reason": "Fixed chat prefix (colour code and addon/command tag); the message text after it goes through the locale layer."
+   },
+   {
+    "file": "KullThranUI_AuraReminders/Modules/KUIAuraReminders/KUIAuraReminders.lua",
+    "text": "|cffffcc00[Beacon Debug]|r",
+    "reason": "Fixed chat prefix (colour code and addon/command tag); the message text after it goes through the locale layer."
+   },
+   {
+    "file": "KullThranUI_Bags/Modules/Bags/Bags.lua",
+    "text": "[ktbagsdebug] ",
+    "reason": "Fixed prefix naming the /ktbagsdebug slash command; the state text after it is localized."
+   },
+   {
+    "file": "KullThranUI_Bags/Modules/Bags/Bags.lua",
+    "text": "EQUIPMENT",
+    "reason": "Baganator section id; the header text is resolved from Baganator's own locale via SECTION_<id>, so this is a lookup key, not display text."
+   },
+   {
+    "file": "KullThranUI_Bags/Modules/Bags/Bags.lua",
+    "text": "CRAFTING",
+    "reason": "Baganator section id; the header text is resolved from Baganator's own locale via SECTION_<id>, so this is a lookup key, not display text."
+   },
+   {
+    "file": "KullThranUI_Bags/Modules/Bags/Bags.lua",
+    "text": "HOUSING",
+    "reason": "Baganator section id; the header text is resolved from Baganator's own locale via SECTION_<id>, so this is a lookup key, not display text."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "=nil",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "|cff66ccff[ktbaddebug]|r ",
+    "reason": "Fixed /ktbaddebug prefix followed by internal frame names and identifier=value dumps."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "|cff66ccff[ktbaddebug]|r backend=CustomAuraContainer",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "|cff66ccff[ktbaddebug]|r nativeBuffHidden=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "|cff66ccff[ktbaddebug]|r buffMigrationV=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate."
+   },
+   {
+    "file": "KullThranUI_BuffsAndDebuffs/Modules/BuffsAndDebuffs/BuffsAndDebuffs.lua",
+    "text": "|cff66ccff[ktbaddebug]|r debuffMigrationV=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate."
+   },
+   {
+    "file": "KullThranUI_Chat/Modules/Chat.lua",
+    "text": "|cff66ccff[BN Debug]|r ",
+    "reason": "Fixed prefix of a Battle.net whisper diagnostic whose body is identifier=value dumps (frame names, counters)."
+   },
+   {
+    "file": "KullThranUI_DragonRiding/Modules/FlightMaster/FlightMaster.lua",
+    "text": "|cff00ccffKullThranUI|r ",
+    "reason": "Addon name prefix; the message after it goes through FM.L."
+   },
+   {
+    "file": "KullThranUI_DragonRiding/Modules/FlightMaster/FlightMaster_Guide.lua",
+    "text": "|cff00ccffKullThranUI|r ",
+    "reason": "Addon name prefix; the message after it goes through FM.L."
+   },
+   {
+    "file": "KullThranUI_DragonRiding/Modules/FlightMaster/FlightMaster_Options.lua",
+    "text": "|cff00ccffKullThranUI|r ",
+    "reason": "Addon name prefix; the message after it goes through FM.L."
+   },
+   {
+    "file": "KullThranUI_ExternalAddons/Modules/ExternalInterface.lua",
+    "text": "|cffFF4444UnlockMode|r: ",
+    "reason": "Module name prefix (identifier); the message after it is localized."
+   },
+   {
+    "file": "KullThranUI_ExternalAddons/Modules/UUFIntegration.lua",
+    "text": "|cFF00FFFF[KullThranUI]|r ",
+    "reason": "Addon name prefix; the message after it is localized."
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "showCoords=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "bestMap=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "displayableMap=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "hbdMap=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "mapForUnit=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "unitPosition=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "hbdCoords=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "fetchCoords=",
+    "reason": "Developer diagnostic that prints internal variable names as identifier=value pairs; no prose to translate. (coordinate debug; header line is localized)"
+   },
+   {
+    "file": "KullThranUI_Minimap/Modules/Minimap/Minimap.lua",
+    "text": "Forever",
+    "reason": "Name of the Forever client/theme (product name); rendered through LText at display time."
+   },
+   {
+    "file": "KullThranUI_Skins/Modules/Skins/Professions.lua",
+    "text": "|cff88ccff[ktprofdebug]|r ",
+    "reason": "Fixed /ktprofdebug prefix followed by frame-tree dumps (frame names, sizes)."
+   },
+   {
+    "file": "KullThranUI_TeleportMenu/Modules/TeleportMenu/TeleportMenu.lua",
+    "text": "|cff00FFFF[KT Teleport]|r ",
+    "reason": "Fixed module prefix; the sentence after it is localized with string.format."
+   },
+   {
+    "file": "KullThranUI_Tooltip/Modules/Tooltip/Tooltip.lua",
+    "text": "TWW",
+    "reason": "Expansion abbreviation used as a short raid-progress tag (product name)."
+   },
+   {
+    "file": "KullThranUI_Tooltip/Modules/Tooltip/Tooltip.lua",
+    "text": "Midnight",
+    "reason": "Expansion name used as a short raid-progress tag (product name)."
+   }
+  ]
+ },
+ "spanishInCode": {
+  "reason": "Spanish game-client data used to recognise localized server text on Spanish clients.",
+  "entries": [
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "[ÐÑ][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "[ä-é][-¿][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "[ê-í][-¿][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "á[-][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "ã[-][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "ã[-][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "ã[-¿][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "ã[-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/KullThranUI.lua",
+    "text": "ï[¼-¿][-¿]",
+    "reason": "UTF-8 byte-range pattern used to detect script/charset of text; not text."
+   },
+   {
+    "file": "KullThranUI/NavTabs.lua",
+    "text": "[Ã][-¿]",
+    "reason": "Accent upper-casing table/byte pattern used to uppercase tab labels; not text."
+   },
+   {
+    "file": "KullThranUI/NavTabs.lua",
+    "text": "Ñ",
+    "reason": "Accent upper-casing table/byte pattern used to uppercase tab labels; not text."
+   },
+   {
+    "file": "KullThranUI/NavTabs.lua",
+    "text": "ñ",
+    "reason": "Accent upper-casing table/byte pattern used to uppercase tab labels; not text."
+   }
+  ]
+ }
+}

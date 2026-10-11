@@ -628,7 +628,7 @@ local zhTW = {
     ["Combat rankings, display modes, sessions, bars, and meter layout."] = "戰鬥排名、顯示模式、戰鬥記錄、條列和統計視窗版面。",
 }
 
--- Text introduced by the Details-style breakdown and newer window options.
+-- Text introduced by the per-spell breakdown and newer window options.
 -- This coverage layer keeps every supported locale on the same key set.
 local runtimeCoverage = {
     enUS = {

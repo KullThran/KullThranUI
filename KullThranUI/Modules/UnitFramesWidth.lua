@@ -1,6 +1,11 @@
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local M = KT:NewModule("UnitFramesWidth", "AceEvent-3.0", "AceTimer-3.0")
 
+local function Loc(text)
+    local L = KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local C_AddOns = _G.C_AddOns
 local InCombatLockdown = _G.InCombatLockdown
 local hooksecurefunc = _G.hooksecurefunc
@@ -494,12 +499,12 @@ function M:OnEnable()
 
             local function Dump(unitKey)
                 local list = self._cachedFrames and self._cachedFrames[unitKey] or {}
-                KT:Print("UFWidth [" .. unitKey .. "]: " .. tostring(#list) .. " frame(s)")
+                KT:Print(string.format(Loc("UFWidth [%s]: %d frame(s)"), unitKey, #list))
                 for i = 1, #list do
                     local f = list[i]
                     local name = (type(f.GetName) == "function" and f:GetName()) or tostring(f)
                     local w = (type(f.GetWidth) == "function" and math.floor((f:GetWidth() or 0) + 0.5)) or 0
-                    KT:Print(" - " .. tostring(name) .. " width=" .. tostring(w))
+                    KT:Print(" - " .. string.format(Loc("%s width=%s"), tostring(name), tostring(w)))
                 end
             end
 

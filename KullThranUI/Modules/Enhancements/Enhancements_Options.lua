@@ -750,7 +750,8 @@ local function CreateMythicPlusLivePreview(container, startY, db)
         key:SetText("[10]")
         keyDetails:SetFont(ResolveFont(c, "keyDetailsFont"), c.keyDetailsFontSize or 11, c.keyDetailsFontFlags or "OUTLINE")
         keyDetails:SetTextColor(kdc.r, kdc.g, kdc.b, 1)
-        keyDetails:SetText("Tyrannical - Fortified")
+        local affixInfo = C_ChallengeMode and C_ChallengeMode.GetAffixInfo
+        keyDetails:SetText(((affixInfo and affixInfo(9)) or "Tyrannical") .. " - " .. ((affixInfo and affixInfo(10)) or "Fortified"))
         key:ClearAllPoints()
         keyDetails:ClearAllPoints()
         keyRow:ClearAllPoints()
@@ -1429,8 +1430,12 @@ local function CreateDamageMeterLivePreview(container, config, startY)
         row.value:SetJustifyH("RIGHT")
         row.rank = row:CreateFontString(nil, "OVERLAY")
         row.rank:SetJustifyH("LEFT")
+        row.textLayer = row
         rows[index] = row
     end
+    meter.rows = rows
+    meter.modeButton = { text = modeText }
+    meter.sessionButton = { text = sessionText }
 
     preview.previewTime = 0
     preview.updateElapsed = 0
@@ -1456,7 +1461,8 @@ local function CreateDamageMeterLivePreview(container, config, startY)
         local previewClassIDs = isHealing and healingClassIDs or damageClassIDs
         local previewSpecIndices = isHealing and healingSpecIndices or damageSpecIndices
         local previewFont = ResolveEnhancementMediaPath("font", cfg.font, DAMAGE_METER_DEFAULT_FONT)
-        local previewTexture = ResolveEnhancementMediaPath("statusbar", cfg.barTexture, DAMAGE_METER_DEFAULT_TEXTURE)
+        local previewTexture = Mod.ResolveDamageMeterBarTexture and Mod.ResolveDamageMeterBarTexture(cfg)
+            or ResolveEnhancementMediaPath("statusbar", cfg.barTexture, DAMAGE_METER_DEFAULT_TEXTURE)
         local iconMode = cfg.iconMode
         if iconMode ~= "spec" and iconMode ~= "class" and iconMode ~= "none" then
             iconMode = cfg.showIcons == false and "none" or "spec"
@@ -1559,6 +1565,9 @@ local function CreateDamageMeterLivePreview(container, config, startY)
                 row.value:SetTextColor(textColor.r, textColor.g, textColor.b, textColor.a or 1)
             end
         end
+        if Mod.ApplyDamageMeterSkin then
+            Mod.ApplyDamageMeterSkin(meter, cfg, showIcons and (rowHeight + 1) or 0)
+        end
     end
 
     MakeEnhancementPreviewClickable(preview, "damage")
@@ -1608,6 +1617,15 @@ local function BuildDamageMeterBlock(container, W, db)
 
     local y, h = 0, 0
     _, h = CreateDamageMeterLivePreview(container, damageMeterConfig, y)
+    y = y + h
+
+    _, h = W:Dropdown(container, LText("Visual Style"), -y,
+        { kui = "KUI", retail = "Retail", forever = "Forever", classic = "Classic" },
+        function() return Mod:GetDamageMeterStyle() end,
+        function(v)
+            if Mod:SetDamageMeterStyle(v) then Refresh({ rebuild = true }) end
+        end,
+        { "kui", "retail", "forever", "classic" })
     y = y + h
 
     _, h = W:Dropdown(container, LText("Configure Window"), -y,

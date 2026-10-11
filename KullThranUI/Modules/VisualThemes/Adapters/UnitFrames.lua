@@ -201,7 +201,8 @@ KT.VisualThemes:RegisterModule("unitframes", {
             if profile.target then profile.target.portraitSide = "right" end
             profile.player = profile.player or {}
             profile.player.showPlayerCastbar = true
-            SetClassPowerDefaults(profile, false)
+            SetClassPowerDefaults(profile, true)
+            profile.player.classPowerStyle = "blizzard"
             SetPlayerTargetScale(profile, PLAYER_TARGET_FRAME_SCALE)
             -- Forever's health bar defaults to green
             -- too, same mechanism as Retail below.
@@ -242,7 +243,8 @@ KT.VisualThemes:RegisterModule("unitframes", {
             if profile.target then profile.target.portraitSide = "right" end
             profile.player = profile.player or {}
             profile.player.showPlayerCastbar = true
-            SetClassPowerDefaults(profile, false)
+            SetClassPowerDefaults(profile, true)
+            profile.player.classPowerStyle = "blizzard"
             SetPlayerTargetScale(profile, PLAYER_TARGET_FRAME_SCALE)
             -- Retail's health bar defaults to green
             -- (KUIUnitFrames.lua's existing customFillColor/healthClassColored

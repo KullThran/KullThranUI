@@ -86,6 +86,213 @@ local function GetQueueStatusFrame()
     return _G.QueueStatusButton or _G.QueueStatusMinimapButton
 end
 
+local function GetActiveGroupLootRollCount()
+    local getter = _G.GetActiveLootRollIDs
+    if type(getter) == "function" then
+        local ok, ids = pcall(getter)
+        if ok and type(ids) == "table" then
+            return #ids
+        end
+    end
+
+    local lootAPI = _G.C_Loot
+    getter = lootAPI and lootAPI.GetActiveLootRollIDs
+    if type(getter) == "function" then
+        local ok, ids = pcall(getter, lootAPI)
+        if ok and type(ids) == "table" then
+            return #ids
+        end
+    end
+
+    return 0
+end
+
+local function HasActiveGroupLootRoll()
+    if GetActiveGroupLootRollCount() > 0 then
+        return true
+    end
+
+    local container = _G.GroupLootContainer
+    if container and type(container.rollFrames) == "table" then
+        for _, frame in pairs(container.rollFrames) do
+            if frame then
+                return true
+            end
+        end
+    end
+
+    for index = 1, 4 do
+        local frame = _G["GroupLootFrame" .. index]
+        if frame and frame.IsShown and frame:IsShown() then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function RefreshMissingGroupLootRolls()
+    if not HasActiveGroupLootRoll() then
+        return false
+    end
+
+    local container = _G.GroupLootContainer
+    if not container then
+        return false
+    end
+
+    if type(container.rollFrames) == "table" then
+        for _, frame in pairs(container.rollFrames) do
+            if frame then
+                return false
+            end
+        end
+    end
+
+    local now = (_G.GetTime and _G.GetTime()) or 0
+    if Mod._groupLootRefreshAt and now < Mod._groupLootRefreshAt then
+        return false
+    end
+    Mod._groupLootRefreshAt = now + 0.5
+
+    local refresh = _G.GroupLootContainer_RefreshRolls
+    if type(refresh) == "function" then
+        pcall(refresh)
+        return true
+    end
+
+    return false
+end
+
+local function RestoreGroupLootRollVisibility()
+    local container = _G.GroupLootContainer
+    if not container or not HasActiveGroupLootRoll() then
+        return false
+    end
+
+    local hasRollFrame = false
+    if type(container.rollFrames) == "table" then
+        for _, frame in pairs(container.rollFrames) do
+            if frame then
+                hasRollFrame = true
+                if KT.LootRollVisibilityGuard then KT.LootRollVisibilityGuard:PrepareFrame(frame) end
+                SafeSetAlpha(frame, 1)
+                if frame.IsShown and not frame:IsShown() and frame.Show then
+                    pcall(frame.Show, frame)
+                end
+            end
+        end
+    end
+
+    for index = 1, 4 do
+        local frame = _G["GroupLootFrame" .. index]
+        if frame and frame.IsShown and frame:IsShown() then
+            hasRollFrame = true
+            if KT.LootRollVisibilityGuard then KT.LootRollVisibilityGuard:PrepareFrame(frame) end
+            SafeSetAlpha(frame, 1)
+        end
+    end
+
+    -- Do not resurrect an empty container after Blizzard has removed its
+    -- actual roll frame. This keeps normal roll completion and cancellation
+    -- behavior intact.
+    if not hasRollFrame then
+        return false
+    end
+
+    -- GroupLootContainer is anchored through Blizzard's AlertFrame system.
+    -- Keep that anchor available while a roll is active, even if another KUI
+    -- alert filter hid it previously.
+    local alertFrame = _G.AlertFrame
+    SafeSetAlpha(alertFrame, 1)
+    if alertFrame and alertFrame.IsShown and not alertFrame:IsShown() and alertFrame.Show then
+        pcall(alertFrame.Show, alertFrame)
+    end
+
+    SafeSetAlpha(container, 1)
+    if container.IsShown and not container:IsShown() and container.Show then
+        pcall(container.Show, container)
+    end
+
+    return true
+end
+
+local function ScheduleGroupLootRollVisibilityRestore()
+    if not HasActiveGroupLootRoll() then
+        return
+    end
+
+    if _G.C_Timer and _G.C_Timer.After then
+        _G.C_Timer.After(0, RestoreGroupLootRollVisibility)
+    end
+end
+
+local function StopGroupLootRollVisibilityWatch()
+    if Mod._groupLootVisibilityTicker and Mod._groupLootVisibilityTicker.Cancel then
+        Mod._groupLootVisibilityTicker:Cancel()
+    end
+    Mod._groupLootVisibilityTicker = nil
+end
+
+local function StartGroupLootRollVisibilityWatch()
+    StopGroupLootRollVisibilityWatch()
+
+    if not (_G.C_Timer and _G.C_Timer.NewTicker) then
+        return
+    end
+
+    Mod._groupLootVisibilityTicker = _G.C_Timer.NewTicker(0.1, function()
+        if HasActiveGroupLootRoll() then
+            RestoreGroupLootRollVisibility()
+        else
+            StopGroupLootRollVisibilityWatch()
+        end
+    end)
+end
+
+local function HookGroupLootRollVisibility()
+    local container = _G.GroupLootContainer
+    if not container then return end
+
+    if not container._ktGroupLootVisibilityHooked and container.HookScript then
+        container:HookScript("OnShow", function(self)
+            SafeSetAlpha(self, 1)
+        end)
+        container:HookScript("OnHide", function()
+            ScheduleGroupLootRollVisibilityRestore()
+        end)
+        container._ktGroupLootVisibilityHooked = true
+    end
+
+    for index = 1, 4 do
+        local frame = _G["GroupLootFrame" .. index]
+        if frame and not frame._ktGroupLootVisibilityHooked and frame.HookScript then
+            frame:HookScript("OnShow", function(self)
+                SafeSetAlpha(self, 1)
+            end)
+            frame:HookScript("OnHide", function()
+                ScheduleGroupLootRollVisibilityRestore()
+            end)
+            frame._ktGroupLootVisibilityHooked = true
+        end
+    end
+
+    if hooksecurefunc
+        and not Mod._ktGroupLootUpdateHooked
+        and type(_G.GroupLootContainer_Update) == "function" then
+        hooksecurefunc("GroupLootContainer_Update", function()
+            ScheduleGroupLootRollVisibilityRestore()
+        end)
+        Mod._ktGroupLootUpdateHooked = true
+    end
+
+    RestoreGroupLootRollVisibility()
+end
+
+local function RefreshAndRestoreGroupLootRolls()
+    RefreshMissingGroupLootRolls()
+    RestoreGroupLootRollVisibility()
+end
 local function GetQueueAnchorFrame()
     return _G.Minimap or _G.MinimapCluster or _G.KT_MinimapHolder_Main
 end
@@ -307,6 +514,7 @@ function Mod:OnEnable()
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "RefreshBlizzardFrameState")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "RefreshBlizzardFrameState")
+    self:RegisterEvent("START_LOOT_ROLL", "RefreshGroupLootRollVisibility")
     if KT.db and KT.db.RegisterCallback then
         KT.db.RegisterCallback(self, "OnProfileChanged", "RefreshFadeState")
         KT.db.RegisterCallback(self, "OnProfileCopied", "RefreshFadeState")
@@ -316,6 +524,7 @@ function Mod:OnEnable()
     _G.C_Timer.After(1, function()
         self:RegisterFrames()
         self:UpdateMouseoverState()
+        HookGroupLootRollVisibility()
         self:UpdateTrackerStyling()
         self:HookEditModeSelections()
         self:HookReadyCheckPortrait()
@@ -329,6 +538,14 @@ function Mod:OnEnable()
             end
         end)
     end
+end
+
+function Mod:RefreshGroupLootRollVisibility()
+    HookGroupLootRollVisibility()
+    StartGroupLootRollVisibilityWatch()
+    _G.C_Timer.After(0, RefreshAndRestoreGroupLootRolls)
+    _G.C_Timer.After(0.10, RefreshAndRestoreGroupLootRolls)
+    _G.C_Timer.After(0.50, RefreshAndRestoreGroupLootRolls)
 end
 
 function Mod:UpdateTrackerStyling()

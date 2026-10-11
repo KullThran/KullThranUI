@@ -70,6 +70,13 @@ local TOOLTIP_UNIT_INFO_HEADERS = {
     ["Item Level:"] = true,
     ["Raid Progress:"] = true,
 }
+local function IsUnitInfoHeader(text)
+    if TOOLTIP_UNIT_INFO_HEADERS[text] then return true end
+    for header in pairs(TOOLTIP_UNIT_INFO_HEADERS) do
+        if LText(header) == text then return true end
+    end
+    return false
+end
 
 -- Variables de estado
 local lastInspectRequest = 0
@@ -272,7 +279,7 @@ function TT:OnInitialize()
     if self.db.showTargetingPlayers == nil then self.db.showTargetingPlayers = true end
 end
 
--- [FIX] Función robusta para obtener el Rol de Raider.IO
+-- Función robusta para obtener el Rol de Raider.IO
 function TT:GetRaiderIORole(unit)
     if not (_G.RaiderIO and _G.RaiderIO.GetProfile) then return nil end
     
@@ -321,7 +328,7 @@ function TT:UpdateGlobalFonts()
     local fontPath = LSM:Fetch("font", fontName) or GameFontNormal:GetFont()
     local size = self.db.fontSize or 12
 
-    -- [FIX] Disabled global font overrides for Tooltip to prevent Blizzard UI taint (secret number value errors)
+    -- Disabled global font overrides for Tooltip to prevent Blizzard UI taint (secret number value errors)
     -- if GameTooltipHeaderText then GameTooltipHeaderText:SetFont(fontPath, size + 2, "OUTLINE") end
     -- if Tooltip_MedFont then Tooltip_MedFont:SetFont(fontPath, size, "") end
     -- if Tooltip_SmallFont then Tooltip_SmallFont:SetFont(fontPath, size, "") end
@@ -684,7 +691,7 @@ function TT:EnsureUnitInfoSpacer(tooltip)
     for i = 2, tooltip:NumLines() do
         local left = _G[tooltip:GetName().."TextLeft"..i]
         local text = left and NormalizeTooltipText(left:GetText()) or ""
-        if TOOLTIP_UNIT_INFO_HEADERS[text] then
+        if IsUnitInfoHeader(text) then
             return
         end
     end
@@ -809,7 +816,7 @@ function TT:OnTooltipSetUnit(tooltip)
         local score = C_PlayerInfo.GetPlayerMythicPlusRatingSummary(unit)
         local roleIcon = ""
         
-        -- [FIX] Usar nueva función robusta para detectar el rol de RIO
+        -- Usar nueva función robusta para detectar el rol de RIO
         local rioRole = self:GetRaiderIORole(unit)
 
         if rioRole then
@@ -830,9 +837,9 @@ function TT:OnTooltipSetUnit(tooltip)
 
         if score and score.currentSeasonScore and score.currentSeasonScore > 0 then
             local color = C_ChallengeMode.GetDungeonScoreRarityColor(score.currentSeasonScore) or {r=1,g=1,b=1}
-            tooltip:AddDoubleLine("Mythic+ Score:", score.currentSeasonScore .. roleIcon, 1, 0.8, 0, color.r, color.g, color.b)
+            tooltip:AddDoubleLine(LText("Mythic+ Score:"), score.currentSeasonScore .. roleIcon, 1, 0.8, 0, color.r, color.g, color.b)
         else
-            tooltip:AddDoubleLine("Mythic+ Score:", "...", 1, 0.8, 0, 0.5, 0.5, 0.5)
+            tooltip:AddDoubleLine(LText("Mythic+ Score:"), "...", 1, 0.8, 0, 0.5, 0.5, 0.5)
         end
     elseif scoreType == "PVP" then
         self:EnsureLine(tooltip, "PvP Rating:", "|cff808080...|r")
@@ -855,7 +862,7 @@ function TT:OnTooltipSetUnit(tooltip)
     end
 
     self:StyleTooltip(tooltip)
-    -- tooltip:Show() -- [FIX] Removed to prevent conflicts
+    -- tooltip:Show() -- Removed to prevent conflicts
 end
 
 -- ============================================================================
@@ -873,10 +880,11 @@ function TT:OnTooltipSetMacro(tooltip)
     if icon then self:AttachIcon(tooltip, icon) end
 
     self:StyleTooltip(tooltip)
-    -- tooltip:Show() -- [FIX] Removed to prevent conflicts
+    -- tooltip:Show() -- Removed to prevent conflicts
 end
 
 function TT:EnsureLine(tooltip, headerText, defaultText)
+    headerText = LText(headerText)
     for i = 2, tooltip:NumLines() do
         local left = _G[tooltip:GetName().."TextLeft"..i]
         if left then
@@ -910,7 +918,7 @@ function TT:INSPECT_READY(event, guid)
         if score and score.currentSeasonScore and score.currentSeasonScore > 0 then
             local roleIcon = ""
             
-            -- [FIX] Usar nueva función robusta para detectar el rol de RIO
+            -- Usar nueva función robusta para detectar el rol de RIO
             local rioRole = self:GetRaiderIORole(unit)
 
             if rioRole then
@@ -1001,7 +1009,7 @@ function TT:INSPECT_READY(event, guid)
         self:UpdateLine(tooltip, "Raid Progress:", fullProgressText)
     end
 
-    -- tooltip:Show() -- [FIX] Removed to prevent conflicts
+    -- tooltip:Show() -- Removed to prevent conflicts
     self:StyleTooltip(tooltip)
     ClearInspectPlayer()
     inspectGUID = nil
@@ -1032,6 +1040,7 @@ function TT:CountBosses(unit, idTable, maxBosses, colorCode)
 end
 
 function TT:UpdateLine(tooltip, headerText, newText)
+    headerText = LText(headerText)
     for i = 2, tooltip:NumLines() do
         local left = _G[tooltip:GetName().."TextLeft"..i]
         if left then
@@ -1071,20 +1080,20 @@ function TT:OnTooltipSetItem(tooltip)
     local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(link)
     
     tooltip:AddLine(" ") 
-    tooltip:AddLine(COLOR_SECTION_HEADER .. "Item information|r")
+    tooltip:AddLine(COLOR_SECTION_HEADER .. LText("Item information") .. "|r")
     
     if stackSize and stackSize > 1 then
-        tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Max stack size|r", COLOR_VALUE_TEXT..stackSize.."|r")
+        tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Max stack size") .. "|r", COLOR_VALUE_TEXT..stackSize.."|r")
     end
     
     if classID then
         local className = C_Item.GetItemClassInfo(classID)
         local subClassName = C_Item.GetItemSubClassInfo(classID, subclassID)
-        tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."AH Category|r", COLOR_VALUE_TEXT..className.."|r")
-        tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."AH Subcategory|r", COLOR_VALUE_TEXT..subClassName.."|r")
+        tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("AH Category") .. "|r", COLOR_VALUE_TEXT..className.."|r")
+        tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("AH Subcategory") .. "|r", COLOR_VALUE_TEXT..subClassName.."|r")
     end
     
-    tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Item ID|r", COLOR_VALUE_TEXT..(itemID or "?").."|r")
+    tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Item ID") .. "|r", COLOR_VALUE_TEXT..(itemID or "?").."|r")
     if icon then self:AttachIcon(tooltip, icon) end
 
     local mouseFocus = GetSafeMouseFocus()
@@ -1093,14 +1102,14 @@ function TT:OnTooltipSetItem(tooltip)
         local slotID = mouseFocus:GetID()
         if bagID and type(bagID) == "number" and bagID >= 0 and bagID <= 5 then
              tooltip:AddLine(" ") 
-             tooltip:AddLine(COLOR_SECTION_HEADER .. "Container information|r")
-             tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Bag number|r", COLOR_VALUE_TEXT..bagID.."|r")
-             tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Slot number|r", COLOR_VALUE_TEXT..slotID.."|r")
+             tooltip:AddLine(COLOR_SECTION_HEADER .. LText("Container information") .. "|r")
+             tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Bag number") .. "|r", COLOR_VALUE_TEXT..bagID.."|r")
+             tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Slot number") .. "|r", COLOR_VALUE_TEXT..slotID.."|r")
         end
     end
 
     self:StyleTooltip(tooltip)
-    -- tooltip:Show() -- [FIX] Removed to prevent conflicts
+    -- tooltip:Show() -- Removed to prevent conflicts
 end
 
 -- ============================================================================
@@ -1117,23 +1126,23 @@ function TT:OnTooltipSetSpell(tooltip)
     local icon = self:GetTooltipIconFallback(tooltip, spellID)
     
     tooltip:AddLine(" ") 
-    tooltip:AddLine(COLOR_SECTION_HEADER .. "Spell information|r")
-    tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Spell ID|r", COLOR_VALUE_TEXT..spellID.."|r")
+    tooltip:AddLine(COLOR_SECTION_HEADER .. LText("Spell information") .. "|r")
+    tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Spell ID") .. "|r", COLOR_VALUE_TEXT..spellID.."|r")
     
     local spellInfo = C_Spell.GetSpellInfo(spellID)
     if spellInfo and spellInfo.castTime then
-        -- [FIX] Use pcall to avoid "secret number value" errors in secure paths (EncounterTimeline)
+        -- Use pcall to avoid "secret number value" errors in secure paths (EncounterTimeline)
         local castTime = spellInfo.castTime
         local success, isInstant = pcall(function() return castTime == 0 end)
         if success then
-            local castText = isInstant and "Instant" or (castTime/1000).." sec"
-            tooltip:AddDoubleLine(COLOR_LABEL_TEXT.."Cast Time|r", COLOR_VALUE_TEXT..castText.."|r")
+            local castText = isInstant and LText("Instant") or string.format(LText("%s sec"), tostring(castTime / 1000))
+            tooltip:AddDoubleLine(COLOR_LABEL_TEXT .. LText("Cast Time") .. "|r", COLOR_VALUE_TEXT..castText.."|r")
         end
     end
 
     if icon then self:AttachIcon(tooltip, icon) end
 
     self:StyleTooltip(tooltip)
-    -- tooltip:Show() -- [FIX] Removed to prevent conflicts
+    -- tooltip:Show() -- Removed to prevent conflicts
 end
 

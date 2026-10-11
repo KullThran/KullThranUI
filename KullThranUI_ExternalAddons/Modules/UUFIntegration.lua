@@ -1,4 +1,11 @@
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+-- KUI localization helper (resolved at call time; falls back to the raw text)
+local function LText(text)
+    if type(text) ~= "string" then return text end
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    if L and L[text] ~= nil then return L[text] end
+    return text
+end
 local Mod = KT:NewModule("UUFIntegration", "AceEvent-3.0")
 
 local _G = _G
@@ -79,8 +86,8 @@ function Mod:RegisterFrames()
     }
 
     for i = 1, 5 do
-        frames[#frames + 1] = { name = "UUF_Boss" .. i, label = "UUF Boss " .. i, order = 90 + i }
-        frames[#frames + 1] = { name = "UUF_Arena" .. i, label = "UUF Arena " .. i, order = 100 + i }
+        frames[#frames + 1] = { name = "UUF_Boss" .. i, label = string.format(LText("UUF Boss %d"), i), order = 90 + i }
+        frames[#frames + 1] = { name = "UUF_Arena" .. i, label = string.format(LText("UUF Arena %d"), i), order = 100 + i }
     end
 
     for _, info in ipairs(frames) do
@@ -162,5 +169,5 @@ function Mod:ResetPositions()
         end
     end
     self:RegisterFrames()
-    print("|cFF00FFFF[KullThranUI]|r UUF positions reset.")
+    print("|cFF00FFFF[KullThranUI]|r " .. LText("UUF positions reset."))
 end

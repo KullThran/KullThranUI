@@ -2,7 +2,7 @@
 -- ACTION BUTTON ENHANCEMENTS (ANIMATIONS)
 -- ============================================================================
 -- Modules/ActionBars/Actionbuttonenhancements.lua (moved from Modules/Actionbuttonenhancements.lua)
--- Replicates functionality of "Bartender4 Animations"
+-- Press and cast feedback for action buttons:
 -- 1. Smooth Flash on Press (Juicy Texture)
 -- 2. Physical Button Press (Scale Animation)
 -- 3. Shake on Cast

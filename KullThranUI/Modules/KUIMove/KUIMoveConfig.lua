@@ -18,7 +18,7 @@ local KUIMove = KT:GetModule(name)
 if not KUIMove then return; end
 
 local L = LibStub("AceLocale-3.0"):GetLocale(name, true) or LibStub("AceLocale-3.0"):GetLocale("KullThranUI", true);
-if not L then L = setmetatable({}, { __index = function(t, k) return k end }) end
+if not L then L = setmetatable({}, { __index = function(t, k) local locale = KT and KT.GetLocale and KT:GetLocale(); return (locale and locale[k]) or k end }) end
 
 ---@type KUIMoveAPI
 local KUIMoveAPI = KT.KUIMoveAPI;
@@ -42,16 +42,16 @@ function Config:GetOptions()
             brand = {
                 order = increment(),
                 type = "description",
-                name = "|cff71d5ffKUIMove|r\n|cffc8c8c8Window control, built the KUI way.|r\n\nChoose a workspace below to move, scale and curate Blizzard windows.",
+                name = string.format("|cff71d5ffKUIMove|r\n|cffc8c8c8%s|r\n\n%s", L["Window control, built the KUI way."], L["Choose a workspace below to move, scale and curate Blizzard windows."]),
             },
             version = {
                 order = increment(),
                 type = "description",
-                name = "|cff777777Build " .. tostring(self.version) .. "|r"
+                name = "|cff777777" .. L["Build %s"]:format(tostring(self.version)) .. "|r"
             },
             mainTab = {
                 order = increment(),
-                name = "Control Center",
+                name = L["Control Center"],
                 type = "group",
                 get = function(info) return Config:GetConfig(info[#info]); end,
                 set = function(info, value) return Config:SetConfig(info[#info], value); end,
@@ -60,21 +60,21 @@ function Config:GetOptions()
                         order = increment(),
                         type = "description",
                         name =
-                            "KUIMove manages your window layout." .. "\n"
+                            L["KUIMove manages your window layout."] .. "\n"
                             .. "\n"
-                            .. "Drag a window with " .. leftClick .. " to place it for this session.\n"
+                            .. L["Drag a window with %s to place it for this session."]:format(leftClick) .. "\n"
                             .. "\n"
-                            .. "CTRL + scroll adjusts the window scale.\n"
+                            .. L["CTRL + scroll adjusts the window scale."] .. "\n"
                             .. "\n"
-                            .. "ALT + " .. leftClick .. " detaches a child window.\n"
-                            .. "Detached windows can be moved independently from their parent.\n"
+                            .. L["ALT + %s detaches a child window."]:format(leftClick) .. "\n"
+                            .. L["Detached windows can be moved independently from their parent."] .. "\n"
                             .. "\n"
-                            .. "Reset actions:\n"
-                            .. "  SHIFT + " .. rightClick .. " resets the position.\n"
-                            .. "  CTRL + " .. rightClick .. " resets the scale.\n"
-                            .. "  ALT + " .. rightClick .. " re-attaches a child window.\n"
+                            .. L["Reset actions:"] .. "\n"
+                            .. "  " .. L["SHIFT + %s resets the position."]:format(rightClick) .. "\n"
+                            .. "  " .. L["CTRL + %s resets the scale."]:format(rightClick) .. "\n"
+                            .. "  " .. L["ALT + %s re-attaches a child window."]:format(rightClick) .. "\n"
                             .. "\n"
-                            .. "Custom frames can register through the KUIMoveAPI.",
+                            .. L["Custom frames can register through the KUIMoveAPI."],
                     },
                     newline1 = {
                         order = increment(),
@@ -83,14 +83,14 @@ function Config:GetOptions()
                     },
                     globalConfig = {
                         type = "group",
-                        name = "Movement & Memory",
+                        name = L["Movement & Memory"],
                         order = increment(),
                         inline = true,
                         args = {
                             requireMoveModifier = {
                                 order = increment(),
-                                name = "Hold SHIFT to move",
-                                desc = "Adds a deliberate modifier to dragging so windows are not moved by accident.",
+                                name = L["Hold SHIFT to move"],
+                                desc = L["Adds a deliberate modifier to dragging so windows are not moved by accident."],
                                 type = "toggle",
                                 width = "full",
                             },
@@ -102,29 +102,29 @@ function Config:GetOptions()
                             savePosStrategy = {
                                 order = increment(),
                                 width = 1.5,
-                                name = "Position memory",
+                                name = L["Position memory"],
     desc =
-        "Off  •  Positions return when the window is reopened.\n\n"
-        .. "This session  •  Positions last until /reload.\n\n"
-        .. "Persistent  •  Positions stay until you clear them.",
+        L["Off  •  Positions return when the window is reopened."] .. "\n\n"
+        .. L["This session  •  Positions last until /reload."] .. "\n\n"
+        .. L["Persistent  •  Positions stay until you clear them."],
                                 type = "select",
                                 values = {
-        off = "Off",
-        session = "This session",
-        permanent = "Persistent",
+        off = L["Off"],
+        session = L["This session"],
+        permanent = L["Persistent"],
                                 },
                             },
                             saveScaleStrategy = {
                                 order = increment(),
                                 width = 1.5,
-                                name = "Scale memory",
+                                name = L["Scale memory"],
     desc =
-        "This session  •  Scale lasts until /reload.\n\n"
-        .. "Persistent  •  Scale stays until you clear it.",
+        L["This session  •  Scale lasts until /reload."] .. "\n\n"
+        .. L["Persistent  •  Scale stays until you clear it."],
                                 type = "select",
                                 values = {
-        session = "This session",
-        permanent = "Persistent",
+        session = L["This session"],
+        permanent = L["Persistent"],
                                 },
                             },
                             newline3 = {
@@ -135,20 +135,20 @@ function Config:GetOptions()
                             resetPositions = {
                                 order = increment(),
                                 width = 1.5,
-                                name = "Clear saved positions",
-                                desc = "Remove all persistent window positions and reload the UI.",
+                                name = L["Clear saved positions"],
+                                desc = L["Remove all persistent window positions and reload the UI."],
                                 type = "execute",
                                 func = function() KUIMove:ResetPointStorage(); ReloadUI(); end,
-                                confirm = function() return "Clear every persistent KUIMove position and reload the UI?" end,
+                                confirm = function() return L["Clear every persistent KUIMove position and reload the UI?"] end,
                             },
                             resetScales = {
                                 order = increment(),
                                 width = 1.5,
-                                name = "Clear saved scales",
-                                desc = "Remove all persistent window scales and reload the UI.",
+                                name = L["Clear saved scales"],
+                                desc = L["Remove all persistent window scales and reload the UI."],
                                 type = "execute",
                                 func = function() KUIMove:ResetScaleStorage(); ReloadUI(); end,
-                                confirm = function() return "Clear every persistent KUIMove scale and reload the UI?" end,
+                                confirm = function() return L["Clear every persistent KUIMove scale and reload the UI?"] end,
                             },
                         },
                     },
@@ -161,7 +161,7 @@ function Config:GetOptions()
             },
             fullFramesTab = {
                 order = increment(),
-                name = "Frame Library",
+                name = L["Frame Library"],
                 type = "group",
                 childGroups = "tree",
                 get = function(info, frameName) return not KUIMoveAPI:IsFrameDisabled(info[#info], frameName); end,
@@ -170,7 +170,7 @@ function Config:GetOptions()
             },
             disabledFramesTab = {
                 order = increment(),
-                name = "Safe Defaults",
+                name = L["Safe Defaults"],
                 type = "group",
                 childGroups = "tree",
                 get = function(info, frameName) return not KUIMoveAPI:IsFrameDisabled(info[#info], frameName); end,
@@ -192,24 +192,24 @@ function Config:GetFramesTables()
 
     local allFrames = {
         ["0"] = {
-            name = "Search windows",
+            name = L["Search windows"],
             type = "input",
-            desc = "Search by window name. Prefix with '-' for disabled or '+' for enabled windows.",
+            desc = L["Search by window name. Prefix with '-' for disabled or '+' for enabled windows."],
             order = 1,
             get = function() return self.search; end,
             set = function(_, value) self.search = value; end
         },
         ["1"] = {
-            name = "Clear search",
+            name = L["Clear search"],
             type = "execute",
-            desc = "Clear the current window filter.",
+            desc = L["Clear the current window filter."],
             order = 2,
             func = function() self.search = ""; end,
             width = 0.5,
         },
     }
     listOfFrames["0"] = {
-        name = "Window Library",
+        name = L["Window Library"],
         type = "group",
         order = 1,
         args = allFrames,
@@ -222,14 +222,14 @@ function Config:GetFramesTables()
             order = addonOrder,
             args = {
                 [addOnName] = {
-                    name = ("Frames from %s"):format(addOnName),
+                    name = L["Frames from %s"]:format(addOnName),
                     type = "multiselect",
                     values = function(info) return KUIMoveAPI:GetRegisteredFrames(info[#info]); end,
                 },
             },
         };
         allFrames[addOnName] = {
-            name = ("Frames from %s"):format(addOnName),
+            name = L["Frames from %s"]:format(addOnName),
             type = "multiselect",
             order = addonOrder,
             values = function(info) return self:GetFilteredFrames(info[#info], self.search); end,
@@ -243,7 +243,7 @@ function Config:GetFramesTables()
                     order = addonOrder,
                     args = {
                         [addOnName] = {
-                            name = ("Frames from %s"):format(addOnName),
+                            name = L["Frames from %s"]:format(addOnName),
                             type = "multiselect",
                             values = function(info) return self:GetDefaultDisabledFrames(info[#info]); end,
                         },

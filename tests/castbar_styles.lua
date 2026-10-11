@@ -181,7 +181,15 @@ for _, key in ipairs({ "classic", "forever", "retail", "kui" }) do
         eq(bar.Spark.points[#bar.Spark.points][5], 2)
     elseif key ~= "kui" then
         eq(bar.texture, "ui-castingbar-filling-standard", "progressing casts retain Blizzard striped Filling atlas")
-        eq(bar._ktCastStyleArt.border.atlas, "ui-castingbar-frame")
+        eq(bar._ktCastStyleArt.border.atlas, key == "forever" and "ui-swingtimerbar-frame" or "ui-castingbar-frame")
+        if key == "forever" then
+            eq(bar._ktCastStyleArt.border.points[1][4], -4, "Forever ornaments match Damage Meter outset")
+            eq(bar._ktCastStyleArt.border.points[1][5], 1)
+            eq(bar.Spark.atlas, "ui-swingtimerbar-pip")
+            eq(bar._ktCastStyleArt.background.solid[1], .075)
+            eq(bar._ktCastStyleArt.background.solid[4], .90)
+            eq(bar._ktCastStyleArt.border.layer, "OVERLAY", "ornaments remain above the latency zone")
+        end
         eq(bar.height, 17, "modern reference has room for its internal text")
         eq(bar.SafeZone.layer, "OVERLAY", "modern latency layer restored after Classic")
         eq(bar.Text.justify, "CENTER")
@@ -265,6 +273,11 @@ for _, key in ipairs({ "classic", "forever", "retail" }) do
     if key == "classic" then
         eq(preview.Icon.shown, false); eq(preview.IconBg.shown, false)
         eq(preview.Text.font[3], "OUTLINE")
+    elseif key == "forever" then
+        eq(preview._ktCastStyleArt.border.atlas, "ui-swingtimerbar-frame", "preview shares Forever meter ornaments")
+        eq(preview.Spark.atlas, "ui-swingtimerbar-pip")
+    else
+        eq(preview._ktCastStyleArt.border.atlas, "ui-castingbar-frame", "Retail keeps its casting frame")
     end
     eq(apply.enabled, true)
 end
@@ -272,4 +285,36 @@ apply.scripts.OnClick()
 eq(db.castbarStyle, "retail"); eq(bar.width, 208)
 eq(KT.pageRefreshes, 1, "Apply refreshes the controls for the selected style")
 eq(preview._ktCastStyleArt.border.atlas, bar._ktCastStyleArt.border.atlas, "live and preview share native art")
+local getAtlasInfo=C_Texture.GetAtlasInfo
+C_Texture.GetAtlasInfo=function(name)
+    if name:find("ui-swingtimerbar-",1,true) then return nil end
+    return getAtlasInfo(name)
+end
+S:Seed(db,"forever")
+local value=bar.value
+S:Apply(bar,db)
+eq(bar._ktCastStyleArt.border.atlas,"ui-castingbar-frame","unavailable swing frame uses the casting fallback")
+eq(bar.Spark.atlas,"ui-castingbar-pip")
+eq(bar.value,value,"painting the skin preserves current cast progress")
+C_Texture.GetAtlasInfo=getAtlasInfo
 print("castbar_styles: presets, migration, live casts/channels, previews and Apply passed")
+
+local assetsFile=assert(io.open(root.."/KullThranUI/Modules/VisualThemes/ThemeClientAssets.lua"))
+local assets=assetsFile:read("*a");assetsFile:close()
+local helper=assert(loadstring(assets:sub((assert(assets:find("-- Original Forever swing sheet",1,true))))))
+helper()
+C_Texture.GetAtlasInfo=function(name)
+ if name:find("ui-swingtimerbar-",1,true) then return nil end
+ return getAtlasInfo(name)
+end
+S:Seed(db,"forever");S:Apply(bar,db)
+eq(bar.value,value,"packaged artwork preserves ongoing cast progress")
+assert(bar._ktCastStyleArt.border.texture:find("UISwingTimerBar-Forever.blp",1,true))
+assert(bar.Spark.texture:find("UISwingTimerBar-Forever.blp",1,true))
+assert(bar._ktCastStyleArt.border.coords[2]==427/512)
+S:Apply(preview,db)
+eq(preview._ktCastStyleArt.border.texture,bar._ktCastStyleArt.border.texture)
+S:Seed(db,"retail");S:Apply(bar,db)
+eq(bar._ktCastStyleArt.border.atlas,"ui-castingbar-frame")
+C_Texture.GetAtlasInfo=getAtlasInfo
+print("PASS: live cast and preview use bundled Forever bronze art without native swing atlases")

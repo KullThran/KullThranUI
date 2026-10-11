@@ -7,6 +7,10 @@ local string_match = _G.string.match;
 local name = "KUIMove";
 ---@type KUIMove
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+local function Loc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale();
+    return (L and L[text]) or text;
+end
 local KUIMove = KT:GetModule(name)
 if not KUIMove then return; end
 
@@ -32,7 +36,7 @@ end
 function KUIMoveAPI:ToggleDebugPrints()
     KUIMove.DB.DebugPrints = not KUIMove.DB.DebugPrints;
 
-    KUIMove:Print("Debug prints have been:", (KUIMove.DB.DebugPrints and "Enabled") or "Disabled");
+    KUIMove:Print((KUIMove.DB.DebugPrints and Loc("Debug prints have been enabled.")) or Loc("Debug prints have been disabled."));
 end
 
 --- @param framesTable KUIMoveAPI_FrameTable

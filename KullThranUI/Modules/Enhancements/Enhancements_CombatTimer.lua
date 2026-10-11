@@ -34,7 +34,23 @@ local function LText(text)
 end
 
 local function GetConfig()
-    return (KT.db.profile.enhancements and KT.db.profile.enhancements.combatTimer) or {}
+    local profile = KT.db.profile
+    profile.enhancements = profile.enhancements or {}
+    profile.enhancements.combatTimer = profile.enhancements.combatTimer or {}
+    return profile.enhancements.combatTimer
+end
+
+local function GetTimerPosition()
+    local unlock = KT:GetModule("UnlockMode", true)
+    local pending = unlock and unlock.isOpen and unlock.pendingPositions
+        and unlock.pendingPositions.ENH_COMBAT_TIMER
+    if pending and pending.point then return pending end
+
+    -- Unlock Mode owns the persisted position; module defaults must not replace it.
+    local editMode = KT.db.profile.editMode
+    local saved = editMode and editMode.frames and editMode.frames.ENH_COMBAT_TIMER
+    if saved and saved.point then return saved end
+    return GetConfig().position
 end
 
 local function FormatCombatTime(seconds)
@@ -219,7 +235,7 @@ function Mod:RegisterCombatTimerMover()
             end,
             isHidden = function() return false end,
             loadPosition = function()
-                local position = GetConfig().position
+                local position = GetTimerPosition()
                 return {
                     point = position and position.point or "CENTER",
                     relativePoint = position and position.relativePoint or "CENTER",
@@ -234,6 +250,14 @@ function Mod:RegisterCombatTimerMover()
                     x = x or 0,
                     y = y or 150,
                 }
+                local profile = KT.db.profile
+                profile.editMode = profile.editMode or {}
+                profile.editMode.frames = profile.editMode.frames or {}
+                local saved = profile.editMode.frames.ENH_COMBAT_TIMER or {}
+                local position = GetConfig().position
+                saved.point, saved.relativePoint = position.point, position.relativePoint
+                saved.x, saved.y = position.x, position.y
+                profile.editMode.frames.ENH_COMBAT_TIMER = saved
             end,
             applyPosition = function()
                 Mod:ApplyCombatTimerPosition()
@@ -260,8 +284,7 @@ end
 
 function Mod:ApplyCombatTimerPosition()
     local f = self:GetCombatTimerFrame()
-    local config = GetConfig()
-    local position = config.position or { point = "CENTER", relativePoint = "CENTER", x = 0, y = 150 }
+    local position = GetTimerPosition() or { point = "CENTER", relativePoint = "CENTER", x = 0, y = 150 }
     f:ClearAllPoints()
     f:SetPoint(position.point or "CENTER", UIParent, position.relativePoint or "CENTER",
         tonumber(position.x) or 0, tonumber(position.y) or 150)

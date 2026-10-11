@@ -25,6 +25,11 @@ local tonumber = tonumber
 local format = string.format
 local strlower = string.lower
 
+local function Loc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
 
 local function IsSecureGameMenuSafeMode()
@@ -265,7 +270,7 @@ local function ToggleUnlockMode()
     end
 
     if KT and KT.Print then
-        KT:Print("|cffFF4444UnlockMode|r: module not available.")
+        KT:Print("|cffFF4444UnlockMode|r: " .. Loc("Module not available."))
     end
     return false
 end
@@ -354,7 +359,7 @@ local function RunEscapeMenuStep(stepName, callback)
     local ok, err = pcall(callback)
     if not ok and M then
         M._lastMenuStepError = (stepName or "unknown") .. ": " .. tostring(err)
-        DebugEscapeMenu("step %s failed: %s", tostring(stepName or "unknown"), tostring(err))
+        DebugEscapeMenu(Loc("Step %s failed: %s"), tostring(stepName or "unknown"), tostring(err))
     end
 
     return ok
@@ -1715,7 +1720,7 @@ function M:EnsureButtons()
         button:SetScript("OnClick", definition.onClick)
         button:Show()
 
-        self:StyleButton(button, definition.text)
+        self:StyleButton(button, Loc(definition.text))
         self.buttons[definition.key] = button
     end
 end
@@ -1936,7 +1941,7 @@ function M:ScheduleMenuHealthCheck(delay, reason)
         end
 
         if not M:IsCustomMenuHealthy(currentMenu) then
-            DebugEscapeMenu("Health check rebuild: %s", tostring(reason or "unknown"))
+            DebugEscapeMenu(Loc("Health check rebuild: %s"), tostring(reason or "unknown"))
             M:RefreshLayout()
             M:StabilizeCustomButtons()
         end

@@ -2,6 +2,14 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
 local S = KT and KT:GetModule("Skins", true)
 if not S then return end
 
+-- KUI localization helper (resolved at call time; falls back to the raw text)
+local function LText(text)
+    if type(text) ~= "string" then return text end
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    if L and L[text] ~= nil then return L[text] end
+    return text
+end
+
 local _G = _G
 local CreateFrame = CreateFrame
 local C_Timer = C_Timer
@@ -1877,7 +1885,7 @@ local function LayoutReadyCheckContent(frame)
         frame._ktReadyCheckTitle = title
     end
     title:SetFont(KT.FONT_PATH or FONT, 13, "OUTLINE")
-    title:SetText(_G.READY_CHECK or "Ready Check")
+    title:SetText(_G.READY_CHECK or LText("Ready Check"))
     title:SetTextColor(GetAccent(1))
     title:SetAlpha(1)
     title:Show()

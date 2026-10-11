@@ -1,6 +1,13 @@
 local ADDON_NAME, ns = ...
 local KT = (ns and ns.KT) or LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
 if not KT then return end
+-- KUI localization helper (resolved at call time; falls back to the raw text)
+local function LText(text)
+    if type(text) ~= "string" then return text end
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    if L and L[text] ~= nil then return L[text] end
+    return text
+end
 
 -- Global exposed tables
 _G.KUIAuraReminders_Custom = _G.KUIAuraReminders_Custom or {}
@@ -211,7 +218,7 @@ local function UpdateCustomAuras()
             f:SetAlpha(1)
             f:EnableMouse(true)
             f.icon:SetTexture(GetTex(conf.triggerSpellID or 1))
-            f.nameText:SetText(conf.name or "Custom Aura")
+            f.nameText:SetText(conf.name or LText("Custom Aura"))
             f.nameText:SetShown(conf.showNameLabel == true)
             f.valueText:SetText(conf.customTextValue or "")
             if conf.displayStyle == "TEXT" then

@@ -862,7 +862,7 @@ local function DrawFlatFrame(box, kit, scale, w, h, healthColor, accent)
     local name = box:CreateFontString(nil, "OVERLAY")
     name:SetFont(GetPreviewFont(), textSize, "OUTLINE")
     name:SetPoint("LEFT", track, "LEFT", 6, 0)
-    name:SetText("Player")
+    name:SetText(T("Player"))
     name:SetTextColor(1, 1, 1, 1)
 
     local value = box:CreateFontString(nil, "OVERLAY")

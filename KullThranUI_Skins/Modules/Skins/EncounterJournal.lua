@@ -2,6 +2,14 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local S = KT:GetModule("Skins", true)
 if not S then return end
 
+-- KUI localization helper (resolved at call time; falls back to the raw text)
+local function LText(text)
+    if type(text) ~= "string" then return text end
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    if L and L[text] ~= nil then return L[text] end
+    return text
+end
+
 local _G = _G
 local ipairs = ipairs
 local pairs = pairs
@@ -260,7 +268,7 @@ local function EnsureReadableFont(fs, size, r, g, b)
         fs:SetTextColor(colorR, colorG, colorB, 1)
     end
 
-    -- [FIX] Persistir formateo: como en spellbook, instalar hooks para que
+    -- Persistir formateo: como en spellbook, instalar hooks para que
     -- Blizzard no pueda resetear colores oscuros al actualizar texto dinámicamente
     -- en la Guía de Aventura (overview, bosses, loot, etc.).
     if not fs._ktEJFontHooked then
@@ -831,9 +839,9 @@ local function ReassertEncounterJournalShell(journal)
     end
     StyleEncounterJournalPortrait(journal)
     if journal.SetTitle then
-        journal:SetTitle(_G.ADVENTURE_JOURNAL or "Adventure Guide")
+        journal:SetTitle(_G.ADVENTURE_JOURNAL or LText("Adventure Guide"))
     elseif journal.TitleText then
-        journal.TitleText:SetText(_G.ADVENTURE_JOURNAL or "Adventure Guide")
+        journal.TitleText:SetText(_G.ADVENTURE_JOURNAL or LText("Adventure Guide"))
     end
     if journal._ktModernShellBorder then journal._ktModernShellBorder:Show() end
     if journal._ktModernHeaderDivider then journal._ktModernHeaderDivider:Show() end
@@ -1654,7 +1662,7 @@ local function SkinEncounterJournal()
                     end
                 end
 
-                -- [FIX] Re-procesar textos del panel de información (overview, bosses, detalles)
+                -- Re-procesar textos del panel de información (overview, bosses, detalles)
                 -- cada vez que se refresca, ya que Blizzard recrea FontStrings al cambiar de
                 -- dungeons/boss. Aplicar colores legibles con hooks persistentes.
                 local function ReprocessInfoText(frame, depth)

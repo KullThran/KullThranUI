@@ -274,8 +274,15 @@ function ns.PF_UpdateAuraContainers(frame, db)
     local debuffAnchor = db.debuffAnchor or (raid and "BOTTOMLEFT" or "CENTER")
     local debuffGrowthH = db.debuffGrowthH or "RIGHT"
     local debuffGrowthV = db.debuffGrowthV or "DOWN"
+    -- Native party styles (classic/retail/forever) draw the health bar as a small
+    -- strip inside the frame art, so debuffs centered on it covered the bar. Put
+    -- them centered just below the art instead, unless the user chose an anchor.
+    local nativeHost = frame.mode == "party" and frame._pfNativeStyle and frame._pfNativeArt
+    if nativeHost and not nativeHost:IsShown() then nativeHost = nil end
+    if nativeHost and debuffAnchor ~= "CENTER" then nativeHost = nil end
     local debuffStartX = dx
-    if debuffAnchor == "CENTER" and maxDebuffs > 1 then
+    if nativeHost then debuffAnchor = "TOP" end
+    if debuffAnchor == (nativeHost and "TOP" or "CENTER") and maxDebuffs > 1 then
         local centerShift = ((maxDebuffs - 1) * (debuffSize + spacing)) * 0.5
         debuffStartX = dx + (debuffGrowthH == "LEFT" and centerShift or -centerShift)
     end
@@ -303,7 +310,7 @@ function ns.PF_UpdateAuraContainers(frame, db)
     -- re-position the existing buttons in place without creating or discarding
     -- any, so mutating them is leak-free and cheap.
     local hash = strjoin(":", size, tostring(raid), spacing, bx, by, dx, dy, ax, ay,
-        debuffAnchor, debuffGrowthH, debuffGrowthV)
+        debuffAnchor, debuffGrowthH, debuffGrowthV, nativeHost and "native" or "std")
     if frame._ktAuraLayoutHash ~= hash then
         frame._ktAuraLayoutHash = hash
 
@@ -315,8 +322,13 @@ function ns.PF_UpdateAuraContainers(frame, db)
         Layout(b.buffs, "TOPRIGHT", frame.health, "TOPRIGHT", -3 + bx, -3 + by,
             "TOPRIGHT", "LEFT", "DOWN", size, spacing)
         local debuffY = dy + (raid and -3 or 0)
-        Layout(b.debuffs, debuffAnchor, frame.health, debuffAnchor, debuffStartX, debuffY,
-            debuffAnchor, debuffGrowthH, debuffGrowthV, debuffSize, spacing)
+        if nativeHost then
+            Layout(b.debuffs, "TOP", nativeHost, "BOTTOM", debuffStartX, debuffY - 2,
+                "TOP", debuffGrowthH, debuffGrowthV, debuffSize, spacing)
+        else
+            Layout(b.debuffs, debuffAnchor, frame.health, debuffAnchor, debuffStartX, debuffY,
+                debuffAnchor, debuffGrowthH, debuffGrowthV, debuffSize, spacing)
+        end
         Layout(b.cc, "CENTER", frame.health, "CENTER", ax, ay,
             "CENTER", "RIGHT", "DOWN", ccSize, spacing)
     end

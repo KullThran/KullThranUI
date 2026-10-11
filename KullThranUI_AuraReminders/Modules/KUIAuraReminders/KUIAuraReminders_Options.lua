@@ -540,7 +540,7 @@ KT.ShowInputPopup = KT.ShowInputPopup or function(opts)
     popup.title:SetText(opts.title or "")
     popup.message:SetText(opts.message or "")
     popup.editBox:SetText(opts.initialText or "")
-    popup.confirm.text:SetText(opts.confirmText or "Save")
+    popup.confirm.text:SetText(opts.confirmText or LText("Save"))
     popup.confirm:SetScript("OnClick", function()
         if opts.onConfirm then
             opts.onConfirm(popup.editBox:GetText())
@@ -550,7 +550,7 @@ KT.ShowInputPopup = KT.ShowInputPopup or function(opts)
 
     if opts.extraButton then
         popup.extra:Show()
-        popup.extra.text:SetText(opts.extraButton.text or "Extra")
+        popup.extra.text:SetText(opts.extraButton.text or LText("Extra"))
         popup.extra:SetScript("OnClick", function()
             if opts.extraButton.onClick then
                 opts.extraButton.onClick(popup.editBox)

@@ -193,7 +193,7 @@ local function CreateSkipCheckbox(parent, anchor)
     label:SetPoint("LEFT", checkbox, "RIGHT", 6, 0)
     label:SetFont(GetKTFont(), 12, "OUTLINE")
     label:SetTextColor(0.95, 0.95, 0.95, 1)
-    label:SetText(L["Don't show again"] or "Don't show again")
+    label:SetText(LText("Don't show again"))
 
     local function RefreshCheckedState()
         local checked = checkbox:GetChecked() and true or false
@@ -262,12 +262,12 @@ local function ForceSetProfile(addonName, profileName, altAddonName)
         addon = LibStub("AceAddon-3.0"):GetAddon("DF", true)
     end
     
-    -- [FIX] BCM specific check (Addon object might be named "BCM")
+    -- BCM specific check (Addon object might be named "BCM")
     if not addon and addonName == "BetterCooldownManager" then
         addon = LibStub("AceAddon-3.0"):GetAddon("BCM", true)
     end
     
-    -- [FIX] Fallback: Buscar objeto global si no es AceAddon
+    -- Fallback: Buscar objeto global si no es AceAddon
     if not addon then
         if _G[addonName] and type(_G[addonName]) == "table" then 
             if _G[addonName].db then addon = _G[addonName] end
@@ -285,13 +285,13 @@ local function ForceSetProfile(addonName, profileName, altAddonName)
         if addon.db.SetProfile then
             addon.db:SetProfile(profileName)
         else
-            -- [FIX] Si no tiene SetProfile directo, buscar en sub-tablas (común en algunos addons)
+            -- Si no tiene SetProfile directo, buscar en sub-tablas (común en algunos addons)
             if addon.db.profile and type(addon.db.profile) == "table" and addon.db.keys then
                  -- Intentar forzar cambio interno si es AceDB
                  addon.db:SetProfile(profileName)
             end
         end
-        -- [AGGRESSIVE FIX] Forzar estado interno de AceDB para asegurar guardado
+        -- Forzar estado interno de AceDB para asegurar guardado
         if addon.db.keys then
             addon.db.keys.profile = profileName
         end
@@ -301,7 +301,7 @@ local function ForceSetProfile(addonName, profileName, altAddonName)
     local dbNames = { addonName .. "DB" }
     if altAddonName then table.insert(dbNames, altAddonName .. "DB") end
     
-    -- [FIX] Alias de Bases de Datos conocidas
+    -- Alias de Bases de Datos conocidas
     if addonName == "UnhaltedUnitFrames" then table.insert(dbNames, "UUFDB") end
     if addonName == "DandersFrames" then table.insert(dbNames, "DandersFramersDB") end
     if addonName == "BetterCooldownManager" then 
@@ -317,7 +317,7 @@ local function ForceSetProfile(addonName, profileName, altAddonName)
     for _, dbName in ipairs(dbNames) do
         local db = _G[dbName]
         
-        -- [FIX] Si la DB no existe (instalación limpia), la creamos para poder pre-configurar
+        -- Si la DB no existe (instalación limpia), la creamos para poder pre-configurar
         if not db then
             _G[dbName] = { profileKeys = {} }
             db = _G[dbName]
@@ -329,7 +329,7 @@ local function ForceSetProfile(addonName, profileName, altAddonName)
                 -- Método exacto
                 db.profileKeys[exactKey] = profileName
                 
-                -- [ULTIMATE FIX] Método difuso
+                -- Método difuso
                 for k, v in pairs(db.profileKeys) do
                     if type(k) == "string" and k:find("^" .. myName .. " %-") then
                         db.profileKeys[k] = profileName
@@ -1176,8 +1176,8 @@ local function CreateBagsInstallerLivePreview(parent)
     closeText:SetPoint("CENTER")
     closeText:SetText("X")
 
-    local sectionsButton = CreateHeaderButton(closeButton, 58, L["Sections"] or "Sections")
-    CreateHeaderButton(sectionsButton, 58, L["Options"] or "Options")
+    local sectionsButton = CreateHeaderButton(closeButton, 58, LText("Sections"))
+    CreateHeaderButton(sectionsButton, 58, LText("Options"))
 
     local toolbar = CreateFrame("Frame", nil, root, "BackdropTemplate")
     toolbar:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -5)
@@ -1199,7 +1199,7 @@ local function CreateBagsInstallerLivePreview(parent)
     searchIcon:SetVertexColor(accentR, accentG, accentB, 0.9)
     local searchText = InstallerCreatePreviewLabel(search, 9, mutedR, mutedG, mutedB)
     searchText:SetPoint("LEFT", searchIcon, "RIGHT", 7, 0)
-    searchText:SetText((L["Search"] or "Search") .. "...")
+    searchText:SetText((LText("Search")) .. "...")
 
     local watch = CreateFrame("Frame", nil, toolbar, "BackdropTemplate")
     watch:SetSize(48, 27)
@@ -1207,7 +1207,7 @@ local function CreateBagsInstallerLivePreview(parent)
     InstallerApplyPreviewSectionStyle(watch, nil, 0.95, 0.54)
     local watchText = InstallerCreatePreviewLabel(watch, 8, textR, textG, textB, "OUTLINE")
     watchText:SetPoint("CENTER")
-    watchText:SetText(L["Watch"] or "Watch")
+    watchText:SetText(LText("Watch"))
 
     local toolbarIcons = {
         { texture = "Interface\\Icons\\INV_Misc_Bag_08" },
@@ -1242,7 +1242,7 @@ local function CreateBagsInstallerLivePreview(parent)
     InstallerApplyPreviewSectionStyle(footer, nil, 0.97, 0.68)
     local footerSlots = InstallerCreatePreviewLabel(footer, 8, mutedR, mutedG, mutedB, "OUTLINE")
     footerSlots:SetPoint("LEFT", 8, 0)
-    footerSlots:SetText(string.format("%d %s", #groups.consumable + #groups.equipment + #groups.other, L["items"] or "items"))
+    footerSlots:SetText(string.format("%d %s", #groups.consumable + #groups.equipment + #groups.other, LText("items")))
     local footerGold = InstallerCreatePreviewLabel(footer, 8, textR, textG, textB, "OUTLINE")
     footerGold:SetPoint("RIGHT", -8, 0)
     if _G.GetMoneyString and _G.GetMoney then
@@ -1268,7 +1268,7 @@ local function CreateBagsInstallerLivePreview(parent)
         { L["All Items"], #groups.consumable + #groups.equipment + #groups.other, 133633 },
         { L["Consumable"], #groups.consumable, 134829 },
         { L["Equipment"], #groups.equipment, 135274 },
-        { L["Other"] or "Other", #groups.other, 134400 },
+        { LText("Other"), #groups.other, 134400 },
     }
     local previousCategory
     for index, category in ipairs(categoryRows) do
@@ -1311,7 +1311,7 @@ local function CreateBagsInstallerLivePreview(parent)
     local categoryData = {
         { label = L["Consumable"], items = groups.consumable },
         { label = L["Equipment"], items = groups.equipment },
-        { label = L["Other"] or "Other", items = groups.other },
+        { label = LText("Other"), items = groups.other },
     }
     local groupY = -23
     for _, category in ipairs(categoryData) do
@@ -1348,7 +1348,7 @@ local function GetInstallerSpecializationIcon(specID, fallbackTexture)
 end
 
 local function GetInstallerPlayerSpecPreview()
-    local playerName = (_G.UnitName and _G.UnitName("player")) or L["Player"] or "Player"
+    local playerName = (_G.UnitName and _G.UnitName("player")) or LText("Player")
     local classToken
     if _G.UnitClass then
         _, classToken = _G.UnitClass("player")
@@ -1490,10 +1490,10 @@ local function CreateDamageMeterInstallerLivePreview(parent)
 
     local mode = InstallerCreatePreviewLabel(root, 12, textR, textG, textB, "OUTLINE")
     mode:SetPoint("LEFT", modeIcon, "RIGHT", 5, 0)
-    mode:SetText((L["Damage Done"] or "Damage Done") .. "  v")
+    mode:SetText((LText("Damage Done")) .. "  v")
     local session = InstallerCreatePreviewLabel(root, 12, textR, textG, textB, "OUTLINE")
     session:SetPoint("TOPRIGHT", -4, -2)
-    session:SetText((L["Current"] or "Current") .. "  v")
+    session:SetText((LText("Current")) .. "  v")
 
     local playerName, playerSpecID, playerSpecIcon, playerColor, playerClassToken = GetInstallerPlayerSpecPreview()
     local rows = {
@@ -2062,7 +2062,7 @@ local function CreateMythicPlusTimerInstallerLivePreview(parent)
     local deaths = InstallerCreatePreviewLabel(root, 13, 1, 0, 0.412, "OUTLINE")
     deaths:SetPoint("TOPRIGHT", root, "TOPRIGHT", -pad, 0)
     deaths:SetJustifyH("RIGHT")
-    deaths:SetText("2 Deaths (-00:10)")
+    deaths:SetText(string.format(LText("%d Deaths (%s)"), 2, "-00:10"))
 
     local timer = InstallerCreatePreviewLabel(root, 26, 1, 0.808, 0.714, "OUTLINE")
     timer:SetPoint("TOPRIGHT", root, "TOPRIGHT", -pad, -17)
@@ -2076,7 +2076,7 @@ local function CreateMythicPlusTimerInstallerLivePreview(parent)
     local keyDetails = InstallerCreatePreviewLabel(keyRow, 13, 1, 0.804, 0.569, "OUTLINE")
     keyDetails:SetPoint("RIGHT", keyRow, "CENTER", -3, 0)
     keyDetails:SetJustifyH("RIGHT")
-    keyDetails:SetText("Tyrannical - Fortified")
+    keyDetails:SetText(LText("Tyrannical - Fortified"))
 
     local key = InstallerCreatePreviewLabel(keyRow, 16, 0.761, 0, 1, "OUTLINE")
     key:SetPoint("LEFT", keyRow, "CENTER", 3, 0)
@@ -2124,7 +2124,7 @@ local function CreateMythicPlusTimerInstallerLivePreview(parent)
     local forcesText = InstallerCreatePreviewLabel(root, 11, textR, textG, textB, "OUTLINE")
     forcesText:SetPoint("BOTTOMRIGHT", forces, "TOPRIGHT", -3, 2)
     forcesText:SetJustifyH("RIGHT")
-    forcesText:SetText("Forces: 82.33%")
+    forcesText:SetText(string.format(LText("Forces: %s"), "82.33%"))
 
     local function CreateObjective(y, completed, label)
         local row = CreateFrame("Frame", nil, root)
@@ -2136,7 +2136,7 @@ local function CreateMythicPlusTimerInstallerLivePreview(parent)
         objective:SetWidth(190)
         objective:SetJustifyH("RIGHT")
         objective:SetWordWrap(false)
-        objective:SetText(label)
+        objective:SetText(LText(label))
 
         if completed then
             local tick = row:CreateTexture(nil, "OVERLAY")
@@ -2146,9 +2146,9 @@ local function CreateMythicPlusTimerInstallerLivePreview(parent)
         end
     end
 
-    CreateObjective(-123, true, "First Boss (03:20)")
-    CreateObjective(-141, true, "Second Boss (06:40)")
-    CreateObjective(-159, false, "( ) Third Boss")
+    CreateObjective(-123, true, string.format(LText("First Boss (%s)"), "03:20"))
+    CreateObjective(-141, true, string.format(LText("Second Boss (%s)"), "06:40"))
+    CreateObjective(-159, false, "( ) " .. LText("Third Boss"))
 
     return root
 end
@@ -2262,7 +2262,7 @@ local function CreateInstallerPreviewUnavailable(parent, label)
     root:SetAllPoints()
     local text = InstallerCreatePreviewLabel(root, 14, 0.82, 0.82, 0.86, "OUTLINE")
     text:SetPoint("CENTER")
-    text:SetText(label)
+    text:SetText(LText(label))
     return root
 end
 
@@ -2296,13 +2296,13 @@ local function CreatePartyFramesInstallerLivePreview(parent)
         local verticalButton = CreateFrame("Button", nil, root, "BackdropTemplate")
         verticalButton:SetSize(130, 24)
         verticalButton:SetPoint("TOP", root, "TOP", -70, -5)
-        verticalButton:SetText(L["Vertical"] or "Vertical")
+        verticalButton:SetText(LText("Vertical"))
         SkinButton(verticalButton)
 
         local horizontalButton = CreateFrame("Button", nil, root, "BackdropTemplate")
         horizontalButton:SetSize(130, 24)
         horizontalButton:SetPoint("LEFT", verticalButton, "RIGHT", 10, 0)
-        horizontalButton:SetText(L["Horizontal"] or "Horizontal")
+        horizontalButton:SetText(LText("Horizontal"))
         SkinButton(horizontalButton)
 
         local okVertical, verticalPreview = pcall(api.CreateLivePreview, root, 38, {
@@ -2439,13 +2439,13 @@ local function CreateNameplatesInstallerPreview(parent)
     enemyName:SetPoint("TOP", root, "TOP", 0, -102)
     enemyName:SetWidth(330)
     enemyName:SetJustifyH("CENTER")
-    enemyName:SetText(L["Enemy"] or "Enemy")
+    enemyName:SetText(LText("Enemy"))
 
     local classification = InstallerCreatePreviewLabel(root, 9, mutedR, mutedG, mutedB, "OUTLINE")
     classification:SetPoint("TOP", root, "TOP", 0, -121)
     classification:SetWidth(330)
     classification:SetJustifyH("CENTER")
-    classification:SetText(L["Elite"] or "Elite")
+    classification:SetText(LText("Elite"))
 
     local health = CreateFrame("StatusBar", nil, root, "BackdropTemplate")
     health:SetSize(330, 30)
@@ -2516,7 +2516,7 @@ local function CreateResourceBarsInstallerLivePreview(parent)
 
     local title = InstallerCreatePreviewLabel(root, 11, textR, textG, textB, 'OUTLINE')
     title:SetPoint('TOP', 0, -2)
-    title:SetText(L['Resource Bars'] or 'Resource Bars')
+    title:SetText(LText('Resource Bars'))
 
     local function AddBar(y, height, r, g, b, label, value)
         local bar = CreateFrame('StatusBar', nil, root, 'BackdropTemplate')
@@ -2538,9 +2538,9 @@ local function CreateResourceBarsInstallerLivePreview(parent)
         right:SetText(value .. '%')
     end
 
-    AddBar(-48, 28, 0.10, 0.58, 1.00, L['Primary Power'] or 'Primary Power', 72)
-    AddBar(-84, 18, 0.90, 0.74, 0.28, L['Class Resource'] or 'Class Resource', 46)
-    AddBar(-112, 18, 0.20, 0.78, 0.32, L['Health'] or 'Health', 88)
+    AddBar(-48, 28, 0.10, 0.58, 1.00, LText('Primary Power'), 72)
+    AddBar(-84, 18, 0.90, 0.74, 0.28, LText('Class Resource'), 46)
+    AddBar(-112, 18, 0.20, 0.78, 0.32, LText('Health'), 88)
     return root
 end
 
@@ -2557,14 +2557,14 @@ local function ShowInstallerModuleToggleStep(self, spec)
     local title = content:CreateFontString(nil, "OVERLAY")
     title:SetPoint("TOP", 0, -30)
     title:SetFont(GetKTFont(), 24, "OUTLINE")
-    title:SetText(L[spec.title])
+    title:SetText(LText(spec.title))
     title:SetTextColor(unpack(KT_COLOR))
 
     local subtitle = content:CreateFontString(nil, "OVERLAY")
     subtitle:SetPoint("TOP", title, "BOTTOM", 0, -10)
     subtitle:SetWidth(700)
     subtitle:SetFont(GetKTFont(), 14)
-    subtitle:SetText(L[spec.question])
+    subtitle:SetText(LText(spec.question))
     subtitle:SetTextColor(0.9, 0.9, 0.9)
     subtitle:SetJustifyH("CENTER")
 
@@ -2574,7 +2574,7 @@ local function ShowInstallerModuleToggleStep(self, spec)
         location:SetPoint("TOP", subtitle, "BOTTOM", 0, -5)
         location:SetWidth(700)
         location:SetFont(GetKTFont(), 11, "OUTLINE")
-        location:SetText(L[spec.location])
+        location:SetText(LText(spec.location))
         location:SetTextColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 1)
         location:SetJustifyH("CENTER")
         infoAnchor = location
@@ -2599,7 +2599,7 @@ local function ShowInstallerModuleToggleStep(self, spec)
     disabledOverlay:SetBackdropBorderColor(accentR, accentG, accentB, 0.55)
     local disabledLabel = InstallerCreatePreviewLabel(disabledOverlay, 15, 1, 1, 1, "OUTLINE")
     disabledLabel:SetPoint("CENTER")
-    disabledLabel:SetText(L[spec.disabledPreviewLabel or "Disabled"])
+    disabledLabel:SetText(LText(spec.disabledPreviewLabel) or LText("Disabled"))
 
     local controlsFrame = CreateFrame("Frame", nil, content)
     controlsFrame:SetSize(600, 58)
@@ -2612,13 +2612,13 @@ local function ShowInstallerModuleToggleStep(self, spec)
     local btnEnable = CreateFrame("Button", nil, controlsFrame, "BackdropTemplate")
     btnEnable:SetSize(286, 34)
     btnEnable:SetPoint("TOPLEFT", controlsFrame, "TOPLEFT", 0, -10)
-    btnEnable:SetText(L[spec.enableLabel])
+    btnEnable:SetText(LText(spec.enableLabel))
     SkinButton(btnEnable)
 
     local btnDisable = CreateFrame("Button", nil, controlsFrame, "BackdropTemplate")
     btnDisable:SetSize(286, 34)
     btnDisable:SetPoint("LEFT", btnEnable, "RIGHT", 28, 0)
-    btnDisable:SetText(L[spec.disableLabel])
+    btnDisable:SetText(LText(spec.disableLabel))
     SkinButton(btnDisable)
 
     local function RefreshState()
@@ -2874,7 +2874,7 @@ function Mod:CompleteInitialProfileChoice(profileName)
         local ok, err = pcall(KT.db.SetProfile, KT.db, profileName)
         KT._installerProfileChoiceInProgress = nil
         if not ok then
-            KT:Print("Installer: no se pudo aplicar el perfil '" .. profileName .. "': " .. tostring(err))
+            KT:Print(string.format(LText("Installer: could not apply profile '%s': %s"), tostring(profileName), tostring(err)))
             return false
         end
     end
@@ -2921,7 +2921,7 @@ function Mod:ShowInitialProfileStep(profiles)
     local title = content:CreateFontString(nil, "OVERLAY")
     title:SetPoint("TOP", 0, -42)
     title:SetFont(GetKTFont(), 26, "OUTLINE")
-    title:SetText(L["Choose a starting profile"] or "Choose a starting profile")
+    title:SetText(LText("Choose a starting profile"))
     title:SetTextColor(unpack(KT_COLOR))
 
     local description = content:CreateFontString(nil, "OVERLAY")
@@ -2936,7 +2936,7 @@ function Mod:ShowInitialProfileStep(profiles)
     local defaultButton = CreateFrame("Button", nil, content, "BackdropTemplate")
     defaultButton:SetSize(500, 38)
     defaultButton:SetPoint("TOP", description, "BOTTOM", 0, -24)
-    defaultButton:SetText(L["Use KUI defaults"] or "Use KUI defaults")
+    defaultButton:SetText(LText("Use KUI defaults"))
     SkinButton(defaultButton)
     defaultButton:SetScript("OnClick", function()
         if self:CompleteInitialProfileChoice(nil) then
@@ -2947,7 +2947,7 @@ function Mod:ShowInitialProfileStep(profiles)
     local savedTitle = content:CreateFontString(nil, "OVERLAY")
     savedTitle:SetPoint("TOPLEFT", defaultButton, "BOTTOMLEFT", 0, -22)
     savedTitle:SetFont(GetKTFont(), 15, "OUTLINE")
-    savedTitle:SetText(L["Saved profiles"] or "Saved profiles")
+    savedTitle:SetText(LText("Saved profiles"))
     savedTitle:SetTextColor(unpack(KT_COLOR))
 
     local scroll = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
@@ -3271,14 +3271,14 @@ function Mod:ShowConflictStep(conflicts)
         local header = scrollContent:CreateFontString(nil, "OVERLAY")
         header:SetPoint("TOP", scrollContent, "TOP", 0, -y)
         header:SetFont(GetKTFont(), 14, "OUTLINE")
-        header:SetText((rule.title or "Addon Conflict") .. " [" .. kind .. "]")
+        header:SetText(string.format("%s [%s]", LText(rule.title or "Addon Conflict"), kind))
         header:SetTextColor(1, 0.85, 0.85)
         header:SetJustifyH("CENTER")
         y = y + math.ceil(header:GetStringHeight() or 16) + 6
         first = false
 
         local modules = rule.modules and table.concat(rule.modules, ", ") or "KullThranUI"
-        local reason = rule.reason or "Potential overlap with KullThranUI."
+        local reason = LText(rule.reason or "Potential overlap with KullThranUI.")
         local detail = scrollContent:CreateFontString(nil, "OVERLAY")
         detail:SetPoint("TOP", scrollContent, "TOP", 0, -y)
         detail:SetFont(GetKTFont(), 12)
@@ -3319,11 +3319,11 @@ function Mod:ShowConflictStep(conflicts)
                 btnDisableKUI:SetPoint("TOPRIGHT", btnDisableAddon, "BOTTOMRIGHT", 0, -6)
 
                 local label = addon.title or addon.name or "Addon"
-                local status = addon.loaded and (L["Loaded"] or "Loaded") or (addon.enabled and (L["Enabled"] or "Enabled") or (L["Installed"] or "Installed"))
+                local status = addon.loaded and (LText("Loaded")) or (addon.enabled and (LText("Enabled")) or (LText("Installed")))
                 nameText:SetText(label)
                 statusText:SetText(status)
 
-                btnDisableAddon:SetText(L["Disable Addon"] or "Disable Addon")
+                btnDisableAddon:SetText(LText("Disable Addon"))
                 btnDisableAddon:SetScript("OnClick", function()
                     local detector = KT:GetModule("AddonConflictDetector", true)
                     local ok = detector and detector.DisableAddon and detector:DisableAddon(addon.name)
@@ -3331,14 +3331,14 @@ function Mod:ShowConflictStep(conflicts)
                         ok = pcall(C_AddOns.DisableAddOn, addon.name)
                     end
                     if ok then
-                        btnDisableAddon:SetText(L["Reload Required"] or "Reload Required")
+                        btnDisableAddon:SetText(LText("Reload Required"))
                         btnDisableAddon:Disable()
-                        statusText:SetText(L["Addon Disabled - Reload Required"] or "Addon Disabled - Reload Required")
+                        statusText:SetText(LText("Addon Disabled - Reload Required"))
                     end
                 end)
                 SkinButton(btnDisableAddon)
 
-                btnDisableKUI:SetText(L["Disable KUI Module"] or "Disable KUI Module")
+                btnDisableKUI:SetText(LText("Disable KUI Module"))
                 btnDisableKUI:SetScript("OnClick", function()
                     local detector = KT:GetModule("AddonConflictDetector", true)
                     local ok, moduleLabel
@@ -3346,9 +3346,9 @@ function Mod:ShowConflictStep(conflicts)
                         ok, moduleLabel = detector:DisableKUIRule(rule.id)
                     end
                     if ok then
-                        btnDisableKUI:SetText(L["Reload Required"] or "Reload Required")
+                        btnDisableKUI:SetText(LText("Reload Required"))
                         btnDisableKUI:Disable()
-                        statusText:SetText(string.format("%s - %s", moduleLabel or (rule.title or "KUI Module"), L["Reload Required"] or "Reload Required"))
+                        statusText:SetText(string.format("%s - %s", moduleLabel or LText(rule.title or "KUI Module"), LText("Reload Required")))
                     end
                 end)
                 SkinButton(btnDisableKUI)
@@ -3454,7 +3454,7 @@ function Mod:ShowWelcomeStep()
     text:SetTextColor(0.9, 0.9, 0.9)
     text:SetJustifyH("CENTER")
     
-    -- [NEW] Feral Shape Background
+    -- Feral Shape Background
     local shape = content:CreateTexture(nil, "BACKGROUND")
     shape:SetSize(665, 285)
     shape:SetPoint("CENTER", -50, -100) -- Debajo del texto
@@ -3495,7 +3495,7 @@ function Mod:ShowLanguageStep()
     local title = content:CreateFontString(nil, "OVERLAY")
     title:SetPoint("TOP", 0, -30)
     title:SetFont(GetKTFont(), 24, "OUTLINE")
-    title:SetText(L["Language"] or "Language")
+    title:SetText(LText("Language"))
     title:SetTextColor(unpack(KT_COLOR))
 
     local desc = content:CreateFontString(nil, "OVERLAY")
@@ -3516,7 +3516,7 @@ function Mod:ShowLanguageStep()
         local btn = CreateFrame("Button", nil, content, "BackdropTemplate")
         btn:SetSize(220, 44)
         btn:SetPoint("CENTER", content, "CENTER", xOffset, yOffset or 10)
-        btn:SetText(label)
+        btn:SetText(LText(label))
         CreateBackdrop(btn)
         btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
         local fs = btn:GetFontString()
@@ -3598,17 +3598,17 @@ function Mod:ShowLanguageStep()
         return btn
     end
 
-    CreateLanguageButton(L["Auto (Client)"] or "Auto (Client)", "auto", 0, 155)
-    CreateLanguageButton(L["English"] or "English", "enUS", -130, 100)
-    CreateLanguageButton(L["Spanish"] or "Spanish", "esES", 130, 100)
-    CreateLanguageButton(L["French"] or "French", "frFR", -130, 45)
-    CreateLanguageButton(L["German"] or "German", "deDE", 130, 45)
-    CreateLanguageButton(L["Italian"] or "Italian", "itIT", -130, -10)
-    CreateLanguageButton(L["Portuguese"] or "Portuguese", "ptBR", 130, -10)
-    CreateLanguageButton(L["Russian"] or "Russian", "ruRU", -130, -65)
-    CreateLanguageButton(L["Korean"] or "Korean", "koKR", 130, -65)
-    CreateLanguageButton(L["Traditional Chinese"] or "Traditional Chinese", "zhTW", -130, -120)
-    CreateLanguageButton(L["Simplified Chinese"] or "Simplified Chinese", "zhCN", 130, -120)
+    CreateLanguageButton(LText("Auto (Client)"), "auto", 0, 155)
+    CreateLanguageButton(LText("English"), "enUS", -130, 100)
+    CreateLanguageButton(LText("Spanish"), "esES", 130, 100)
+    CreateLanguageButton(LText("French"), "frFR", -130, 45)
+    CreateLanguageButton(LText("German"), "deDE", 130, 45)
+    CreateLanguageButton(LText("Italian"), "itIT", -130, -10)
+    CreateLanguageButton(LText("Portuguese"), "ptBR", 130, -10)
+    CreateLanguageButton(LText("Russian"), "ruRU", -130, -65)
+    CreateLanguageButton(LText("Korean"), "koKR", 130, -65)
+    CreateLanguageButton(LText("Traditional Chinese"), "zhTW", -130, -120)
+    CreateLanguageButton(LText("Simplified Chinese"), "zhCN", 130, -120)
 
     local note = content:CreateFontString(nil, "OVERLAY")
     note:SetPoint("TOP", content, "CENTER", 0, -180)
@@ -3670,14 +3670,14 @@ function Mod:ShowThemeStep()
     content.titleFS = title
     title:SetPoint("TOP", 0, -26)
     title:SetFont(GetKTFont(), 24, "OUTLINE")
-    title:SetText(L["Visual Style & Color"] or "Visual Style & Color")
+    title:SetText(LText("Visual Style & Color"))
     title:SetTextColor(unpack(KT_COLOR))
 
     local desc = content:CreateFontString(nil, "OVERLAY")
     desc:SetPoint("TOP", title, "BOTTOM", 0, -8)
     desc:SetWidth(700)
     desc:SetFont(GetKTFont(), 13)
-    desc:SetText(L["Pick the look of your interface and its accent color."] or "Pick the look of your interface and its accent color.")
+    desc:SetText(LText("Pick the look of your interface and its accent color."))
     desc:SetTextColor(0.9, 0.9, 0.9)
     desc:SetJustifyH("CENTER")
 
@@ -3693,7 +3693,7 @@ function Mod:ShowThemeStep()
 
     -- Visual Style cards (same cards as the options menu).
     local stylesTop = -92
-    SectionLabel(L["Visual Style"] or "Visual Style", stylesTop)
+    SectionLabel(LText("Visual Style"), stylesTop)
     local stylesHeight = 0
     if KT.VisualThemes and KT.VisualThemes.CreateSelector then
         local selectorContainer = CreateFrame("Frame", nil, content)
@@ -3706,7 +3706,7 @@ function Mod:ShowThemeStep()
 
     -- Accent colour cards.
     local accentTop = stylesTop - 18 - math.max(stylesHeight, 238) - 12
-    SectionLabel(L["Accent Color"] or "Accent Color", accentTop)
+    SectionLabel(LText("Accent Color"), accentTop)
 
     local currentPreset, isClass, isCustom
     local function ReadState()
@@ -3819,8 +3819,8 @@ function Mod:ShowThemeStep()
         table.insert(buttons, btn)
     end
 
-    CreateExtraButton(L["Class Color"] or "Class Color", true, -0.5)
-    CreateExtraButton(L["Custom Color"] or "Custom Color", false, 0.5)
+    CreateExtraButton(LText("Class Color"), true, -0.5)
+    CreateExtraButton(LText("Custom Color"), false, 0.5)
 
     local btnNext = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnNext:SetSize(120, 30)
@@ -4628,7 +4628,7 @@ function Mod:ShowButtonStyleStep()
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
         btn:SetSize(150, 28)
         btn:SetPoint("TOP", abPreview, "BOTTOM", xOffset, -4)
-        btn:SetText(label)
+        btn:SetText(LText(label))
         
         -- Custom Skinning to handle selection state
         if btn.SetNormalTexture then btn:SetNormalTexture("") end
@@ -4768,7 +4768,7 @@ function Mod:ShowButtonStyleStep()
             end
             if GameTooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(label)
+                GameTooltip:SetText(LText(label))
                 GameTooltip:Show()
             end
         end)
@@ -4810,7 +4810,7 @@ function Mod:ShowButtonStyleStep()
     local keypressLabel = keypressToggle:CreateFontString(nil, "OVERLAY")
     keypressLabel:SetPoint("LEFT", keypressToggle, "RIGHT", 6, 0)
     keypressLabel:SetFont(GetKTFont(), 12, "OUTLINE")
-    keypressLabel:SetText(L["Show Pressed Key Indicator"] or "Show Pressed Key Indicator")
+    keypressLabel:SetText(LText("Show Pressed Key Indicator"))
     keypressLabel:SetTextColor(0.85, 0.85, 0.85)
 
     keypressToggle:SetScript("OnClick", function(self)
@@ -4883,7 +4883,7 @@ function Mod:ShowButtonStyleStep()
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
         btn:SetSize(150, 28)
         btn:SetPoint("TOP", bdPreview, "BOTTOM", xOffset, -4)
-        btn:SetText(label)
+        btn:SetText(LText(label))
         
         -- Custom Skinning
         if btn.SetNormalTexture then btn:SetNormalTexture("") end
@@ -5022,7 +5022,7 @@ function Mod:ShowButtonStyleStep()
             end
             if GameTooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(label)
+                GameTooltip:SetText(LText(label))
                 GameTooltip:Show()
             end
         end)
@@ -5229,7 +5229,7 @@ function Mod:ShowMinimapShapeStep()
         local btn = CreateFrame("Button", nil, previewFrame, "BackdropTemplate")
         btn:SetSize(180, 34)
         btn:SetPoint("BOTTOM", previewFrame, "BOTTOM", xOffset, 20)
-        btn:SetText(label)
+        btn:SetText(LText(label))
         btn.shapeValue = shape
         SkinButton(btn)
         btn:SetScript("OnClick", function()
@@ -5277,12 +5277,12 @@ function Mod:ShowMinimapShapeStep()
         return cb
     end
 
-    local chkCoords = CreateToggle(L["Coordinates"] or "Coordinates", "showCoords", "TOPLEFT", previewFrame, "BOTTOMLEFT", 40, -10)
-    local chkClock = CreateToggle(L["Clock"] or "Clock", "showClock", "LEFT", chkCoords, "RIGHT", 110, 0)
-    local chkFPS = CreateToggle(L["FPS / MS"] or "FPS / MS", "showFPS", "LEFT", chkClock, "RIGHT", 80, 0)
+    local chkCoords = CreateToggle(LText("Coordinates"), "showCoords", "TOPLEFT", previewFrame, "BOTTOMLEFT", 40, -10)
+    local chkClock = CreateToggle(LText("Clock"), "showClock", "LEFT", chkCoords, "RIGHT", 110, 0)
+    local chkFPS = CreateToggle(LText("FPS / MS"), "showFPS", "LEFT", chkClock, "RIGHT", 80, 0)
     
-    local chkFriends = CreateToggle(L["Friends"] or "Friends", "showFriends", "TOPLEFT", chkCoords, "BOTTOMLEFT", 0, -5)
-    local chkGuild = CreateToggle(L["Guild"] or "Guild", "showGuild", "LEFT", chkFriends, "RIGHT", 110, 0)
+    local chkFriends = CreateToggle(LText("Friends"), "showFriends", "TOPLEFT", chkCoords, "BOTTOMLEFT", 0, -5)
+    local chkGuild = CreateToggle(LText("Guild"), "showGuild", "LEFT", chkFriends, "RIGHT", 110, 0)
 
     RefreshPreviewShape()
 
@@ -5974,14 +5974,14 @@ function Mod:ShowCooldownManagerStep()
             import:SetSize(250, 30)
             import:SetPoint("BOTTOM", previewFrame, "BOTTOM", 0, 14)
             import:SetFrameLevel(previewFrame:GetFrameLevel() + 5)
-            import:SetText(L["Import Blizzard Layout"] or "Import Blizzard Layout")
+            import:SetText(LText("Import Blizzard Layout"))
             SkinButton(import)
             import:SetBackdropBorderColor(unpack(KT_COLOR))
             import:SetScript("OnClick", function(self)
                 local ns = _G.KUI_CDM_NS
                 local ok = ns and ns.ImportBlizzardDisplayedMainBars and pcall(ns.ImportBlizzardDisplayedMainBars, true, false)
                 if _G._KUI_CDM_Apply then pcall(_G._KUI_CDM_Apply) end
-                self:SetText(ok and (L["Layout Imported"] or "Layout Imported") or (L["Import unavailable"] or "Import unavailable"))
+                self:SetText(ok and (LText("Layout Imported")) or (LText("Import unavailable")))
             end)
         end,
         get = function() return profile.cooldownManager.cdmBars.enabled ~= false end,
@@ -6079,7 +6079,7 @@ function Mod:ShowAddonListStep()
         end
     end
 
-    -- [FIX] Ordenar: Primero los que tienen perfil, luego alfabéticamente
+    -- Ordenar: Primero los que tienen perfil, luego alfabéticamente
     table.sort(RECOMMENDED_ADDONS, function(a, b)
         local function HasProfile(addon)
             -- 1. String directo en la tabla
@@ -6149,7 +6149,7 @@ function Mod:ShowAddonListStep()
             info = C_AddOns.GetAddOnInfo(addonID)
         end
         
-        -- [FIX] Mejor detección de estado: Si está cargado, está habilitado seguro.
+        -- Mejor detección de estado: Si está cargado, está habilitado seguro.
         local enableState = C_AddOns.GetAddOnEnableState(addonID, UnitName("player") or "")
         local isInstalled = (info ~= nil)
         local isEnabled = (enableState > 0) or C_AddOns.IsAddOnLoaded(addonID)
@@ -6177,7 +6177,7 @@ function Mod:ShowAddonListStep()
         
         local handled = false
         
-        -- [NUEVO] Sistema de Handlers (Lua Tables)
+        -- Sistema de Handlers (Lua Tables)
         if isInstalled and ns.ProfileData and ns.Handlers then
             -- CASO ESPECIAL: addon externo con doble perfil
             if addon.name == "DandersFrames" and ns.ProfileData.DandersFrames then
@@ -6190,7 +6190,7 @@ function Mod:ShowAddonListStep()
                     StaticPopup_Show("KT_INSTALLER_PROFILE", "Danders Frames (Healer)", nil, { func = function() 
                         ns.Handlers.DandersFrames(nil, ns.ProfileData.DandersFrames)
                         ForceSetProfile("DandersFrames", "KullThranUI - Healer", "DandersFramers")
-                        KT:Print("Profile Applied: Danders (Healer)")
+                        KT:Print(string.format(LText("Profile Applied: %s (%s)"), "DandersFrames", LText("Healer")))
                     end })
                 end)
                 
@@ -6203,7 +6203,7 @@ function Mod:ShowAddonListStep()
                     StaticPopup_Show("KT_INSTALLER_PROFILE", "Danders Frames (DPS)", nil, { func = function() 
                         ns.Handlers.DandersFrames(nil, ns.ProfileData.DandersFrames)
                         ForceSetProfile("DandersFrames", "KullThranUI - DPS/Tank", "DandersFramers")
-                        KT:Print("Profile Applied: Danders (DPS)")
+                        KT:Print(string.format(LText("Profile Applied: %s (%s)"), "DandersFrames", LText("DPS")))
                     end })
                 end)
                 
@@ -6221,7 +6221,7 @@ function Mod:ShowAddonListStep()
                     StaticPopup_Show("KT_INSTALLER_PROFILE", addon.name, nil, { func = function() 
                         ns.Handlers[addon.name]("KullThranUI", ns.ProfileData[addon.name])
                         ForceSetProfile(addon.name, "KullThranUI")
-                        KT:Print("Profile Applied: " .. addon.name)
+                        KT:Print(string.format(LText("Profile Applied: %s"), addon.name))
                     end })
                 end)
                 rightAnchor = btnProfile
@@ -6229,7 +6229,7 @@ function Mod:ShowAddonListStep()
             end
         end
 
-        -- [OLD] Sistema de Strings (Fallback)
+        -- Sistema de Strings (Fallback)
         if isInstalled and not handled and profileString then
             local btnProfile = CreateFrame("Button", nil, row, "BackdropTemplate")
             btnProfile:SetSize(90, 20)
@@ -6288,7 +6288,7 @@ function Mod:ShowAddonListStep()
         self.frame:Hide()
     end)
     
-    -- [NEW] Reload UI Button (Manual)
+    -- Reload UI Button (Manual)
     local btnReload = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnReload:SetSize(120, 30)
     btnReload:SetPoint("LEFT", btnSkip, "RIGHT", 10, 0)
@@ -6400,7 +6400,7 @@ function Mod:ShowProfileStep()
     local function CreateProfileRow(label, res, yOffset)
         local text = content:CreateFontString(nil, "OVERLAY")
         text:SetFont(GetKTFont(), 16, "OUTLINE")
-        text:SetText(label)
+        text:SetText(LText(label))
         text:SetPoint("TOPLEFT", content, "CENTER", -200, yOffset)
         text:SetWidth(160)
         text:SetJustifyH("LEFT")
@@ -6531,7 +6531,7 @@ function Mod:ShowModuleSelectionStep()
         local text = cb:CreateFontString(nil, "OVERLAY")
         text:SetPoint("LEFT", cb, "RIGHT", 8, 0)
         text:SetFont(GetKTFont(), 13, "OUTLINE")
-        text:SetText(label)
+        text:SetText(LText(label))
         text:SetTextColor(0.9, 0.9, 0.9)
 
         local function Sync()
@@ -6628,7 +6628,7 @@ function Mod:ShowModuleSelectionStep()
     local btnDiscord = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnDiscord:SetSize(150, 30)
     btnDiscord:SetPoint("RIGHT", btnBack, "LEFT", -10, 0)
-    btnDiscord:SetText(L["Join Discord"] or "Join Discord")
+    btnDiscord:SetText(LText("Join Discord"))
     SkinButton(btnDiscord)
     btnDiscord:SetScript("OnClick", function()
         StaticPopup_Show("KT_INSTALLER_URL", nil, nil, DISCORD_INVITE_URL)
@@ -6675,7 +6675,7 @@ function Mod:ApplyScaleOnly(resolution, opts)
 
     if silent then return end
 
-    -- [FIX] Reset EditMode frames to avoid conflicts with new layout
+    -- Reset EditMode frames to avoid conflicts with new layout
     if KT.db.profile.editMode and KT.db.profile.editMode.frames then
         table.wipe(KT.db.profile.editMode.frames)
     end

@@ -113,7 +113,7 @@ KT:RegisterPage("actionbars", "Action Bars", 16, function(sc, W)
 
                 local macro = btn:CreateFontString(btnName .. "Name", "OVERLAY", "GameFontNormalSmall")
                 macro:SetPoint("BOTTOM", btn, "BOTTOM", 0, 2)
-                macro:SetText(i == 1 and "Macro" or "")
+                macro:SetText(i == 1 and LText("Macro") or "")
                 btn.Name = macro
 
                 preview._ktButtons[i] = btn

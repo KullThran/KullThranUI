@@ -82,13 +82,13 @@ function Mod:OnInitialize()
     end
     self.db = KT.db.profile.dragonRiding
     
-    -- [FIX] Migration for default position (Center -> Top)
+    -- Migration for default position (Center -> Top)
     -- Resetear si el valor es positivo (se saldría de la pantalla por arriba con el anclaje TOP)
     if self.db.yOffset > 0 or self.db.yOffset == -250 then
         self.db.yOffset = -150
     end
     
-    -- [FIX] Ensure defaults for texture/font
+    -- Ensure defaults for texture/font
     if not self.db.texture then self.db.texture = "Melli" end
     if not self.db.font then self.db.font = "AAA_ITC_Avant_Garde" end
 
@@ -481,7 +481,7 @@ function Mod:BuildUI()
         cd:SetDrawEdge(false)
         cd:SetSwipeColor(0, 0, 0, 0.8)
         
-        -- [FIX] Change font to Avant Garde (cache regions; avoid scanning every SetCooldown)
+        -- Change font to Avant Garde (cache regions; avoid scanning every SetCooldown)
         ApplyCooldownFont(cd)
         hooksecurefunc(cd, "SetCooldown", ApplyCooldownFont)
         cd:HookScript("OnShow", ApplyCooldownFont)
@@ -529,7 +529,7 @@ local function UpdateBlizzardWidget()
         end
         container:SetAlpha(0)
 
-        -- [FIX] Forzar visibilidad en TODOS los widgets del contenedor (sin depender del ID)
+        -- Forzar visibilidad en TODOS los widgets del contenedor (sin depender del ID)
         -- Esto asegura que los círculos de vigor se vean siempre.
     else
         -- Restaurar a Blizzard si dejamos de volar
@@ -1135,7 +1135,7 @@ end
 
 function Mod:CheckMountState(event)
     if self.isPreviewing then return end -- No ocultar durante la previsualización
-    -- [FIX] Delay check slightly to allow API to update during mount swap
+    -- Delay check slightly to allow API to update during mount swap
     if self.mountStateTimer then
         self:CancelTimer(self.mountStateTimer, true)
         self.mountStateTimer = nil
@@ -1177,13 +1177,13 @@ function Mod:OnEnable()
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "CheckMountState")
     self:RegisterEvent("UNIT_ENTERED_VEHICLE", "CheckMountState")
     self:RegisterEvent("UNIT_EXITED_VEHICLE", "CheckMountState")
-    self:RegisterEvent("UNIT_MAXPOWER", "CheckMountState") -- [FIX] Re-check if Vigor becomes available
+    self:RegisterEvent("UNIT_MAXPOWER", "CheckMountState") -- Re-check if Vigor becomes available
     self:RegisterEvent("UNIT_POWER_BAR_SHOW", "CheckMountState")
     self:RegisterEvent("UNIT_POWER_BAR_HIDE", "CheckMountState")
     self:RegisterEvent("UNIT_AURA")
-    self:RegisterEvent("UPDATE_SHAPESHIFT_FORM", "CheckMountState") -- [FIX] Druid Flight Form support
-    self:RegisterEvent("UNIT_MODEL_CHANGED", "CheckMountState") -- [FIX] Evoker Dracthyr/Visage form support
-    self:RegisterEvent("UNIT_DISPLAYPOWER", "CheckMountState") -- [FIX] Power type change support
+    self:RegisterEvent("UPDATE_SHAPESHIFT_FORM", "CheckMountState") -- Druid Flight Form support
+    self:RegisterEvent("UNIT_MODEL_CHANGED", "CheckMountState") -- Evoker Dracthyr/Visage form support
+    self:RegisterEvent("UNIT_DISPLAYPOWER", "CheckMountState") -- Power type change support
     self:RegisterEvent("SPELL_UPDATE_CHARGES", "CheckMountState")
     self:RegisterEvent("PLAYER_CAN_GLIDE_CHANGED", "CheckMountState")
     self:RegisterEvent("PLAYER_IS_GLIDING_CHANGED", "CheckMountState")

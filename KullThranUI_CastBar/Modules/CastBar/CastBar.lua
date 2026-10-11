@@ -211,7 +211,7 @@ function Mod:RegisterUnlockElement()
     end
 
     KT.RegisterUnlockElement("castbar_player", {
-        label = "Player Cast Bar",
+        label = LText("Player Cast Bar"),
         group = "Cast Bar",
         order = 10,
         getFrame = function()
@@ -228,6 +228,25 @@ function Mod:RegisterUnlockElement()
                 height = math.max(height, iconSize)
             end
             return math.max(width, 180), math.max(height, 20)
+        end,
+        -- Ancho/alto de la barra (los mismos ajustes que el panel de opciones).
+        sizeLabels = { width = "Bar Width", height = "Bar Height" },
+        getEditableSize = function()
+            local db = Mod and Mod.db
+            if not db then return nil end
+            return tonumber(db.width) or 135, tonumber(db.height) or 20
+        end,
+        setEditableSize = function(_, width, height)
+            local db = Mod and Mod.db
+            if not db then return end
+            if tonumber(db.width) == width and tonumber(db.height) == height then return end
+            if db.autoWidth and math.abs((tonumber(db.width) or 0) - width) >= 1 then
+                db.autoWidth = false
+                if Mod.StopAutoWidthWatch then Mod:StopAutoWidthWatch() end
+            end
+            db.width = math.max(20, width)
+            db.height = math.max(4, height)
+            if Mod.ApplySettings then Mod:ApplySettings() end
         end,
         getRect = function()
             local bar = Mod and Mod.bar

@@ -1,13 +1,9 @@
 -- Bags.lua
 -- Modules/Bags/Bags.lua (moved from Modules/Bags.lua)
--- Purpose: Provide KullThranUI's native bags module, own watched-item state and
--- a native backpack window, and bridge into Baganator through its documented
--- API while that temporary adapter remains in use.
--- Dependencies: Baganator public API only, with Syndicator available through
--- Baganator for inventory lookups.
--- Minimum compatible version: 792.
--- Extension: Replace the Baganator bridge helpers with richer native inventory
--- views without changing the public KullThranUI inventory API.
+-- Purpose: KullThranUI's native bags module. Owns the backpack window, the
+-- category layout, the item search that groups items into categories and
+-- the watched-item state.
+-- Dependencies: Blizzard container APIs only.
 
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local Mod = KT:NewModule("Bags", "AceEvent-3.0")
@@ -23,8 +19,6 @@ local function LText(key, fallback)
 end
 
 local KT_MODULE_NAME = "KullThranUI"
-local KT_BAGANATOR_NAME = "Baganator"
-local KT_BAGANATOR_MIN_VERSION = 792
 local KT_BAGS_DB_KEY = "kullthran_bags_window"
 local KT_BAGS_WINDOW_WIDTH = 780
 local KT_BAGS_WINDOW_HEIGHT = 540
@@ -509,21 +503,11 @@ local function KT_Bags_GetItemClassName(classID, fallback)
     return fallback or ""
 end
 
-local function KT_Bags_GetSyndicatorKeyword(key, fallback)
-    if _G.Syndicator and _G.Syndicator.Locales and _G.Syndicator.Locales[key] then
-        return _G.Syndicator.Locales[key]
-    end
+local function KT_Bags_GetKeyword(key, fallback)
     return fallback or ""
 end
 
-local function KT_Bags_GetBaganatorLocale(key, fallback)
-    if _G.BAGANATOR_LOCALES then
-        local locale = GetLocale and GetLocale() or "enUS"
-        local pack = _G.BAGANATOR_LOCALES[locale] or _G.BAGANATOR_LOCALES.enUS
-        if pack and pack[key] then
-            return pack[key]
-        end
-    end
+local function KT_Bags_GetLabel(key, fallback)
     return fallback or ""
 end
 
@@ -638,20 +622,20 @@ local function KT_Bags_BuildDefaultSourceToCategory()
 
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "keystone",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_KEYSTONE", LText("BAGS_CATEGORY_KEYSTONE", "Keystone")),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_KEYSTONE", "keystone"),
+        name = KT_Bags_GetLabel("CATEGORY_KEYSTONE", LText("BAGS_CATEGORY_KEYSTONE", "Keystone")),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_KEYSTONE", "keystone"),
         priorityOffset = -40,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "potion",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_POTION", LText("BAGS_CATEGORY_POTION", "Potion")),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_POTION", "potion"),
+        name = KT_Bags_GetLabel("CATEGORY_POTION", LText("BAGS_CATEGORY_POTION", "Potion")),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_POTION", "potion"),
         priorityOffset = -40,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "food",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_FOOD", LText("BAGS_CATEGORY_FOOD", "Food")),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_FOOD", "food"),
+        name = KT_Bags_GetLabel("CATEGORY_FOOD", LText("BAGS_CATEGORY_FOOD", "Food")),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_FOOD", "food"),
         priorityOffset = -40,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
@@ -683,13 +667,13 @@ local function KT_Bags_BuildDefaultSourceToCategory()
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "battlepet",
         name = KT_Bags_GetItemClassName(class and class.Battlepet, TOOLTIP_BATTLE_PET or "Battle Pet"),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_BATTLE_PET", "battle pet"),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_BATTLE_PET", "battle pet"),
         priorityOffset = -60,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "toy",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_TOY", TOY or LText("BAGS_CATEGORY_TOY", "Toy")),
-        search = "#" .. KT_Bags_SafeLower(TOY or "toy"),
+        name = KT_Bags_GetLabel("CATEGORY_TOY", TOY or LText("BAGS_CATEGORY_TOY", "Toy")),
+        search = "#toy",
         priorityOffset = -20,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
@@ -701,12 +685,8 @@ local function KT_Bags_BuildDefaultSourceToCategory()
 
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "hearthstone",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_HEARTHSTONE", LText("BAGS_CATEGORY_HEARTHSTONE", "Hearthstone")),
-        search = KT_Bags_SafeLower(KT_Bags_GetBaganatorLocale("CATEGORY_HEARTHSTONE", LText("BAGS_CATEGORY_HEARTHSTONE", "Hearthstone")))
-            .. "&#"
-            .. KT_Bags_SafeLower(ITEM_UNIQUE or "unique")
-            .. "&#"
-            .. KT_Bags_SafeLower(ITEM_SOULBOUND or "soulbound"),
+        name = KT_Bags_GetLabel("CATEGORY_HEARTHSTONE", LText("BAGS_CATEGORY_HEARTHSTONE", "Hearthstone")),
+        search = "#hearthstone",
         priorityOffset = -10,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
@@ -717,12 +697,12 @@ local function KT_Bags_BuildDefaultSourceToCategory()
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "reagent",
         name = KT_Bags_GetItemClassName(class and class.Reagent, LText("BAGS_CATEGORY_REAGENT", "Reagent")),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_REAGENT", "reagent"),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_REAGENT", "reagent"),
         priorityOffset = -50,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "auto_equipment_sets",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_EQUIPMENT_SETS_AUTO", LText("BAGS_CATEGORY_EQUIPMENT_SETS", "Equipment Sets")),
+        name = KT_Bags_GetLabel("CATEGORY_EQUIPMENT_SETS_AUTO", LText("BAGS_CATEGORY_EQUIPMENT_SETS", "Equipment Sets")),
         auto = "equipment_sets",
         priorityOffset = -10,
     })
@@ -737,11 +717,11 @@ local function KT_Bags_BuildDefaultSourceToCategory()
         search = "#"
             .. KT_Bags_SafeLower(KT_Bags_GetItemClassName(class and class.Armor, "armor"))
             .. "&#"
-            .. KT_Bags_GetSyndicatorKeyword("KEYWORD_GEAR", "gear"),
+            .. KT_Bags_GetKeyword("KEYWORD_GEAR", "gear"),
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "container",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_BAG", LText("BAGS_CATEGORY_BAG", "Bag")),
+        name = KT_Bags_GetLabel("CATEGORY_BAG", LText("BAGS_CATEGORY_BAG", "Bag")),
         search = "#" .. KT_Bags_SafeLower(KT_Bags_GetItemClassName(class and class.Container, "container")),
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
@@ -766,30 +746,30 @@ local function KT_Bags_BuildDefaultSourceToCategory()
         search = "#"
             .. KT_Bags_SafeLower(KT_Bags_GetItemClassName(class and class.Miscellaneous, "miscellaneous"))
             .. "&!#"
-            .. KT_Bags_GetSyndicatorKeyword("KEYWORD_GEAR", "gear"),
+            .. KT_Bags_GetKeyword("KEYWORD_GEAR", "gear"),
         priorityOffset = -30,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "other",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_OTHER", LText("BAGS_CATEGORY_OTHER", "Other")),
+        name = KT_Bags_GetLabel("CATEGORY_OTHER", LText("BAGS_CATEGORY_OTHER", "Other")),
         search = "",
         priorityOffset = -90,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "junk",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_JUNK", LText("BAGS_CATEGORY_JUNK", "Junk")),
-        search = "#" .. KT_Bags_GetSyndicatorKeyword("KEYWORD_JUNK", "junk"),
+        name = KT_Bags_GetLabel("CATEGORY_JUNK", LText("BAGS_CATEGORY_JUNK", "Junk")),
+        search = "#" .. KT_Bags_GetKeyword("KEYWORD_JUNK", "junk"),
         priorityOffset = -15,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "auto_inventory_slots",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_INVENTORY_SLOTS_AUTO", LText("BAGS_CATEGORY_INVENTORY_SLOTS", "Inventory Slots")),
+        name = KT_Bags_GetLabel("CATEGORY_INVENTORY_SLOTS_AUTO", LText("BAGS_CATEGORY_INVENTORY_SLOTS", "Inventory Slots")),
         auto = "inventory_slots",
         priorityOffset = -40,
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "auto_recents",
-        name = KT_Bags_GetBaganatorLocale("CATEGORY_RECENT_AUTO", LText("BAGS_CATEGORY_RECENT", "Recent")),
+        name = KT_Bags_GetLabel("CATEGORY_RECENT_AUTO", LText("BAGS_CATEGORY_RECENT", "Recent")),
         auto = "recents",
         priorityOffset = 10000,
     })
@@ -802,7 +782,7 @@ local function KT_Bags_BuildDefaultSourceToCategory()
     if _G.TSM_API then
         KT_Bags_AddDefaultCategory(sourceToCategory, {
             key = "auto_tradeskillmaster",
-            name = KT_Bags_GetBaganatorLocale("CATEGORY_TRADESKILLMASTER_AUTO", "TradeSkillMaster (Auto)"),
+            name = KT_Bags_GetLabel("CATEGORY_TRADESKILLMASTER_AUTO", "TradeSkillMaster (Auto)"),
             auto = "tradeskillmaster",
             priorityOffset = -15,
         })
@@ -810,19 +790,6 @@ local function KT_Bags_BuildDefaultSourceToCategory()
 
     KT_BAGS_DEFAULT_SOURCE_TO_CATEGORY = sourceToCategory
     return sourceToCategory
-end
-
-local function KT_Bags_GetBaganatorProfile()
-    if not _G.BAGANATOR_CONFIG or not _G.BAGANATOR_CONFIG.Profiles or not _G.BAGANATOR_CURRENT_PROFILE then
-        if not _G.BAGANATOR_CONFIG or not _G.BAGANATOR_CONFIG.Profiles then
-            return nil
-        end
-        for _, profile in pairs(_G.BAGANATOR_CONFIG.Profiles) do
-            return profile
-        end
-        return nil
-    end
-    return _G.BAGANATOR_CONFIG.Profiles[_G.BAGANATOR_CURRENT_PROFILE]
 end
 
 local function KT_Bags_GetAddedItemData(itemID, itemLink)
@@ -860,71 +827,15 @@ local function KT_Bags_GetEquipmentSetMap()
     return map
 end
 
-local function KT_Bags_GetBaganatorCategoryData()
-    local baganator = _G.Baganator
-    local opts = baganator and baganator.Config and baganator.Config.Options or nil
-    local displayOrder
-    local customCategories
-    local categoryMods
-    local sections
-
-    if baganator and baganator.Config and baganator.Config.Get and opts then
-        displayOrder = baganator.Config.Get(opts.CATEGORY_DISPLAY_ORDER)
-        customCategories = baganator.Config.Get(opts.CUSTOM_CATEGORIES)
-        categoryMods = baganator.Config.Get(opts.CATEGORY_MODIFICATIONS)
-        sections = baganator.Config.Get(opts.CATEGORY_SECTIONS)
-    else
-        local profile = KT_Bags_GetBaganatorProfile()
-        if profile then
-            displayOrder = profile.category_display_order
-            customCategories = profile.custom_categories
-            categoryMods = profile.category_modifications
-            sections = profile.category_sections
-        end
-    end
-
-    if type(displayOrder) ~= "table" or #displayOrder == 0 then
-        displayOrder = CopyTable(KT_BAGS_CATEGORY_DEFAULT_ORDER)
-    else
-        displayOrder = CopyTable(displayOrder)
-    end
-
-    if type(sections) ~= "table" or next(sections) == nil then
-        sections = CopyTable(KT_BAGS_CATEGORY_DEFAULT_SECTIONS)
-    else
-        sections = CopyTable(sections)
-    end
-
-    if type(customCategories) ~= "table" then
-        customCategories = {}
-    else
-        customCategories = CopyTable(customCategories)
-    end
-
-    if type(categoryMods) ~= "table" then
-        categoryMods = {}
-    else
-        categoryMods = CopyTable(categoryMods)
-    end
-
-    local dividerName = KT_BAGS_CATEGORY_DIVIDER
-    local sectionEnd = KT_BAGS_CATEGORY_SECTION_END
-    local sourceToCategory = KT_Bags_BuildDefaultSourceToCategory()
-
-    if baganator and baganator.CategoryViews and baganator.CategoryViews.Constants then
-        sourceToCategory = baganator.CategoryViews.Constants.SourceToCategory or sourceToCategory
-        dividerName = baganator.CategoryViews.Constants.DividerName or dividerName
-        sectionEnd = baganator.CategoryViews.Constants.SectionEnd or sectionEnd
-    end
-
+local function KT_Bags_GetCategoryData()
     return {
-        displayOrder = displayOrder,
-        customCategories = customCategories,
-        categoryMods = categoryMods,
-        sections = sections,
-        sourceToCategory = sourceToCategory,
-        dividerName = dividerName,
-        sectionEnd = sectionEnd,
+        displayOrder = CopyTable(KT_BAGS_CATEGORY_DEFAULT_ORDER),
+        customCategories = {},
+        categoryMods = {},
+        sections = CopyTable(KT_BAGS_CATEGORY_DEFAULT_SECTIONS),
+        sourceToCategory = KT_Bags_BuildDefaultSourceToCategory(),
+        dividerName = KT_BAGS_CATEGORY_DIVIDER,
+        sectionEnd = KT_BAGS_CATEGORY_SECTION_END,
     }
 end
 
@@ -967,8 +878,8 @@ local function KT_Bags_GetAutoCategoryDetails(category, everything, equipmentSet
                 icons[index] = equipmentSetMap and equipmentSetMap.__setIcons and equipmentSetMap.__setIcons[setName] or nil
             end
         else
-            table.insert(searchLabels, KT_Bags_GetBaganatorLocale("CATEGORY_EQUIPMENT_SET", CATEGORY_EQUIPMENT_SET or "Equipment Set"))
-            table.insert(searches, "#" .. (Syndicator and Syndicator.Locales and Syndicator.Locales.KEYWORD_EQUIPMENT_SET or "equipment set"))
+            table.insert(searchLabels, KT_Bags_GetLabel("CATEGORY_EQUIPMENT_SET", CATEGORY_EQUIPMENT_SET or "Equipment Set"))
+            table.insert(searches, "#" .. "equipment set")
         end
     elseif category.auto == "inventory_slots" then
         local inventorySlots = {
@@ -1007,13 +918,13 @@ local function KT_Bags_GetAutoCategoryDetails(category, everything, equipmentSet
             local name = _G[slot]
             if name then
                 table.insert(searchLabels, name)
-                local gearKeyword = Syndicator and Syndicator.Locales and Syndicator.Locales.KEYWORD_GEAR or "gear"
+                local gearKeyword = "gear"
                 table.insert(searches, "#" .. gearKeyword .. "&#" .. name:lower())
             end
         end
     elseif category.auto == "recents" then
         table.insert(searches, "")
-        table.insert(searchLabels, KT_Bags_GetBaganatorLocale("CATEGORY_RECENT", RECENTLY_LOOTED or "Recent"))
+        table.insert(searchLabels, KT_Bags_GetLabel("CATEGORY_RECENT", RECENTLY_LOOTED or "Recent"))
         local newItems = {}
         for _, item in ipairs(everything) do
             if item.isNewItem and item.key then
@@ -1096,7 +1007,7 @@ local function KT_Bags_ComposeCategories(everything, location, categoryData, equ
             })
             local sectionDetails = sections[sectionID]
             local sectionName = sectionDetails and sectionDetails.name or sectionID
-            local label = KT_Bags_GetBaganatorLocale("SECTION_" .. sectionName, sectionName)
+            local label = LText("BAGS_SECTION_" .. sectionName, sectionName:sub(1, 1) .. sectionName:sub(2):lower())
             table.insert(currentSection, sectionID)
             table.insert(allDetails, {
                 type = "section",
@@ -1271,6 +1182,164 @@ local function KT_Bags_ComposeCategories(everything, location, categoryData, equ
     return result
 end
 
+local KT_BAGS_HEARTHSTONE_ITEM_ID = 6948
+local KT_Bags_ClassKeywordCache = {}
+local KT_Bags_HearthstoneName
+
+local function KT_Bags_GetClassKeyword(classID)
+    if not classID then
+        return ""
+    end
+    local cached = KT_Bags_ClassKeywordCache[classID]
+    if cached == nil then
+        cached = KT_Bags_SafeLower(KT_Bags_GetItemClassName(classID, ""))
+        KT_Bags_ClassKeywordCache[classID] = cached
+    end
+    return cached
+end
+
+local function KT_Bags_GetItemQuality(item)
+    return item.quality or (item.itemInfo and item.itemInfo.quality)
+end
+
+local function KT_Bags_IsGear(item)
+    local equipLoc = item.equipLoc
+    if equipLoc == "INVTYPE_PROFESSION_TOOL" or equipLoc == "INVTYPE_PROFESSION_GEAR" then
+        return true
+    end
+    return KT_Bags_IsRealEquipment(item.classID, equipLoc)
+end
+
+local function KT_Bags_IsHearthstone(item)
+    if item.itemID == KT_BAGS_HEARTHSTONE_ITEM_ID then
+        return true
+    end
+    if not KT_Bags_HearthstoneName and C_Item and C_Item.GetItemNameByID then
+        local name = C_Item.GetItemNameByID(KT_BAGS_HEARTHSTONE_ITEM_ID)
+        if name then
+            KT_Bags_HearthstoneName = KT_Bags_SafeLower(name)
+        elseif C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(KT_BAGS_HEARTHSTONE_ITEM_ID)
+        end
+    end
+    if not KT_Bags_HearthstoneName or not (item.itemInfo and item.itemInfo.isBound) then
+        return false
+    end
+    local name = item.itemName
+    if not name and item.itemID and C_Item and C_Item.GetItemNameByID then
+        name = C_Item.GetItemNameByID(item.itemID)
+    end
+    return name ~= nil and KT_Bags_SafeLower(name):find(KT_Bags_HearthstoneName, 1, true) ~= nil
+end
+
+local KT_Bags_KeywordTests = {
+    gear = KT_Bags_IsGear,
+    junk = function(item)
+        return KT_Bags_GetItemQuality(item) == 0 and item.classID ~= LE_ITEM_CLASS_QUESTITEM
+    end,
+    keystone = function(item)
+        local reagentClass = Enum and Enum.ItemClass and Enum.ItemClass.Reagent
+        local keystoneSub = Enum and Enum.ItemReagentSubclass and Enum.ItemReagentSubclass.Keystone
+        if reagentClass and item.classID == reagentClass and keystoneSub and item.subclassID == keystoneSub then
+            return true
+        end
+        return item.itemLink ~= nil and item.itemLink:find("|Hkeystone:", 1, true) ~= nil
+    end,
+    potion = function(item)
+        local sub = Enum and Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.Potion or 1
+        return item.classID == LE_ITEM_CLASS_CONSUMABLE and item.subclassID == sub
+    end,
+    food = function(item)
+        local sub = Enum and Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.Fooddrink or 5
+        return item.classID == LE_ITEM_CLASS_CONSUMABLE and item.subclassID == sub
+    end,
+    reagent = function(item)
+        local reagentClass = Enum and Enum.ItemClass and Enum.ItemClass.Reagent or 5
+        return item.classID == reagentClass
+    end,
+    ["battle pet"] = function(item)
+        local petClass = Enum and Enum.ItemClass and Enum.ItemClass.Battlepet
+        if petClass and item.classID == petClass then
+            return true
+        end
+        return item.itemLink ~= nil and item.itemLink:find("|Hbattlepet:", 1, true) ~= nil
+    end,
+    toy = function(item)
+        if not item.itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then
+            return false
+        end
+        return C_ToyBox.GetToyInfo(item.itemID) ~= nil
+    end,
+    hearthstone = KT_Bags_IsHearthstone,
+    ["equipment set"] = function(item)
+        return item.setInfo ~= nil and #item.setInfo > 0
+    end,
+}
+
+local function KT_Bags_ItemHasKeyword(item, keyword)
+    local test = KT_Bags_KeywordTests[keyword]
+    if test and test(item) then
+        return true
+    end
+    if keyword == KT_Bags_GetClassKeyword(item.classID) then
+        return true
+    end
+    local equipLoc = item.equipLoc
+    local slotName = equipLoc and equipLoc ~= "" and _G[equipLoc]
+    if type(slotName) == "string" and KT_Bags_SafeLower(slotName) == keyword then
+        return true
+    end
+    return false
+end
+
+--- Evaluate a category search against a bag item.
+-- Terms are joined with "&" (and) or "|" (or). A leading "!" negates a term,
+-- "#word" matches an item attribute (class, slot, gear, junk...) and any other
+-- text matches the item name. An empty search matches every item.
+-- @param item table Collected bag slot data.
+-- @param search string Search expression.
+-- @return boolean True when the item matches.
+local function KT_Bags_CheckItem(item, search)
+    if not item or (not item.itemID and not item.itemLink) then
+        return false
+    end
+    if search == nil or search == "" then
+        return true
+    end
+
+    search = KT_Bags_SafeLower(search)
+    for alternative in search:gmatch("[^|]+") do
+        local allMatch = true
+        for term in alternative:gmatch("[^&]+") do
+            local negate = false
+            if term:sub(1, 1) == "!" then
+                negate = true
+                term = term:sub(2)
+            end
+
+            local matched
+            if term:sub(1, 1) == "#" then
+                matched = KT_Bags_ItemHasKeyword(item, term:sub(2))
+            else
+                matched = KT_Bags_SafeLower(item.itemName):find(term, 1, true) ~= nil
+            end
+
+            if negate then
+                matched = not matched
+            end
+            if not matched then
+                allMatch = false
+                break
+            end
+        end
+        if allMatch then
+            return true
+        end
+    end
+    return false
+end
+
+
 local function KT_Bags_ApplyCategorySearches(composed, everything)
     if not composed or not composed.details or not composed.prioritisedSearches then
         return
@@ -1303,11 +1372,7 @@ local function KT_Bags_ApplyCategorySearches(composed, everything)
             table.insert(detailsBySearch[search].results, item)
         else
             for _, searchCandidate in ipairs(composed.prioritisedSearches) do
-                local match = Syndicator.Search.CheckItem(item, searchCandidate)
-                if match == nil and item.itemID then
-                    C_Item.RequestLoadItemDataByID(item.itemID)
-                end
-                if match then
+                if KT_Bags_CheckItem(item, searchCandidate) then
                     table.insert(detailsBySearch[searchCandidate].results, item)
                     break
                 end
@@ -1352,7 +1417,7 @@ end
 _G.SLASH_KTBAGSDEBUG1 = "/ktbagsdebug"
 SlashCmdList["KTBAGSDEBUG"] = function()
     Mod._ktBagsDebug = not Mod._ktBagsDebug
-    local state = Mod._ktBagsDebug and "ON" or "OFF"
+    local state = Mod._ktBagsDebug and LText("ON", "ON") or LText("OFF", "OFF")
     if KT and KT.Print then
         KT:Print("[ktbagsdebug] " .. state)
     elseif _G.DEFAULT_CHAT_FRAME then
@@ -1360,42 +1425,6 @@ SlashCmdList["KTBAGSDEBUG"] = function()
     else
         print("[ktbagsdebug] " .. state)
     end
-end
-
---- Check whether Baganator and its public API are currently available.
--- @return table|nil Baganator.API when available, otherwise nil.
-local function KT_IsBaganatorActive()
-    if C_AddOns.IsAddOnLoaded(KT_BAGANATOR_NAME) and _G.Baganator and _G.Baganator.API then
-        return _G.Baganator.API
-    end
-    return nil
-end
-
---- Parse the first numeric portion of an addon version string.
--- @param addonName string Addon name to inspect.
--- @return number|nil Parsed version number, or nil when unavailable.
-local function KT_GetAddonVersionNumber(addonName)
-    local versionString = C_AddOns.GetAddOnMetadata(addonName, "Version")
-    if type(versionString) ~= "string" then
-        return nil
-    end
-
-    return tonumber(versionString:match("(%d+)"))
-end
-
---- Check whether the loaded Baganator version is within the supported range.
--- @return boolean True when compatible or version metadata is unavailable.
-local function KT_IsBaganatorCompatible()
-    local versionNumber = KT_GetAddonVersionNumber(KT_BAGANATOR_NAME)
-    return versionNumber == nil or versionNumber >= KT_BAGANATOR_MIN_VERSION
-end
-
-function Mod:CanUseCopiedCategories()
-    if not _G.Syndicator or not _G.Syndicator.Search or not _G.Syndicator.Locales then
-        return false
-    end
-
-    return KT_Bags_GetBaganatorCategoryData() ~= nil
 end
 
 --- Normalize public API arguments so both dot and colon calls work.
@@ -1818,12 +1847,9 @@ end
 function Mod:OnInitialize()
     self:EnsureDB()
 
-    self.bridgeRegistered = false
     self.editModeRegistered = false
     self.unlockRegistered = false
     self.itemButtons = {}
-    self.lastInventoryInfo = nil
-    self.lastInventoryQuery = nil
     self.selectedItemLink = nil
     self.selectedItemName = nil
     self.selectedCategorySource = nil
@@ -1833,10 +1859,6 @@ function Mod:OnInitialize()
     self:RefreshWatchedItemsReference()
 
     local publicAddon = KT_GetPublicAddon()
-    publicAddon.GetItemInventory = function(first, second)
-        local itemLink = KT_NormalizePublicSingleArg(first, second)
-        return self:GetItemInventory(itemLink)
-    end
     publicAddon.WatchItem = function(first, second)
         local itemLink = KT_NormalizePublicSingleArg(first, second)
         return self:AddWatchedItem(itemLink)
@@ -1883,12 +1905,6 @@ function Mod:OnEnable()
     KT:RegisterChatCommand("ktbags", function()
         self:ToggleWindow()
     end)
-
-    if C_AddOns.IsAddOnLoaded(KT_BAGANATOR_NAME) then
-        self:RegisterBaganatorBridge()
-    else
-        self:RegisterEvent("ADDON_LOADED")
-    end
 end
 
 function Mod:IsPositionLocked()
@@ -1956,19 +1972,6 @@ function Mod:EnsureThemeHook()
     self.themeHooked = true
 end
 
---- Handle addon loading and defer bridge registration until Baganator is ready.
--- @param event string Fired event name.
--- @param addonName string Loaded addon name.
--- @return nil
-function Mod:ADDON_LOADED(event, addonName)
-    if addonName ~= KT_BAGANATOR_NAME then
-        return
-    end
-
-    self:RegisterBaganatorBridge()
-    self:UnregisterEvent("ADDON_LOADED")
-end
-
 local KT_Bags_UpdateItemCooldown
 
 --- Register the live bag events the native inventory listens to.
@@ -1976,6 +1979,7 @@ local KT_Bags_UpdateItemCooldown
 function Mod:RegisterBagEvents()
     self:RegisterEvent("BAG_UPDATE_DELAYED", "HandleBagContentsChanged")
     self:RegisterEvent("BAG_UPDATE_COOLDOWN", "RefreshItemCooldowns")
+    self:RegisterEvent("PLAYER_REGEN_ENABLED", "HandleBagCombatEnd")
     self:RegisterEvent("ITEM_LOCK_CHANGED", "HandleBagLockChanged")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "HandleBagContentsChanged")
     self:RegisterEvent("PLAYER_MONEY", "RefreshGoldDisplay")
@@ -1994,6 +1998,12 @@ function Mod:HandleBagContentsChanged()
     local startedAt = profiler and profiler:Begin("bags.refresh.full")
     self:RefreshBagSlots()
     if startedAt then profiler:End("bags.refresh.full", startedAt) end
+end
+
+function Mod:HandleBagCombatEnd()
+    if self.bagRefreshPending then
+        self:HandleBagContentsChanged()
+    end
 end
 
 function Mod:RefreshItemCooldowns()
@@ -2042,34 +2052,6 @@ end
 function Mod:RefreshWatchedItemsReference()
     self.watchedItems = self.db.watchedItems
     _G.KT_WatchedItems = self.watchedItems
-end
-
---- Create the module-owned information panel registered as a Baganator region.
--- @return Frame Backpack region frame.
-function Mod:EnsureBagsPanel()
-    local panel = _G.KT_BagsPanel
-    if panel then
-        return panel
-    end
-
-    panel = CreateFrame("Frame", "KT_BagsPanel", UIParent, "BackdropTemplate")
-    panel:SetSize(200, 28)
-    panel:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-    })
-    panel:SetBackdropColor(0.06, 0.07, 0.10, 0.92)
-    panel:SetBackdropBorderColor(KT_BRAND_COLOR.r, KT_BRAND_COLOR.g, KT_BRAND_COLOR.b, 0.35)
-
-    local text = panel:CreateFontString(nil, "OVERLAY")
-    text:SetFont(KT_DEFAULT_FONT, 12, "OUTLINE")
-    text:SetPoint("CENTER", panel, "CENTER", 0, 0)
-    text:SetText(KT_MODULE_NAME)
-    text:SetTextColor(KT_BRAND_COLOR.r, KT_BRAND_COLOR.g, KT_BRAND_COLOR.b, 1)
-    panel.KT_Text = text
-
-    return panel
 end
 
 --- Create the native KullThranUI backpack window.
@@ -2553,7 +2535,7 @@ function Mod:CreateNativeWindow()
             local invID = C_Container and C_Container.ContainerIDToInventoryID and C_Container.ContainerIDToInventoryID(bagID)
             GameTooltip:SetOwner(button, "ANCHOR_TOP")
             if not (invID and GameTooltip:SetInventoryItem("player", invID)) then
-                GameTooltip:SetText(BAGSLOT or "Bag", 1, 1, 1)
+                GameTooltip:SetText(BAGSLOT or LText("Bag", "Bag"), 1, 1, 1)
             end
             local ar, ag, ab = KT_Bags_GetAccentColor()
             button:SetBackdropBorderColor(ar, ag, ab, 1)
@@ -2845,7 +2827,6 @@ function Mod:AddWatchedItem(itemLink)
     end
 
     self.watchedItems[itemLink] = true
-    self:RequestItemButtonsRefresh()
     self:RefreshBagSlots()
     return true
 end
@@ -2859,7 +2840,6 @@ function Mod:RemoveWatchedItem(itemLink)
     end
 
     self.watchedItems[itemLink] = nil
-    self:RequestItemButtonsRefresh()
     self:RefreshBagSlots()
     return true
 end
@@ -2869,15 +2849,6 @@ end
 -- @return boolean True when watched.
 function Mod:IsWatchedItem(itemLink)
     return itemLink ~= nil and self.watchedItems[itemLink] == true
-end
-
---- Request an item button refresh through the public Baganator API when active.
--- @return nil
-function Mod:RequestItemButtonsRefresh()
-    local api = KT_IsBaganatorActive()
-    if api then
-        api.RequestItemButtonsRefresh()
-    end
 end
 
 --- Apply the configured panel color across the native bags window surfaces.
@@ -3022,12 +2993,8 @@ function Mod:OpenOptionsPage()
     end
 end
 
-function Mod:BuildBaganatorCategoryLayout(visibleSlots)
-    if not self:CanUseCopiedCategories() then
-        return nil
-    end
-
-    local categoryData = KT_Bags_GetBaganatorCategoryData()
+function Mod:BuildCategoryLayout(visibleSlots)
+    local categoryData = KT_Bags_GetCategoryData()
     if not categoryData then
         return nil
     end
@@ -3269,7 +3236,7 @@ local function KT_Bags_StyleItemButton(button)
     end
 end
 
--- ContainerFrameItemButtonTemplate (and Baganator's live item button) ship with
+-- ContainerFrameItemButtonTemplate ship with
 -- several decorative textures (slot art, borders, "new item" glows). In our
 -- native bags window we render our own holder backdrop/border, so we strip
 -- those layers to avoid persistent blue slot highlights after reload/login.
@@ -3305,7 +3272,6 @@ local function KT_Bags_StripItemButtonArt(button)
     hideAndDetach(button.SlotBackground or button.SlotTexture or button.Background)
     hideAndDetach(button.SearchOverlay or button.searchOverlay)
     hideAndDetach(button.ItemContextOverlay)
-    hideAndDetach(button.BaganatorBagHighlight)
     hideAndDetach(button.IconBorder or button.iconBorder)
     hideAndDetach(button.IconOverlay or button.iconOverlay)
     hideAndDetach(button.JunkIcon or button.junkIcon)
@@ -3393,9 +3359,6 @@ function Mod:EnsureItemButton(index)
     local button
     do
         local templates = { "ContainerFrameItemButtonTemplate" }
-        if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(KT_BAGANATOR_NAME) then
-            templates = { "BaganatorRetailLiveContainerItemButtonTemplate", "ContainerFrameItemButtonTemplate" }
-        end
         for _, template in ipairs(templates) do
             local ok, created = pcall(CreateFrame, "ItemButton", nil, indexFrame, template)
             if ok and created then
@@ -3421,33 +3384,10 @@ function Mod:EnsureItemButton(index)
         button:RegisterForDrag("LeftButton")
     end
 
-    -- If this is a Baganator live item button, apply its texture settings once.
-    if button.UpdateTextures then
-        pcall(function()
-            button:UpdateTextures()
-        end)
-    end
-
     -- Remove Blizzard's default blue slot art (normal texture / slot background),
     -- since the KT holder already provides the background + border.
     KT_Bags_StripItemButtonArt(button)
     KT_Bags_StyleItemButton(button)
-
-    -- Baganator item buttons support a "bag highlight" overlay (atlas "bags-glow-heirloom")
-    -- toggled via :BGRSetHighlight(). After /reload this can remain stuck visible when
-    -- the frame is embedded into other UIs. We never rely on it in the KT bags window,
-    -- so force-hide it any time it's toggled.
-    if hooksecurefunc and button.BGRSetHighlight and not button.KT_BGRHighlightSuppressed then
-        button.KT_BGRHighlightSuppressed = true
-        hooksecurefunc(button, "BGRSetHighlight", function(widget)
-            if widget and widget.BaganatorBagHighlight then
-                widget.BaganatorBagHighlight:Hide()
-                if widget.BaganatorBagHighlight.SetParent then
-                    widget.BaganatorBagHighlight:SetParent(KT_Bags_GetHiddenParent())
-                end
-            end
-        end)
-    end
 
     -- Some templates re-show IconBorder/IconOverlay from SetItemButtonQuality during async item info
     -- callbacks. Strip again after each quality update so the KT holder border remains the only one.
@@ -3507,7 +3447,7 @@ function Mod:EnsureItemButton(index)
     button.KT_ItemLevelText:SetTextColor(1.0, 0.82, 0.0, 1.0)
     button.KT_ItemLevelText:Hide()
 
-    -- Dedicated quest-item highlight. Blizzard and Baganator quest overlays are
+    -- Dedicated quest-item highlight. Blizzard quest overlays are
     -- removed above, so keep this border owned by KUI and above the item icon.
     button.KT_QuestItemBorder = CreateFrame("Frame", nil, button)
     button.KT_QuestItemBorder:SetAllPoints(button)
@@ -3627,9 +3567,6 @@ function Mod:EnsureBackgroundDropSlot()
     indexFrame:SetID(BACKPACK_START or 0)
 
     local template = "ContainerFrameItemButtonTemplate"
-    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(KT_BAGANATOR_NAME) then
-        template = "BaganatorRetailLiveContainerItemButtonTemplate"
-    end
 
     local ok, dropButton = pcall(CreateFrame, "ItemButton", nil, indexFrame, template)
     if not ok or not dropButton then
@@ -3918,7 +3855,7 @@ function Mod:UpdateItemButton(button, slotData)
             isNewItem = isNewItem,
             isBound = itemInfo and itemInfo.isBound or false,
             hasLoot = itemInfo and itemInfo.hasLoot or false,
-            -- Match Baganator/Syndicator live-container itemLocation shape.
+            -- Match the live-container itemLocation shape.
             itemLocation = (bagID and slotID) and { bagID = bagID, slotIndex = slotID } or nil,
         })
     elseif itemInfo then
@@ -4570,64 +4507,6 @@ function Mod:RefreshSidePanel(used, free, total)
     self:RefreshCurrencyDisplay()
 end
 
-function Mod:GetBaganatorCategoryFilter()
-    if self.baganatorCategoryFilter then
-        return self.baganatorCategoryFilter
-    end
-
-    if not _G.BaganatorCategoryViewsCategoryFilterMixin then
-        return nil
-    end
-
-    local filter = CreateFrame("Frame", nil, UIParent)
-    Mixin(filter, _G.BaganatorCategoryViewsCategoryFilterMixin)
-    filter:OnLoad()
-    filter:SetScript("OnHide", filter.OnHide)
-    self.baganatorCategoryFilter = filter
-    return filter
-end
-
-function Mod:GetBaganatorCategoryGrouping()
-    if self.baganatorCategoryGrouping then
-        return self.baganatorCategoryGrouping
-    end
-
-    if not _G.BaganatorCategoryViewsCategoryGroupingMixin then
-        return nil
-    end
-
-    local grouping = CreateFrame("Frame", nil, UIParent)
-    Mixin(grouping, _G.BaganatorCategoryViewsCategoryGroupingMixin)
-    grouping:SetScript("OnHide", grouping.OnHide)
-    self.baganatorCategoryGrouping = grouping
-    return grouping
-end
-
-function Mod:ApplyBaganatorCategoryFilters(composed, everything, callback)
-    local filter = self:GetBaganatorCategoryFilter()
-    if not filter then
-        return false
-    end
-
-    local grouping = self:GetBaganatorCategoryGrouping()
-
-    filter:Cancel()
-    if grouping then
-        grouping:Cancel()
-    end
-
-    if grouping then
-        filter:ApplySearches(composed, everything, function()
-            grouping:ApplyGroupings(composed, function()
-                callback()
-            end)
-        end)
-    else
-        filter:ApplySearches(composed, everything, callback)
-    end
-    return true
-end
-
 function Mod:SetSidebarSelection(kind, source)
     self.selectedBagID = nil
     if kind == "compact" then
@@ -5268,6 +5147,14 @@ end
 --- Refresh the native backpack grid from live container contents.
 -- @return nil
 function Mod:RefreshBagSlots()
+    -- The item buttons are Blizzard's protected container templates: re-sizing,
+    -- re-anchoring or showing/hiding them during combat lockdown raises
+    -- ADDON_ACTION_BLOCKED (seen when using a potion from the bags in combat).
+    -- Defer the rebuild until combat ends.
+    if InCombatLockdown and InCombatLockdown() then
+        self.bagRefreshPending = true
+        return
+    end
     self.bagRefreshPending = nil
     local window = self:CreateNativeWindow()
     local isCompact = self.db.viewMode == "compact"
@@ -5333,7 +5220,7 @@ function Mod:RefreshBagSlots()
     self:RefreshBackgroundDropTarget()
 
     if self.db.viewMode == "category" then
-        local composed = self:BuildBaganatorCategoryLayout(visibleSlots)
+        local composed = self:BuildCategoryLayout(visibleSlots)
         if composed then
             local function render()
                 if self.categoryLayoutRequestID ~= requestID then
@@ -5342,170 +5229,14 @@ function Mod:RefreshBagSlots()
                 self:RenderCategoryLayout(window, composed, visibleSlots, columns, gridWidth, used, free, total)
             end
 
-            if self:ApplyBaganatorCategoryFilters(composed, visibleSlots, render) then
-                return
-            end
-
             KT_Bags_ApplyCategorySearches(composed, visibleSlots)
             render()
         else
-            if self.baganatorCategoryFilter then
-                self.baganatorCategoryFilter:Cancel()
-            end
             self:RenderFallbackCategoryLayout(window, visibleSlots, columns, gridWidth, used, free, total)
         end
     else
-        if self.baganatorCategoryFilter then
-            self.baganatorCategoryFilter:Cancel()
-        end
         self:RenderCompactLayout(window, visibleSlots, columns, gridWidth, used, free, total)
     end
-end
-
---- Create the watched-item corner marker frame for a Baganator item button.
--- @param itemButton Button Baganator item button.
--- @return Frame Corner frame attached to the item button.
-function Mod:CreateCornerWidget(itemButton)
-    local cornerFrame = CreateFrame("Frame", nil, itemButton)
-    cornerFrame:SetSize(14, 14)
-    cornerFrame:SetPoint("TOPLEFT", itemButton, "TOPLEFT", 1, -1)
-
-    local label = cornerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", cornerFrame, "TOPLEFT", 0, 0)
-    label:SetTextColor(1.0, 0.82, 0.0, 1.0)
-    label:SetText("")
-    cornerFrame.KT_Label = label
-
-    return cornerFrame
-end
-
---- Protected corner init callback passed to Baganator.
--- @param itemButton Button Baganator item button.
--- @return Frame|nil Corner frame for the item button.
-function Mod:CornerInit(itemButton)
-    local ok, frame = KT_SafeCallback(function()
-        return self:CreateCornerWidget(itemButton)
-    end)
-    if ok then
-        return frame
-    end
-    return nil
-end
-
---- Update the watched-item marker based on the module-owned watch list.
--- @param cornerFrame Frame Corner frame created during initialization.
--- @param itemDetails table Item details supplied by Baganator.
--- @return boolean True to show the widget, false to hide it.
-function Mod:UpdateCornerWidget(cornerFrame, itemDetails)
-    if not cornerFrame or type(itemDetails) ~= "table" then
-        return false
-    end
-
-    if self:IsWatchedItem(itemDetails.itemLink) then
-        cornerFrame.KT_Label:SetText(KT_WATCH_ICON)
-        return true
-    end
-
-    cornerFrame.KT_Label:SetText("")
-    return false
-end
-
---- Protected corner update callback passed to Baganator.
--- @param cornerFrame Frame Corner frame created during initialization.
--- @param itemDetails table Item details supplied by Baganator.
--- @return boolean|nil Visibility hint for Baganator.
-function Mod:CornerUpdate(cornerFrame, itemDetails)
-    local ok, shouldShow = KT_SafeCallback(function()
-        return self:UpdateCornerWidget(cornerFrame, itemDetails)
-    end)
-    if ok then
-        return shouldShow
-    end
-    return nil
-end
-
---- Extract the quest ID from a live bag slot using Blizzard container APIs.
--- @param bagID number Bag identifier provided by Baganator.
--- @param slotID number Slot identifier provided by Baganator.
--- @return number|nil Quest ID when available.
-function Mod:GetContainerQuestID(bagID, slotID)
-    if not C_Container or not C_Container.GetContainerItemQuestInfo then
-        return nil
-    end
-
-    local questInfo = C_Container.GetContainerItemQuestInfo(bagID, slotID)
-    if type(questInfo) == "table" then
-        return questInfo.questID
-    end
-
-    return questInfo
-end
-
---- Mark completed quest items as junk through Baganator's junk plugin API.
--- @param bagID number Bag identifier.
--- @param slotID number Slot identifier.
--- @param itemID number Item ID.
--- @param itemLink string|nil Full item link.
--- @return boolean|nil True when the item should be marked as junk.
-function Mod:QuestJunkCallback(bagID, slotID, itemID, itemLink)
-    local _, _, _, _, _, classID = GetItemInfoInstant(itemLink or itemID or 0)
-    if classID ~= LE_ITEM_CLASS_QUESTITEM then
-        return false
-    end
-
-    local questID = self:GetContainerQuestID(bagID, slotID)
-    if not questID then
-        return false
-    end
-
-    return C_QuestLog.IsQuestFlaggedCompleted(questID) or false
-end
-
---- Protected junk plugin callback passed to Baganator.
--- @param bagID number Bag identifier.
--- @param slotID number Slot identifier.
--- @param itemID number Item ID.
--- @param itemLink string|nil Full item link.
--- @return boolean|nil True when the item should be marked as junk.
-function Mod:ProtectedQuestJunkCallback(bagID, slotID, itemID, itemLink)
-    local ok, isJunk = KT_SafeCallback(function()
-        return self:QuestJunkCallback(bagID, slotID, itemID, itemLink)
-    end)
-    if ok then
-        return isJunk
-    end
-    return nil
-end
-
---- Create or update a KullThranUI border overlay for a Baganator item button.
--- @param itemButton Frame Item button region skinned by Baganator.
--- @return nil
-function Mod:ApplyItemButtonBorder(itemButton)
-    if itemButton and itemButton.KT_BagsBrandBorder then
-        itemButton.KT_BagsBrandBorder:Hide()
-    end
-end
-
---- Apply the KullThranUI brand border only when the Blizzard Baganator skin is active.
--- @param details table Skin listener payload from Baganator.
--- @return nil
-function Mod:SkinListener(details)
-    if type(details) ~= "table" or details.regionType ~= "ItemButton" or not details.region then
-        return
-    end
-
-    if details.region.KT_BagsBrandBorder then
-        details.region.KT_BagsBrandBorder:Hide()
-    end
-end
-
---- Protected skin listener callback passed to Baganator.
--- @param details table Skin listener payload from Baganator.
--- @return nil
-function Mod:ProtectedSkinListener(details)
-    KT_SafeCallback(function()
-        self:SkinListener(details)
-    end)
 end
 
 --- Register the native bags window with KullThranUI Edit Mode.
@@ -5684,62 +5415,3 @@ function Mod:RegisterWithUnlockMode()
     self.unlockRegistered = true
 end
 
---- Register the temporary Baganator bridge through the public API.
--- @return nil
-function Mod:RegisterBaganatorBridge()
-    local api = KT_IsBaganatorActive()
-    if not api or self.bridgeRegistered or not KT_IsBaganatorCompatible() then
-        return
-    end
-
-    api.RegisterRegion("KullThranUI", "kullthran_panel", "backpack", "bottom_left", self:EnsureBagsPanel())
-    api.RegisterCornerWidget(
-        "KullThran Watched Items",
-        "kullthran_watched_items",
-        function(cornerFrame, itemDetails)
-            return self:CornerUpdate(cornerFrame, itemDetails)
-        end,
-        function(itemButton)
-            return self:CornerInit(itemButton)
-        end,
-        { corner = "top_left", priority = 3 },
-        false
-    )
-    api.RegisterJunkPlugin(
-        "KullThran Quest Items",
-        "kullthran_quest_junk",
-        function(bagID, slotID, itemID, itemLink)
-            return self:ProtectedQuestJunkCallback(bagID, slotID, itemID, itemLink)
-        end
-    )
-    api.Skins.RegisterListener(function(details)
-        self:ProtectedSkinListener(details)
-    end)
-
-    self.bridgeRegistered = true
-    self:RefreshBagSlots()
-end
-
---- Query item inventory data through Baganator's Syndicator-backed public API.
--- @param itemLink string Full item link to inspect.
--- @return table|nil Inventory information, or nil when Baganator is unavailable.
-function Mod:GetItemInventory(itemLink)
-    local api = KT_IsBaganatorActive()
-    self.lastInventoryQuery = itemLink or "none"
-    if not api or not C_AddOns.IsAddOnLoaded("Syndicator") then
-        self.lastInventoryInfo = nil
-        self:RefreshBagSlots()
-        return nil
-    end
-
-    local ok, inventoryInfo = KT_SafeCallback(api.GetInventoryInfo, itemLink, false, false)
-    if ok then
-        self.lastInventoryInfo = inventoryInfo
-        self:RefreshBagSlots()
-        return inventoryInfo
-    end
-
-    self.lastInventoryInfo = nil
-    self:RefreshBagSlots()
-    return nil
-end

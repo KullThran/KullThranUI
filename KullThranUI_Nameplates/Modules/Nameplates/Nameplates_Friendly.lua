@@ -4,6 +4,12 @@ if not ns then return end
 
 local PP = (KullThranUI and KullThranUI.PP) or (KT and KT.PP)
 
+local function Loc(text)
+    local core = ns.KT or KullThranUI or KT
+    local L = core and core.GetLocale and core:GetLocale()
+    return (L and L[text]) or text
+end
+
 local function PixelPoint(frame, point, relativeTo, relativePoint, x, y)
     if PP and PP.Point then
         PP.Point(frame, point, relativeTo, relativePoint, x, y)
@@ -1203,7 +1209,7 @@ end
 
 local function PrintLayoutFrame(label, frame, fontString)
     if not frame then
-        print("|cff66ccffKNP debug|r " .. label .. ": unavailable")
+        print("|cff66ccffKNP debug|r " .. string.format(Loc("%s: unavailable"), tostring(label)))
         return
     end
 
@@ -1282,7 +1288,7 @@ end
 local function DumpFriendlyLayout(requestedUnit)
     local unit, nameplate = FindDebugNameplate(requestedUnit)
     if not nameplate then
-        print("|cff66ccffKNP debug|r Target or mouse over a visible nameplate first.")
+        print("|cff66ccffKNP debug|r " .. Loc("Target or mouse over a visible nameplate first."))
         return
     end
 

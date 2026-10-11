@@ -3,6 +3,11 @@ local addonName, ns = ...
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local LSM = LibStub("LibSharedMedia-3.0", true)
 
+local function Loc(text)
+    local L = KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 -- ============================================================================
 -- DEFINICIONES Y MEDIOS
 -- ============================================================================
@@ -716,9 +721,7 @@ function KT:OnInitialize()
     if self.SetupOptions then
         self:SetupOptions()
     else
-        local L = self.GetLocale and self:GetLocale()
-        self:Print((L and L["|cffFF0000ERROR:|r SetupOptions was not found."])
-            or "|cffFF0000ERROR:|r SetupOptions was not found.")
+        self:Print(Loc("|cffFF0000ERROR:|r SetupOptions was not found."))
     end
 
     -- Comandos de chat
@@ -729,8 +732,7 @@ function KT:OnInitialize()
         if minimap and minimap.Refresh then minimap:Refresh() end
         local armory = self:GetModule("Armory", true)
         if armory and armory.Refresh then armory:Refresh() end
-        local L = self.GetLocale and self:GetLocale()
-        self:Print((L and L["Modules refreshed"]) or "Modules refreshed")
+        self:Print(Loc("Modules refreshed"))
     end)
 
     if self.PrintStartupMessages then
@@ -1034,7 +1036,7 @@ function KT:ApplyUIScale()
 end
 
 function KT:Debug()
-    self:Print("DB Loaded: " .. (self.db and "Yes" or "No"))
+    self:Print(string.format(Loc("DB loaded: %s"), self.db and Loc("Yes") or Loc("No")))
 end
 
 -- ============================================================================

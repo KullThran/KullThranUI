@@ -901,11 +901,11 @@ local function KT_HandlePerfCommand(args)
     local cdmNs = KT_GetCDMNamespace()
     local perf = cdmNs and cdmNs._perf
     if not perf then
-        KT_PerfPrint("|cffFF4444[ktperf]|r ns._perf no encontrado - cargo KUICooldownManager?")
+        KT_PerfPrint("|cffFF4444[ktperf]|r " .. LText("ns._perf not found. Is KUICooldownManager loaded?"))
         return
     end
     if perf.capturing then
-        KT_PerfPrint("|cffFFAA00[ktperf]|r Captura en curso, espera que termine.")
+        KT_PerfPrint("|cffFFAA00[ktperf]|r " .. LText("Capture in progress, wait for it to finish."))
         return
     end
 
@@ -925,7 +925,7 @@ local function KT_HandlePerfCommand(args)
     perf.onDone       = function() KT:_PrintPerfReport(perf, duration) end
     perf.capturing    = true
 
-    KT_PerfPrint("|cff00FF88[ktperf]|r Midiendo " .. duration .. "s... (espera el resultado)")
+    KT_PerfPrint("|cff00FF88[ktperf]|r " .. string.format(LText("Measuring for %ss... (wait for the result)"), tostring(duration)))
 end
 
 local function KT_HandleCDMStatsCommand()
@@ -934,14 +934,14 @@ local function KT_HandleCDMStatsCommand()
         return
     end
 
-    KT_PerfPrint("|cffFF4444[ktcdmstats]|r handler no disponible.")
+    KT_PerfPrint("|cffFF4444[ktcdmstats]|r " .. LText("Handler not available."))
 end
 
 local function KT_HandleMinimapPerfCommand(args)
     local duration = math.max(1, math.min(tonumber(args) or 5, 60))
     local minimapModule = KT_GetMinimapModule()
     if not minimapModule or type(minimapModule.StartPerfCapture) ~= "function" then
-            KT_PerfPrint("|cffFF4444[ktminimapperf]|r módulo Minimap no disponible.")
+            KT_PerfPrint("|cffFF4444[ktminimapperf]|r " .. LText("Minimap module not available."))
         return
     end
 
@@ -949,18 +949,18 @@ local function KT_HandleMinimapPerfCommand(args)
         KT:_PrintMinimapPerfReport(snapshot)
     end)
     if not ok then
-        KT_PerfPrint("|cffFFAA00[ktminimapperf]|r Ya hay una captura en curso.")
+        KT_PerfPrint("|cffFFAA00[ktminimapperf]|r " .. LText("A capture is already in progress."))
         return
     end
 
-    KT_PerfPrint("|cff00FF88[ktminimapperf]|r Midiendo " .. duration .. "s... (espera el resultado)")
+    KT_PerfPrint("|cff00FF88[ktminimapperf]|r " .. string.format(LText("Measuring for %ss... (wait for the result)"), tostring(duration)))
 end
 
 SLASH_KTPERF1 = "/ktperf"
 SlashCmdList["KTPERF"] = function(msg)
     local ok, err = pcall(KT_HandlePerfCommand, msg)
     if not ok then
-        KT_PerfPrint("|cffFF4444[ktperf]|r error: " .. tostring(err))
+        KT_PerfPrint("|cffFF4444[ktperf]|r " .. string.format(LText("Error: %s"), tostring(err)))
     end
 end
 
@@ -968,7 +968,7 @@ SLASH_KTCDMSTATS1 = "/ktcdmstats"
 SlashCmdList["KTCDMSTATS"] = function(msg)
     local ok, err = pcall(KT_HandleCDMStatsCommand, msg)
     if not ok then
-        KT_PerfPrint("|cffFF4444[ktcdmstats]|r error: " .. tostring(err))
+        KT_PerfPrint("|cffFF4444[ktcdmstats]|r " .. string.format(LText("Error: %s"), tostring(err)))
     end
 end
 
@@ -976,7 +976,7 @@ SLASH_KTMINIMAPPERF1 = "/ktminimapperf"
 SlashCmdList["KTMINIMAPPERF"] = function(msg)
     local ok, err = pcall(KT_HandleMinimapPerfCommand, msg)
     if not ok then
-        KT_PerfPrint("|cffFF4444[ktminimapperf]|r error: " .. tostring(err))
+        KT_PerfPrint("|cffFF4444[ktminimapperf]|r " .. string.format(LText("Error: %s"), tostring(err)))
     end
 end
 
@@ -1727,7 +1727,7 @@ end
 -- 1. ON INITIALIZE
 -- ============================================================================
 function KT:PrintStartupMessages()
-    local version = KT.VERSION or "5.1.2"
+    local version = KT.VERSION or "5.1.4"
     local updateAvailable = false
     local latestVersion = KT.GetLatestArchivedChangelogVersion and KT:GetLatestArchivedChangelogVersion()
     if latestVersion and KT.CompareVersions then
@@ -1870,7 +1870,7 @@ function KT:InitializeCore()
     -- 6. Comandos estándar de debug
     self:RegisterChatCommand("ktdebug", function()
         self:Print("DB: " .. (self.db and "|cff00FF00OK|r" or "|cffFF0000FAIL|r") ..
-                   "  Profile: " .. (self.db and self.db:GetCurrentProfile() or "n/a"))
+                   "  " .. string.format(LText("Profile: %s"), (self.db and self.db:GetCurrentProfile() or "n/a")))
     end)
 
     self:RegisterChatCommand("ktdmdebug", function()
@@ -1878,7 +1878,7 @@ function KT:InitializeCore()
         if damageMeter and damageMeter.DebugDamageMeter then
             damageMeter:DebugDamageMeter()
         else
-            self:Print("|cff66ccff[ktdmdebug]|r Damage Meter module not available.")
+            self:Print("|cff66ccff[ktdmdebug]|r " .. LText("Damage Meter module not available."))
         end
     end)
     self:RegisterChatCommand("ktframe", function()
@@ -1895,10 +1895,10 @@ function KT:InitializeCore()
         end
         if frame then
             local name = frame:GetName() or tostring(frame)
-            self:Print("|cff00FFFFFrame:|r " .. name)
-            self:Print("Size: " .. math.floor(frame:GetWidth()) .. "x" .. math.floor(frame:GetHeight()))
+            self:Print("|cff00FFFF" .. LText("Frame:") .. "|r " .. name)
+            self:Print(string.format(LText("Size: %dx%d"), math.floor(frame:GetWidth()), math.floor(frame:GetHeight())))
         else
-            self:Print("No hay frame bajo el ratón.")
+            self:Print(LText("No frame under mouse."))
         end
     end)
 
@@ -1935,7 +1935,7 @@ function KT:InitializeCore()
         if mod and mod.RunAuraDebugSnapshots then
             mod:RunAuraDebugSnapshots()
         else
-            KT:Print("|cff66ccff[ktbaddebug]|r BuffsAndDebuffs module debug not available.")
+            KT:Print("|cff66ccff[ktbaddebug]|r " .. LText("BuffsAndDebuffs module debug not available."))
         end
     end)
 
@@ -1946,11 +1946,11 @@ function KT:InitializeCore()
     self:RegisterChatCommand("ktperf", function(args)
         local perf = ns._perf
         if not perf then
-            KT_PerfPrint("|cffFF4444[ktperf]|r ns._perf no encontrado — ¿cargó KUICooldownManager?")
+            KT_PerfPrint("|cffFF4444[ktperf]|r " .. LText("ns._perf not found. Is KUICooldownManager loaded?"))
             return
         end
         if perf.capturing then
-            KT_PerfPrint("|cffFFAA00[ktperf]|r Captura en curso, espera que termine.")
+            KT_PerfPrint("|cffFFAA00[ktperf]|r " .. LText("Capture in progress, wait for it to finish."))
             return
         end
         local duration = math.max(1, math.min(tonumber(args) or 5, 60))
@@ -1968,7 +1968,7 @@ function KT:InitializeCore()
         perf.captureDur   = duration
         perf.onDone       = function() KT:_PrintPerfReport(perf, duration) end
         perf.capturing    = true
-        KT_PerfPrint("|cff00FF88[ktperf]|r Midiendo " .. duration .. "s... (espera el resultado)")
+        KT_PerfPrint("|cff00FF88[ktperf]|r " .. string.format(LText("Measuring for %ss... (wait for the result)"), tostring(duration)))
     end)
 
     -- -----------------------------------------------------------------------
@@ -1982,7 +1982,7 @@ function KT:InitializeCore()
         local duration = math.max(1, math.min(tonumber(args) or 5, 60))
         local minimapModule = KT_GetMinimapModule()
         if not minimapModule or type(minimapModule.StartPerfCapture) ~= "function" then
-            KT_PerfPrint("|cffFF4444[ktminimapperf]|r módulo Minimap no disponible.")
+            KT_PerfPrint("|cffFF4444[ktminimapperf]|r " .. LText("Minimap module not available."))
             return
         end
 
@@ -1990,11 +1990,11 @@ function KT:InitializeCore()
             KT:_PrintMinimapPerfReport(snapshot)
         end)
         if not ok then
-            KT_PerfPrint("|cffFFAA00[ktminimapperf]|r Ya hay una captura en curso.")
+            KT_PerfPrint("|cffFFAA00[ktminimapperf]|r " .. LText("A capture is already in progress."))
             return
         end
 
-        KT_PerfPrint("|cff00FF88[ktminimapperf]|r Midiendo " .. duration .. "s... (espera el resultado)")
+        KT_PerfPrint("|cff00FF88[ktminimapperf]|r " .. string.format(LText("Measuring for %ss... (wait for the result)"), tostring(duration)))
     end)
 
     -- 7. Mostrar instalador (primer login / update)
@@ -2018,9 +2018,10 @@ function KT:InitializeCore()
         self._installerReopenWatcher = watcher
     end
 
-    local version = KT.VERSION or "5.1.2"
+    local version = KT.VERSION or "5.1.4"
     local accentR, accentG, accentB = self:GetStyleAccentRGB()
-    self:Print("Welcome to |cff" .. string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r " .. version)
+    local accentHex = string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255)
+    self:Print(string.format(LText("Welcome to |cff%sKullThranUI|r %s"), accentHex, tostring(version)))
 end
 
 -- KT:ApplyUIScale lives in Modules/Defaults/Defaults.lua.
@@ -2066,7 +2067,7 @@ function KT:MaybeAutoOpenInstaller()
         installerDb.isOpen = false
     end
 
-    local currentVersion = KT.VERSION or "5.1.2"
+    local currentVersion = KT.VERSION or "5.1.4"
     local characterKey = self:GetInstallerCharacterKey()
     local legacyCharacterGUID = UnitGUID and UnitGUID("player")
 
@@ -2269,7 +2270,7 @@ function KT:OpenInstaller()
 
         if not ok then
             if self.Print then
-                self:Print("|cffFF4444Installer|r: no se pudo cargar (" .. tostring(reason) .. ").")
+                self:Print(string.format(LText("|cffFF4444Installer|r: could not be loaded (%s)."), tostring(reason)))
             end
             return
         end
@@ -2314,7 +2315,7 @@ function KT:OpenInstaller()
     end
 
     if self.Print then
-        self:Print("|cffFF4444Installer|r: módulo no disponible tras cargar.")
+        self:Print(LText("|cffFF4444Installer|r: module not available after loading."))
     end
 end
 
@@ -2359,8 +2360,8 @@ function KT:ShowWelcomeFrame()
     local title    = f:CreateFontString(nil, "OVERLAY")
     title:SetFont(CurrentFontPath(), 28, "OUTLINE")
     title:SetPoint("TOP", logo, "BOTTOM", 0, -18)
-    title:SetText(titleStr .. " |cff" ..
-        string.format("%02x%02x%02x", accentR * 255, accentG * 255, accentB * 255) .. "KullThranUI|r")
+    local brandText = string.format("|cff%02x%02x%02xKullThranUI|r", accentR * 255, accentG * 255, accentB * 255)
+    title:SetText(titleStr .. " " .. brandText)
     title:SetTextColor(1, 1, 1, 1)
 
     local descText = L["Below a list of highly recommended addons will open to embed them\ninto the interface and avoid errors."]
@@ -2379,7 +2380,7 @@ function KT:ShowWelcomeFrame()
     KT:AddBorder(btnSkip, 0.4, 0.4, 0.4, 0.7)
     local skipLbl = btnSkip:CreateFontString(nil, "OVERLAY")
     skipLbl:SetFont(CurrentFontPath(), 12, "OUTLINE")
-    skipLbl:SetText(L["Skip Install"] or "Skip Install")
+    skipLbl:SetText(LText("Skip Install"))
     skipLbl:SetTextColor(0.75, 0.75, 0.75, 1)
     skipLbl:SetAllPoints(); skipLbl:SetJustifyH("CENTER"); skipLbl:SetJustifyV("MIDDLE")
     btnSkip:SetScript("OnClick", function()
@@ -2396,7 +2397,7 @@ function KT:ShowWelcomeFrame()
     KT:AddBorder(btnNext, accentR, accentG, accentB, 0.8)
     local nextLbl = btnNext:CreateFontString(nil, "OVERLAY")
     nextLbl:SetFont(CurrentFontPath(), 12, "OUTLINE")
-    nextLbl:SetText(L["Next Step"] or "Configure KullThranUI")
+    nextLbl:SetText(L["Next Step"] or LText("Configure KullThranUI"))
     nextLbl:SetTextColor(1, 1, 1, 1)
     nextLbl:SetAllPoints(); nextLbl:SetJustifyH("CENTER"); nextLbl:SetJustifyV("MIDDLE")
     btnNext:SetScript("OnClick", function()
@@ -2420,11 +2421,11 @@ function KT:_PrintPerfReport(perf, duration)
     local sep = c("555555", "--------------------------------------")
 
     self:Print(sep)
-    self:Print(c("00FF88", "[ktperf] Resultado " .. duration .. "s"))
+    self:Print(c("00FF88", "[ktperf] " .. string.format(LText("Result %ss"), tostring(duration))))
     self:Print(sep)
 
     if perf.tickCount == 0 then
-        self:Print(c("FF4444", "Sin ticks capturados. ¿El módulo CDM está habilitado?"))
+        self:Print(c("FF4444", LText("No ticks captured. Is the CDM module enabled?")))
         return
     end
 
@@ -2434,20 +2435,20 @@ function KT:_PrintPerfReport(perf, duration)
     local cpuCol = cpuPct > 2 and "FF4444" or cpuPct > 0.5 and "FFAA00" or "00FF88"
     local skipped = tonumber(perf.skippedTicks) or 0
 
-    self:Print(string.format("%s  ticks: %d  (%.1f/s)",
-        c("FFCC00", "CDM tick"), perf.tickCount, tickHz))
-    self:Print(string.format("  avg %.4f ms  |  pico %s  |  total %.1f ms",
+    self:Print(string.format(LText("%s  ticks: %d  (%.1f/s)"),
+        c("FFCC00", LText("CDM tick")), perf.tickCount, tickHz))
+    self:Print("  " .. string.format(LText("avg %.4f ms  |  peak %s  |  total %.1f ms"),
         avgMs,
         c("FF8800", string.format("%.4f ms", perf.peakMs)),
         perf.totalMs))
     self:Print(string.format("  %s %d",
-        c("888888", "ticks saltados:"), skipped))
-    self:Print(string.format("  %s %s  (del total del addon)",
-        c("FFCC00", "CPU estimado CDM:"),
+        c("888888", LText("Skipped ticks:")), skipped))
+    self:Print("  " .. string.format(LText("%s %s  (of the addon total)"),
+        c("FFCC00", LText("Estimated CDM CPU:")),
         c(cpuCol, string.format("%.3f%%", cpuPct))))
     if perf.lastTick and next(perf.lastTick) then
-        self:Print(string.format("  %s barras=%d  iconos=%d/%d  mouse-track=%d  skipped=%s",
-            c("888888", "último tick:"),
+        self:Print("  " .. string.format(LText("%s bars=%d  icons=%d/%d  mouse-track=%d  skipped=%s"),
+            c("888888", LText("Last tick:")),
             tonumber(perf.lastTick.enabledBars) or 0,
             tonumber(perf.lastTick.visibleIcons) or 0,
             tonumber(perf.lastTick.totalIcons) or 0,
@@ -2458,7 +2459,7 @@ function KT:_PrintPerfReport(perf, duration)
 
     if perf.phases and next(perf.phases) then
         self:Print(sep)
-        self:Print(c("88FFFF", "Fases del tick:"))
+        self:Print(c("88FFFF", LText("Tick phases:")))
         local phases = {}
         for key, totalMs in pairs(perf.phases) do
             phases[#phases + 1] = {
@@ -2470,14 +2471,14 @@ function KT:_PrintPerfReport(perf, duration)
         table.sort(phases, function(a, b) return a.totalMs > b.totalMs end)
         for i = 1, math.min(6, #phases) do
             local row = phases[i]
-            self:Print(string.format("  %s  total %.3f ms  pico %.3f ms",
+            self:Print("  " .. string.format(LText("%s  total %.3f ms  peak %.3f ms"),
                 c("FFCC00", row.key), row.totalMs, row.peakMs))
         end
     end
 
     if perf.dirtyReasons and next(perf.dirtyReasons) then
         self:Print(sep)
-        self:Print(c("88FFFF", "Dirty reasons:"))
+        self:Print(c("88FFFF", LText("Dirty reasons:")))
         local reasons = {}
         for key, count in pairs(perf.dirtyReasons) do
             reasons[#reasons + 1] = { key = key, count = count }
@@ -2492,7 +2493,7 @@ function KT:_PrintPerfReport(perf, duration)
     -- Desglose por barra, ordenado por coste
     if next(perf.bars) then
         self:Print(sep)
-        self:Print(c("88FFFF", "Desglose por barra:"))
+        self:Print(c("88FFFF", LText("Breakdown by bar:")))
         local sorted = {}
         for k, v in pairs(perf.bars) do sorted[#sorted + 1] = { key = k, b = v } end
         table.sort(sorted, function(a, b) return a.b.totalMs > b.b.totalMs end)
@@ -2513,7 +2514,7 @@ function KT:_PrintPerfReport(perf, duration)
                     end
                 end
             end
-            self:Print(string.format("  %s  avg %.4f ms  pico %.4f ms  %s  (%d/%d iconos)%s",
+            self:Print("  " .. string.format(LText("%s  avg %.4f ms  peak %.4f ms  %s  (%d/%d icons)%s"),
                 c(bcol, string.format("%-14s", k)),
                 bavg, b.peakMs,
                 c(bcol, string.format("%.3f%%", bpct)),
@@ -2532,14 +2533,14 @@ function KT:_PrintPerfReport(perf, duration)
     end
     if #mouseTrack > 0 then
         self:Print(sep)
-        self:Print(c("FF4444", "ALERTA: barras con mouse-tracking (OnUpdate CADA FRAME):"))
+        self:Print(c("FF4444", LText("WARNING: bars with mouse tracking (OnUpdate EVERY FRAME):")))
         for _, k in ipairs(mouseTrack) do
-            self:Print("  " .. c("FF8800", k) .. " — corre ~60 veces/s, no 10 veces/s")
+            self:Print("  " .. string.format(LText("%s - runs ~60 times/s, not 10 times/s"), c("FF8800", k)))
         end
     end
 
     self:Print(sep)
-    self:Print(c("888888", "Usa /ktcdmstats para ver anchorTo/tamaños/iconos"))
+    self:Print(c("888888", LText("Use /ktcdmstats to see anchorTo/sizes/icons")))
 end
 
 -- ============================================================================
@@ -2630,9 +2631,9 @@ function KT:_CPUPrintTop(limit, prefix)
 
     if not KT_CPUProfileEnabled() then
         self:Print(sep)
-        self:Print(c("FF4444", "[ktcpu] scriptProfile desactivado."))
-        self:Print("  Activa: " .. c("FFCC00", "/console scriptProfile 1"))
-        self:Print("  Luego reinicia el juego (o vuelve a pantalla de personaje) y usa /ktcpu reset.")
+        self:Print(c("FF4444", "[ktcpu] " .. LText("scriptProfile is disabled.")))
+        self:Print("  " .. string.format(LText("Enable it with: %s"), c("FFCC00", "/console scriptProfile 1")))
+        self:Print("  " .. LText("Then restart the game (or return to character select) and use /ktcpu reset."))
         self:Print(sep)
         return
     end
@@ -2643,14 +2644,14 @@ function KT:_CPUPrintTop(limit, prefix)
     prefix = prefix or "[ktcpu]"
 
     self:Print(sep)
-    self:Print(c("00FF88", prefix .. " Top " .. limit .. " addons por CPU (desde último reset)"))
+    self:Print(c("00FF88", prefix .. " " .. string.format(LText("Top %d addons by CPU (since last reset)"), limit)))
 
     local elapsedText = nil
     if self._cpuLastResetAt and snap.time and snap.time >= self._cpuLastResetAt then
         local elapsed = snap.time - self._cpuLastResetAt
         elapsedText = string.format(" (%.0fs)", elapsed)
     end
-    self:Print(c("888888", "Total CPU addons: " .. string.format("%.1f ms", total) .. (elapsedText or "")))
+    self:Print(c("888888", string.format(LText("Total addon CPU: %s"), string.format("%.1f ms", total)) .. (elapsedText or "")))
     self:Print(sep)
 
     for n = 1, limit do
@@ -2671,7 +2672,7 @@ function KT:_CPUStopWatch(silent)
     end
     self._cpuWatch = nil
     if not silent then
-        self:Print("|cff00FF88[ktcpu]|r watch detenido.")
+        self:Print("|cff00FF88[ktcpu]|r " .. LText("Watch stopped."))
     end
 end
 
@@ -2718,7 +2719,7 @@ function KT:_CPUStartWatch(interval, topN)
 
         local function c(hex, txt) return "|cff" .. hex .. txt .. "|r" end
         local perSec = (state.interval > 0) and (totalDelta / state.interval) or 0
-        self:Print(c("00FF88", string.format("[ktcpu] Delta CPU ultimos %.0fs: %.1f ms (%.2f ms/s)", state.interval, totalDelta, perSec)))
+        self:Print(c("00FF88", "[ktcpu] " .. string.format(LText("CPU delta over the last %.0fs: %.1f ms (%.2f ms/s)"), state.interval, totalDelta, perSec)))
 
         local shown = 0
         for _, row in ipairs(deltas) do
@@ -2734,15 +2735,15 @@ function KT:_CPUStartWatch(interval, topN)
         end
 
         if shown == 0 then
-            self:Print(c("888888", "  (sin cambios de CPU apreciables en este intervalo)"))
+            self:Print(c("888888", "  " .. LText("(no noticeable CPU changes in this interval)")))
         end
     end
 
     if self.ScheduleRepeatingTimer then
         self._cpuWatch.timer = self:ScheduleRepeatingTimer(tick, interval)
-        self:Print("|cff00FF88[ktcpu]|r watch iniciado (" .. interval .. "s, top " .. topN .. "). Usa /ktcpu stop para parar.")
+        self:Print("|cff00FF88[ktcpu]|r " .. string.format(LText("Watch started (%ss, top %d). Use /ktcpu stop to stop it."), tostring(interval), topN))
     else
-        self:Print("|cffFF4444[ktcpu]|r AceTimer no disponible; no se puede iniciar watch.")
+        self:Print("|cffFF4444[ktcpu]|r " .. LText("AceTimer not available; cannot start watch."))
     end
 end
 
@@ -2773,9 +2774,9 @@ function KT:_HandleCPUCommand(args)
                 _G.UpdateAddOnCPUUsage()
             end
             self._cpuLastResetAt = _G.GetTime and _G.GetTime() or nil
-            self:Print("|cff00FF88[ktcpu]|r contadores CPU reseteados.")
+            self:Print("|cff00FF88[ktcpu]|r " .. LText("CPU counters reset."))
         else
-            self:Print("|cffFF4444[ktcpu]|r ResetCPUUsage no disponible.")
+            self:Print("|cffFF4444[ktcpu]|r " .. LText("ResetCPUUsage not available."))
         end
         return
     end
@@ -2791,12 +2792,12 @@ function KT:_HandleCPUCommand(args)
         return
     end
 
-    self:Print("|cff00FF88[ktcpu]|r uso:")
-    self:Print("  /ktcpu            (top 15)")
-    self:Print("  /ktcpu top 25     (top N)")
-    self:Print("  /ktcpu reset      (resetea contadores)")
-    self:Print("  /ktcpu watch 5 8  (cada 5s, top 8 deltas)")
-    self:Print("  /ktcpu stop       (para watch)")
+    self:Print("|cff00FF88[ktcpu]|r " .. LText("Usage:"))
+    self:Print("  /ktcpu            " .. LText("(top 15)"))
+    self:Print("  /ktcpu top 25     " .. LText("(top N)"))
+    self:Print("  /ktcpu reset      " .. LText("(reset counters)"))
+    self:Print("  /ktcpu watch 5 8  " .. LText("(every 5s, top 8 deltas)"))
+    self:Print("  /ktcpu stop       " .. LText("(stop watch)"))
 end
 
 function KT:_PrintCDMStats()
@@ -2806,18 +2807,18 @@ function KT:_PrintCDMStats()
     local sep = c("555555", "--------------------------------------")
 
     self:Print(sep)
-    self:Print(c("00FF88", "[ktcdmstats] Estado CDM"))
+    self:Print(c("00FF88", "[ktcdmstats] " .. LText("CDM status")))
     self:Print(sep)
 
     local p = KT.db and KT.db.profile.cooldownManager
     if not p or not p.cdmBars or not p.cdmBars.bars then
-        self:Print(c("FF4444", "cooldownManager no inicializado"))
+        self:Print(c("FF4444", LText("cooldownManager not initialized")))
         return
     end
 
     local perf = cdmNs and cdmNs._perf
     if perf and perf.lastTick and next(perf.lastTick) then
-        self:Print(string.format("último tick: barras=%d  iconos=%d/%d  mouse-track=%d  skipped=%s",
+        self:Print(string.format(LText("Last tick: bars=%d  icons=%d/%d  mouse-track=%d  skipped=%s"),
             tonumber(perf.lastTick.enabledBars) or 0,
             tonumber(perf.lastTick.visibleIcons) or 0,
             tonumber(perf.lastTick.totalIcons) or 0,
@@ -2836,7 +2837,7 @@ function KT:_PrintCDMStats()
         end
 
         -- Frame info
-        local fInfo = c("FF4444", "no frame")
+        local fInfo = c("FF4444", LText("no frame"))
         if frame then
             local fw = math.floor(frame:GetWidth()  + 0.5)
             local fh = math.floor(frame:GetHeight() + 0.5)
@@ -2851,14 +2852,14 @@ function KT:_PrintCDMStats()
                 fInfo = string.format("%dx%d  α=%.2f  %s→%s(%d,%d)",
                     fw, fh, fa, pt, relName, fx, fy)
             else
-                fInfo = string.format("%dx%d  α=%.2f  sin anchor", fw, fh, fa)
+                fInfo = string.format(LText("%dx%d  α=%.2f  no anchor"), fw, fh, fa)
             end
         end
 
         -- Anchor config
         local anchorDesc
         if not barData.anchorTo or barData.anchorTo == "none" then
-            anchorDesc = c("888888", "libre (posición guardada)")
+            anchorDesc = c("888888", LText("free (saved position)"))
         else
             anchorDesc = string.format("anchorTo=%s  pos=%s  gap=%s",
                 c("FFCC00", barData.anchorTo),
@@ -2869,18 +2870,18 @@ function KT:_PrintCDMStats()
         local stateCol = barData.enabled and "00FF88" or "FF4444"
         local mtFlag   = (frame and frame._mouseTrack) and c("FF4444", " [MOUSE-TRACK!]") or ""
 
-        self:Print(string.format("%s [%s]  icons %d/%d  %s%s",
+        self:Print(string.format(LText("%s [%s]  icons %d/%d  %s%s"),
             c("FFCC00", string.format("%-14s", k)),
             c(stateCol, barData.enabled and "ON" or "OFF"),
             nShown, nTotal, anchorDesc, mtFlag))
         self:Print("    " .. fInfo)
 
         if barData.trackedSpells then
-            self:Print("    mode:" .. c("88FFFF", "tracked") .. " " .. #barData.trackedSpells .. " IDs")
+            self:Print("    " .. string.format(LText("mode: %s %d IDs"), c("88FFFF", "tracked"), #barData.trackedSpells))
         elseif barData.customSpells then
-            self:Print("    mode:" .. c("88FFFF", "custom") .. " " .. #barData.customSpells .. " spells")
+            self:Print("    " .. string.format(LText("mode: %s %d spells"), c("88FFFF", "custom"), #barData.customSpells))
         else
-            self:Print("    mode:" .. c("FFAA00", "blizzard-mirror"))
+            self:Print("    " .. string.format(LText("mode: %s"), c("FFAA00", "blizzard-mirror")))
         end
     end
 
@@ -2891,11 +2892,10 @@ function KT:_PrintCDMStats()
         or (_G.KUI_CDM and _G.KUI_CDM._cdmTickFrame)
     self:Print(sep)
     if tf then
-        self:Print("_cdmTickFrame: " ..
-            (tf:IsShown() and c("00FF88","activo") or c("FF4444","inactivo")) ..
-            "  interval=0.1s")
+        self:Print(string.format(LText("_cdmTickFrame: %s  interval=0.1s"),
+            (tf:IsShown() and c("00FF88", LText("active")) or c("FF4444", LText("inactive")))))
     else
-        self:Print(c("FF4444", "_cdmTickFrame no encontrado"))
+        self:Print(c("FF4444", LText("_cdmTickFrame not found")))
     end
     self:Print(sep)
 end
@@ -2906,28 +2906,28 @@ function KT:_PrintMinimapPerfReport(snapshot)
     local sep = c("555555", "--------------------------------------")
 
     if type(snapshot) ~= "table" then
-        self:Print("|cffFF4444[ktminimapperf]|r snapshot no disponible.")
+        self:Print("|cffFF4444[ktminimapperf]|r " .. LText("Snapshot not available."))
         return
     end
 
     self:Print(sep)
-    self:Print(c("00FF88", string.format("[ktminimapperf] Resultado %.0fs", tonumber(snapshot.duration) or 0)))
+    self:Print(c("00FF88", "[ktminimapperf] " .. string.format(LText("Result %.0fs"), tonumber(snapshot.duration) or 0)))
     self:Print(sep)
-    self:Print(string.format("  ticker ticks: %d  |  ticker activo: %s",
+    self:Print("  " .. string.format(LText("ticker ticks: %d  |  ticker active: %s"),
         tonumber(snapshot.tickerTicks) or 0,
-        tostring(snapshot.tickerActive and "yes" or "no")))
-    self:Print(string.format("  memoria: %.1f KB -> %.1f KB  (delta %.1f KB)",
+        tostring(snapshot.tickerActive and LText("yes") or LText("no"))))
+    self:Print("  " .. string.format(LText("memory: %.1f KB -> %.1f KB  (delta %.1f KB)"),
         tonumber(snapshot.memoryStartKB) or 0,
         tonumber(snapshot.memoryEndKB) or 0,
         tonumber(snapshot.memoryDeltaKB) or 0))
-    self:Print(string.format("  mapCoordCache: %d  (delta %d)  |  overlay buttons: %d",
+    self:Print("  " .. string.format(LText("mapCoordCache: %d  (delta %d)  |  overlay buttons: %d"),
         tonumber(snapshot.mapCoordCacheEntries) or 0,
         tonumber(snapshot.mapCoordCacheDelta) or 0,
         tonumber(snapshot.overlayButtonsCreated) or 0))
 
     local runtime = snapshot.legacyMinimapStats or {}
-    self:Print(string.format("  MinimapStats runtime: disabled=%s  shown=%d  onUpdate=%d  onEvent=%d",
-        tostring(runtime.runtimeDisabled and "yes" or "no"),
+    self:Print("  " .. string.format(LText("MinimapStats runtime: disabled=%s  shown=%d  onUpdate=%d  onEvent=%d"),
+        tostring(runtime.runtimeDisabled and LText("yes") or LText("no")),
         tonumber(runtime.shownFrames) or 0,
         tonumber(runtime.onUpdateFrames) or 0,
         tonumber(runtime.onEventFrames) or 0))
@@ -2941,9 +2941,9 @@ function KT:_PrintMinimapPerfReport(snapshot)
             if not hadRows then
                 hadRows = true
                 self:Print(sep)
-                self:Print(c("88FFFF", "Muestras:"))
+                self:Print(c("88FFFF", LText("Samples:")))
             end
-            self:Print(string.format("  %s  calls=%d  total=%.3f ms  avg=%.3f ms  pico=%.3f ms",
+            self:Print("  " .. string.format(LText("%s  calls=%d  total=%.3f ms  avg=%.3f ms  peak=%.3f ms"),
                 c("FFCC00", key),
                 count,
                 totalMs,
@@ -2959,7 +2959,7 @@ function KT:_PrintMinimapPerfReport(snapshot)
                 table.sort(sortedCallers, function(a, b) return a.count > b.count end)
                 for i = 1, math.min(3, #sortedCallers) do
                     local row = sortedCallers[i]
-                    self:Print(string.format("    caller %s x%d",
+                    self:Print("    " .. string.format(LText("caller %s x%d"),
                         c("888888", tostring(row.key)),
                         tonumber(row.count) or 0
                     ))

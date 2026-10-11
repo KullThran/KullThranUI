@@ -121,9 +121,69 @@ function CUF.PlayerHasCombo()
     local _, class = UnitClass("player")
     if class == "ROGUE" then return true end
     if class == "DRUID" then
-        return GetShapeshiftFormID == nil or GetShapeshiftFormID() == 1
+        return type(GetShapeshiftFormID) == "function" and GetShapeshiftFormID() == 1
     end
     return false
+end
+
+-------------------------------------------------------------------------------
+--  Other class resources on the Classic tray (holy power, shards, runes...)
+--  The tray and empty slots are the same native combo art; the filled point
+--  is a gem drawn for each resource (Libraries/texture/media/ClassicResource*).
+-------------------------------------------------------------------------------
+local MEDIA = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\"
+local RESOURCE_BY_CLASS = {
+    PALADIN     = { power = "HolyPower" },
+    WARLOCK     = { power = "SoulShards" },
+    DEATHKNIGHT = { power = "Runes" },
+    EVOKER      = { power = "Essence" },
+    MONK        = { power = "Chi", spec = 269 },           -- Windwalker
+    MAGE        = { power = "ArcaneCharges", spec = 62 },  -- Arcane
+}
+local GEM = { HolyPower = "HolyPower", SoulShards = "SoulShard", Essence = "Essence",
+    Chi = "Chi", ArcaneCharges = "ArcaneCharge" }
+local RUNE_GEM = { [250] = "RuneBlood", [251] = "RuneFrost", [252] = "RuneUnholy" }
+
+local function PlayerSpecID()
+    local S = C_SpecializationInfo
+    if not (S and S.GetSpecialization and S.GetSpecializationInfo) then return nil end
+    local spec = S.GetSpecialization()
+    return spec and S.GetSpecializationInfo(spec) or nil
+end
+
+-- powerType, gem texture of the player's non-combo class resource, or nil.
+function CUF.PlayerClassResource()
+    local _, class = UnitClass("player")
+    local def = RESOURCE_BY_CLASS[class]
+    local powerType = def and Enum and Enum.PowerType and Enum.PowerType[def.power]
+    if not powerType then return nil end
+    local specID = PlayerSpecID()
+    if def.spec and specID ~= def.spec then return nil end
+    local gem = def.power == "Runes" and (RUNE_GEM[specID] or "RuneBlood") or GEM[def.power]
+    return powerType, MEDIA .. "ClassicResource" .. gem .. ".tga"
+end
+
+-- The Player's Classic display takes over these resources while the class
+-- power bar is the custom one (not turned off, not Blizzard's own bar);
+-- CreateCustomClassPower then skips its rectangular pips.
+function CUF.OwnsClassResource()
+    if not CUF.GetDisplays("player").classic then return false end
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    local style = uf and uf.player and uf.player.classPowerStyle
+    if style == nil or style == "none" or style == "blizzard" then return false end
+    return CUF.PlayerClassResource() ~= nil
+end
+
+local function ReadyRunes(max)
+    if not GetRuneCooldown then return nil end
+    local ok, n = pcall(function()
+        local ready = 0
+        for i = 1, max do
+            if select(3, GetRuneCooldown(i)) then ready = ready + 1 end
+        end
+        return ready
+    end)
+    return ok and n or nil
 end
 
 -------------------------------------------------------------------------------
@@ -147,7 +207,7 @@ local function ArtFor(style)
     return ATLAS.modernEmpty, ATLAS.modernFill
 end
 
-local function ApplyPipArt(p, style)
+local function ApplyPipArt(p, style, gem)
     local emptyAtlas, fillAtlas = ArtFor(style)
     if HasAtlas(emptyAtlas) then
         p.empty:SetAtlas(emptyAtlas, false)
@@ -156,7 +216,10 @@ local function ApplyPipArt(p, style)
         p.empty:SetTexture(FALLBACK_EMPTY)
         p.empty:SetVertexColor(0.08, 0.08, 0.08, 1)
     end
-    if HasAtlas(fillAtlas) then
+    if gem then
+        p.bar:SetStatusBarTexture(gem)
+        p.bar:SetStatusBarColor(1, 1, 1, 1)
+    elseif HasAtlas(fillAtlas) then
         local t = p.bar:GetStatusBarTexture()
         if t then t:SetAtlas(fillAtlas, false) end
         p.bar:SetStatusBarColor(1, 1, 1, 1)
@@ -200,8 +263,10 @@ function CUF.Create(parent)
     return o
 end
 
-function Widget:SetStyle(style)
+-- gem: optional texture for the filled point (non-combo class resources).
+function Widget:SetStyle(style, gem)
     self.style = style
+    self.gem = gem
     local usePlateAtlas = style == "classic" and HasAtlas(ATLAS.plate)
     if style == "classic" then
         if usePlateAtlas then
@@ -232,7 +297,7 @@ function Widget:SetStyle(style)
         self.plate:Hide()
         for _, e in ipairs(self.edges) do e:Hide() end
     end
-    for _, p in ipairs(self.pips) do ApplyPipArt(p, style) end
+    for _, p in ipairs(self.pips) do ApplyPipArt(p, style, gem) end
 end
 
 -- Anchor below `anchor` (or above `topAnchor` when pos == "above").  Classic
@@ -275,7 +340,7 @@ function Widget:Place(anchor, style, width, pos, x, y, topAnchor)
     end
     if (self.flipped or false) ~= above then
         self.flipped = above
-        if self.style then self:SetStyle(self.style) end   -- redraw the tray mirrored / normal
+        if self.style then self:SetStyle(self.style, self.gem) end   -- redraw the tray mirrored / normal
     end
     if style == "classic" then
         if above then
@@ -297,29 +362,79 @@ function Widget:Place(anchor, style, width, pos, x, y, topAnchor)
     self:Layout()
 end
 
+-- Native tray geometry (126x20): 11px left cap, one 21px cell per point
+-- (20px opening + 1px gap) and a 10px right cap.  The atlas has five
+-- openings baked in; other counts (runes, essence, arcane charges...) are
+-- rebuilt from slices of the same atlas so every point sits in an opening.
+local PLATE_W, CAP_L, CELL, CAP_R = 126, 11, 21, 10
+
+function Widget:LayoutPlate(n, k, snap)
+    local info = self.style == "classic" and n ~= 5 and HasAtlas(ATLAS.plate)
+        and C_Texture.GetAtlasInfo(ATLAS.plate)
+    local file = info and (info.file or info.filename)
+    local segs = self.plateSegs
+    if not file then
+        if segs then for _, t in ipairs(segs) do t:Hide() end end
+        if self.style == "classic" and HasAtlas(ATLAS.plate) then self.plate:Show() end
+        return
+    end
+    self.plate:Hide()
+    segs = segs or {}
+    self.plateSegs = segs
+    local L, R = info.leftTexCoord, info.rightTexCoord
+    local T, B = info.topTexCoord, info.bottomTexCoord
+    if self.flipped then T, B = B, T end
+    local pieces = { { 0, CAP_L } }
+    for i = 1, n do
+        local c = (i == 1 and 1) or (i == n and 5) or (2 + (i - 2) % 3)
+        local x0 = CAP_L + CELL * (c - 1)
+        pieces[#pieces + 1] = { x0, x0 + CELL }
+    end
+    pieces[#pieces + 1] = { PLATE_W - CAP_R, PLATE_W }
+    local x = 0
+    for i, src in ipairs(pieces) do
+        local t = segs[i] or self.frame:CreateTexture(nil, "BACKGROUND", nil, 0)
+        segs[i] = t
+        local w = src[2] - src[1]
+        local left, right = snap(x * k), snap((x + w) * k)
+        t:SetTexture(file)
+        t:SetTexCoord(L + (R - L) * src[1] / PLATE_W, L + (R - L) * src[2] / PLATE_W, T, B)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", self.frame, "TOPLEFT", left, 0)
+        t:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", left, 0)
+        t:SetWidth(right - left)
+        t:Show()
+        x = x + w
+    end
+    for i = #pieces + 1, #segs do segs[i]:Hide() end
+end
+
 function Widget:Layout()
     local f = self.frame
     local n = self.count or 5
     if self.style == "classic" then
         local W = f:GetWidth()
         if not W or W <= 0 then return end
-        local k = W / 126
+        -- Whole physical pixels: the effective scale is fractional, so slice
+        -- seams and point offsets are rounded to the screen grid.
+        local es = f.GetEffectiveScale and f:GetEffectiveScale()
+        if not es or es <= 0 then es = 1 end
+        local function snap(v) return math.floor(v * es + 0.5) / es end
+        local k = W / (CAP_L + CELL * n + CAP_R)
         local d = 20 * k
         if math.abs((f:GetHeight() or 0) - d) > 0.5 then f:SetHeight(d) end
+        self:LayoutPlate(n, k, snap)
         for i, p in ipairs(self.pips) do
             p:ClearAllPoints()
             if i <= n then
-                local sz = d * 1.1
+                local sz = snap(d * 1.1)
                 p:SetSize(sz, sz)
-                if n == 5 then
-                    p:SetPoint("LEFT", f, "LEFT", (11 + 21 * (i - 1)) * k - (sz - d) / 2, (self.flipped and d or -d) * 0.18)
-                else
-                    local gap = (W - n * sz) / (n + 1)
-                    p:SetPoint("LEFT", f, "LEFT", gap + (i - 1) * (sz + gap), (self.flipped and d or -d) * 0.18)
-                end
+                p:SetPoint("LEFT", f, "LEFT", snap((CAP_L + CELL * (i - 1)) * k - (sz - d) / 2),
+                    snap((self.flipped and d or -d) * 0.18))
             end
         end
     else
+        if self.plateSegs then for _, t in ipairs(self.plateSegs) do t:Hide() end end
         local W = self.modernWidth or 100
         local S = math.max(10, math.min(18, W / 6))
         local gap = S * 0.25
@@ -372,8 +487,13 @@ function CUF:UpdateUnit(unit)
     local frame = ns.frames and ns.frames[unit]
     local obj = self.live[unit]
     if not frame then return end
-    local style = CUF.GetBarStyle(unit)
-    local show = style ~= "off" and frame:IsShown() and CUF.PlayerHasCombo()
+    -- Player without combo points: holy power, shards, runes... on the Classic tray.
+    local resourceType, gem
+    if unit == "player" and not CUF.PlayerHasCombo() and CUF.OwnsClassResource() then
+        resourceType, gem = CUF.PlayerClassResource()
+    end
+    local style = resourceType and "classic" or CUF.GetBarStyle(unit)
+    local show = style ~= "off" and frame:IsShown() and (resourceType ~= nil or CUF.PlayerHasCombo())
     if show and unit == "target" then
         show = UnitExists("target") and not (UnitIsFriend and UnitIsFriend("player", "target"))
     end
@@ -387,19 +507,23 @@ function CUF:UpdateUnit(unit)
         self.live[unit] = obj
     end
     local anchor = AnchorFor(unit, frame)
-    obj:SetStyle(style)
+    obj:SetStyle(style, gem)
     local pos, px, py = CUF.GetPlacement(unit)
     obj:Place(anchor, style, frame.Health and frame.Health:GetWidth(), pos, px, py, frame)
 
-    local comboType = ComboPowerType()
-    local okMax, maxPower = pcall(UnitPowerMax, "player", comboType)
+    local powerType = resourceType or ComboPowerType()
+    local okMax, maxPower = pcall(UnitPowerMax, "player", powerType)
     if not okMax or type(maxPower) ~= "number" or maxPower <= 0 then maxPower = 5 end
-    local okCur, cur = pcall(UnitPower, "player", comboType)
+    local okCur, cur = pcall(UnitPower, "player", powerType)
+    if resourceType and Enum.PowerType.Runes == resourceType then
+        local ready = ReadyRunes(maxPower)
+        if ready then okCur, cur = true, ready end
+    end
     obj:SetValues(okCur and cur or 0, maxPower)
     obj.frame:Show()
     local extra = self.extraLive[unit]
     local selected = CUF.GetDisplays(unit)
-    if selected.modern and selected.classic then
+    if not resourceType and selected.modern and selected.classic then
         if not extra then extra = CUF.Create(frame); self.extraLive[unit] = extra end
         extra:SetStyle("classic")
         local offset = (obj.frame:GetHeight() + 8) * (pos == "above" and 1 or -1)
@@ -410,6 +534,14 @@ function CUF:UpdateUnit(unit)
 end
 
 function CUF:RefreshAll()
+    -- Hand the resource back and forth with the custom class power bar.
+    local owns = CUF.OwnsClassResource()
+    if self._ownsResource ~= nil and owns ~= self._ownsResource
+        and ns.frames and ns.frames._toggleClassPower and not InCombatLockdown() then
+        local uf = KT.db.profile.unitFrames
+        ns.frames._toggleClassPower(uf.player and uf.player.classPowerStyle)
+    end
+    self._ownsResource = owns
     self:UpdateUnit("player")
     self:UpdateUnit("target")
     -- The portrait ring / kui bar of the Target follows comboTargetStyle too.
@@ -425,6 +557,9 @@ ev:RegisterEvent("PLAYER_TARGET_CHANGED")
 ev:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 ev:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
 ev:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+for _, event in ipairs({ "RUNE_POWER_UPDATE", "PLAYER_SPECIALIZATION_CHANGED" }) do
+    pcall(ev.RegisterEvent, ev, event)   -- not every client has these
+end
 ev:SetScript("OnEvent", function() CUF:RefreshAll() end)
 
 -------------------------------------------------------------------------------

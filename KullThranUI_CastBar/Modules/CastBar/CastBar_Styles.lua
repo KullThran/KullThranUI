@@ -126,6 +126,22 @@ function S:Apply(bar, db)
         art.border:SetPoint("TOP", bar, "TOP", 0, 28 * verticalRatio)
         bar.Spark:SetTexture(CLASSIC_SPARK)
         bar.Spark:SetSize(32, 32)
+    elseif style == "forever" then
+        -- Match the Damage Meter's Forever rows: a dark warm interior and the
+        -- swing frame's bronze ornaments outside the bar. Keep cast/channel
+        -- fills independent from this decoration so progress stays readable.
+        art.background:SetColorTexture(0.075, 0.055, 0.040, 0.90)
+        Rect(art.background, bar, 0, 0)
+        art.border:SetDrawLayer("OVERLAY", 2)
+        if not (KT.VisualThemes.ApplyStyleAtlas and KT.VisualThemes:ApplyStyleAtlas(art.border, "ui-swingtimerbar-frame")) then
+            art.border:SetAtlas(AtlasName("ui-swingtimerbar-frame", "ui-castingbar-frame"), false)
+        end
+        art.border:SetVertexColor(1, 1, 1, 1)
+        Rect(art.border, bar, 4, 1)
+        if not (KT.VisualThemes.ApplyStyleAtlas and KT.VisualThemes:ApplyStyleAtlas(bar.Spark, "ui-swingtimerbar-pip")) then
+            bar.Spark:SetAtlas(AtlasName("ui-swingtimerbar-pip", "ui-castingbar-pip"), false)
+        end
+        bar.Spark:SetSize(8, bar:GetHeight() + 4)
     else
         art.background:SetAtlas(AtlasName("ui-castingbar-background"), false)
         art.background:SetVertexColor(1, 1, 1, 1)

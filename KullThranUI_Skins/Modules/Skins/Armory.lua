@@ -181,7 +181,7 @@ local function SkinArmory()
     if equipSetButton then S:HandleButton(equipSetButton) end
     if saveSetButton then S:HandleButton(saveSetButton) end
     
-    -- [FIX] Skin para la lista de Sets de Equipamiento
+    -- Skin para la lista de Sets de Equipamiento
     if equipmentPane then
         local Pane = equipmentPane
         if Pane.ScrollBar then S:HandleScrollBar(Pane.ScrollBar) end
@@ -223,7 +223,7 @@ local function SkinArmory()
         end
     end
 
-    -- [FIX] Skin para la lista de Títulos
+    -- Skin para la lista de Títulos
     if _G.PaperDollFrame and _G.PaperDollFrame.TitleManagerPane then
         local Pane = _G.PaperDollFrame.TitleManagerPane
         if Pane.ScrollBar then S:HandleScrollBar(Pane.ScrollBar) end
@@ -265,7 +265,7 @@ local function SkinArmory()
                     if not frame.isSkinned then
                         local icon = frame.Icon
                         if icon then
-                            -- [FIX] Entrada con icono: Ocultar fondos manualmente en vez de StripTextures
+                            -- Entrada con icono: Ocultar fondos manualmente en vez de StripTextures
                             if frame.Background then frame.Background:SetAlpha(0) end
                             if frame.LeftLine then frame.LeftLine:SetAlpha(0) end
                             if frame.RightLine then frame.RightLine:SetAlpha(0) end
@@ -307,7 +307,7 @@ local function SkinArmory()
                     if not frame.isSkinned then
                         local icon = frame.Icon
                         if icon then
-                            -- [FIX] Entrada con icono: Ocultar fondos manualmente
+                            -- Entrada con icono: Ocultar fondos manualmente
                             if frame.Stripe then frame.Stripe:SetAlpha(0) end
                             if frame.Background then frame.Background:SetAlpha(0) end
                             

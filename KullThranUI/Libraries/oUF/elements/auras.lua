@@ -668,6 +668,8 @@ local function UpdateAuras(self, event, unit, updateInfo)
 	end
 
 	local buffs = self.Buffs
+	-- Native containers handle restricted buffs without Lua aura scans.
+	if buffs and buffs._ktNativeAuraContainer then buffs = nil end
 	if(buffs) then
 		if(buffs.PreUpdate) then buffs:PreUpdate(unit, isFullUpdate) end
 
@@ -900,6 +902,8 @@ local function Update(self, event, unit, updateInfo)
 		end
 
 		local buffs = self.Buffs
+	-- Native containers handle restricted buffs without Lua aura scans.
+	if buffs and buffs._ktNativeAuraContainer then buffs = nil end
 		if(buffs) then
 			(buffs.SetPosition or SetPosition) (buffs, 1, buffs.createdButtons)
 		end
@@ -943,6 +947,8 @@ local function Enable(self)
 		end
 
 		local buffs = self.Buffs
+	-- Native containers handle restricted buffs without Lua aura scans.
+	if buffs and buffs._ktNativeAuraContainer then buffs = nil end
 		if(buffs) then
 			buffs.__owner = self
 			-- check if there's any anchoring restrictions

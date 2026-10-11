@@ -1019,7 +1019,7 @@ function Mod:OnEnable()
         local hbdX, hbdY = HBD and HBD.GetPlayerZonePosition and HBD:GetPlayerZonePosition(true)
         local unitX, unitY, unitZ, unitInstance = UnitPosition and UnitPosition("player")
 
-        print("KT Coords Debug")
+        print(LText("KT Coords Debug"))
         print("showCoords=", tostring(self.db and self.db.showCoords))
         print("bestMap=", tostring(bestMap), "mapForUnit=", tostring(mapForUnit), "displayableMap=", tostring(displayableMap), "hbdMap=", tostring(hbdMap))
         print("unitPosition=", tostring(unitX), tostring(unitY), tostring(unitZ), tostring(unitInstance))
@@ -1233,7 +1233,27 @@ function Mod:CreateOverlayButton(name, width, height, anchorPoint, relativePoint
     return button
 end
 
+-- Layout may be requested by world events, secure hooks or delayed callbacks.
+-- One full refresh after combat uses the current profile, not a stale snapshot.
+function Mod:DeferProtectedLayout()
+    if not InCombatLockdown() then return false end
+    if not self._ktLayoutCombatWaiter then
+        self._ktLayoutCombatWaiter = CreateFrame("Frame")
+        self._ktLayoutCombatWaiter:SetScript("OnEvent", function(waiter)
+            if InCombatLockdown() then return end
+            waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            local profile = KT.db and KT.db.profile and KT.db.profile.minimap
+            if profile and profile.enable ~= false then
+                Mod:Refresh()
+            end
+        end)
+    end
+    self._ktLayoutCombatWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+    return true
+end
+
 function Mod:ApplyZoneAnchor()
+    if self:DeferProtectedLayout() then return end
     if not zoneButton or not Minimap then
         return
     end
@@ -1250,6 +1270,7 @@ function Mod:ApplyZoneAnchor()
 end
 
 function Mod:ApplyTrackingAnchor()
+    if self:DeferProtectedLayout() then return end
     if UIParent and not UIParent:IsShown() then
         return
     end
@@ -1544,6 +1565,7 @@ local function RestoreNativeInstanceDifficulty()
 end
 
 function Mod:CreateLayout()
+    if self:DeferProtectedLayout() then return end
     if holder or not Minimap then
         return
     end
@@ -1650,7 +1672,7 @@ function Mod:CreateLayout()
     SetModernCalendarIcon(calendarButton, calendarButton.Icon)
     calendarButton:SetScript('OnEnter', function(button)
         GameTooltip:SetOwner(button, 'ANCHOR_RIGHT')
-        GameTooltip:SetText(_G.CALENDAR or 'Calendar')
+        GameTooltip:SetText(_G.CALENDAR or LText('Calendar'))
         GameTooltip:Show()
     end)
     calendarButton:SetScript('OnLeave', function() GameTooltip:Hide() end)
@@ -1662,7 +1684,7 @@ function Mod:CreateLayout()
     mailButton:SetScript('OnEnter', function(button)
         SetModernMailIcon(button, true)
         GameTooltip:SetOwner(button, 'ANCHOR_RIGHT')
-        GameTooltip:SetText(_G.HAVE_MAIL or 'Mail')
+        GameTooltip:SetText(_G.HAVE_MAIL or LText('Mail'))
         GameTooltip:Show()
     end)
     mailButton:SetScript('OnLeave', function(button)
@@ -1769,6 +1791,7 @@ function Mod:CreateLayout()
 end
 
 function Mod:ApplyElementOffsets()
+    if self:DeferProtectedLayout() then return end
     if not holder then return end
     local function Place(frame, point, relative, relativePoint, baseX, baseY, key)
         if not frame then return end
@@ -1784,6 +1807,7 @@ function Mod:ApplyElementOffsets()
 end
 
 function Mod:ApplyDefaultOffset()
+    if self:DeferProtectedLayout() then return end
     if not self.db then
         return
     end
@@ -1848,6 +1872,7 @@ function Mod:RememberClusterPosition()
 end
 
 function Mod:RestoreConfiguredClusterPosition(force)
+    if self:DeferProtectedLayout() then return end
     if not force then
         return
     end
@@ -1883,6 +1908,7 @@ function Mod:RestoreConfiguredClusterPosition(force)
 end
 
 function Mod:RestoreMinimapInteraction()
+    if self:DeferProtectedLayout() then return end
     local cluster = _G.MinimapCluster
     for _, frame in ipairs({ Minimap, cluster }) do
         if frame then
@@ -1918,6 +1944,7 @@ function Mod:RememberClusterSize()
 end
 
 function Mod:RestoreClusterSize(force)
+    if self:DeferProtectedLayout() then return end
     local cluster = _G.MinimapCluster
     if not (cluster and cluster.GetWidth and cluster.GetHeight and cluster.SetSize) then
         return
@@ -1957,9 +1984,10 @@ KT.MinimapRingStyles = {
     { key = "forever", label = "Forever",
       file = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\minimap\\UI-HUD-Minimap-Frame-C60.blp",
       coords = { 1 / 512, 254 / 512, 1 / 512, 254 / 512 }, base = 198, size = 253, dx = 0, dy = 0 },
-    { key = "retail",  label = "Retail",  atlases = { "UI-HUD-Minimap-Frame-Circle", "UI-HUD-Minimap-Frame" }, base = 198,
-      -- Only the Forever client remaps this atlas to its bronze sheet; Retail draws it gold natively.
-      goldTint = not (WOW_PROJECT_ID and WOW_PROJECT_MAINLINE and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) },
+    { key = "retail", label = "Retail",
+      file = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\minimap\\UIMinimap-Retail.blp",
+      coords = { 1 / 512, 439 / 512, 36 / 512, 496 / 512 },
+      base = 198, width = 215, height = 226, dx = 0, dy = 0 },
     { key = "classic", label = "Classic", file = "Interface\\Minimap\\UI-Minimap-Border",
       coords = { 0.25, 1.0, 0.125, 0.875 }, base = 140, size = 192, dx = -8, dy = -24 },
 }
@@ -1973,11 +2001,10 @@ function KT.DrawMinimapRing(def, ring, tex, target, diameter)
     tex:SetVertexColor(1, 1, 1, 1)
     local k = diameter / def.base
     if def.file then
-        tex:SetAtlas(nil)
         tex:SetTexture(def.file)
         tex:SetTexCoord(unpack(def.coords))
         ring:SetPoint("CENTER", target, "CENTER", def.dx * k, def.dy * k)
-        ring:SetSize(def.size * k, def.size * k)
+        ring:SetSize((def.width or def.size) * k, (def.height or def.size) * k)
         return true
     end
     local atlas, info
@@ -1988,10 +2015,6 @@ function KT.DrawMinimapRing(def, ring, tex, target, diameter)
     if not atlas then return false end
     tex:SetTexCoord(0, 1, 0, 1)
     tex:SetAtlas(atlas)
-    if def.goldTint then
-        tex:SetDesaturated(true)
-        tex:SetVertexColor(1, 0.84, 0.38, 1)
-    end
     ring:SetPoint("CENTER", target, "CENTER", 0, 0)
     ring:SetSize(info.width * k, info.height * k)
     return true
@@ -2054,6 +2077,7 @@ function Mod:UpdateRing()
 end
 
 function Mod:Refresh()
+    if self:DeferProtectedLayout() then return end
     if not KT.db or not KT.db.profile then
         return
     end
@@ -2112,6 +2136,7 @@ function Mod:Refresh()
 end
 
 function Mod:RefreshAfterUIShow()
+    if self:DeferProtectedLayout() then return end
     local now = GetTimePreciseSec and GetTimePreciseSec() or 0
     if self._ktLastRefreshAfterUIShowAt and (now - self._ktLastRefreshAfterUIShowAt) < 0.10 then
         return
@@ -2186,6 +2211,7 @@ function Mod:RefreshAfterUIShow()
 end
 
 function Mod:RestoreEditModeMinimapPosition(force)
+    if self:DeferProtectedLayout() then return end
     local now = GetTimePreciseSec and GetTimePreciseSec() or 0
     if not force and self._ktLastRestoreEditModeAt and (now - self._ktLastRestoreEditModeAt) < 0.10 then
         return
@@ -2461,7 +2487,7 @@ function Mod:RefreshSocialTooltipRows()
             row:Show()
         elseif total == 0 and index == 1 then
             row.level:SetText("")
-            row.name:SetText(_G.NO_ONLINE_MEMBERS or "No connected players")
+            row.name:SetText(_G.NO_ONLINE_MEMBERS or LText("No connected players"))
             row.name:SetTextColor(0.68, 0.70, 0.76, 1)
             row.zone:SetText("")
             row.status:SetText("")
@@ -2540,7 +2566,7 @@ function Mod:UpdateSocialStats()
     if txtGuild then
         local _, online = GetNumGuildMembers()
         local guildCount = (IsInGuild() and online) and online or 0
-        txtGuild:SetText(LText("Guild: ") .. guildCount)
+        txtGuild:SetText(string.format(LText("Guild: %s"), tostring(guildCount)))
     end
 
     if txtFriends then
@@ -2555,7 +2581,7 @@ function Mod:UpdateSocialStats()
             end
         end
 
-        txtFriends:SetText(LText("Friends: ") .. (wowOnline + bnOnline))
+        txtFriends:SetText(string.format(LText("Friends: %s"), tostring(wowOnline + bnOnline)))
     end
 
     self:RefreshVisibleSocialTooltip()
@@ -2612,6 +2638,7 @@ function Mod:SuppressNativeMailIndicators(defer)
 end
 
 function Mod:UpdateOverlayVisibility(force)
+    if self:DeferProtectedLayout() then return end
     self:SuppressNativeMailIndicators(true)
     local startMs = PerfNowMS()
     self:_RecordPerfCaller("UpdateOverlayVisibility")
@@ -2696,6 +2723,7 @@ function Mod:UpdateSocialMinimapIconStyle()
 end
 
 function Mod:UpdateIcons()
+    if self:DeferProtectedLayout() then return end
     self:SuppressNativeMailIndicators(true)
     self:UpdateSocialMinimapIconStyle()
     if calendarButton then
@@ -2766,25 +2794,41 @@ function Mod:UpdateIcons()
 end
 
 function Mod:ApplyMask()
-    Minimap:Hide()
-    Minimap:Show()
-
-    if isSquare then
-        Minimap:SetMaskTexture("Interface\\Buttons\\WHITE8X8")
-    else
-        Minimap:SetMaskTexture(186178)
-    end
-
-    C_Timer.After(0.1, function()
-        if isSquare then
-            Minimap:SetMaskTexture("Interface\\Buttons\\WHITE8X8")
-        else
-            Minimap:SetMaskTexture(186178)
+    if not Minimap or not Minimap.SetMaskTexture then return end
+    self._ktMaskApplyToken = (self._ktMaskApplyToken or 0) + 1
+    local token = self._ktMaskApplyToken
+    if InCombatLockdown() then
+        if not self._ktMaskCombatWaiter then
+            self._ktMaskCombatWaiter = CreateFrame("Frame")
+            self._ktMaskCombatWaiter:SetScript("OnEvent", function(waiter)
+                if InCombatLockdown() then return end
+                waiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                if Mod.db and Mod.db.enable ~= false then Mod:ApplyMask() end
+            end)
         end
-    end)
+        self._ktMaskCombatWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
+    if self._ktMaskCombatWaiter then
+        self._ktMaskCombatWaiter:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    local mask = isSquare and "Interface\\Buttons\\WHITE8X8" or 186178
+    local function ApplyCurrentMask()
+        if token ~= Mod._ktMaskApplyToken or (Mod.db and Mod.db.enable == false) then return end
+        if InCombatLockdown() then Mod:ApplyMask(); return end
+        Mod._ktApplyingMask = true
+        Minimap:SetMaskTexture(mask)
+        Mod._ktApplyingMask = nil
+    end
+    -- Updating the mask does not require changing the protected visibility.
+    ApplyCurrentMask()
+    for _, delay in ipairs({ 0, 0.05, 0.20, 0.50 }) do
+        C_Timer.After(delay, ApplyCurrentMask)
+    end
 end
 
 function Mod:HandleBorders()
+    if self:DeferProtectedLayout() then return end
     local cluster = _G.MinimapCluster
 
     if _G.MinimapBorder then
@@ -2899,12 +2943,12 @@ function Mod:GetOptions()
             },
             showZone = {
                 type = "toggle",
-                name = "Mostrar texto de zona",
+                name = LText("Show zone text"),
                 order = 2,
             },
             zoneOffsetX = {
                 type = "range",
-                name = "Zona X",
+                name = LText("Zone X"),
                 min = -300,
                 max = 300,
                 step = 1,
@@ -2912,7 +2956,7 @@ function Mod:GetOptions()
             },
             zoneOffsetY = {
                 type = "range",
-                name = "Zona Y",
+                name = LText("Zone Y"),
                 min = -100,
                 max = 100,
                 step = 1,
@@ -2923,6 +2967,9 @@ function Mod:GetOptions()
 end
 
 function Mod:OnDisable()
+    if self._ktLayoutCombatWaiter then self._ktLayoutCombatWaiter:UnregisterEvent("PLAYER_REGEN_ENABLED") end
+    if self._ktMaskCombatWaiter then self._ktMaskCombatWaiter:UnregisterEvent("PLAYER_REGEN_ENABLED") end
+    self._ktMaskApplyToken = (self._ktMaskApplyToken or 0) + 1
     if self._dynamicStatsTicker and self._dynamicStatsTicker.Cancel then
         self._dynamicStatsTicker:Cancel()
     end

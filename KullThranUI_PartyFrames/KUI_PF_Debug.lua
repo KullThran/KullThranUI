@@ -41,6 +41,22 @@ local ADDON_NAME, ns = ...
 -- Solo activo si se carga este archivo
 if not ns then ns = {} end
 
+local function LText(text)
+    local AceAddon = LibStub and LibStub("AceAddon-3.0", true)
+    local KT = AceAddon and AceAddon:GetAddon("KullThranUI", true)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
+local function LTextFmt(text, ...)
+    return string.format(LText(text), ...)
+end
+
+local DEBUG_TAG = "[KUI PF Debug]|r "
+local function DebugMsg(text, color, ...)
+    print((color or "|cff00ccff") .. DEBUG_TAG .. LTextFmt(text, ...))
+end
+
 local _debug = {}
 local _eventCounts  = {}   -- evento → nº de veces disparado
 local _eventTimes   = {}   -- evento → tiempo total (ms) gastado en handler
@@ -106,7 +122,7 @@ local function CreateDebugPanel()
     -- Título
     local title = debugFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", 0, -16)
-    title:SetText("|cff00ccff[KUI PartyFrames Debug]|r")
+    title:SetText("|cff00ccff[" .. LText("KUI PartyFrames Debug") .. "]|r")
 
     -- Texto principal
     local txt = debugFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -124,21 +140,21 @@ local function CreateDebugPanel()
     local resetBtn = CreateFrame("Button", nil, debugFrame, "GameMenuButtonTemplate")
     resetBtn:SetSize(100, 22)
     resetBtn:SetPoint("BOTTOMLEFT", 18, 12)
-    resetBtn:SetText("Reset")
+    resetBtn:SetText(LText("Reset"))
     resetBtn:SetScript("OnClick", function()
         wipe(_eventCounts); wipe(_eventTimes)
         _updateCount = 0; _updateTime = 0
         _lastReset = GetTime()
-        print("|cff00ff00[KUI PF Debug]|r Contadores reseteados.")
+        DebugMsg("Counters reset.", "|cff00ff00")
     end)
 
     -- Botón stress
     local stressBtn = CreateFrame("Button", nil, debugFrame, "GameMenuButtonTemplate")
     stressBtn:SetSize(120, 22)
     stressBtn:SetPoint("BOTTOMLEFT", 130, 12)
-    stressBtn:SetText("Stress Test")
+    stressBtn:SetText(LText("Stress Test"))
     stressBtn:SetScript("OnClick", function()
-        print("|cffffff00[KUI PF Debug]|r Iniciando stress test (50 ciclos)...")
+        DebugMsg("Starting stress test (50 cycles)...", "|cffffff00")
         local start = debugprofilestart and debugprofilestart() or 0
         -- Simula 50 actualizaciones del frame
         local pf_ns2 = ns
@@ -146,19 +162,19 @@ local function CreateDebugPanel()
         if refreshFn then
             for i = 1, 50 do refreshFn() end
             local elapsed = debugprofilestop and (debugprofilestop() - start) or 0
-            print(string.format("|cff00ff00[KUI PF Debug]|r 50 RefreshAll completados en %.2f ms (%.3f ms/call)", elapsed, elapsed/50))
+            DebugMsg("50 RefreshAll calls completed in %.2f ms (%.3f ms/call)", "|cff00ff00", elapsed, elapsed/50)
         else
             -- Dispara eventos de grupo simulados
             local pf_frame = _G["KUIPartyFramesEventFrame"] or _G["KUI_PartyEventFrame"]
             if pf_frame then
                 for i = 1, 20 do
                     local ok, err = pcall(pf_frame.GetScript(pf_frame, "OnEvent"), pf_frame, "GROUP_ROSTER_UPDATE")
-                    if not ok then print("|cffff0000[KUI PF Debug]|r Error en stress: " .. tostring(err)); break end
+                    if not ok then DebugMsg("Stress test error: %s", "|cffff0000", tostring(err)); break end
                 end
                 local elapsed2 = debugprofilestop and (debugprofilestop() - start) or 0
-                print(string.format("|cff00ff00[KUI PF Debug]|r 20x GROUP_ROSTER_UPDATE en %.2f ms", elapsed2))
+                DebugMsg("20x GROUP_ROSTER_UPDATE in %.2f ms", "|cff00ff00", elapsed2)
             else
-                print("|cffff8800[KUI PF Debug]|r No se encontró el eventFrame. Usa /kuipf events para inspeccionar.")
+                DebugMsg("Event frame not found. Use /kuipf events to inspect it.", "|cffff8800")
             end
         end
     end)
@@ -167,7 +183,7 @@ local function CreateDebugPanel()
     local confBtn = CreateFrame("Button", nil, debugFrame, "GameMenuButtonTemplate")
     confBtn:SetSize(120, 22)
     confBtn:SetPoint("BOTTOMRIGHT", -18, 12)
-    confBtn:SetText("Conflictos")
+    confBtn:SetText(LText("Conflicts"))
     confBtn:SetScript("OnClick", function()
         KUI_PF_CheckConflicts()
     end)
@@ -175,7 +191,7 @@ local function CreateDebugPanel()
     local gradBtn = CreateFrame("Button", nil, debugFrame, "GameMenuButtonTemplate")
     gradBtn:SetSize(120, 22)
     gradBtn:SetPoint("BOTTOM", 0, 12)
-    gradBtn:SetText("Test Gradients")
+    gradBtn:SetText(LText("Test Gradients"))
     gradBtn:SetScript("OnClick", function()
         KUI_PF_TestGradients()
     end)
@@ -200,7 +216,7 @@ function KUI_PF_TestGradients()
     end
 
     if not pf_ns or not pf_ns.frames then
-        print("|cffff0000[KUI PF Debug]|r No se pudo acceder a los frames.")
+        DebugMsg("Could not access the frames.", "|cffff0000")
         return
     end
 
@@ -216,15 +232,15 @@ function KUI_PF_TestGradients()
     end
 
     if not testFrame then
-        print("|cffff0000[KUI PF Debug]|r No hay marcos de grupo visibles para probar. Entra en un grupo.")
+        DebugMsg("No visible group frames to test. Join a group.", "|cffff0000")
         return
     end
 
-    print("|cff00ccff[KUI PF Debug]|r Inyectando estado de Dispel (Poison) usando lógica nativa...")
+    DebugMsg("Injecting a Dispel state (Poison) using the native logic...", "|cff00ccff")
     
     local unit = testFrame.unit
     if type(unit) ~= "string" or testFrame.fakeUnit then
-        print("|cffff9900[KUI PF Debug]|r El test de gradiente requiere un frame vivo con unidad real.|r")
+        DebugMsg("The gradient test needs a live frame with a real unit.", "|cffff9900")
         return
     end
     
@@ -249,7 +265,7 @@ function KUI_PF_TestGradients()
                 pf_ns:UpdateFrameAuras(testFrame)
             end
         end
-        print("|cff00ccff[KUI PF Debug]|r Test de gradiente finalizado.")
+        DebugMsg("Gradient test finished.", "|cff00ccff")
     end)
 end
 
@@ -258,11 +274,11 @@ function KUI_PF_RefreshPanel()
 
     local elapsed = GetTime() - _lastReset
     local lines = {}
-    lines[#lines+1] = string.format("|cffaaaaaa Tiempo monitorizando: |r%.1f s", elapsed)
+    lines[#lines+1] = LTextFmt("|cffaaaaaaMonitoring time:|r %.1f s", elapsed)
     lines[#lines+1] = ""
 
     -- Eventos más frecuentes
-    lines[#lines+1] = "|cff00ccff── Eventos (Top 15 por frecuencia) ──|r"
+    lines[#lines+1] = "|cff00ccff── " .. LText("Events (top 15 by frequency)") .. " ──|r"
     local sorted = {}
     for ev, count in pairs(_eventCounts) do
         sorted[#sorted+1] = { ev = ev, count = count, ms = _eventTimes[ev] or 0 }
@@ -278,12 +294,12 @@ function KUI_PF_RefreshPanel()
     end
 
     lines[#lines+1] = ""
-    lines[#lines+1] = string.format("|cff00ccff── OnUpdate ──|r  %d calls  |cff88ff88%.3f ms/call|r",
+    lines[#lines+1] = LTextFmt("|cff00ccff── OnUpdate ──|r  %d calls  |cff88ff88%.3f ms/call|r",
         _updateCount, _updateCount > 0 and _updateTime/_updateCount or 0)
 
     -- Addons cargados que pueden conflictuar
     lines[#lines+1] = ""
-    lines[#lines+1] = "|cff00ccff── Addons de Party Frames detectados ──|r"
+    lines[#lines+1] = "|cff00ccff── " .. LText("Party frame addons detected") .. " ──|r"
     local riskAddons = {
         "ElvUI", "Cell", "Grid2", "VuhDo", "Healbot",
         "sArena", "Gladius", "oUF", "ShadowUF", "PitBull4",
@@ -292,7 +308,7 @@ function KUI_PF_RefreshPanel()
     for _, a in ipairs(riskAddons) do
         local loaded = C_AddOns and C_AddOns.IsAddOnLoaded(a)
         if loaded then
-            lines[#lines+1] = "  |cffff6644⚠ " .. a .. "|r  (activo — posible conflicto de frames)"
+            lines[#lines+1] = "  |cffff6644⚠ " .. a .. "|r  " .. LText("(active — possible frame conflict)")
         end
     end
 
@@ -301,7 +317,7 @@ end
 
 function KUI_PF_CheckConflicts()
     local pf_ns2 = ns
-    print("|cff00ccff[KUI PF Debug] ── Análisis de conflictos ──|r")
+    print(string.format("|cff00ccff[KUI PF Debug] ── %s ──|r", LText("Conflict analysis")))
 
     -- 1. Hooks en CompactRaidFrameManager
     local hookTargets = {
@@ -314,23 +330,23 @@ function KUI_PF_CheckConflicts()
     for _, fn in ipairs(hookTargets) do
         if rawget(_G, fn) then
             -- No podemos saber directamente quién la hookea, pero sí si existe
-            print(string.format("  |cffaaaaaa%s|r — existe en _G (puede haber hooks)", fn))
+            print("  " .. LTextFmt("|cffaaaaaa%s|r — exists in _G (may be hooked)", fn))
         end
     end
 
     -- 2. CompactRaidFrameContainer visibility
     local crf = _G["CompactRaidFrameContainer"]
     if crf then
-        local vis = crf:IsShown() and "|cff00ff00visible|r" or "|cffff4444oculto|r"
-        print("  CompactRaidFrameContainer: " .. vis)
-        print("  Alpha: " .. tostring(crf:GetAlpha()))
+        local vis = crf:IsShown() and ("|cff00ff00" .. LText("Shown") .. "|r") or ("|cffff4444" .. LText("Hidden") .. "|r")
+        print(string.format("  %s: %s", "CompactRaidFrameContainer", vis))
+        print("  " .. LTextFmt("Opacity: %s", tostring(crf:GetAlpha())))
     end
 
     -- 3. Blizzard party frames
     local bf = _G["PartyFrame"]
     if bf then
-        local vis2 = bf:IsShown() and "|cff00ff00visible|r" or "|cffff4444oculto|r"
-        print("  PartyFrame (Blizzard): " .. vis2)
+        local vis2 = bf:IsShown() and ("|cff00ff00" .. LText("Shown") .. "|r") or ("|cffff4444" .. LText("Hidden") .. "|r")
+        print(string.format("  %s: %s", "PartyFrame (Blizzard)", vis2))
     end
 
     -- 4. Otros addons con party frames
@@ -342,18 +358,18 @@ function KUI_PF_CheckConflicts()
         end
     end
     if #conflicts > 0 then
-        print("  |cffff8800⚠ Addons conflictivos cargados: |r" .. table.concat(conflicts, ", "))
-        print("  |cffaaaaaa  → Asegúrate de que KUI deshabilita los frames de Blizzard")
-        print("  |cffaaaaaa  → y de que los otros addons no re-habilitan CompactRaidFrames|r")
+        print("  |cffff8800⚠ " .. LTextFmt("Conflicting addons loaded:|r %s", table.concat(conflicts, ", ")))
+        print("  |cffaaaaaa  → " .. LText("Make sure KUI disables the Blizzard frames."))
+        print("  |cffaaaaaa  → " .. LText("Make sure other addons do not re-enable CompactRaidFrames.") .. "|r")
     else
-        print("  |cff00ff00✓ Sin addons conflictivos detectados.|r")
+        print("  |cff00ff00✓ " .. LText("No conflicting addons detected.") .. "|r")
     end
 
     
     -- 5. Eventos de partido actualmente registrados (escaneo de frames globales)
     print("")
-    print("|cff00ccff[KUI PF Debug]|r Eventos registrados (Omitido por Taint)")
-    print("  (Escaneo omitido para evitar errores de Taint de Blizzard)")
+    DebugMsg("Registered events (skipped because of taint)", "|cff00ccff")
+    print("  " .. LText("(Scan skipped to avoid Blizzard taint errors)"))
 end
 
 
@@ -377,7 +393,7 @@ local function PF_FormatValue(ok, val)
 end
 
 function KUI_PF_LeaderDump()
-    print("|cff00ccff[KUI PF Debug] ── Dump de Leader Icon ──|r")
+    print(string.format("|cff00ccff[KUI PF Debug] ── %s ──|r", LText("Leader icon dump")))
     print(string.format("  type(_G.issecretvalue) = %s", type(_G.issecretvalue)))
     print(string.format("  type(_G.IsSecretValue) = %s", type(_G.IsSecretValue)))
     print(string.format("  C_UI.IsSecret          = %s", (C_UI and C_UI.IsSecret and "function" or "nil")))
@@ -385,7 +401,7 @@ function KUI_PF_LeaderDump()
     local KT = LibStub and LibStub("AceAddon-3.0", true) and LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
     local mod = KT and KT:GetModule("PartyFrames", true)
     if not mod or not mod.frames then
-        print("|cffff0000[KUI PF Debug]|r No se pudo acceder al módulo PartyFrames.")
+        DebugMsg("Could not access the PartyFrames module.", "|cffff0000")
         return
     end
 
@@ -399,7 +415,7 @@ function KUI_PF_LeaderDump()
     local anyShown = false
     for mode, frames in pairs(mod.frames) do
         local db = mod and mod.GetModeDB and mod:GetModeDB(mode)
-        print(string.format("  Modo %-10s showLeaderIcon = %s", tostring(mode), tostring(db and db.showLeaderIcon)))
+        print("  " .. LTextFmt("Mode %-10s showLeaderIcon = %s", tostring(mode), tostring(db and db.showLeaderIcon)))
         for _, f in ipairs(frames) do
             if f:IsShown() and f.unit then
                 anyShown = true
@@ -439,9 +455,9 @@ function KUI_PF_LeaderDump()
         end
     end
     if not anyShown then
-        print("  |cffaaaaaa(Ningún frame visible con unidad asignada — entra en un grupo)|r")
+        print("  |cffaaaaaa" .. LText("(No visible frame with an assigned unit — join a group)") .. "|r")
     end
-    print("|cff00ff00[KUI PF Debug]|r Dump finalizado. Copia esta salida en el reporte.")
+    DebugMsg("Dump finished. Copy this output into your report.", "|cff00ff00")
 end
 
 
@@ -459,23 +475,23 @@ SlashCmdList["KUIPF"] = function(msg)
         wipe(_eventCounts); wipe(_eventTimes)
         _updateCount = 0; _updateTime = 0
         _lastReset = GetTime()
-        print("|cff00ff00[KUI PF Debug]|r Contadores reseteados.")
+        DebugMsg("Counters reset.", "|cff00ff00")
     elseif msg == "events" then
-        print("|cff00ccff[KUI PF Debug] Eventos registrados en _eventCounts:|r")
+        print(string.format("|cff00ccff[KUI PF Debug] %s|r", LText("Events recorded in _eventCounts:")))
         local count = 0
         for ev, n in pairs(_eventCounts) do
-            print(string.format("  %-40s %d veces  %.3f ms total", ev, n, _eventTimes[ev] or 0))
+            print("  " .. LTextFmt("%-40s %d times  %.3f ms total", ev, n, _eventTimes[ev] or 0))
             count = count + 1
         end
-        if count == 0 then print("  (ningún evento capturado aún — prueba /kuipf debug primero)") end
+        if count == 0 then print("  " .. LText("(no events captured yet — try /kuipf debug first)")) end
     elseif msg == "gradients" then
         KUI_PF_TestGradients()
     elseif msg == "conflicts" then
         KUI_PF_CheckConflicts()
     elseif msg == "stress" then
-        print("|cffffff00[KUI PF Debug]|r Usa el botón Stress Test del panel (/kuipf debug)")
+        DebugMsg("Use the Stress Test button in the panel (/kuipf debug).", "|cffffff00")
     else
-        print("|cff00ccff[KUI PF Debug] Comandos:|r /kuipf debug | leader | reset | events | conflicts | stress")
+        print(string.format("|cff00ccff[KUI PF Debug] %s|r /kuipf debug | leader | reset | events | conflicts | stress", LText("Commands:")))
     end
 end
 

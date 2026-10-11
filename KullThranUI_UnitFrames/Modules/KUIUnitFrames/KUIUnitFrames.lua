@@ -1,6 +1,10 @@
 local addonName, ns = ...
 
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+function ns.UFLoc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
 local Mod = KT:NewModule("UnitFrames", "AceEvent-3.0", "AceTimer-3.0", "AceConsole-3.0")
 local oUF = ns.oUF or oUF
 local Compat = ns.KUIUFCompat or {}
@@ -2878,10 +2882,10 @@ end
 -- Shared portrait camera is loaded by the core for Unit and Party Frames.
 local function GetDefaultPortraitFacing(unit)
     -- Player and target still face each other ("look inward" toward their
-    -- own frame content), but swapped from the previous defaults: player
-    -- now faces the direction target used to, and vice versa. Other units
-    -- (focus/pet/boss) keep their previous "normal" default, unaffected by
-    -- this swap.
+    -- own frame content), but swapped from the previous defaults so that
+    -- player now faces the direction
+    -- target used to, and vice versa. Other units (focus/pet/boss) keep
+    -- their previous "normal" default, unaffected by this swap.
     if unit == "player" then
         return "flipped"
     end
@@ -2904,10 +2908,12 @@ local function GetPortraitFacing(unit, settings)
     -- central gameplay area. Keep ordinary portraits facing inward toward
     -- their bars; a live player shapeshift keeps the client's already-
     -- correct druid-form direction instead of flipping it a second time.
-    -- This applies to both real-stock themes, not just Classic: Forever's
-    -- 2D portrait is already correctly oriented for the current shapeshift
-    -- by the client itself, so forcing our facing on top of it is wrong
-    -- (and inconsistent with the non-shapeshifted case) while shapeshifted.
+    -- This override was gated to Classic
+    -- only, so Forever's 2D portrait (already correctly oriented for the
+    -- current shapeshift by the client itself) got our forced facing
+    -- applied on top -- consistent when not shapeshifted, wrong (and
+    -- inconsistent with the shapeshifted case) otherwise. Same underlying
+    -- reason applies to both real-stock themes, not just Classic.
     local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
         and KT.VisualThemes:GetRenderedTheme()
     local classicKit = db and db.profile and db.profile.frameArtKit == "classic"
@@ -2917,22 +2923,21 @@ local function GetPortraitFacing(unit, settings)
     if (renderedTheme == "classic" or renderedTheme == "forever" or renderedTheme == "retail" or renderedTheme == "kui" or classicKit)
         and (unit == "player" or unit == "target") then
         if unit == "target" then
-            -- Target must always be the MIRROR IMAGE of player's own
-            -- resolved facing, never a fixed constant -- a hardcoded
-            -- "flipped" here breaks the moment player ALSO needs "flipped"
-            -- (shapeshifted), since two frames returning the same value
-            -- render IDENTICALLY instead of as mirror images. Both portraits
-            -- come from the same underlying capture convention regardless
-            -- of shapeshift state, so deriving target from player's own
-            -- answer -- instead of assuming what player currently resolves
-            -- to -- keeps them opposite in every case.
-            local playerFacing = GetPortraitFacing("player", GetSettingsForUnit("player"))
-            return (playerFacing == "flipped") and "normal" or "flipped"
+            -- Only a self-target shares the player's humanoid/form capture.
+            -- An unrelated NPC must not flip when our druid changes form.
+            local ok, same = false, false
+            if UnitIsUnit then ok, same = pcall(UnitIsUnit, "target", "player") end
+            if ok and not (issecretvalue and issecretvalue(same)) and same then
+                local playerFacing = GetPortraitFacing("player", GetSettingsForUnit("player"))
+                return (playerFacing == "flipped") and "normal" or "flipped"
+            end
+            return "flipped"
         else
-            -- Player, NOT shapeshifted: the normal 3D portrait already faces
-            -- inward and needs no override flip.
+            -- Player, NOT shapeshifted: the normal 3D portrait (humanoid face
+            -- facing inward) needs no override flip.
             local shapeshifted = false
-            if type(GetShapeshiftForm) == "function" then
+            if type(GetShapeshiftForm) == "function"
+                and select(3, pcall(UnitClass, "player")) == "DRUID" then
                 local ok, form = pcall(GetShapeshiftForm)
                 shapeshifted = ok and type(form) == "number" and form > 0
             end
@@ -2950,18 +2955,19 @@ local function GetPortraitFacing(unit, settings)
         end
     end
 
-    -- kui style used to always use the fixed default above
+    -- Kui style always used the fixed default above
     -- (GetDefaultPortraitFacing's "flipped" for player) regardless of
     -- shapeshift state -- right by coincidence for a shapeshifted Druid
     -- (the 2D form icon's baked facing is the opposite of the normal 3D
-    -- portrait's) but wrong for every ordinary humanoid portrait. Same
-    -- shapeshift-aware check the stock themes above already use, applied
-    -- here too -- but only when the user hasn't picked an explicit facing
-    -- of their own (settings.portraitFacing), since that deliberate choice
-    -- always wins.
+    -- portrait's) but wrong for every ordinary humanoid portrait, which is
+    -- what "wrong side, except in Druid form" reports. Same shapeshift-
+    -- aware check the stock themes above already use, applied here too --
+    -- but only when the user hasn't picked an explicit facing of their own
+    -- (settings.portraitFacing), since that deliberate choice always wins.
     if unit == "player" and not (settings and settings.portraitFacing) then
         local shapeshifted = false
-        if type(GetShapeshiftForm) == "function" then
+        if type(GetShapeshiftForm) == "function"
+                and select(3, pcall(UnitClass, "player")) == "DRUID" then
             local ok, form = pcall(GetShapeshiftForm)
             shapeshifted = ok and type(form) == "number" and form > 0
         end
@@ -2969,6 +2975,43 @@ local function GetPortraitFacing(unit, settings)
     end
 
     return facing
+end
+
+-- Texture/font visibility is safe during combat; frame geometry is not.
+ns.ShowCharacterLevel = function(profile)
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+    if KT.IS_FOREVER ~= true and (theme == nil or theme == "kui") then return false end
+    return not profile or profile.showCharacterLevel ~= false
+end
+ns.RefreshLevelBadgeVisibility = function(frame, u, profile, ornament, value, combat)
+    if not (frame and frame._kuiLevelText and frame._kuiLevelCircle) then return end
+    local exists = type(UnitExists) ~= "function" or ns.SafeCall(UnitExists, u)
+    local enabled = exists and ns.ShowCharacterLevel(profile)
+    if ornament == nil then
+        local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+        local settings = GetSettingsForUnit(u)
+        local portrait = frame.Portrait and frame.Portrait.backdrop
+        ornament = (theme == "classic" or theme == "forever" or theme == "retail" or profile and profile.frameArtKit == "classic")
+            and profile and profile.portraitStyle ~= "none" and settings and settings.showPortrait ~= false
+            and portrait and portrait:IsShown()
+    end
+    value = enabled and (value or SafeUnitLevelText(u)) or nil
+    if combat == nil then
+        local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+        combat = enabled and ornament and ns.StockStyleToggle(profile, "levelCombatIcon", theme) and ns.UnitInCombat(u)
+    end
+    local icon = frame._kuiLevelCombatIcon
+    local showIcon = enabled and combat and icon ~= nil
+    if icon then icon:SetShown(showIcon and true or false) end
+    -- Keep the ornament visible while a newly selected unit's level settles.
+    if enabled and (value or ornament) then
+        frame._kuiLevelText:SetText(value or "??")
+        frame._kuiLevelText:SetShown(not showIcon)
+        frame._kuiLevelCircle:SetShown(ornament and true or false)
+    else
+        frame._kuiLevelText:Hide()
+        frame._kuiLevelCircle:Hide()
+    end
 end
 
 -- Classification artwork is directional. Its dragon head must face inward,
@@ -3101,6 +3144,47 @@ local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
     if not tex then return end
 
     local facing = GetPortraitFacing(unit, settings)
+    -- Native creature captures and humanoid captures have different facing.
+    -- Resolve the actual target model instead of treating every NPC as the
+    -- player's mirror. A hidden model is only an ID probe; it never renders
+    -- a replacement portrait or changes the 3D camera.
+    local explicit = settings and settings.portraitFacingMode
+    if unit == "target" and not fullTexture and explicit ~= "normal" and explicit ~= "flipped"
+        and KT.PortraitMirrorModels and CreateFrame and UnitGUID then
+        local ok, guid = pcall(UnitGUID, unit)
+        if ok and guid and not (issecretvalue and issecretvalue(guid)) then
+            local probe = tex._ktFacingProbe
+            if not probe then
+                probe = CreateFrame("PlayerModel", nil, UIParent)
+                probe:SetSize(32, 32)
+                if probe.SetKeepModelOnHide then probe:SetKeepModelOnHide(true) end
+                probe:Hide()
+                tex._ktFacingProbe = probe
+                probe:SetScript("OnModelLoaded", function(self)
+                    if tex._ktFacingLoading then return end
+                    local ready, current = pcall(UnitGUID, unit)
+                    if not ready or (issecretvalue and issecretvalue(current)) or current ~= tex._ktFacingGuid then return end
+                    -- Refresh the 2D capture after the target's model arrives,
+                    -- then reapply coordinates using current profile settings.
+                    if SetPortraitTexture then SetPortraitTexture(tex, unit) end
+                    ApplyPortraitFacing(tex, unit, GetSettingsForUnit(unit))
+                end)
+            end
+            if tex._ktFacingGuid ~= guid then
+                tex._ktFacingGuid = guid
+                tex._ktFacingLoading = true
+                probe:ClearModel()
+                probe:SetUnit(unit)
+                tex._ktFacingLoading = nil
+            end
+            local loaded, id = pcall(probe.GetModelFileID, probe)
+            if loaded and type(id) == "number" and not (issecretvalue and issecretvalue(id)) and id > 0 then
+                facing = KT.PortraitMirrorModels[id] and "flipped" or "normal"
+            end
+        end
+    end
+    -- Use the same automatic resolver for initial layout and oUF updates.
+    -- It already distinguishes humanoid portraits from druid-form textures.
     if fullTexture and tex._classCoords then
         local c = tex._classCoords
         if facing == "flipped" then
@@ -3695,13 +3779,23 @@ end
 -- SetFrameMovable removed â€” positioning is now handled by Unlock Mode
 
 local function ApplyFramePosition(frame, unit)
+    if InCombatLockdown and InCombatLockdown() then
+        ns.QueueUnitFrameLayoutRefresh()
+        return
+    end
     if not frame or not db.profile.positions[unit] then return end
-    local pos = db.profile.positions[unit]
+    -- Pending drags belong to Unlock Mode until they are committed.
+    local um = KT and KT.GetModule and KT:GetModule("UnlockMode", true)
+    if um and um.pendingPositions and um.pendingPositions["unitframes_" .. unit] then return end
+    local saved = KT and KT.db and KT.db.profile and KT.db.profile.editMode
+    saved = saved and saved.frames and saved.frames["unitframes_" .. unit]
+    local pos = saved and saved.point and saved or db.profile.positions[unit]
     frame:ClearAllPoints()
     
     -- Calculate dynamic X position for target frame to prevent CDM overlap
-    local x = pos.x
-    if unit == "target" and pos.point == "CENTER" then
+    local x = pos.x or 0
+    local y = pos.y or 0
+    if not saved and not pos.scale and unit == "target" and pos.point == "CENTER" then
         -- Check if target portrait is visible
         local portraitStyle = db.profile.portraitStyle or "attached"
         local targetSettings = db.profile.target or {}
@@ -3748,7 +3842,22 @@ local function ApplyFramePosition(frame, unit)
         end
     end
     
-    frame:SetPoint(pos.point, UIParent, pos.point, x, pos.y)
+    -- Saved offsets are expressed at the scale at which they were captured.
+    -- Derive the live anchor; never rewrite saved coordinates during rendering.
+    local settings = GetSettingsForUnit(unit)
+    local currentScale = frame:GetScale()
+    local referenceScale = pos.scale or ((settings and settings.frameScale or currentScale * 100) / 100)
+    if referenceScale > 0 and currentScale > 0 then
+        local ratio = referenceScale / currentScale
+        local dx = frame:GetWidth() * (ratio - 1) / 2
+        local dy = frame:GetHeight() * (ratio - 1) / 2
+        x, y = x * ratio, y * ratio
+        if pos.point:find("LEFT") then x = x + dx
+        elseif pos.point:find("RIGHT") then x = x - dx end
+        if pos.point:find("TOP") then y = y - dy
+        elseif pos.point:find("BOTTOM") then y = y + dy end
+    end
+    frame:SetPoint(pos.point, UIParent, pos.relativePoint or pos.point, x, y)
 end
 
 -- Recalculate all element sizes after frame scale changes so everything remains
@@ -3757,6 +3866,10 @@ end
 -- scales.  After re-snapping each element we check for overflow and trim the last
 -- element in the stack so everything fits exactly inside the border.
 local function UpdateBordersForScale(frame, unit)
+    if InCombatLockdown and InCombatLockdown() then
+        ns.QueueUnitFrameLayoutRefresh()
+        return
+    end
     if not frame then return end
     local settings = GetSettingsForUnit(unit)
     if not settings then return end
@@ -3956,7 +4069,13 @@ end
 -- visual center anchored to the saved point.
 local SCALE_ANIM_DURATION = 0.18
 local function ApplyFrameScaleCentered(frame, unit, newScale, animate)
+    if InCombatLockdown and InCombatLockdown() then
+        ns.QueueUnitFrameLayoutRefresh()
+        return
+    end
     if not frame then return end
+    local um = KT and KT.GetModule and KT:GetModule("UnlockMode", true)
+    if um and um.pendingPositions and um.pendingPositions["unitframes_" .. unit] then return end
     local oldScale = frame._kuiCurrentScale or frame:GetScale()
 
     if frame._kuiScaleAnimating then
@@ -3967,58 +4086,15 @@ local function ApplyFrameScaleCentered(frame, unit, newScale, animate)
         frame._kuiPrevOnUpdate = nil
     end
 
-    -- Compute the new anchor offset needed to keep the visual center fixed
-    -- when scale changes from s1 to s2.
-    -- WoW multiplies SetPoint offsets by the frame's scale to get screen position.
-    -- For anchor "TOPLEFT" with offset (ox, oy):
-    --   screen_left = ox * scale,  screen_top = oy * scale
-    --   screen_center_x = ox * scale + width * scale / 2
-    -- To keep center fixed: newOx * s2 + w*s2/2 = ox * s1 + w*s1/2
-    --   newOx = ox * s1/s2 + w * (s1 - s2) / (2 * s2)
-    local function ComputeNewOffset(frm, s1, s2, unitKey)
-        if not db.profile.positions[unitKey] then return nil end
-        local pos = db.profile.positions[unitKey]
-        local ox, oy = pos.x, pos.y
-        local w = frm:GetWidth()
-        local h = frm:GetHeight()
-        local ratio = s1 / s2
-        local pt = pos.point
-
-        local newOx, newOy = ox * ratio, oy * ratio
-
-        -- Horizontal center compensation
-        local halfWDelta = w * (s1 - s2) / (2 * s2)
-        if pt == "TOPLEFT" or pt == "LEFT" or pt == "BOTTOMLEFT" then
-            newOx = newOx + halfWDelta
-        elseif pt == "TOPRIGHT" or pt == "RIGHT" or pt == "BOTTOMRIGHT" then
-            newOx = newOx - halfWDelta
-        end
-        -- TOP/BOTTOM/CENTER horizontal anchors are already centered, no x adjustment
-
-        -- Vertical center compensation
-        local halfHDelta = h * (s1 - s2) / (2 * s2)
-        if pt == "TOPLEFT" or pt == "TOP" or pt == "TOPRIGHT" then
-            newOy = newOy - halfHDelta
-        elseif pt == "BOTTOMLEFT" or pt == "BOTTOM" or pt == "BOTTOMRIGHT" then
-            newOy = newOy + halfHDelta
-        end
-        -- LEFT/RIGHT/CENTER vertical anchors are already centered, no y adjustment
-
-        return newOx, newOy
-    end
-
     local function ApplyScaleAndReposition(frm, sc, unitKey)
-        local prevScale = frm:GetScale()
-        if math.abs(sc - prevScale) < 0.0001 then return end
-        local newOx, newOy = ComputeNewOffset(frm, prevScale, sc, unitKey)
-        frm:SetScale(sc)
-        if newOx and db.profile.positions[unitKey] then
-            local pos = db.profile.positions[unitKey]
-            pos.x = newOx
-            pos.y = newOy
-            frm:ClearAllPoints()
-            frm:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
+        if InCombatLockdown and InCombatLockdown() then
+            ns.QueueUnitFrameLayoutRefresh()
+            return
         end
+        local active = KT and KT.GetModule and KT:GetModule("UnlockMode", true)
+        if active and active.pendingPositions and active.pendingPositions["unitframes_" .. unitKey] then return end
+        frm:SetScale(sc)
+        ApplyFramePosition(frm, unitKey)
     end
 
     if not animate or math.abs(newScale - oldScale) < 0.001 then
@@ -4054,7 +4130,7 @@ local function ApplyFrameScaleCentered(frame, unit, newScale, animate)
         ApplyScaleAndReposition(self, curScale, unit)
 
         if t >= 1 then
-            self._kuiCurrentScale = endScale
+            self._kuiCurrentScale = self:GetScale()
             self:SetScript("OnUpdate", self._kuiPrevOnUpdate)
             self._kuiScaleAnimating = nil
             self._kuiPrevOnUpdate = nil
@@ -4697,6 +4773,7 @@ local function CreatePortrait(frame, side, frameHeight, unit)
     -- (SetPortraitTexture can reset snapping properties and anchor points)
     tex2D.PostUpdate = function(self)
         UnsnapTex(self)
+        if hasStateChanged then self._ktFacingGuid = nil end
         ApplyPortraitFacing(self, unit, uSettings)
         if self.isClass and ns.RefreshClassPortrait then ns.RefreshClassPortrait(unit, backdrop) end
         self:ClearAllPoints()
@@ -5423,12 +5500,26 @@ local function ApplyClassicFrameArt(frame, unit)
             if frame.unifiedBorder then frame.unifiedBorder:Hide() end
             KT:ApplyStockUFHealthTextGeometry(frame, unit)
             ns.ApplyClassicStatusText(frame, unit, petKind == "classic")
+            if unit ~= "pet" then
+                -- ToT / Focus Target only show mana and portrait inside the stock box.
+                if frame.Power then frame.Power:Show() end
+                if frame._ktSimpleStyled and frame.IsElementEnabled and not frame:IsElementEnabled("Portrait")
+                    and ResolveActivePortraitMode(unit, petSettings) ~= "class" then
+                    frame:EnableElement("Portrait")
+                    if frame.Portrait.ForceUpdate then frame.Portrait:ForceUpdate() end
+                end
+            end
             return
         end
         if frame._ktPetSaved then
             VT:ClearPetFrameArt(frame)
             if frame.Power and petSettings.powerHeight then PP.Height(frame.Power, petSettings.powerHeight) end
             if frame._applyTextPositions then frame._applyTextPositions(petSettings) end
+        end
+        if unit ~= "pet" then
+            -- KUI Style: ToT / Focus Target stay a single health bar.
+            if frame.Power then frame.Power:Hide() end
+            if frame.Portrait and frame.Portrait.backdrop then frame.Portrait.backdrop:Hide() end
         end
     end
 
@@ -5902,7 +5993,7 @@ local function CreateTargetAuras(frame, unit)
     buffs:SetSize(containerWidth, auraSize)
     buffs.size = auraSize
     buffs.spacing = gap
-    buffs.num = 4
+    buffs.num = (settings and settings.maxBuffs) or 20
     buffs["size-x"] = perRow
     buffs.initialAnchor = bia
     buffs.growthX = bgx
@@ -6010,14 +6101,6 @@ local function CreateTargetAuras(frame, unit)
         debuffs:SetFrameLevel(frame:GetFrameLevel() + 15)
         frame.KTDebuffs = debuffs
 
-        local sync = CreateFrame("Frame", nil, frame)
-        sync:RegisterUnitEvent("UNIT_AURA", unit)
-        sync:RegisterEvent("PLAYER_TARGET_CHANGED")
-        sync:RegisterEvent("PLAYER_ENTERING_WORLD")
-        sync:SetScript("OnEvent", function()
-            SyncTargetAuraContainer(frame, unit)
-        end)
-        frame._targetAuraSync = sync
         SyncTargetAuraContainer(frame, unit)
     else
         local debuffs = CreateFrame("Frame", nil, frame)
@@ -6038,6 +6121,7 @@ local function CreateTargetAuras(frame, unit)
         debuffs:SetFrameLevel(frame:GetFrameLevel() + 15)
         frame.Debuffs = debuffs
     end
+    ns.InstallTargetAuraSync(frame, unit, SyncTargetAuraContainer, GetSettingsForUnit)
 end
 
 -- â”€â”€â”€ FÃ¡brica de posicionamiento de texto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -6327,6 +6411,16 @@ local function SetupUnitIndicators(frame, unit)
     end
 
     local function RefreshForeverMetadata()
+        local themes = KT.VisualThemes
+        if themes and themes.UpdateUnitFrameNameReaction then
+            themes:UpdateUnitFrameNameReaction(frame, frame.unit or unit)
+        end
+        -- This pass adjusts protected geometry. PLAYER_REGEN_ENABLED below
+        -- refreshes it using the current unit and settings after combat.
+        if InCombatLockdown() then
+            ns.RefreshLevelBadgeVisibility(frame, frame.unit or unit, db and db.profile)
+            return
+        end
         local u = frame.unit or (frame.GetAttribute and frame:GetAttribute("unit")) or unit
         local profile = db and db.profile
         local settings = GetSettingsForUnit(u)
@@ -6352,7 +6446,7 @@ local function SetupUnitIndicators(frame, unit)
         -- (Classic/Forever/Retail) do.
         local levelTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
             and KT.VisualThemes:GetRenderedTheme() or "kui"
-        local showLevel = levelTheme ~= "kui" and (not profile or profile.showCharacterLevel ~= false)
+        local showLevel = ns.ShowCharacterLevel(profile)
         local showClassification = not profile or profile.showClassification ~= false
         local noPortraitSize = math.max(8, tonumber(profile and profile.classificationNoPortraitSize) or CLASSIFICATION_NO_PORTRAIT_SIZE)
         ApplyForeverLevelTextStyle(frame._kuiLevelText, profile, portraitAnchor)
@@ -6552,18 +6646,7 @@ local function SetupUnitIndicators(frame, unit)
         elseif combatIcon then
             combatIcon:Hide()
         end
-        if levelText then
-            frame._kuiLevelText:SetText(levelText)
-            frame._kuiLevelText:SetShown(not showCombatIcon)
-            if usingClassicLevelOrnament then
-                frame._kuiLevelCircle:Show()
-            else
-                frame._kuiLevelCircle:Hide()
-            end
-        else
-            frame._kuiLevelText:Hide()
-            frame._kuiLevelCircle:Hide()
-        end
+        ns.RefreshLevelBadgeVisibility(frame, u, profile, usingClassicLevelOrnament, levelText, showCombatIcon)
         local classificationTexture
         if showClassification then
             classificationTexture = portraitVisible
@@ -7109,12 +7192,18 @@ local function SetupUnitIndicators(frame, unit)
             "PLAYER_FLAGS_CHANGED", "UNIT_FLAGS",
             "UNIT_HEALTH", "UNIT_CONNECTION",
             "PARTY_MEMBER_ENABLE", "PARTY_MEMBER_DISABLE",
+            -- The unit behind target/focus/tot frames changes without any of the
+            -- events above firing, which left a friendly's AFK badge stuck on
+            -- the frame after switching to an NPC.
+            "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UNIT_TARGET",
+            "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD",
         }
         for _, ev in ipairs(evts) do
             frame:RegisterEvent(ev, function()
                 RefreshStatusOverlay()
             end, true)
         end
+        frame:HookScript("OnShow", function() RefreshStatusOverlay() end)
     end
     RefreshStatusOverlay()
 end
@@ -7778,6 +7867,16 @@ local function StyleSimpleFrame(frame, unit)
     ApplyDarkTheme(health)
 
     frame.Health = health
+    -- Classic/Forever/Retail draw Blizzard's mini ToT box, which has a mana
+    -- track and a round portrait. Without these two the stock art could not
+    -- be seated and ToT / Focus Target stayed a flat KUI bar. Both start
+    -- hidden: KUI Style keeps its single bar.
+    frame.Power = CreatePowerBar(frame, unit, setmetatable(
+        { powerHeight = settings.powerHeight or 6, powerPosition = "none" }, { __index = settings }))
+    frame.Power:Hide()
+    frame.Portrait = CreatePortrait(frame, "left", settings.healthHeight, unit)
+    frame._portraitSide = "left"
+    if frame.Portrait and frame.Portrait.backdrop then frame.Portrait.backdrop:Hide() end
     CreateUnifiedBorder(frame, unit)
     UpdateBordersForScale(frame, unit)
 
@@ -7836,6 +7935,9 @@ local function StyleSimpleFrame(frame, unit)
 
     -- Indicadores comunes a todas las unidades
     SetupUnitIndicators(frame, unit)
+    -- Texts now exist: seat the theme art (Classic/Forever/Retail).
+    ApplyClassicFrameArt(frame, unit)
+    frame._ktSimpleStyled = true
 end
 
 
@@ -8438,6 +8540,10 @@ function ns.KTTargetCombo:Refresh(frame)
     -- Warlock's Soul Shards work here too, not just Rogue/Druid combo
     -- points.
     local comboType
+    if class == "DRUID" and (type(GetShapeshiftFormID) ~= "function" or GetShapeshiftFormID() ~= 1) then
+        self:_Hide(frame)
+        return
+    end
     if class == "ROGUE" or class == "DRUID" then
         comboType = Enum and Enum.PowerType and Enum.PowerType.ComboPoints or 4
     elseif class == "WARLOCK" then
@@ -8637,6 +8743,12 @@ local function CreateCustomClassPower(playerFrame, style)
     -- Usar helper externo para resolver recurso + maxPower
     local powerType, maxPower, isCustom = ResolveClassResource(playerClass)
     if not powerType then return nil end
+    -- The Player's Classic display draws holy power, shards, runes... on the
+    -- combo tray (KUI_ComboUnderFrame.lua); no rectangular pips then.
+    if not isCustom and ns.ComboUnderFrame and ns.ComboUnderFrame.OwnsClassResource
+        and ns.ComboUnderFrame.OwnsClassResource() then
+        return nil
+    end
 
     local isModern = (style == "modern")
     local isCircle = (style == "circles")
@@ -8867,9 +8979,9 @@ local function CreateCustomClassPower(playerFrame, style)
     local isSecretResource = (powerType == "SOUL_FRAGMENTS_VENGEANCE")
     local function UpdatePips()
         local cur, max
-        if isClassicCombo and playerClass == "DRUID" and GetShapeshiftFormID then
-            -- Druid combo points only exist in Cat Form (form id 1).
-            container:SetAlpha(GetShapeshiftFormID() == 1 and 1 or 0)
+        if powerType == Enum.PowerType.ComboPoints and playerClass == "DRUID" then
+            -- Every custom combo style is visible only in Cat Form.
+            container:SetAlpha(type(GetShapeshiftFormID) == "function" and GetShapeshiftFormID() == 1 and 1 or 0)
         end
         if isCustom then
             -- Custom resource: use Compat tracker functions
@@ -9044,7 +9156,7 @@ local function CreateCustomClassPower(playerFrame, style)
         eventFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
         eventFrame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        if isClassicCombo and playerClass == "DRUID" then
+        if powerType == Enum.PowerType.ComboPoints and playerClass == "DRUID" then
             eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
         end
         if powerType == Enum.PowerType.Runes then
@@ -9117,6 +9229,7 @@ end
 
 local function ReloadFrames()
     if InCombatLockdown() then
+        ns.QueueUnitFrameLayoutRefresh()
         pcall(ns.ApplyDispelOverlayLive)
         return
     end
@@ -9915,8 +10028,8 @@ local function ReloadFrames()
                     if frame.Buffs then
                         local showBuffs = settings.showBuffs ~= false
                         if showBuffs then
-                            if not frame:IsElementEnabled("Buffs") then
-                                frame:EnableElement("Buffs")
+                            if not frame:IsElementEnabled("Auras") then
+                                frame:EnableElement("Auras")
                             end
                             frame.Buffs:Show()
                             frame.Buffs.num = settings.maxBuffs or 20
@@ -10545,6 +10658,15 @@ local function ReloadFrames()
         end
     end
 
+    if ns.NativeClassResources and ns.NativeClassResources:IsSupported() then
+        ns.NativeClassResources:ApplyDefaults(db.profile)
+        if db.profile.player.classPowerStyle == "blizzard" then
+            DestroyCustomClassPower()
+            frames._classPowerBar = ns.NativeClassResources:Activate(frames.player, db.profile)
+        elseif ns.NativeClassResources.active and frames._toggleClassPower then
+            frames._toggleClassPower(db.profile.player.classPowerStyle)
+        end
+    end
     RefreshPlayerStatusIndicators()
     RefreshUnitFrameStrata()
 end
@@ -10692,9 +10814,14 @@ function InitializeFrames()
         oUF.Tags:SetEventUpdateTimer(0.25)
     end
 
+    if ns.NativeClassResources then ns.NativeClassResources:ApplyDefaults(db.profile) end
     local classPowerStyle = db.profile.player.classPowerStyle or "none"
     local savedClassPowerBar = nil
-    if classPowerStyle == "blizzard" then
+    if ns.NativeClassResources then
+        ns.NativeClassResources:Prepare()
+        if classPowerStyle ~= "blizzard" then ns.NativeClassResources:Deactivate() end
+    end
+    if classPowerStyle == "blizzard" and not (ns.NativeClassResources and ns.NativeClassResources:IsSupported()) then
         if PlayerFrame and PlayerFrame.classPowerBar then
             savedClassPowerBar = PlayerFrame.classPowerBar
             PlayerFrame.classPowerBar = nil
@@ -10995,7 +11122,9 @@ function InitializeFrames()
 
     if classPowerStyle ~= "none" and frames.player then
         if classPowerStyle == "blizzard" then
-            if savedClassPowerBar then
+            if ns.NativeClassResources and ns.NativeClassResources:IsSupported() then
+                frames._classPowerBar = ns.NativeClassResources:Activate(frames.player, db.profile)
+            elseif savedClassPowerBar then
                 PositionClassPowerBar(savedClassPowerBar)
                 frames._classPowerBar = savedClassPowerBar
             end
@@ -11020,6 +11149,10 @@ function InitializeFrames()
         db.profile.player.classPowerStyle = style
 
         -- Clean up existing
+        if ns.NativeClassResources and ns.NativeClassResources.active then
+            ns.NativeClassResources:Deactivate()
+            frames._classPowerBar = nil
+        end
         if frames._customClassPower then
             DestroyCustomClassPower()
             frames._classPowerBar = nil
@@ -11050,6 +11183,10 @@ function InitializeFrames()
         end
 
         if style == "blizzard" then
+            if ns.NativeClassResources and ns.NativeClassResources:IsSupported() then
+                frames._classPowerBar = ns.NativeClassResources:Activate(frames.player, db.profile)
+                return
+            end
             if PlayerFrame and PlayerFrame.classPowerBar then
                 local cpb = PlayerFrame.classPowerBar
                 PlayerFrame.classPowerBar = nil
@@ -11443,22 +11580,24 @@ local function RegisterUnitFramesWithEditMode()
         classPower = 90,
     }
 
-    local function SavePoint(frame, key)
-        local point, _, relPoint, x, y = frame:GetPoint()
-        db.profile.positions[key] = {
-            point = point or relPoint or "CENTER",
-            x = x or 0,
-            y = y or 0,
-            scale = frame.GetScale and frame:GetScale() or 1,
-        }
-    end
-
     local function Register(frame, label, key, onStop)
         if not frame then return end
         local unlockKey = "unitframes_" .. key
+        -- Ancho/alto editables desde el menu de clic derecho del unlock mode:
+        -- se escriben en los mismos ajustes que los sliders del panel
+        -- (frameWidth / healthHeight) para que el layout del frame los respete.
+        local sizeEditable = key ~= "playerCastbar" and key ~= "classPower"
+        local function GetEditableSettings()
+            local settings = GetSettingsForUnit(key)
+            if not settings or (key ~= "player" and settings == db.profile.player) then
+                return nil
+            end
+            return settings
+        end
 
+        local unlockLabel = label:gsub("^Unit Frames:%s*", "")
         KT.RegisterUnlockElement(unlockKey, {
-            label = (label:gsub("^Unit Frames:%s*", "")),
+            label = ns.UFLoc and ns.UFLoc(unlockLabel) or unlockLabel,
             group = "Unit Frames",
             order = unlockOrders[key] or 999,
             getFrame = function()
@@ -11467,12 +11606,36 @@ local function RegisterUnitFramesWithEditMode()
             getSize = function()
                 return frame:GetWidth(), frame:GetHeight()
             end,
+            sizeLabels = sizeEditable and { width = "Frame Width", height = "Health Height" } or nil,
+            getEditableSize = sizeEditable and function()
+                local settings = GetEditableSettings()
+                if not settings then return nil end
+                return tonumber(settings.frameWidth) or 100, tonumber(settings.healthHeight) or 20
+            end or nil,
+            setEditableSize = sizeEditable and function(_, width, height)
+                local settings = GetEditableSettings()
+                if not settings or InCombatLockdown() then return end
+                width = math.max(40, math.min(600, width))
+                height = math.max(6, math.min(200, height))
+                if tonumber(settings.frameWidth) == width and tonumber(settings.healthHeight) == height then
+                    return
+                end
+                settings.frameWidth = width
+                settings.healthHeight = height
+                if ns.ReloadFrames then ns.ReloadFrames() end
+            end or nil,
             getScale = function()
                 return frame:GetScale()
             end,
             setScale = function(_, scale)
-                if scale and ApplyFrameScale then
-                    ApplyFrameScale(frame, key, scale, false)
+                if scale and scale > 0 then
+                    local settings = GetSettingsForUnit(key)
+                    -- Solo se escribe si la escala cambia de verdad: evita
+                    -- pisar el frameScale del tema con un valor redondeado.
+                    if settings and math.abs((tonumber(settings.frameScale) or 100) - (scale * 100)) >= 0.5 then
+                        settings.frameScale = scale * 100
+                    end
+                    ApplyFrameScaleCentered(frame, key, scale, false)
                 end
             end,
             loadPosition = function()
@@ -11486,7 +11649,7 @@ local function RegisterUnitFramesWithEditMode()
                 if native and native.point then
                     return {
                         point = native.point,
-                        relativePoint = native.point,
+                        relativePoint = native.relativePoint or native.point,
                         x = native.x or 0,
                         y = native.y or 0,
                         scale = native.scale or frame:GetScale() or 1,
@@ -11504,11 +11667,11 @@ local function RegisterUnitFramesWithEditMode()
                 }
                 db.profile.positions[key] = {
                     point = pt or rpt or "CENTER",
+                    relativePoint = rpt or pt or "CENTER",
                     x = x or 0,
                     y = y or 0,
                     scale = scale or frame:GetScale() or 1,
                 }
-                SavePoint(frame, key)
                 if onStop then onStop() end
             end,
             applyPosition = function()
@@ -11518,14 +11681,11 @@ local function RegisterUnitFramesWithEditMode()
                 if saved and saved.point then
                     db.profile.positions[key] = {
                         point = saved.point,
+                        relativePoint = saved.relativePoint or saved.point,
                         x = saved.x or 0,
                         y = saved.y or 0,
                         scale = saved.scale or frame:GetScale() or 1,
                     }
-                end
-                local targetPos = db.profile.positions[key]
-                if targetPos and targetPos.scale and ApplyFrameScale then
-                    ApplyFrameScale(frame, key, targetPos.scale, false)
                 end
                 ApplyFramePosition(frame, key)
                 if onStop then onStop() end
@@ -11557,10 +11717,6 @@ local function RegisterUnitFramesWithEditMode()
 
                 if KT.FlushPersistence then KT:FlushPersistence() end
 
-                local targetPos = db.profile.positions[key]
-                if targetPos and targetPos.scale and ApplyFrameScale then
-                    ApplyFrameScale(frame, key, targetPos.scale, false)
-                end
                 ApplyFramePosition(frame, key)
                 if onStop then onStop() end
                 return true
@@ -11580,8 +11736,12 @@ local function RegisterUnitFramesWithEditMode()
         for i = 1, 5 do
             local frame = frames["boss" .. i]
             if frame and pos then
-                frame:ClearAllPoints()
-                frame:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y - ((i - 1) * spacing))
+                ApplyFramePosition(frame, "boss")
+                local pt, relative, rpt, x, y = frame:GetPoint()
+                if pt then
+                    frame:ClearAllPoints()
+                    frame:SetPoint(pt, relative, rpt, x, y - ((i - 1) * spacing))
+                end
             end
         end
     end)
@@ -11594,12 +11754,42 @@ local function RegisterUnitFramesWithEditMode()
     end
 end
 
+-- Read-only diagnostics: compare the active profile's two position stores
+-- with the rendered anchors without repairing or saving anything.
+function ns.DebugFramePositions()
+    KT:Print(string.format(ns.UFLoc("UF startup pending=%s | layout pending=%s | combat=%s"),
+        tostring(ns._startupLayoutPending == true), tostring(ns._layoutRestorePending == true),
+        tostring(InCombatLockdown())))
+    if not (KT and KT.Print and db and db.profile) then return end
+    local profile = KT.db and KT.db.profile
+    local edit = profile and profile.editMode and profile.editMode.frames or {}
+    local name = KT.db.GetCurrentProfile and KT.db:GetCurrentProfile() or "unknown"
+    KT:Print(string.format(ns.UFLoc("UF positions | profile=%s | UI scale=%s"), tostring(name), tostring(UIParent:GetEffectiveScale())))
+    for _, unit in ipairs({ "player", "target", "focus", "pet", "targettarget", "focustarget", "boss" }) do
+        local frame = frames[unit == "boss" and "boss1" or unit]
+        local native = db.profile.positions[unit]
+        local saved = edit["unitframes_" .. unit]
+        local function describe(pos)
+            if not pos then return "none" end
+            return string.format("%s/%s x=%.3f y=%.3f scale=%s", tostring(pos.point),
+                tostring(pos.relativePoint or pos.point), pos.x or 0, pos.y or 0, tostring(pos.scale or "default"))
+        end
+        KT:Print(string.format(ns.UFLoc("%s | native=%s | unlock=%s"), unit, describe(native), describe(saved)))
+        if frame then
+            local pt, relative, rpt, x, y = frame:GetPoint()
+            KT:Print(string.format(ns.UFLoc("%s | live=%s | relative=%s"), unit,
+                describe({point=pt,relativePoint=rpt,x=x,y=y,scale=frame:GetScale()}),
+                tostring(relative and relative.GetName and relative:GetName())))
+        end
+    end
+end
+
 local function SetupOptionsPanel()
     ns.db = db
     ns.frames = frames
     if ns.AggroGlow then ns.AggroGlow:Update() end
     ns.ApplyFramePosition = ApplyFramePosition
-    ns.ApplyFrameScale = ApplyFrameScale
+    ns.ApplyFrameScale = ApplyFrameScaleCentered
     ns.SnapScaleToPixel = SnapScaleToPixel
     ns.GetFrameDimensions = GetFrameDimensions
     ns.ResolveFontPath = ResolveFontPath
@@ -11626,10 +11816,7 @@ local function SetupOptionsPanel()
     RegisterUnitFramesWithEditMode()
 end
 
-StaticPopupDialogs["KULLTHRANUI_UF_RESET_DEFAULTS"] = {
-    text = "Reset all KullThranUI Unit Frames settings to defaults? This cannot be undone.",
-    button1 = "Reset & Reload",
-    button2 = "Cancel",
+StaticPopupDialogs["KULLTHRANUI_UF_RESET_DEFAULTS"] = setmetatable({
     OnAccept = function()
         if KT and KT.db and KT.db.profile then
             KT.db.profile.unitFrames = {}
@@ -11641,7 +11828,17 @@ StaticPopupDialogs["KULLTHRANUI_UF_RESET_DEFAULTS"] = {
     whileDead = true,
     hideOnEscape = true,
     preferredIndex = 3,
-}
+}, {
+    __index = function(_, key)
+        if key == "text" then
+            return ns.UFLoc("Reset all KullThranUI Unit Frames settings to defaults? This cannot be undone.")
+        elseif key == "button1" then
+            return ns.UFLoc("Reset & Reload")
+        elseif key == "button2" then
+            return ns.UFLoc("Cancel")
+        end
+    end,
+})
 
 local function MigratePlayerTarget()
     local p = db.profile
@@ -12429,6 +12626,23 @@ function Mod:BindDatabase()
     self.db.enable = self.db.enable ~= false
 end
 
+-- Reparacion unica: el unlock mode guardaba la escala del Player redondeada
+-- (132 -> 100) al tocar el elemento, y el Player quedaba mas pequeno que el
+-- Target en los temas stock (classic/forever/retail usan 132 para ambos).
+function Mod:RepairThemePlayerScale(profile)
+    if type(profile) ~= "table" or profile._ktPlayerScaleRepair20261009 then return end
+    profile._ktPlayerScaleRepair20261009 = true
+    local VT = KT.VisualThemes
+    local theme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
+    local target = type(profile.target) == "table" and profile.target or nil
+    local stockTheme = (theme == "classic" or theme == "forever" or theme == "retail")
+        or (target and tonumber(target.frameScale) == 132)
+    if not stockTheme or theme == "kui" then return end
+    profile.player = type(profile.player) == "table" and profile.player or {}
+    profile.player.frameScale = 132
+    if target then target.frameScale = 132 end
+end
+
 function Mod:OnInitialize()
     self:BindDatabase()
     self:SetEnabledState(self.db.enable ~= false)
@@ -12437,6 +12651,7 @@ function Mod:OnInitialize()
     SanitizeImportedLayout()
     MigrateLegacyCrimsonAccent()
     ApplyUpdatedDefaultPreset()
+    self:RepairThemePlayerScale(self.db)
     ApplyTargetCastbarYellowDefault()
     KT:SwapPortraitFacingDefaults()
     KT:MigrateClassicPortraitCircular()
@@ -12454,6 +12669,7 @@ function Mod:OnInitialize()
         C_Timer.After(0, RegisterUFHPDebugSlash)
     end
     if KT and KT.RegisterChatCommand then
+        KT:RegisterChatCommand("ktufpos", function() ns.DebugFramePositions() end)
         KT:RegisterChatCommand("ktufhpdebug", function(msg) SlashCmdList.KTUFHPDEBUG(msg) end)
         KT:RegisterChatCommand("ktufhpdbg", function(msg) SlashCmdList.KTUFHPDEBUG(msg) end)
     end
@@ -12679,13 +12895,59 @@ function Mod:Refresh()
     end
 end
 
+-- Restore the latest profile once protected layout can be changed again.
+function ns.QueueUnitFrameLayoutRefresh()
+    if ns._layoutRestorePending then return end
+    ns._layoutRestorePending = true
+    local waiter = ns._layoutRestoreWaiter
+    if not waiter then
+        waiter = CreateFrame("Frame")
+        ns._layoutRestoreWaiter = waiter
+        waiter:SetScript("OnEvent", function(self)
+            if InCombatLockdown() then return end
+            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            ns._layoutRestorePending = nil
+            if Mod:IsEnabled() then
+                if KT.PersistDebug then KT:PersistDebug("UF layout restore after combat") end
+                Mod:Refresh()
+            end
+        end)
+    end
+    waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
+function ns.DeferUnitFrameStartup()
+    if IsLoggedIn() and not InCombatLockdown() then return false end
+    ns._startupLayoutPending = true
+    if not ns._startupLayoutWaiter then
+        local waiter = CreateFrame("Frame")
+        ns._startupLayoutWaiter = waiter
+        waiter:SetScript("OnEvent", function(self)
+            if not IsLoggedIn() or InCombatLockdown() then return end
+            self:UnregisterAllEvents()
+            ns._startupLayoutPending = nil
+            if Mod:IsEnabled() then
+                if KT.PersistDebug then KT:PersistDebug("UF safe startup after world/combat") end
+                Mod:OnEnable()
+            end
+        end)
+    end
+    ns._startupLayoutWaiter:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ns._startupLayoutWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+    if KT.PersistDebug then
+        KT:PersistDebug("UF startup deferred loggedIn=%s combat=%s", tostring(IsLoggedIn()), tostring(InCombatLockdown()))
+    end
+    return true
+end
+
 function Mod:OnEnable()
     self:BindDatabase()
-    ns.EnableTarget3D(db and db.profile)
     if self.db.enable == false then
         self:SetEnabledState(false)
         return
     end
+    if ns.DeferUnitFrameStartup() then return end
+    ns.EnableTarget3D(db and db.profile)
     InitializeFrames()
 
     -- Refresh classification directly on target/focus changes. The oUF
@@ -12741,6 +13003,10 @@ function Mod:RefreshAfterPersistenceReady()
     C_Timer.After(2.0, RebindAndApply)
 end
 function Mod:OnDisable()
+    if ns._startupLayoutWaiter then ns._startupLayoutWaiter:UnregisterAllEvents() end
+    if ns._layoutRestoreWaiter then ns._layoutRestoreWaiter:UnregisterAllEvents() end
+    ns._startupLayoutPending, ns._layoutRestorePending = nil, nil
+    if ns.NativeClassResources then ns.NativeClassResources:Deactivate() end
     local function HideFrameTree(value)
         if not value then return end
         if value.Hide then

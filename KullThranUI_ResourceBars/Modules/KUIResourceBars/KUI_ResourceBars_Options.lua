@@ -10,7 +10,7 @@ local function LText(text)
     if type(text) ~= "string" then return text end
     if KT and KT.GetLocale then
         local L = KT:GetLocale()
-        if L then return L[text] end
+        if L then return L[text] or text end
     end
     return text
 end
@@ -587,11 +587,12 @@ end
 local _animTimers = {}
 local function SmoothAnimate(frame, key, targetVal, applyFn)
     if not frame then return end
-    -- A caller can pass a nil targetVal (db.health.height missing -- the
-    -- VisualThemes resourcebars adapter's seed can create a sparse
-    -- health/primary/secondary table via `profile[key] = profile[key] or
-    -- {}`, which wins over this addon's own default-population since the
-    -- table is no longer nil by the time it runs, leaving fields like
+    -- A caller passed a nil
+    -- targetVal (db.health.height was missing -- the VisualThemes
+    -- resourcebars adapter's seed can create a sparse health/primary/
+    -- secondary table via `profile[key] = profile[key] or {}`, which wins
+    -- over this addon's own default-population since the table is no
+    -- longer nil by the time it runs, permanently leaving fields like
     -- height unset). Guard here too, not just at each call site, so any
     -- other nil targetVal fails safe instead of crashing the whole options
     -- panel.
@@ -627,11 +628,12 @@ local function SmoothAnimate(frame, key, targetVal, applyFn)
     _animTimers[frame][key] = ticker
 end
 
--- `bar:SetStatusBarColor(r, g, b, a)` can throw "bad argument #1 ...
--- Usage: self:SetStatusBarColor(color [, a])" on some clients -- a
--- different overload than the traditional 4-number-args signature. Try
--- the normal form first (works on a standard client); fall back to the
--- (color, alpha) form instead of crashing the whole options panel.
+-- `bar:SetStatusBarColor(r,
+-- g, b, a)` on this client threw "bad argument #1 ... Usage:
+-- self:SetStatusBarColor(color [, a])" -- a different overload than the
+-- traditional 4-number-args signature. Try the normal form first (works on
+-- a standard client); fall back to the (color, alpha) form this client
+-- apparently expects instead of crashing the whole options panel.
 local function SafeSetStatusBarColor(bar, r, g, b, a)
     if not bar then return end
     if pcall(bar.SetStatusBarColor, bar, r, g, b, a) then return end
@@ -653,7 +655,7 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
     end
     local function PreviewMode()
         local mode = db.general and db.general.previewMode or "stack"
-        if mode ~= "stack" and mode ~= "health" and mode ~= "power" and mode ~= "class" then
+        if mode ~= "stack" and mode ~= "health" and mode ~= "power" and mode ~= "class" and mode ~= "swing" then
             mode = "stack"
         end
         return mode
@@ -694,8 +696,9 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
         health = CreatePreviewNavButton(previewContainer, LText("Health"), 98),
         power = CreatePreviewNavButton(previewContainer, LText("Power"), 186),
         class = CreatePreviewNavButton(previewContainer, LText("Class"), 274),
+        swing = CreatePreviewNavButton(previewContainer, LText("Autoattack Bars"), 362),
     }
-    local previewModeOrder = { "stack", "health", "power", "class" }
+    local previewModeOrder = { "stack", "health", "power", "class", "swing" }
     local previewModeAvailability = {
         stack = true,
         health = db.health.enabled == true,
@@ -736,7 +739,7 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
 
     -- Base Ancla (Representando la barra de Cooldowns que sirve de ancla)
     local fakeAnchor = CreateFrame("StatusBar", nil, previewContainer)
-    local castW = 250
+    local castW = 135
     fakeAnchor:SetSize(castW, 30)
     fakeAnchor:SetPoint("BOTTOM", previewContainer, "BOTTOM", 0, 15)
     fakeAnchor:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
@@ -770,6 +773,29 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
     -- Salud Falsa
     local fakeHealth = CreateFrame("StatusBar", nil, previewContainer)
     fakeHealth:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    local UpdatePreview
+    local fakeSwingBars = {}
+    local swingHands = { "main", "off", "ranged" }
+    if ns.CreateSwingPreviewBar then
+        for index, hand in ipairs(swingHands) do
+            fakeSwingBars[index] = ns.CreateSwingPreviewBar(previewContainer, db, hand)
+            local bar = fakeSwingBars[index]
+            bar._swingPreviewHand = hand
+            ns.BindSwingPreviewReorder(bar, hand, fakeSwingBars, db, function()
+                UpdatePreview()
+                Refresh()
+            end)
+            bar:Hide()
+        end
+    end
+    previewContainer:SetScript("OnUpdate", function(self, elapsed)
+        self.swingElapsed = (self.swingElapsed or 0) + elapsed
+        if self.swingElapsed < 0.03 then return end
+        self.swingElapsed = 0
+        for index, bar in ipairs(fakeSwingBars) do
+            if bar:IsShown() then ns.PaintSwingPreviewBar(bar, db, index) end
+        end
+    end)
 
     local function CreatePreviewHitbox(frame, label, blockKey)
         local btn = CreateFrame("Button", nil, previewContainer)
@@ -806,9 +832,9 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
     local classBarHit = CreatePreviewHitbox(fakeClassBar, LText("Go to Class Resource"), "class")
     local classPipsHit = CreatePreviewHitbox(fakePips, LText("Go to Class Resource"), "class")
 
-    local function UpdatePreview()
+    UpdatePreview = function()
         local matchW = db.general.matchCooldownWidth
-        local w = matchW and castW or (db.general.manualWidth or 250)
+        local w = matchW and castW or (db.general.manualWidth or 135)
         local texHealth = LSM and LSM:Fetch("statusbar", db.health and db.health.texture) or "Interface\\Buttons\\WHITE8x8"
         local texPrimary = LSM and LSM:Fetch("statusbar", db.primary and db.primary.texture) or "Interface\\Buttons\\WHITE8x8"
         local texSecondary = LSM and LSM:Fetch("statusbar", db.secondary and db.secondary.texture) or "Interface\\Buttons\\WHITE8x8"
@@ -842,6 +868,7 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
         previewModeAvailability.health = db.health.enabled == true
         previewModeAvailability.power = db.primary.enabled == true and not hidePrimaryMana
         previewModeAvailability.class = db.secondary.enabled == true and secondary ~= nil
+        previewModeAvailability.swing = db.swing and db.swing.enabled == true and ns.SwingTimersSupported == true
         if not previewModeAvailability[previewMode] then
             previewMode = "stack"
             db.general.previewMode = previewMode
@@ -1078,8 +1105,37 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
             end
             if db.health.enabled then
                 fakeHealth:SetPoint("BOTTOM", lastAnchor, lastRel, xOff, yOff)
+                lastAnchor = fakeHealth
             end
         end
+
+        local swingAnchor = fakeHealth:IsShown() and fakeHealth or fakePower:IsShown() and fakePower
+            or fakeClassBar:IsShown() and fakeClassBar or fakePips:IsShown() and fakePips or fakeAnchor
+        local totalHeight = 60 + (previewMode == "stack" and 45 or 0)
+        for _, bar in ipairs({ fakeHealth, fakePower, fakeClassBar, fakePips }) do
+            if bar:IsShown() then totalHeight = totalHeight + bar:GetHeight() + (db.general.anchorGap or 4) end
+        end
+        local swingByHand = {}
+        for index, bar in ipairs(fakeSwingBars) do swingByHand[swingHands[index]] = bar end
+        for index, hand in ipairs(ns.GetSwingOrder(db)) do
+            local bar = swingByHand[hand]
+            local show = previewModeAvailability.swing and db.swing[hand]
+                and (previewMode == "stack" or previewMode == "swing")
+            bar:SetShown(show == true)
+            if show then
+                ns.StyleSwingBar(bar, db, hand, w)
+                bar:ClearAllPoints()
+                if previewMode == "swing" and swingAnchor == fakeAnchor then
+                    bar:SetPoint("BOTTOM", previewContainer, "BOTTOM", 0, 20)
+                else
+                    bar:SetPoint("BOTTOM", swingAnchor, "TOP", 0, db.general.anchorGap or 4)
+                end
+                swingAnchor = bar
+                ns.PaintSwingPreviewBar(bar, db, index)
+                totalHeight = totalHeight + db.swing.height + (db.general.anchorGap or 4)
+            end
+        end
+        previewContainer:SetHeight(math.max(180, totalHeight))
 
         lblPreview:SetText(LText(previewMode == "stack" and "Layout Preview (Stack)" or ("Layout Preview - " .. previewMode:gsub("^%l", string.upper))))
         anchorHit:SetShown(fakeAnchor:IsShown())
@@ -1091,18 +1147,18 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
     end
 
     UpdatePreview()
-    y = y + 200
+    y = y + previewContainer:GetHeight() + 20
 
     _, h = W:Toggle(sc, LText("Enable Module"), -y,
         function()
-            return db.enabled ~= false and (db.primary.enabled or db.secondary.enabled or db.health.enabled) and true or false
+            return db.enabled ~= false
         end,
         function(v)
             db.enabled = v and true or false
             db.primary.enabled = v and true or false
             db.secondary.enabled = v and true or false
-            db.health.enabled = v and true or false
-            Reload()
+            db.health.enabled = false
+            Refresh()
         end)
     y = y + h
 
@@ -1132,6 +1188,60 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
             Refresh()
         end); by = by + h
         _, h = W:Slider(container, "Background Alpha", -by, function() return db.general.bgA end, function(v) db.general.bgA=v; UpdatePreview(); Refresh() end, 0, 1, 0.05); by = by + h
+        return by
+    end)
+
+    AddOptionBlock(cols, "left", LText("Autoattack Bars"), function(container)
+        local by = 0
+        if ns.SwingTimersSupported == false then
+            _, h = W:Label(container, LText("Autoattack timers are not available on this client."), -by,
+                11, { r = 0.8, g = 0.7, b = 0.5 }); by = by + h
+            return by
+        end
+        local function Changed() UpdatePreview(); Refresh(); KT:RefreshPage(true) end
+        local function SwingChanged() UpdatePreview(); Refresh() end
+        _, h = W:Toggle(container, LText("Enable Autoattack Bars"), -by,
+            function() return db.swing.enabled end,
+            function(v) db.swing.enabled = v; Changed() end); by = by + h
+        for _, entry in ipairs({ { "main", "Main Hand" }, { "off", "Off Hand" }, { "ranged", "Ranged" } }) do
+            local key, label = entry[1], entry[2]
+            _, h = W:Toggle(container, LText(label), -by,
+                function() return db.swing[key] end,
+                function(v) db.swing[key] = v; Changed() end); by = by + h
+        end
+        _, h = W:Label(container, LText("Replaces Blizzard autoattack bars while enabled."), -by,
+            11, { r = 0.75, g = 0.75, b = 0.75 }); by = by + h
+        _, h = W:Dropdown(container, LText("Fill Direction"), -by,
+            { elapsed = LText("Fill as the attack approaches"), remaining = LText("Empty as the attack approaches") },
+            function() return db.swing.fillMode end,
+            function(v) db.swing.fillMode = v; SwingChanged() end,
+            { "elapsed", "remaining" }); by = by + h
+        _, h = W:Toggle(container, LText("Show Weapon Label"), -by,
+            function() return db.swing.showLabel end,
+            function(v) db.swing.showLabel = v; SwingChanged() end); by = by + h
+        _, h = W:Toggle(container, LText("Show Remaining Time"), -by,
+            function() return db.swing.showTime end,
+            function(v) db.swing.showTime = v; SwingChanged() end); by = by + h
+        _, h = W:Slider(container, LText("Height"), -by,
+            function() return db.swing.height end,
+            function(v) db.swing.height = v; Changed() end, 5, 50, 1); by = by + h
+        _, h = W:Slider(container, LText("Text Size"), -by,
+            function() return db.swing.textSize end,
+            function(v) db.swing.textSize = v; SwingChanged() end, 8, 24, 1); by = by + h
+        _, h = W:Toggle(container, LText("Use Theme Appearance"), -by,
+            function() return db.swing.useThemeAppearance end,
+            function(v) db.swing.useThemeAppearance = v; SwingChanged() end); by = by + h
+        _, h = W:ColorSwatch(container, LText("Fill Color"), -by,
+            function() return db.swing.fillR, db.swing.fillG, db.swing.fillB, 1 end,
+            function(r, g, b)
+                db.swing.fillR, db.swing.fillG, db.swing.fillB = r, g, b
+                db.swing.useThemeAppearance = false
+                SwingChanged()
+            end); by = by + h
+        _, h = W:Button(container, LText("Test Autoattack Bars"), -by, function()
+            local mod = KT:GetModule("ResourceBars", true)
+            if mod and mod.TestSwingBars then mod:TestSwingBars() end
+        end); by = by + h
         return by
     end)
 

@@ -39,7 +39,7 @@ local function HideDecorObject(object)
     object:SetAlpha(0)
     object:Hide()
 
-    -- [TAINT FIX] Midnight 12.x: Never call Hide() inside a Show hook.
+    -- Midnight 12.x: Never call Hide() inside a Show hook.
     if object.Show then
         hooksecurefunc(object, "Show", function(self)
             self:SetAlpha(0)

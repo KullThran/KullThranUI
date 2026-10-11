@@ -2,6 +2,11 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local Mod = KT:NewModule("GlobalFont", "AceEvent-3.0")
 local LSM = LibStub("LibSharedMedia-3.0", true)
 
+local function Loc(text)
+    local L = KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local _G = _G
 local ipairs = ipairs
 local pairs = pairs
@@ -245,19 +250,19 @@ function Mod:GetOptions()
     end
 
     return {
-        name = "Global Font",
+        name = Loc("Global Font"),
         type = "group",
         args = {
-            header = { order = 1, type = "header", name = "Global Font Settings" },
-            desc = { order = 2, type = "description", name = "Select the font to be applied to all UI elements." },
+            header = { order = 1, type = "header", name = Loc("Global Font Settings") },
+            desc = { order = 2, type = "description", name = Loc("Select the font to be applied to all UI elements.") },
             font = {
-                order = 3, type = "select", name = "Font",
-                desc = "Select the global font.",
+                order = 3, type = "select", name = Loc("Font"),
+                desc = Loc("Select the global font."),
                 values = fonts,
                 get = function() return self.db.font end,
                 set = function(_, value) self:SetFont(value) end,
             },
-            reload = { order = 4, type = "execute", name = "Reload UI", func = function() ReloadUI() end },
+            reload = { order = 4, type = "execute", name = Loc("Reload UI"), func = function() ReloadUI() end },
         }
     }
 end

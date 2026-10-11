@@ -50,6 +50,16 @@ function Mod:GetModeDB(mode)
             end
             self.db.partyFrameSizesByStyle = sizes
         end
+        if not self.db.partyNativeSize25V2 then
+            for _, native in ipairs({"classic", "retail", "forever"}) do
+                local saved = sizes[native]
+                if saved then
+                    saved.frameWidth = saved.frameWidth * 1.25
+                    saved.frameHeight = saved.frameHeight * 1.25
+                end
+            end
+            self.db.partyNativeSize25V2 = true
+        end
         local size = sizes[key]
         cfg.frameWidth, cfg.frameHeight = size.frameWidth, size.frameHeight
         if not self.db.partyHealthColorsByStyle then
@@ -180,7 +190,24 @@ local function BarMask(bar, host, key, s, isPower)
         bar._pfNativeBGMasked = true
     end
 end
+-- Highlight only the opaque atlas pixels, not the secure button's layout box.
+function Styles.ConfigureHover(frame, key, host, g, scale)
+    local hover = frame.hover
+    if not hover then return end
+    hover:ClearAllPoints()
+    if host and g then
+        Styles.SetArt(hover, key)
+        Box(hover, host, g.artX, g.artY, g.artW, g.artH, scale)
+        hover:SetBlendMode("ADD")
+        hover:SetVertexColor(1, 1, 1, 0.16)
+    else
+        hover:SetAllPoints(frame)
+        hover:SetBlendMode("BLEND")
+        hover:SetColorTexture(1, 1, 1, 0.08)
+    end
+end
 function Styles.Clear(frame)
+    Styles.ConfigureHover(frame, "kui")
     if frame._pfNativeArt then frame._pfNativeArt:Hide() end
     for _, bar in ipairs({ frame.health, frame.power }) do
         local mask = bar and bar._pfNativeMask
@@ -214,7 +241,11 @@ function Styles.Clear(frame)
         frame._pfNativePortraitMaskApplied = nil
     end
     if frame._pfNativePowerText then frame._pfNativePowerText:Hide() end
+    local wasNative = frame._pfNativeStyle
     frame._pfNativeStyle = nil
+    if wasNative and frame.ktAuraContainers and frame._ktAuraBuildDB and ns.PF_UpdateAuraContainers then
+        ns.PF_UpdateAuraContainers(frame, frame._ktAuraBuildDB)
+    end
 end
 function Styles.UpdatePowerText(frame, cfg, preview)
     local powerText = frame and frame._pfNativePowerText
@@ -244,8 +275,123 @@ function Styles.PreviewIconLayers(frame)
         end
     end
 end
+-- Generic status anchors use the large KUI button, not the native bar opening.
+function Styles.LayoutStatusIndicators(frame, g, scale)
+    local icon = frame.statusIcon
+    local status = frame.statusText or frame.status
+    local value = frame.valueText or frame.value
+    if icon and status and value then
+        local size = math.min(10, g.health[4]) * scale
+        local gap = 2 * scale
+        local hasLabel = status:IsShown()
+        local active = icon:IsShown()
+        -- AFK is a wide texture; its health value remains visible beside it.
+        local iconWidth = (active and not hasLabel) and size * 2 or size
+        local text = hasLabel and status or value
+        local textWidth = math.max(1, math.min(40 * scale, g.health[3] * scale - iconWidth - gap))
+        if active then
+            text:ClearAllPoints()
+            text:SetPoint("CENTER", frame.health, "CENTER", (iconWidth + gap) * 0.5, 0)
+            text:SetSize(textWidth, g.health[4] * scale)
+            text:SetJustifyH("CENTER")
+        end
+        icon:ClearAllPoints()
+        icon:SetSize(iconWidth, size)
+        icon:SetTexCoord(0, 1, 0, 1)
+        icon:SetPoint("RIGHT", text, "LEFT", -gap, 0)
+        if frame.statusIconFrame then
+            frame.statusIconFrame:SetFrameLevel(frame.health:GetFrameLevel() + 2)
+        end
+    end
+    if frame.readyCheckIcon then
+        -- The ready check has its own slot beside the bars, away from the portrait.
+        frame.readyCheckIcon:ClearAllPoints()
+        frame.readyCheckIcon:SetScale(1)
+        frame.readyCheckIcon:SetSize(12 * scale, 12 * scale)
+        frame.readyCheckIcon:SetPoint("LEFT", frame.health, "RIGHT", 3 * scale, 0)
+    end
+end
+function Styles.ApplyReadableFills(frame, key)
+    key = key or frame._pfNativeStyle or Styles.Current()
+    if key == "kui" then return end
+    local modern = key == "retail" or key == "forever"
+    for _, bar in ipairs({frame.health, frame.power}) do
+        local atlas = modern and (bar == frame.health
+            and "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Status"
+            or "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Mana-Status")
+        -- Neutral native variants preserve the actual Party gradient and ends
+        -- while allowing custom/class colours without multiplying green/blue.
+        bar:SetStatusBarTexture(atlas or "Interface\\TargetingFrame\\UI-StatusBar")
+        local fill = bar:GetStatusBarTexture()
+        if not modern then fill:SetTexCoord(0, 1, 0, 1) end
+        if fill.SetDesaturated then fill:SetDesaturated(false) end
+        local r, g, b = bar:GetStatusBarColor()
+        if bar == frame.power then
+            local token
+            if frame.unit and not frame.fakeUnit and UnitPowerType then
+                local ok, _, value = pcall(UnitPowerType, frame.unit)
+                if ok and not (issecretvalue and issecretvalue(value)) then token = value end
+            end
+            local resources = { MANA = "Mana", RAGE = "Rage", ENERGY = "Energy", FOCUS = "Focus", RUNIC_POWER = "RunicPower" }
+            local resource = resources[token or "MANA"]
+            if modern and resource then
+                bar:SetStatusBarTexture("UI-HUD-UnitFrame-Party-PortraitOn-Bar-" .. resource)
+                r, g, b = 1, 1, 1 -- colour is already in the native resource pixels
+            elseif PowerBarColor and PowerBarColor[token] then
+                local c = PowerBarColor[token]; r, g, b = c.r, c.g, c.b
+            end
+        end
+        bar:SetStatusBarColor(r, g, b, 1)
+    end
+end
+function Styles.LayoutPvP(frame, opts, g, scale, preview)
+    if not frame or not frame.pvpIcon or not frame.portraitFrame then return end
+    if frame.mode and frame.mode ~= "party" then return end
+    g, scale = g or frame._pfNativeGeometry, scale or frame._pfNativeScale
+    if not g or not scale then return end
+    opts = opts or Mod.db or {}
+    if opts.pvpAnchor and opts.pvpAnchor ~= "AUTO" then return end
+    -- Live secure child-frame anchors stay installed throughout combat.
+    if not preview and InCombatLockdown and InCombatLockdown() then return end
+    frame.pvpIcon:ClearAllPoints()
+    frame.pvpIcon:SetPoint("CENTER", frame.portraitFrame, "BOTTOMLEFT",
+        3 * scale + (tonumber(opts.pvpX) or 0), 3 * scale + (tonumber(opts.pvpY) or 0))
+end
+function Styles.HideNativePartyReminder(frame, mode, key)
+    if mode == "party" and (key == "classic" or key == "retail" or key == "forever") then
+        if frame.missingBuffIcon then frame.missingBuffIcon:Hide() end
+    end
+end
+-- FontString/texture updates are safe during combat; secure child-frame geometry
+-- must remain the layout installed by PositionFrame before lockdown.
+function Styles.UpdateHealthText(frame, cfg, g, s)
+    if not frame or (frame.mode and frame.mode ~= "party") then return end
+    g, s = g or frame._pfNativeGeometry, s or frame._pfNativeScale
+    if not g or not s or (not frame._pfNativeStyle and not frame._pfNativeArt) then return end
+    for _, text in ipairs({ frame.valueText or frame.value, frame.statusText or frame.status }) do
+        text:ClearAllPoints()
+        text:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
+        text:SetSize(g.health[3] * s, g.health[4] * s)
+        text:SetJustifyH("CENTER")
+        Font(text, math.min(tonumber(cfg.healthTextFontSize) or 10, 8 * s))
+    end
+    Styles.LayoutStatusIndicators(frame, g, s)
+end
+function Styles.UpdateNativeVisual(frame, cfg, preview, g, s, key)
+    Styles.ApplyReadableFills(frame, key)
+    Styles.UpdateHealthText(frame, cfg, g, s)
+    Styles.UpdatePowerText(frame, cfg, preview)
+end
 function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     local key = styleOverride or Styles.Current()
+    Styles.HideNativePartyReminder(frame, mode, key)
+    if not preview and mode == "party" and key ~= "kui" and cfg.showPortrait == true
+        and cfg.portraitStyle ~= "none" and InCombatLockdown and InCombatLockdown() then
+        if frame._pfNativeStyle and frame._pfNativeGeometry then
+            Styles.UpdateNativeVisual(frame, cfg, false, frame._pfNativeGeometry, frame._pfNativeScale)
+        end
+        return
+    end
     if preview and mode == "party" and key ~= "kui" then
         -- Native theme previews show the frame art without sample icon clutter.
         for _, pool in ipairs({ frame.buffIcons or {}, frame.debuffIcons or {} }) do
@@ -295,10 +441,11 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     host:SetSize(g.w * s, g.h * s)
     Styles.SetArt(host.texture, key)
     Box(host.texture, host, g.artX, g.artY, g.artW, g.artH, s)
+    Styles.ConfigureHover(frame, key, host, g, s)
     host:Show()
     local base = frame:GetFrameLevel()
-    frame.health:SetFrameLevel(base + 2)
-    frame.power:SetFrameLevel(base + 2)
+    frame.health:SetFrameLevel(base + 5)
+    frame.power:SetFrameLevel(base + 5)
     frame.portraitFrame:SetFrameLevel(base + 1)
     if frame.portraitModel then frame.portraitModel:SetFrameLevel(base + 2) end
     if frame.model3D then frame.model3D:SetFrameLevel(base + 2) end
@@ -313,18 +460,10 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     if frame.SetBackdropColor then frame:SetBackdropColor(0, 0, 0, 0) end
     Box(frame.health, host, g.health[1], g.health[2], g.health[3], g.health[4], s)
     Box(frame.power, host, g.power[1], g.power[2], g.power[3], g.power[4], s)
-    if key == "classic" then
-        frame.health:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        frame.power:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    elseif key == "retail" then
-        frame.health:SetStatusBarTexture(4681512)
-        frame.health:GetStatusBarTexture():SetTexCoord(1 / 256, 71 / 256, 167 / 256, 177 / 256)
-        frame.power:SetStatusBarTexture(4681512)
-        frame.power:GetStatusBarTexture():SetTexCoord(1 / 256, 75 / 256, 191 / 256, 198 / 256)
-    else
-        frame.health:GetStatusBarTexture():SetAtlas("UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health")
-        frame.power:GetStatusBarTexture():SetAtlas("UI-HUD-UnitFrame-Party-PortraitOn-Bar-Mana")
-    end
+    -- Atlas fills already contain green/blue pixels. Tinting them by class or
+    -- resource multiplies incompatible channels and can make bars almost black.
+    -- Keep the native art/masks, with a neutral luminance fill beneath the text.
+    Styles.ApplyReadableFills(frame, key)
 
     frame.power:SetShown(cfg.showPowerBar == true)
     local p = g.portrait
@@ -359,15 +498,10 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     name:SetJustifyH("LEFT")
     name:SetTextColor(1, 0.82, 0.15, 1)
     Font(name, math.min(tonumber(cfg.nameFontSize) or 11, 10 * s))
-    for _, text in ipairs({ value, status }) do
-        text:ClearAllPoints(); text:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
-        text:SetSize(g.health[3] * s, g.health[4] * s)
-        text:SetJustifyH("CENTER")
-        Font(text, math.min(tonumber(cfg.healthTextFontSize) or 10, 8 * s))
-    end
+    Styles.UpdateNativeVisual(frame, cfg, preview, g, s, key)
     if frame.absorb then
         frame.absorb:ClearAllPoints(); frame.absorb:SetAllPoints(frame.health)
-        frame.absorb:SetFrameLevel(base + 3)
+        frame.absorb:SetFrameLevel(base + 6)
         local fill = frame.absorb:GetStatusBarTexture()
         local mask = frame.health._pfNativeMask
         if fill and mask then
@@ -393,10 +527,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
         frame.levelText:ClearAllPoints()
         frame.levelText:SetPoint("BOTTOM", frame.portraitFrame, "BOTTOM", (Mod.db and Mod.db.levelX or 0), -2 * s + (Mod.db and Mod.db.levelY or 0))
     end
-    if frame.pvpIcon and (not Mod.db or not Mod.db.pvpAnchor or Mod.db.pvpAnchor == "AUTO") then
-        frame.pvpIcon:ClearAllPoints()
-        frame.pvpIcon:SetPoint("CENTER", frame.portraitFrame, "BOTTOMLEFT", 3 * s + (Mod.db and Mod.db.pvpX or 0), 3 * s + (Mod.db and Mod.db.pvpY or 0))
-    end
+    Styles.LayoutPvP(frame, Mod.db, g, s, preview)
     if not frame._pfNativePowerText then
         frame._pfNativePowerText = frame.overlayFrame:CreateFontString(nil, "OVERLAY")
     end
@@ -406,9 +537,30 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     powerText:SetTextColor(1, 1, 1, 1)
     powerText:ClearAllPoints(); powerText:SetPoint("CENTER", frame.power, "CENTER", 0, 0)
     powerText:SetSize(g.power[3] * s, g.power[4] * s)
+    local wasNative = frame._pfNativeStyle
     frame._pfNativeStyle = key
+    frame._pfNativeGeometry, frame._pfNativeScale = g, s
+    if not wasNative and frame.ktAuraContainers and ns.PF_UpdateAuraContainers then
+        ns.PF_UpdateAuraContainers(frame, cfg)
+    end
     Styles.UpdatePowerText(frame, cfg, preview)
     if preview then Styles.PreviewIconLayers(frame) end
+end
+-- Generic portrait refreshes must not replace native AUTO badge anchors.
+local PlaceBadges = ns.PF_Portrait.PlaceBadges
+if PlaceBadges then
+    ns.PF_Portrait.PlaceBadges = function(frame, opts)
+        if frame and frame.mode == "party" and frame._pfNativeStyle and Styles.Current() ~= "kui"
+            and (not opts or not opts.pvpAnchor or opts.pvpAnchor == "AUTO") then
+            local nativeOpts = {}
+            for k, v in pairs(opts or {}) do nativeOpts[k] = v end
+            nativeOpts.pvpAnchor = "NATIVE"
+            PlaceBadges(frame, nativeOpts)
+            Styles.LayoutPvP(frame, opts)
+        else
+            PlaceBadges(frame, opts)
+        end
+    end
 end
 -- Both paths use the same skin, including fake units and early-return status states.
 -- Live KUI frames must preserve the same complete portrait as their preview.
@@ -426,11 +578,22 @@ function Mod:UpdateFrameVisual(frame, ...)
     return result
 end
 
+-- Aura events can update reminders without a full visual refresh.
+local UpdateFrameAuras = Mod.UpdateFrameAuras
+function Mod:UpdateFrameAuras(frame, ...)
+    local result = UpdateFrameAuras(self, frame, ...)
+    if frame then Styles.HideNativePartyReminder(frame, frame.mode or "party", Styles.Current()) end
+    return result
+end
+
 local UpdateFramePowerEvent = Mod.UpdateFramePowerEvent
 if UpdateFramePowerEvent then
     function Mod:UpdateFramePowerEvent(frame, event)
         local result = UpdateFramePowerEvent(self, frame, event)
-        if frame then Styles.UpdatePowerText(frame, self:GetModeDB(frame.mode or "party"), false) end
+        if frame then
+            if frame.mode == "party" and frame._pfNativeStyle and event == "UNIT_DISPLAYPOWER" then Styles.ApplyReadableFills(frame) end
+            Styles.UpdatePowerText(frame, self:GetModeDB(frame.mode or "party"), false)
+        end
         return result
     end
 end

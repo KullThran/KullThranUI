@@ -794,7 +794,7 @@ function Mod:RunMythicPlusTrackerTest(msg)
     state.isTestMode = true
     state.active = true
     state.mapID = 379
-    state.mapName = "Test Dungeon"
+    state.mapName = LText("Test Dungeon")
     state.level = 10
     state.timeLimit = 1800
     state.startTime = GetTime() - 600
@@ -803,9 +803,9 @@ function Mod:RunMythicPlusTrackerTest(msg)
     state.forcesCurrent = 120
     state.forcesMax = 300
     state.bosses = {
-        { name = "First Boss", killed = true, killedTime = 200 },
-        { name = "Second Boss", killed = true, killedTime = 400 },
-        { name = "Third Boss", killed = false }
+        { name = LText("First Boss"), killed = true, killedTime = 200 },
+        { name = LText("Second Boss"), killed = true, killedTime = 400 },
+        { name = LText("Third Boss"), killed = false }
     }
     state.completed = false
     state.currentPull = {}

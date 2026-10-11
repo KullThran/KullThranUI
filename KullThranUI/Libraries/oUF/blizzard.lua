@@ -101,7 +101,7 @@ local function handleFrame(baseName, doNotReparent, isNamePlate)
 		end
 
 		local classPowerBar = frame.classPowerBar
-		if(classPowerBar) then
+		if(classPowerBar and not classPowerBar._ktNativeResourceOwned) then
 			classPowerBar:UnregisterAllEvents()
 		end
 
@@ -148,8 +148,8 @@ function oUF:DisableBlizzard(unit)
 			end
 		end
 	elseif(unit:match('party%d?$')) then
-		-- Party frames are owned by the external party-frame addon (for example
-		-- DandersFrames). KullThranUI should not hide or reparent Blizzard party
+		-- Party frames may be owned by an external party-frame addon.
+		-- KullThranUI should not hide or reparent Blizzard party
 		-- frames here, and must not touch CompactPartyFrameMember state because
 		-- Retail Edit Mode manages those secure fields internally.
 	elseif(unit:match('arena%d?$')) then

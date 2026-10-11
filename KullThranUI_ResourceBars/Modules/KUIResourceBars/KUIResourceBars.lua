@@ -4,8 +4,14 @@
 -------------------------------------------------------------------------------
 local addonName, ns = ...
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+
+local function Loc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
 local KRB = KT:NewModule("ResourceBars", "AceEvent-3.0")
 local LSM = LibStub("LibSharedMedia-3.0", true)
+ns.KRB = KRB
 
 local floor, min, max = math.floor, math.min, math.max
 local GetShapeshiftFormID = GetShapeshiftFormID
@@ -954,17 +960,14 @@ local function GetSecondaryResource()
         elseif formID ~= 0 then
             -- Oso, Gato, Viaje, etc.: el recurso primario ya es Ira/Energía
             -- Feral (spec 2) muestra Puntos de Combo como secundario en forma Felina
-            if (specID == 103 or pType == PT.ENERGY) then
+            if formID == 1 then
                 return { power = PT.COMBO, max = GetPowerMax("player", PT.COMBO, 5), type = "pips" }
             end
             -- Oso u otras formas sin recurso secundario relevante
             return nil
         else
             -- Sin forma (caster/humanoide):
-            -- Feral conserva Puntos de Combo visibles fuera de forma
-            if specID == 103 then
-                return { power = PT.COMBO, max = GetPowerMax("player", PT.COMBO, 5), type = "pips" }
-            end
+            -- Combo points stay hidden outside Cat Form, including Feral spec.
             -- Balance: barra de AP como secundario bajo el Maná
             if specID == 102 then
                 return { power = PT.LUNAR_POWER, max = GetPowerMax("player", PT.LUNAR_POWER, 100), type = "bar" }
@@ -1129,6 +1132,7 @@ local function GetSafeDB()
     db.secondary.markers = EnsureMarkerState(db.secondary.markers or CloneMarkerConfig(db.primary.markers))
     GetActiveMarkerConfig(db)
 
+    if ns.EnsureSwingDefaults then ns.EnsureSwingDefaults(db) end
     return db
 end
 
@@ -1207,10 +1211,10 @@ local function GetBaseAnchor()
     -- para que StackAbove use la posición fija de fallback en lugar de propagarle taint.
     local function IsSafeAnchor(f)
         if not f then return false end
-        if f._ecmeHidden then return false end -- [FIX] Ignore hidden Blizzard CDM
+        if f._ecmeHidden then return false end -- Ignore hidden Blizzard CDM
         if not (f.GetPoint and f:GetPoint(1)) then return false end
         local _, _, _, _, y = f:GetPoint()
-        if y and math.abs(y) > 3000 then return false end -- [FIX] Ignore off-screen frames
+        if y and math.abs(y) > 3000 then return false end -- Ignore off-screen frames
         local ok, v = pcall(function() return f:GetLeft() end)
         if not ok then return false end
         if issecretvalue and issecretvalue(v) then return false end
@@ -1580,7 +1584,7 @@ function KRB:RegisterUnlockElement()
     end
 
     KT.RegisterUnlockElement(KT_RB_UNLOCK_KEY, {
-        label = "Resource Bars",
+        label = Loc("Resource Bars"),
         group = "Resource Bars",
         order = 20,
         getFrame = function()
@@ -1682,6 +1686,7 @@ end
 -------------------------------------------------------------------------------
 local function UpdateCombatVisibility()
     local db = GetSafeDB()
+    if KRB.UpdateSwingVisibility then KRB:UpdateSwingVisibility(db) end
     local inCombat = InCombatLockdown()
     local shouldShow = not db.general.hideOOC or inCombat
     local ppType = GetPrimaryPowerType()
@@ -1837,6 +1842,7 @@ function KRB:BuildBars()
         if healthBar then healthBar:Hide() end
         if primaryBar then primaryBar:Hide() end
         if secondaryFrame then secondaryFrame:Hide() end
+        if self.HideSwingBars then self:HideSwingBars() end
         if resourceAnchor then resourceAnchor:Hide() end
         _G.KUI_ResourceBarsTop = nil
         return
@@ -2036,6 +2042,8 @@ function KRB:BuildBars()
     elseif healthBar then
         healthBar:Hide()
     end
+
+    if self.BuildSwingBars then self:BuildSwingBars(db, refWidth, StackAbove) end
 
     anchorFrame:SetSize(refWidth, max(totalHeight - gap, 1))
     anchorFrame:SetShown(totalHeight > gap or (EditModeManagerFrame and EditModeManagerFrame:IsEditModeActive()))
@@ -2482,3 +2490,8 @@ end
 _G._KRB_Apply = function()
     if KRB and KRB.BuildBars then KRB:BuildBars() end
 end
+
+-- Shared Resource Bars rendering for the optional autoattack timers.
+ns.CreateResourceStatusBar = CreateStatusBar
+ns.GetResourceBarFont = GetRBFont
+ns.ApplyResourceFrameArt = ApplyClassicFrameArt

@@ -2,10 +2,11 @@
 ## Title: KullThranUI - Resource Bars
 ## Notes: KullThranUI module: Resource Bars
 ## Author: KullThran
-## Version: 5.1.3
+## Version: 5.1.4
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
 Init.lua
 Modules\KUIResourceBars\KUIResourceBars.lua
+Modules\KUIResourceBars\KUIResourceBars_Swing.lua
 Modules\KUIResourceBars\KUI_ResourceBars_Options.lua

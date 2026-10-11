@@ -3,6 +3,11 @@ local _, ns = ...
 local KT = ns and ns.KT
 if not KT then return end
 
+local function Loc(text)
+    local L = KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local C_Timer = _G.C_Timer
 local CreateFrame = _G.CreateFrame
 local GetTimePreciseSec = _G.GetTimePreciseSec
@@ -174,27 +179,21 @@ end
 function profiler:PrintModernAddonSummary(title)
     local rows = self:CaptureModernAddonSummary()
     if not rows or #rows == 0 then return end
-    Print(title or "CPU moderno por addon: reciente / sesion / pico (ms por frame)")
+    Print(title or Loc("Modern CPU per addon: recent / session / peak (ms per frame)"))
     local kuiRecent, kuiSession, kuiCount = 0, 0, 0
-    local euiRecent, euiSession, euiCount = 0, 0, 0
     for i = 1, math.min(15, #rows) do
         local row = rows[i]
         Print(string.format("%2d. %-42s %.4f / %.4f / %.2fms",
             i, row.name, row.recent, row.session, row.peak))
     end
-    -- Sumar todos los paquetes
-    -- cargados de la suite. Comparar solo los addons raiz es enganoso porque
-    -- KUI y EUI distribuyen funciones distintas entre sus carpetas.
+    -- Sumar todos los paquetes cargados de la suite: el addon raiz solo no
+    -- refleja el coste real porque las funciones se reparten entre carpetas.
     for i = 1, #rows do
         local row = rows[i]
         if type(row.name) == "string" and row.name:find("^KullThranUI") then
             kuiRecent = kuiRecent + row.recent
             kuiSession = kuiSession + row.session
             kuiCount = kuiCount + 1
-        elseif type(row.name) == "string" and row.name:find("^EllesmereUI") then
-            euiRecent = euiRecent + row.recent
-            euiSession = euiSession + row.session
-            euiCount = euiCount + 1
         end
     end
     local fps = (_G.GetFramerate and _G.GetFramerate()) or 0
@@ -202,11 +201,10 @@ function profiler:PrintModernAddonSummary(title)
     local function PrintSuite(label, recent, session, count)
         if count <= 0 then return end
         local percent = frameBudget and (recent / frameBudget * 100) or 0
-        Print(string.format("%s total (%d addons): %.4f reciente / %.4f sesion ms por frame (%.1f%% a %.0f FPS)",
+        Print(string.format(Loc("%s total (%d addons): %.4f recent / %.4f session ms per frame (%.1f%% at %.0f FPS)"),
             label, count, recent, session, percent, fps))
     end
     PrintSuite("KullThranUI", kuiRecent, kuiSession, kuiCount)
-    PrintSuite("EllesmereUI", euiRecent, euiSession, euiCount)
 end
 
 function profiler:Begin(label)
@@ -264,7 +262,7 @@ function profiler:Event(event, detail)
 end
 
 function profiler:Start(duration, stopOnCombatEnd, includeCDMPerf, includeAddonCPU)
-    if self.capturing then Print("ya hay una captura activa"); return end
+    if self.capturing then Print(Loc("A capture is already active.")); return end
     self:Reset()
     _G.KUI_CDM_DebugLog = {}
     self.capturing = true
@@ -319,17 +317,17 @@ function profiler:Start(duration, stopOnCombatEnd, includeCDMPerf, includeAddonC
     end
 
     if self.includeAddonCPU then
-        Print(string.format("captura iniciada %.0fs; frame >=%.0fms; CPU total por addon; termina con /ktcombat stop",
+        Print(string.format(Loc("Capture started %.0fs; frame >=%.0fms; total CPU per addon; end it with /ktcombat stop"),
             self.duration, self.frameHitchThresholdMs))
     else
-        Print(string.format("captura ligera iniciada %.0fs; frame >=%.0fms; C_AddOnProfiler=%s; termina con /ktfreeze stop",
-            self.duration, self.frameHitchThresholdMs, self.modernProfilerEnabled and "si" or "no"))
+        Print(string.format(Loc("Light capture started %.0fs; frame >=%.0fms; C_AddOnProfiler=%s; end it with /ktfreeze stop"),
+            self.duration, self.frameHitchThresholdMs, self.modernProfilerEnabled and Loc("yes") or Loc("no")))
     end
     if _G.KT_NAMEPLATE_AURA_BACKEND then
-        Print("backend auras nameplates: " .. tostring(_G.KT_NAMEPLATE_AURA_BACKEND))
+        Print(string.format(Loc("Nameplate aura backend: %s"), tostring(_G.KT_NAMEPLATE_AURA_BACKEND)))
     end
     if self.includeAddonCPU and not self.addonCPUStart then
-        Print("AVISO: atribucion por addon no disponible; activa /console scriptProfile 1 y haz /reload")
+        Print(Loc("WARNING: per-addon attribution not available; enable /console scriptProfile 1 and /reload"))
     end
 end
 
@@ -341,7 +339,7 @@ function profiler:Arm(duration, includeCDMPerf, includeAddonCPU)
     -- Arm mode must listen for the next combat transition; Start() registers
     -- the heavier capture events only after PLAYER_REGEN_DISABLED fires.
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    Print(string.format("armado para el proximo combate: %.0fs", self.armedDuration))
+    Print(string.format(Loc("Armed for the next combat: %.0fs"), self.armedDuration))
 end
 
 function profiler:Stop(reason)
@@ -350,9 +348,9 @@ function profiler:Stop(reason)
             self.armed = false
             self.armedDuration = nil
             frame:UnregisterEvent("PLAYER_REGEN_DISABLED")
-            Print("armado cancelado")
+            Print(Loc("Arming cancelled."))
         else
-            Print("no hay captura activa")
+            Print(Loc("No capture is active."))
         end
         return
     end
@@ -381,7 +379,7 @@ function profiler:Stop(reason)
     C_Timer.After(5, function()
         if not profiler.capturing and profiler.captureToken == reportToken then
             profiler:PrintModernAddonSummary(
-                "CPU limpio 5s despues: reciente / sesion / pico (ms por frame)")
+                Loc("Clean CPU 5s later: recent / session / peak (ms per frame)"))
         end
     end)
 end
@@ -392,19 +390,19 @@ function profiler:Report(reason)
     local rows = {}
     for label, sample in pairs(self.samples or {}) do rows[#rows + 1] = { label = label, sample = sample } end
     table.sort(rows, function(a, b) return a.sample.total > b.sample.total end)
-    Print(string.format("resultado %s: %.1fs, combate %.1fs, frames %d, lentos %d, eventos %d, casts %d",
+    Print(string.format(Loc("Result %s: %.1fs, combat %.1fs, frames %d, slow %d, events %d, casts %d"),
         tostring(reason or "report"), elapsed, (self.combatMs or 0) / 1000,
         self.frameCount or 0, self.frameHitchTotal or #(self.frameHitches or {}),
         self.eventCount or 0, self.castCount or 0))
     if self.memoryStartKB and self.memoryEndKB then
-        Print(string.format("memoria Lua: %.1fMB -> %.1fMB (delta %+.1fMB)",
+        Print(string.format(Loc("Lua memory: %.1fMB -> %.1fMB (delta %+.1fMB)"),
             self.memoryStartKB / 1024, self.memoryEndKB / 1024,
             (self.memoryEndKB - self.memoryStartKB) / 1024))
-        Print(string.format("memoria ventanas 100ms: rafaga maxima +%.1fKB; caidas >=512KB x%d, liberado %.1fMB, maxima %.1fMB",
+        Print(string.format(Loc("Memory in 100ms windows: max burst +%.1fKB; drops >=512KB x%d, freed %.1fMB, largest %.1fMB"),
             self.memoryPositivePeakKB or 0, self.gcDropCount or 0,
             (self.gcFreedKB or 0) / 1024, (self.gcLargestDropKB or 0) / 1024))
     end
-    Print("top por tiempo: total / media / pico / llamadas / >=1ms >=5ms >=10ms")
+    Print(Loc("Top by time: total / average / peak / calls / >=1ms >=5ms >=10ms"))
     for i = 1, math.min(20, #rows) do
         local row, s = rows[i], rows[i].sample
         Print(string.format("%2d. %-30s %.2f / %.4f / %.2fms / x%d / %d %d %d",
@@ -422,7 +420,7 @@ function profiler:Report(reason)
         end
         table.sort(cpuRows, function(a, b) return a.delta > b.delta end)
         if #cpuRows > 0 then
-            Print("CPU real por addon (delta durante la captura):")
+            Print(Loc("Real CPU per addon (delta during the capture):"))
             for i = 1, math.min(12, #cpuRows) do
                 local row = cpuRows[i]
                 Print(string.format("%2d. %-42s %.2fms (%.2fms/s)", i, row.name, row.delta,
@@ -430,21 +428,21 @@ function profiler:Report(reason)
             end
         else
             local scriptProfile = _G.GetCVar and _G.GetCVar("scriptProfile") or "?"
-            local cpuAPI = _G.GetAddOnCPUUsage and "si" or "no"
-            Print("CPU real por addon no disponible (API=" .. cpuAPI .. ", scriptProfile=" ..
-                tostring(scriptProfile) .. "); activa /console scriptProfile 1 y haz /reload")
+            local cpuAPI = _G.GetAddOnCPUUsage and Loc("yes") or Loc("no")
+            Print(string.format(Loc("Real CPU per addon not available (API=%s, scriptProfile=%s); enable /console scriptProfile 1 and /reload"),
+                cpuAPI, tostring(scriptProfile)))
         end
     end
     local events = {}
     for event, count in pairs(self.events or {}) do events[#events + 1] = { event = event, count = count } end
     table.sort(events, function(a, b) return a.count > b.count end)
     if #events > 0 then
-        local text = "eventos:"
+        local text = Loc("Events:")
         for i = 1, math.min(12, #events) do text = text .. " " .. events[i].event .. "=" .. events[i].count end
         Print(text)
     end
     if #self.spikes > 0 then
-        Print("ultimos picos >= " .. string.format("%.1fms", self.spikeThresholdMs or 1) .. ":")
+        Print(string.format(Loc("Latest spikes >= %.1fms:"), self.spikeThresholdMs or 1))
         for i = math.max(1, #self.spikes - 9), #self.spikes do
             local spike = self.spikes[i]
             Print(string.format(" +%.3fs %-28s %.2fms %s%s", spike.at, spike.label, spike.ms,
@@ -452,12 +450,12 @@ function profiler:Report(reason)
         end
     end
     if self.worstFrameHitches and #self.worstFrameHitches > 0 then
-        Print("peores frames >= " .. string.format("%.0fms", self.frameHitchThresholdMs or 30) ..
-            ": tiempo / duracion / evento / addons LastTime / secciones KUI / memoria")
-        Print(string.format("coste atribucion C_AddOnProfiler: %.2fms total", self.modernSamplerMs or 0))
+        Print(string.format(Loc("Worst frames >= %.0fms: time / duration / event / addons LastTime / KUI sections / memory"),
+            self.frameHitchThresholdMs or 30))
+        Print(string.format(Loc("C_AddOnProfiler attribution cost: %.2fms total"), self.modernSamplerMs or 0))
         for i = 1, #self.worstFrameHitches do
             local hitch = self.worstFrameHitches[i]
-            local addonText = " addons=n/d"
+            local addonText = " addons=n/a"
             if hitch.addons and #hitch.addons > 0 then
                 local parts = {}
                 for addonIndex = 1, math.min(3, #hitch.addons) do
@@ -466,7 +464,7 @@ function profiler:Report(reason)
                 end
                 addonText = " addons=" .. table.concat(parts, "; ")
             end
-            local sectionText = " secciones=ninguna"
+            local sectionText = " " .. Loc("sections=none")
             if hitch.sections and #hitch.sections > 0 then
                 local parts = {}
                 for sectionIndex = 1, math.min(3, #hitch.sections) do
@@ -474,7 +472,7 @@ function profiler:Report(reason)
                     parts[#parts + 1] = string.format("%s %.2fms/x%d",
                         section.label, section.total, section.calls)
                 end
-                sectionText = " secciones=" .. table.concat(parts, "; ")
+                sectionText = " " .. string.format(Loc("sections=%s"), table.concat(parts, "; "))
             end
             local memoryText = ""
             if hitch.memoryKB then
@@ -488,12 +486,12 @@ function profiler:Report(reason)
                 tostring(hitch.event or "periodic/idle"), addonText, sectionText, memoryText))
         end
     else
-        Print("frames lentos: ninguno por encima del umbral")
+        Print(Loc("Slow frames: none above the threshold"))
     end
     local cdmNS, cdmPerf = _G.KUI_CDM_NS, nil
     cdmPerf = cdmNS and cdmNS._perf
     if self.includeCDMPerf and cdmPerf and cdmPerf.tickCount and cdmPerf.tickCount > 0 then
-        Print(string.format("CDM interno: ticks=%d omitidos=%d total=%.2fms pico=%.2fms",
+        Print(string.format(Loc("CDM internal: ticks=%d skipped=%d total=%.2fms peak=%.2fms"),
             cdmPerf.tickCount, cdmPerf.skippedTicks or 0, cdmPerf.totalMs or 0, cdmPerf.peakMs or 0))
 
         local phaseRows = {}
@@ -506,7 +504,7 @@ function profiler:Report(reason)
         end
         table.sort(phaseRows, function(a, b) return a.total > b.total end)
         if #phaseRows > 0 then
-            Print("CDM fases internas: total / pico")
+            Print(Loc("CDM internal phases: total / peak"))
             for i = 1, math.min(10, #phaseRows) do
                 local row = phaseRows[i]
                 Print(string.format("%2d. %-28s %.2fms / %.2fms", i, row.name, row.total, row.peak))
@@ -526,7 +524,7 @@ function profiler:Report(reason)
         end
         table.sort(barRows, function(a, b) return a.total > b.total end)
         if #barRows > 0 then
-            Print("CDM barras: total / pico / llamadas / iconos")
+            Print(Loc("CDM bars: total / peak / calls / icons"))
             for i = 1, math.min(12, #barRows) do
                 local row = barRows[i]
                 Print(string.format("%2d. %-20s %.2fms / %.2fms / x%d / %d:%d",
@@ -540,7 +538,7 @@ function profiler:Report(reason)
         end
         table.sort(dirtyRows, function(a, b) return a.count > b.count end)
         if #dirtyRows > 0 then
-            local dirtyText = "CDM motivos dirty:"
+            local dirtyText = Loc("CDM dirty reasons:")
             for i = 1, math.min(10, #dirtyRows) do
                 dirtyText = dirtyText .. " " .. dirtyRows[i].name .. "=" .. dirtyRows[i].count
             end
@@ -662,18 +660,18 @@ local function HandleCommand(message)
     elseif command == "reset" then
         profiler:Reset(); profiler.capturing, profiler.armed = false, false
         frame:UnregisterAllEvents()
-        Print("contadores reiniciados")
+        Print(Loc("Counters reset."))
     elseif command == "threshold" then
         profiler.spikeThresholdMs = math.max(0.1, tonumber(rest) or 1)
-        Print(string.format("umbral de picos %.1fms", profiler.spikeThresholdMs))
+        Print(string.format(Loc("Spike threshold %.1fms"), profiler.spikeThresholdMs))
     elseif command == "hitch" then
         profiler.frameHitchThresholdMs = math.max(10, tonumber(rest) or 30)
-        Print(string.format("umbral de frame lento %.0fms", profiler.frameHitchThresholdMs))
+        Print(string.format(Loc("Slow frame threshold %.0fms"), profiler.frameHitchThresholdMs))
     elseif command == "status" then
-        Print(string.format("capturando=%s armado=%s ultimo=%s casts=%d",
-            profiler.capturing and "si" or "no", profiler.armed and "si" or "no",
+        Print(string.format(Loc("capturing=%s armed=%s last=%s casts=%d"),
+            profiler.capturing and Loc("yes") or Loc("no"), profiler.armed and Loc("yes") or Loc("no"),
             tostring(profiler.lastEvent or "none"), profiler.castCount or 0))
-    else Print("uso: /ktcombat arm [s] | start [s] | stop | report | reset | threshold [ms] | hitch [ms]") end
+    else Print(string.format(Loc("Usage: %s"), "/ktcombat arm [s] | start [s] | stop | report | reset | threshold [ms] | hitch [ms]")) end
 end
 
 SLASH_KTCOMBAT1 = "/ktcombat"

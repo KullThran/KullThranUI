@@ -53,7 +53,7 @@ local function ToggleUnlockMode()
     end
 
     if KT and KT.Print then
-        KT:Print("|cffFF4444UnlockMode|r: module not available.")
+        KT:Print("|cffFF4444UnlockMode|r: " .. LText("module not available."))
     end
     return false
 end
@@ -169,7 +169,7 @@ function Mod:EnsureKUIUnlockButton()
     btn:SetScript("OnClick", function()
         if InCombatLockdown and InCombatLockdown() then
             if KT and KT.Print then
-                KT:Print("|cffFF4444UnlockMode|r: not available in combat.")
+                KT:Print("|cffFF4444UnlockMode|r: " .. LText("not available in combat."))
             end
             return
         end

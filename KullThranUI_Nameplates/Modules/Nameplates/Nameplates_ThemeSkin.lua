@@ -177,7 +177,12 @@ local function SkinBar(plate, bar, bg, field, key, theme)
     if not bar then return end
     local f = plate[field]
     if theme ~= "classic" and theme ~= "retail" and theme ~= "forever" then
-        if f then f:Hide() end
+        if f then
+            f:Hide()
+            -- These background textures belong to the bar, not the skin frame.
+            if f.bg then f.bg:Hide() end
+            if f.interior then f.interior:Hide() end
+        end
         if bg and plate["_skinBG" .. key] then
             local o = plate["_skinBG" .. key]
             bg:SetColorTexture(o[1], o[2], o[3], o[4]); plate["_skinBG" .. key] = nil
@@ -221,6 +226,36 @@ local function SkinBar(plate, bar, bg, field, key, theme)
     return true
 end
 
+function ns.RestoreKuiBarTextures(plate)
+    -- Theme refreshes/previews do not always run RefreshPlateState first.
+    -- Re-resolve the current profile instead of retaining the native fill.
+    if ns.ApplyHealthBarTexture then ns.ApplyHealthBarTexture(plate) end
+    if ns.ApplyCastBarTexture then ns.ApplyCastBarTexture(plate) end
+    for _, bar in ipairs({ plate.health, plate.cast }) do
+        local fill = bar:GetStatusBarTexture()
+        if fill and fill.SetTexCoord then fill:SetTexCoord(0, 1, 0, 1) end
+    end
+end
+
+function ns.ApplyThemeBarFill(bar, key, theme)
+    if not bar then return end
+    if theme == "classic" then
+        bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    elseif theme == "retail" or theme == "forever" then
+        -- Atlas names are not file paths. Bind a neutral fill, then apply the
+        -- atlas to that texture so Blizzard's crop coordinates are retained.
+        bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+        local fill = bar:GetStatusBarTexture()
+        if fill and fill.SetAtlas then
+            pcall(fill.SetAtlas, fill, key == "cast" and "UI-CastingBar-Full-Standard" or "UI-HUD-CoolDownManager-Bar")
+        end
+    end
+    if theme == "classic" then
+        local fill = bar:GetStatusBarTexture()
+        if fill and fill.SetTexCoord then fill:SetTexCoord(0, 1, 0, 1) end
+    end
+end
+
 function ns.ApplyThemeSkin(plate)
     if not plate or not plate.health then return end
     local theme = RenderedTheme()
@@ -230,22 +265,17 @@ function ns.ApplyThemeSkin(plate)
     if skinned then
         if plate.borderFrame then plate.borderFrame:Hide() end
         if plate._simpleBorderFrame then plate._simpleBorderFrame:Hide() end
-        if theme == "classic" then
-            -- Textura original de las barras de Blizzard Classic (mate, sin brillo)
-            plate.health:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-            if plate.cast then pcall(plate.cast.SetStatusBarTexture, plate.cast, "Interface\\TargetingFrame\\UI-StatusBar") end
-        else
-            -- Retail and Forever: Blizzard's nameplate bar fills
-            pcall(plate.health.SetStatusBarTexture, plate.health, "UI-HUD-CoolDownManager-Bar")
-            if plate.cast then pcall(plate.cast.SetStatusBarTexture, plate.cast, "UI-CastingBar-Full-Standard") end
-        end
+        ns.ApplyThemeBarFill(plate.health, "health", theme)
+        ns.ApplyThemeBarFill(plate.cast, "cast", theme)
         if (theme == "classic" or theme == "forever") and plate.name then
             local nf, _, nfl = plate.name:GetFont()
             local sz = ((ns.GetEnemyNameTextSize and ns.GetEnemyNameTextSize()) or 10) + (theme == "classic" and 3 or 2)
             if nf then plate.name:SetFont(nf, sz, nfl or "OUTLINE") end
         end
-    elseif plate._skinHealth and plate.ApplyBorderStyle then
-        plate:ApplyBorderStyle()
+    else
+        -- Also normalize profiles loaded directly into KUI, without a prior skin.
+        ns.RestoreKuiBarTextures(plate)
+        if plate._skinHealth and plate.ApplyBorderStyle then plate:ApplyBorderStyle() end
     end
 end
 

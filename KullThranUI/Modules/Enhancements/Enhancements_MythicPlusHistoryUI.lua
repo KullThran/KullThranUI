@@ -5,7 +5,7 @@ local H = Mod and Mod.MythicPlusHistory
 if not H then return end
 
 local LText = KT.LText or function(k) return k end
-local function T(en, spanish) return LText(en) end
+local function T(en) return LText(en) end
 
 local function getFontPath()
     local config = H:Config()
@@ -72,8 +72,8 @@ local function runTitle(run)
     return (run.dungeon or ("Dungeon " .. (run.mapID or "?"))) .. "  +" .. number(run.level)
 end
 local function result(run)
-    if run.onTime == nil then return T("RESULT UNAVAILABLE", "RESULTADO SIN DATOS") end
-    return run.onTime and T("IN TIME", "EN TIEMPO") or T("OVER TIME", "FUERA DE TIEMPO")
+    if run.onTime == nil then return T("RESULT UNAVAILABLE") end
+    return run.onTime and T("IN TIME") or T("OVER TIME")
 end
 local function accent()
     local p = KT.GetStylePalette and KT:GetStylePalette()
@@ -154,9 +154,9 @@ function H:ShowEquipment(member)
     f.title:SetText(member.name or "?")
     local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class or ""]
     if c then f.title:SetTextColor(c.r, c.g, c.b) else f.title:SetTextColor(1, 1, 1) end
-    f.note:SetText(T("Equipment snapshot: ", "Equipo registrado: ") .. when(member.gearCapturedAt)
-        .. "\n" .. T("Captured slots: ", "Casillas capturadas: ") .. number(member.gearCount)
-        .. "/16  |  " .. T("Missing slots are not reconstructed.", "No se reconstruyen casillas sin datos."))
+    f.note:SetText(T("Equipment snapshot: ") .. when(member.gearCapturedAt)
+        .. "\n" .. T("Captured slots: ") .. number(member.gearCount)
+        .. "/16  |  " .. T("Missing slots are not reconstructed."))
     for index, slot in ipairs(self.slots) do
         local row = f.items[index]
         row.link = member.gear and member.gear[slot]
@@ -171,7 +171,7 @@ function H:ShowEquipment(member)
         local preview = member.previewGear and member.previewGear[slot]
         row.icon:SetTexture(preview and preview.icon or iconTex)
         
-        row.text:SetText(preview and ("|cffa335ee" .. preview.name .. "|r  ?  iLvl " .. number(member.ilvl)) or row.link or (T("Slot ", "Casilla ") .. slot .. "  --"))
+        row.text:SetText(preview and ("|cffa335ee" .. preview.name .. "|r  ?  iLvl " .. number(member.ilvl)) or row.link or (T("Slot ") .. slot .. "  --"))
     end
     f:Show()
 end
@@ -196,7 +196,7 @@ function H:CreateWindow()
     end
     skin(f)
     f.title = label(f, 19, 22, -17, 820)
-    f.title:SetText(T("Mythic+ History", "Historial de miticas+"))
+    f.title:SetText(T("Mythic+ History"))
     local close = button(f, "X", 27)
     close:SetPoint("TOPRIGHT", -10, -10)
     close:SetScript("OnClick", function() f:Hide() end)
@@ -249,7 +249,7 @@ function H:CreateWindow()
     f.hero.affixes = label(f.hero, 11, 14, -88, 884)
 
     f.selected = label(f, 14, 22, -180, 745)
-    local latest = button(f, T("Latest key", "Ultima key"), 135)
+    local latest = button(f, T("Latest key"), 135)
     latest:SetPoint("TOPRIGHT", -22, -174)
     latest:SetScript("OnClick", function() H:Render() end)
     
@@ -314,7 +314,7 @@ function H:CreateWindow()
         card.dmgText = label(card, 9, 25, 0, 82)
         card.dmgText:ClearAllPoints()
         card.dmgText:SetPoint("LEFT", card.medal, "RIGHT", 2, 0)
-        card.dmgText:SetText(T("Most Damage", "Más daño"))
+        card.dmgText:SetText(T("Most Damage"))
         card.dmgText:SetTextColor(1, 0.82, 0)
         
         card.dpsText = label(card, 10, 0, 0, 43)
@@ -322,7 +322,7 @@ function H:CreateWindow()
         card.dpsText:SetPoint("RIGHT", card.dmgBar, "RIGHT", -4, 0)
         card.dpsText:SetJustifyH("RIGHT")
 
-        card.gear = button(card, T("View Gear", "Ver Equipo"), cardWidth - 20, 24)
+        card.gear = button(card, T("View Gear"), cardWidth - 20, 24)
         card.gear:SetPoint("BOTTOM", 0, 30)
         card.gear:SetScript("OnClick",function() if card.member then H:ShowEquipment(card.member) end end)
         
@@ -335,10 +335,10 @@ function H:CreateWindow()
         end)
         card:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(T("Right-click to copy RaiderIO URL", "Click derecho para copiar URL de RaiderIO"), 1, 1, 1)
+            GameTooltip:SetText(T("Right-click to copy RaiderIO URL"), 1, 1, 1)
             if self.member and self.member.damageTotal then
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine(T("Damage Done: ", "Daño realizado: ") .. "|cffFFFFFF" .. number(self.member.damageTotal) .. "|r", 1, 1, 1)
+                GameTooltip:AddLine(T("Damage Done: ") .. "|cffFFFFFF" .. number(self.member.damageTotal) .. "|r", 1, 1, 1)
             end
             GameTooltip:Show()
         end)
@@ -348,13 +348,11 @@ function H:CreateWindow()
     end
     f.missingParty = label(f,13,22,-375,906)
     f.missingParty:SetWordWrap(true)
-    f.missingParty:SetText(T("Imported from Blizzard. Historical party, specs, equipment and individual ratings are not provided. New keys recorded by KUI include the data it can capture.",
-        "Importada de Blizzard. No proporciona el grupo, specs, equipo ni puntuaciones individuales de esta key. Las nuevas keys registradas por KUI incluyen los datos que pueda capturar."))
+    f.missingParty:SetText(T("Imported from Blizzard. Historical party, specs, equipment and individual ratings are not provided. New keys recorded by KUI include the data it can capture."))
     f.missingParty:Hide()
     f.note = label(f,10,22,-410,906)
-    f.note:SetText(T("Blizzard: start > finish. RIO: addon snapshot. Map: best score before this key. -- = unavailable.",
-        "Blizzard: inicio > final. RIO: datos del addon. Mapa: mejor puntuacion anterior a esta key. -- = sin datos."))
-    label(f,12,22,-435,880):SetText(T("PREVIOUS KEYS  -  click to view the party", "KEYS ANTERIORES  -  pulsa para ver el grupo"))
+    f.note:SetText(T("Blizzard: start > finish. RIO: addon snapshot. Map: best score before this key. -- = unavailable."))
+    label(f,12,22,-435,880):SetText(T("PREVIOUS KEYS  -  click to view the party"))
     local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT",22,-455)
     scroll:SetPoint("BOTTOMRIGHT",-42,36)
@@ -376,11 +374,10 @@ function H:Render(selectedID, demo)
     end
     local runs = demo or self.demoRuns or self:Runs()
     local latest = runs[1]
-    f.footer:SetText(T("Last 50 keys per character. Imports available Blizzard history; detailed party capture starts when enabled.",
-        "Ultimas 50 keys por personaje. Importa el historial disponible de Blizzard; grupo detallado desde que se activa."))
+    f.footer:SetText(T("Last 50 keys per character. Imports available Blizzard history; detailed party capture starts when enabled."))
     if not latest then
-        f.hero.kicker:SetText(T("NO RUNS YET", "AUN NO HAY KEYS"))
-        f.hero.name:SetText(T("Complete a Mythic+ to start", "Completa una mitica+ para empezar"))
+        f.hero.kicker:SetText(T("NO RUNS YET"))
+        f.hero.name:SetText(T("Complete a Mythic+ to start"))
         f.hero.status:SetText(""); f.hero.affixes:SetText("")
         f.hero.bg:SetTexture(nil)
         for _, key in ipairs({"factsTime", "factsMargin", "factsDeaths", "factsUpgrade", "factsScore"}) do f.hero[key]:SetText("") end
@@ -395,9 +392,9 @@ function H:Render(selectedID, demo)
     for _, run in ipairs(runs) do if run.id == selectedID then selected = run; break end end
     self.selectedID = selected.id
     latest = selected
-    f.hero.kicker:SetText((self.demoRuns and T("PREVIEW - NOT SAVED", "VISTA PREVIA - NO SE GUARDA") or (selected == runs[1] and T("LATEST KEY", "ULTIMA KEY") or T("SELECTED KEY", "KEY SELECCIONADA")))
+    f.hero.kicker:SetText((self.demoRuns and T("PREVIEW - NOT SAVED") or (selected == runs[1] and T("LATEST KEY") or T("SELECTED KEY")))
         .. "  |  " .. when(latest.completedAt)
-        .. (latest.source == "blizzard" and T("  |  IMPORTED FROM BLIZZARD", "  |  IMPORTADA DE BLIZZARD") or ""))
+        .. (latest.source == "blizzard" and T("  |  IMPORTED FROM BLIZZARD") or ""))
     
     local heroTitleStr = "|cffF5F5DC" .. (latest.dungeon or ("Dungeon " .. (latest.mapID or "?"))) .. "|r  |cffFF9900+" .. number(latest.level) .. "|r"
     f.hero.name:SetText(heroTitleStr)
@@ -423,17 +420,17 @@ function H:Render(selectedID, demo)
     local delta = latest.newScore and latest.oldScore and latest.newScore-latest.oldScore
     local margin = latest.timeLimit and latest.durationMS and latest.timeLimit-latest.durationMS/1000
     local timeColor = latest.onTime and "|cff00FF00" or (latest.onTime == false and "|cffFF3333" or "|cffFFFFFF")
-    local timeText = T("Time ", "Tiempo ") .. timeColor .. duration(latest.durationMS/1000) .. " / " .. duration(latest.timeLimit) .. "|r"
+    local timeText = T("Time ") .. timeColor .. duration(latest.durationMS/1000) .. " / " .. duration(latest.timeLimit) .. "|r"
     local margin = latest.timeLimit and latest.durationMS and latest.timeLimit-latest.durationMS/1000
     local marginText = margin and ((margin >= 0 and "|cff00FF00+|r" or "|cffFF0000-|r") .. "|cffFFFFFF" .. duration(math.abs(margin)) .. "|r") or "--"
-    local deathsText = T("Deaths ", "Muertes ") .. "|cffFF3333" .. number(latest.deaths) .. "|r"
-    local upgradeText = T("Upgrade ", "Mejora ") .. "|cff00FFCC+" .. number(latest.upgrades) .. "|r"
+    local deathsText = T("Deaths ") .. "|cffFF3333" .. number(latest.deaths) .. "|r"
+    local upgradeText = T("Upgrade ") .. "|cff00FFCC+" .. number(latest.upgrades) .. "|r"
     
     local scoreText = ""
     if latest.source == "blizzard" then
-        scoreText = T("Key score ", "Puntos de la key ") .. "|cffFF9900" .. number(latest.runScore,1) .. "|r"
+        scoreText = T("Key score ") .. "|cffFF9900" .. number(latest.runScore,1) .. "|r"
     else
-        scoreText = T("Score ", "Puntos ") .. "|cffFF9900" .. number(latest.oldScore) .. " > " .. number(latest.newScore) .. "|r"
+        scoreText = T("Score ") .. "|cffFF9900" .. number(latest.oldScore) .. " > " .. number(latest.newScore) .. "|r"
     end
     local delta = type(latest.newScore) == "number" and type(latest.oldScore) == "number" and latest.newScore - latest.oldScore
     
@@ -446,7 +443,7 @@ function H:Render(selectedID, demo)
     f.hero.deathsTooltipFrame:SetScript("OnEnter", function(self)
         if latest.penalty then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(T("Death Penalty", "Penalización de muertes"))
+            GameTooltip:SetText(T("Death Penalty"))
             GameTooltip:AddLine("|cffFF3333" .. duration(latest.penalty) .. "|r", 1, 1, 1)
             GameTooltip:Show()
         end
@@ -458,7 +455,7 @@ function H:Render(selectedID, demo)
         local name = C_ChallengeMode.GetAffixInfo and C_ChallengeMode.GetAffixInfo(id)
         affixes[#affixes+1] = name or tostring(id)
     end
-    f.hero.affixes:SetText(T("Affixes: ", "Afijos: ") .. "|cffFFFFFF" .. (#affixes>0 and table.concat(affixes," / ") or "--") .. "|r")
+    f.hero.affixes:SetText(T("Affixes: ") .. "|cffFFFFFF" .. (#affixes>0 and table.concat(affixes," / ") or "--") .. "|r")
     
     local selectedTitle = "|cffF5F5DC" .. (selected.dungeon or ("Dungeon " .. (selected.mapID or "?"))) .. "|r |cffFF9900+" .. number(selected.level) .. "|r"
     local timeColor = selected.onTime and "|cff00FF00" or "|cffFF3333"
@@ -537,12 +534,12 @@ function H:Render(selectedID, demo)
                 card.roleIcon:SetTexture(nil)
             end
 
-            card.spec:SetText((spec or T("Spec unavailable","Spec sin datos")) .. " | " .. roleStr)
-            card.ilvl:SetText("iLvl: |cffFFFFFF" .. number(m.ilvl,1) .. "|r")
-            card.rating:SetText(T("Map: ","Mapa: ") .. "|cffFF9900" .. number(m.mapScore,1) .. "|r")
+            card.spec:SetText((spec or T("Spec unavailable")) .. " | " .. roleStr)
+            card.ilvl:SetText(T("iLvl: ") .. "|cffFFFFFF" .. number(m.ilvl,1) .. "|r")
+            card.rating:SetText(T("Map: ") .. "|cffFF9900" .. number(m.mapScore,1) .. "|r")
             
-            card.rio:SetText("RIO: |cffFFFFFF" .. number(m.rio) .. "|r")
-            card.gear:SetText(T("View Gear ", "Ver Equipo ") .. number(m.gearCount) .. "/16")
+            card.rio:SetText(T("RIO: ") .. "|cffFFFFFF" .. number(m.rio) .. "|r")
+            card.gear:SetText(T("View Gear ") .. number(m.gearCount) .. "/16")
             
             local damageRank = m.damageRank
             if not damageRank or damageRank < 1 or damageRank > 3 then damageRank = damageRanks[m] end
@@ -627,8 +624,8 @@ function H:Render(selectedID, demo)
         card.lvlText:SetText("+" .. (run.level or "?"))
         card.nameText:SetText(name or run.dungeon or "?")
         
-        local res = run.onTime and "|cff00FF00" .. T("IN TIME", "EN TIEMPO") .. "|r" or "|cffFF0000" .. T("OVER TIME", "FUERA DE TIEMPO") .. "|r"
-        if run.onTime == nil then res = "|cffAAAAAA" .. T("N/A", "N/A") .. "|r" end
+        local res = run.onTime and "|cff00FF00" .. T("IN TIME") .. "|r" or "|cffFF0000" .. T("OVER TIME") .. "|r"
+        if run.onTime == nil then res = "|cffAAAAAA" .. T("N/A") .. "|r" end
         card.resText:SetText(res)
         
         card.timeText:SetText(duration(run.durationMS/1000) .. " / " .. duration(run.timeLimit))
@@ -730,11 +727,11 @@ function H:Preview()
                 gearCount=16, gear={}, previewGear={}, gearCapturedAt=run.completedAt,
             }
         end
-        local gearNames = {"Helm", "Amulet", "Shoulders", "Chest", "Belt", "Legguards", "Boots", "Bracers", "Gloves", "Ring", "Signet", "Trinket", "Charm", "Cloak", "Weapon", "Off-hand"}
+        local gearNames = {T("Helm"), T("Amulet"), T("Shoulders"), T("Chest"), T("Belt"), T("Legguards"), T("Boots"), T("Bracers"), T("Gloves"), T("Ring"), T("Signet"), T("Trinket"), T("Charm"), T("Cloak"), T("Weapon"), T("Off-hand")}
         local gearIcons = {133071, 133280, 135041, 132720, 132505, 134589, 132536, 132606, 132939, 133345, 133345, 134400, 134400, 133770, 135328, 134955}
         for _, member in ipairs(run.members) do
             for slotIndex, slot in ipairs(self.slots) do
-                member.previewGear[slot] = {name="[Preview] " .. gearNames[slotIndex], icon=gearIcons[slotIndex]}
+                member.previewGear[slot] = {name=string.format(T("[Preview] %s"), gearNames[slotIndex]), icon=gearIcons[slotIndex]}
             end
         end
         self.demoRuns[i] = run

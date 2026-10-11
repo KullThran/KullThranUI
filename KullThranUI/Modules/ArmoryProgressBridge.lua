@@ -609,7 +609,7 @@ function Bridge:CreateInsetTab(parent, key, label, x, icon)
         end
         if GameTooltip and self.key then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText((self.key == "stats" and "Stats") or "Progress")
+            GameTooltip:SetText(self.key == "stats" and LText("Stats") or LText("Progress"))
             GameTooltip:Show()
         end
     end)
@@ -1453,11 +1453,12 @@ function Bridge:UpdatePaneVisibility()
     local showEquipment = showPrimaryPane and pane == "equipment"
 
     -- The tab-bar lives on the CharacterFrame and must stay visible on every
-    -- internal pane (stats/titles/equipment/progress). It only needs the
-    -- CharacterFrame open, not the primary paperdoll pane.
+    -- internal pane (stats/titles/equipment/progress), but it must be hidden
+    -- on the Reputation and Currency tabs (PaperDollFrame hidden).
     local charOpen = _G.CharacterFrame and _G.CharacterFrame:IsShown()
+        and _G.PaperDollFrame and _G.PaperDollFrame:IsShown()
     if self.TabBar then
-        self.TabBar:SetShown(charOpen)
+        self.TabBar:SetShown(charOpen and true or false)
     end
 
     if armory and armory.StatsFrame then
@@ -1579,7 +1580,7 @@ function Bridge:BuildTextTabBar()
                 if lbl then lbl:SetTextColor(1, 1, 1, 1) end
                 if def.short then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(locale.Progress or "Progress")
+                    GameTooltip:SetText(LText("Progress"))
                     GameTooltip:Show()
                 end
             end)
@@ -1746,6 +1747,15 @@ function Bridge:Setup()
                 Bridge:AnchorTabBarToSidebar()
             end)
             _G.CharacterFrame:HookScript("OnHide", function()
+                Bridge:UpdatePaneVisibility()
+            end)
+        end
+
+        if _G.PaperDollFrame then
+            _G.PaperDollFrame:HookScript("OnShow", function()
+                Bridge:UpdatePaneVisibility()
+            end)
+            _G.PaperDollFrame:HookScript("OnHide", function()
                 Bridge:UpdatePaneVisibility()
             end)
         end

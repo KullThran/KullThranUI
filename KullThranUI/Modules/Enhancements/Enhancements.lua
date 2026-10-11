@@ -104,13 +104,20 @@ local tostring = _G.tostring
 local type = _G.type
 local UIParent = _G.UIParent
 
-local LootRollGuard = { active = {}, presented = {} }
+local LootRollGuard = { active = {}, presented = {}, requested = {} }
+KT.LootRollVisibilityGuard = LootRollGuard
 local function HasActiveGroupLootRoll()
+    local active, now = false, _G.GetTime()
     for rollID, deadline in pairs(LootRollGuard.active) do
-        if deadline > _G.GetTime() then return true end
-        LootRollGuard.active[rollID] = nil
-        LootRollGuard.presented[rollID] = nil
+        if deadline > now then
+            active = true
+        else
+            LootRollGuard.active[rollID] = nil
+            LootRollGuard.presented[rollID] = nil
+            LootRollGuard.requested[rollID] = nil
+        end
     end
+    if active then return true end
     local getter = _G.GetActiveLootRollIDs
     if type(getter) == "function" then
         local ok, ids = pcall(getter)
@@ -154,31 +161,99 @@ end
 -- A roll can start while AlertFrame is hidden and before rollFrames is filled.
 -- Keep the manager available throughout that bootstrap, and recover only a
 -- still-pending native roll. Need/Greed/Pass handlers stay owned by Blizzard.
+function LootRollGuard:PrepareFrame(frame)
+    if not frame or (frame.IsForbidden and frame:IsForbidden()) then return end
+    if frame.IsProtected and frame:IsProtected() and _G.InCombatLockdown and _G.InCombatLockdown() then return end
+    local container = _G.GroupLootContainer
+    local manager = container and container.layoutParent
+    -- The vertical managed layout can anchor this upward-growing stack by TOP,
+    -- leaving its rolls above the screen. Restore the native bottom origin,
+    -- preserving a mover's explicitly detached/custom container position.
+    if manager and container.GetParent and container:GetParent() == manager
+        and not container.ignoreFramePositionManager
+        and not (container.IsInDefaultPosition and not container:IsInDefaultPosition())
+        and container.GetPoint and container.ClearAllPoints and container.SetPoint then
+        local point, relative, relativePoint = container:GetPoint(1)
+        if point ~= "BOTTOM" or relative ~= manager or relativePoint ~= "BOTTOM" then
+            container:ClearAllPoints()
+            container:SetPoint("BOTTOM", manager, "BOTTOM", 0, 0)
+        end
+    end
+    -- Per-roll clamping hides a broken container anchor by pinning it to the top.
+    if frame.SetClampedToScreen then frame:SetClampedToScreen(false) end
+    local parent = _G.UIParent
+    if not (parent and parent.GetRect and frame.GetRect and frame.GetEffectiveScale and parent.GetEffectiveScale) then return end
+    local left, bottom, width, height = frame:GetRect()
+    local pl, pb, pw, ph = parent:GetRect()
+    local scale, parentScale = frame:GetEffectiveScale(), parent:GetEffectiveScale()
+    local invalid = type(left) ~= "number" or type(bottom) ~= "number"
+        or type(width) ~= "number" or type(height) ~= "number" or width <= 0 or height <= 0
+    if not invalid and type(pl) == "number" and type(pb) == "number" and type(pw) == "number" and type(ph) == "number"
+        and type(scale) == "number" and type(parentScale) == "number" and parentScale > 0 then
+        local ratio = scale / parentScale
+        invalid = left * ratio + width * ratio <= pl or left * ratio >= pl + pw
+            or bottom * ratio + height * ratio <= pb or bottom * ratio >= pb + ph
+    end
+    if invalid and frame.ClearAllPoints and frame.SetPoint then
+        if (type(width) ~= "number" or type(height) ~= "number" or width <= 0 or height <= 0) and frame.SetSize then frame:SetSize(277, 67) end
+        frame:ClearAllPoints()
+        local index
+        for slot, roll in pairs(container and container.rollFrames or {}) do
+            if roll == frame then index = slot; break end
+        end
+        if type(index) == "number" then
+            frame:SetPoint("CENTER", container, "BOTTOM", 0, (container.reservedSize or 100) * (index - 0.5))
+        else
+            frame:SetPoint("CENTER", parent, "CENTER", 0, -100 + 80 * ((frame.GetID and frame:GetID() or 1) - 1))
+        end
+    end
+end
+
 function LootRollGuard:Restore()
-    local profile = KT.db and KT.db.profile and KT.db.profile.enhancements
-    if not (profile and profile.enable ~= false and profile.visibility and profile.visibility.hideAlerts) then return end
+    -- This is an interactive prompt, independent of cosmetic alert settings.
+    -- Gamepad mode has its own native loot UI; leave that controller in charge.
+    if _G.InputUtil and _G.InputUtil.IsGamepadUIEnabled and _G.InputUtil.IsGamepadUIEnabled() then return end
     if not HasActiveGroupLootRoll() then return end
     local function Reveal(frame)
-        if not frame then return end
+        if not frame then return false end
+        if frame.IsForbidden and frame:IsForbidden() then return false end
         if frame.SetAlpha then frame:SetAlpha(1) end
         if frame.Show then frame:Show() end
+        -- OnShow can immediately remove a roll whose item data is not cached.
+        return frame.IsShown and frame:IsShown()
     end
     Reveal(_G.AlertFrame)
     local container = _G.GroupLootContainer
     for rollID in pairs(self.active) do
-        if not self.presented[rollID] then
+        local ready = true
+        if not self.presented[rollID] and type(_G.GetLootRollItemInfo) == "function" then
+            local _, name = _G.GetLootRollItemInfo(rollID)
+            ready = name ~= nil
+            if not ready and not self.requested[rollID] and _G.GetLootRollItemLink and _G.GetItemInfoInstant
+                and _G.C_Item and _G.C_Item.RequestLoadItemDataByID then
+                local link = _G.GetLootRollItemLink(rollID)
+                local itemID = link and _G.GetItemInfoInstant(link)
+                if itemID then self.requested[rollID] = true; _G.C_Item.RequestLoadItemDataByID(itemID) end
+            end
+        end
+        if not self.presented[rollID] and ready then
             local found = false
             if container and type(container.rollFrames) == "table" then
                 for _, frame in pairs(container.rollFrames) do
-                    if frame and frame.rollID == rollID then found = true; Reveal(frame) end
+                    if frame and frame.rollID == rollID then self:PrepareFrame(frame); found = Reveal(frame) or found end
                 end
             end
             for i = 1, 4 do
                 local frame = _G["GroupLootFrame" .. i]
                 if frame and frame.rollID == rollID then
                     local left = _G.GetLootRollTimeLeft and _G.GetLootRollTimeLeft(rollID)
-                    if type(left) == "number" and left > 0 then found = true; Reveal(frame) end
+                    if type(left) == "number" and left > 0 then self:PrepareFrame(frame); found = Reveal(frame) or found end
                 end
+            end
+            -- More than four simultaneous drops use Blizzard's waiting queue.
+            -- Do not enqueue the same roll once per deferred retry.
+            for _, waiting in pairs(container and container.waitingRolls or {}) do
+                if waiting.rollID == rollID then found = true end
             end
             if not found and container and type(_G.GroupLootContainer_AddRoll) == "function"
                 and type(_G.GetLootRollTimeLeft) == "function" then
@@ -187,8 +262,11 @@ function LootRollGuard:Restore()
                     _G.GroupLootContainer_AddRoll(rollID, left)
                     if type(container.rollFrames) == "table" then
                         for _, frame in pairs(container.rollFrames) do
-                            if frame and frame.rollID == rollID then Reveal(frame); found = true end
+                            if frame and frame.rollID == rollID then self:PrepareFrame(frame); found = Reveal(frame) or found end
                         end
+                    end
+                    for _, waiting in pairs(container.waitingRolls or {}) do
+                        if waiting.rollID == rollID then found = true end
                     end
                 end
             end
@@ -201,17 +279,23 @@ LootRollGuard.events = CreateFrame("Frame")
 LootRollGuard.events:RegisterEvent("START_LOOT_ROLL")
 LootRollGuard.events:RegisterEvent("CANCEL_LOOT_ROLL")
 LootRollGuard.events:RegisterEvent("CANCEL_ALL_LOOT_ROLLS")
+LootRollGuard.events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+LootRollGuard.events:RegisterEvent("ADDON_LOADED")
 LootRollGuard.events:SetScript("OnEvent", function(_, event, rollID, rollTime)
-    if event == "CANCEL_ALL_LOOT_ROLLS" then
+    if event == "GET_ITEM_INFO_RECEIVED" or (event == "ADDON_LOADED" and rollID == "Blizzard_UIPanels_Game") then
+        if next(LootRollGuard.active) then _G.C_Timer.After(0, function() LootRollGuard:Restore() end) end
+    elseif event == "CANCEL_ALL_LOOT_ROLLS" then
         wipe(LootRollGuard.active)
         wipe(LootRollGuard.presented)
+        wipe(LootRollGuard.requested)
     elseif event == "CANCEL_LOOT_ROLL" then
         LootRollGuard.active[rollID] = nil
         LootRollGuard.presented[rollID] = nil
-    elseif type(rollID) == "number" and type(rollTime) == "number" and rollTime > 0 then
+        LootRollGuard.requested[rollID] = nil
+    elseif event == "START_LOOT_ROLL" and type(rollID) == "number" and type(rollTime) == "number" and rollTime > 0 then
         LootRollGuard.presented[rollID] = nil
         LootRollGuard.active[rollID] = _G.GetTime() + rollTime / 1000
-        for _, delay in ipairs({ 0, 0.1, 0.5 }) do
+        for _, delay in ipairs({ 0, 0.1, 0.5, 1 }) do
             _G.C_Timer.After(delay, function() LootRollGuard:Restore() end)
         end
     end
@@ -1034,9 +1118,9 @@ function Mod:RegisterPersistentLFGNoteCommand()
         local noteText = self:SetPersistentLFGNote(msg or "")
         if KT.Print then
             if noteText ~= "" then
-                KT:Print("Persistent LFG note saved: " .. noteText)
+                KT:Print(string.format(LText("Persistent LFG note saved: %s"), noteText))
             else
-                KT:Print("Persistent LFG note cleared.")
+                KT:Print(LText("Persistent LFG note cleared."))
             end
         end
     end)
@@ -1704,9 +1788,7 @@ function Mod:EnsureBattleNetToastVisibility()
         end)
         toast:HookScript('OnHide', function()
             local db = Mod:GetDB()
-            if IsModuleEnabled() and ShouldHideAlerts(db) and _G.AlertFrame then
-                _G.AlertFrame:Hide()
-            end
+            self:EnsureAlertFiltering()
         end)
         toast._KTEnhancementsVisibilityHook = true
     end
@@ -1714,7 +1796,60 @@ function Mod:EnsureBattleNetToastVisibility()
     return true
 end
 
+-- AlertFrame also anchors interactive loot rolls. Filter only cosmetic alerts,
+-- and defer writes until Blizzard has finished its protected setup/layout.
+function Mod:FilterCosmeticAlert(frame)
+    if not frame or frame == _G.GroupLootContainer or frame == _G.BNToastFrame or frame.rollID then return end
+    local name = frame.GetName and frame:GetName() or ""
+    local cosmetic = frame.queue or name:match("^AchievementAlertFrame")
+        or name:match("^LootWonAlertFrame") or name:match("^MoneyWonAlertFrame")
+        or name:match("^CriteriaAlertFrame") or name:match("^DungeonCompletionAlertFrame")
+    if not cosmetic then return end
+    _G.C_Timer.After(0, function()
+        local db = self:GetDB()
+        if not (IsModuleEnabled() and ShouldHideAlerts(db)) then return end
+        if frame.IsForbidden and frame:IsForbidden() then return end
+        if frame.IsProtected and frame:IsProtected() then return end
+        if frame.Hide then frame:Hide() end
+    end)
+end
+
+function Mod:EnsureAlertFiltering()
+    local manager = _G.AlertFrame
+    if not manager then return end
+    if runtime.alertFilterManager ~= manager and hooksecurefunc and type(manager.AddAlertFrame) == "function" then
+        hooksecurefunc(manager, "AddAlertFrame", function(_, frame) self:FilterCosmeticAlert(frame) end)
+        runtime.alertFilterManager = manager
+    end
+    if not runtime.alertShowFilterHooked and hooksecurefunc and type(_G.AlertFrame_ShowNewAlert) == "function" then
+        hooksecurefunc("AlertFrame_ShowNewAlert", function(frame) self:FilterCosmeticAlert(frame) end)
+        runtime.alertShowFilterHooked = true
+    end
+    if runtime.alertFilterQueued then return end
+    runtime.alertFilterQueued = true
+    _G.C_Timer.After(0, function()
+        runtime.alertFilterQueued = nil
+        if not IsModuleEnabled() then return end
+        -- Recover a manager hidden by the old filter even before START_LOOT_ROLL.
+        if manager.IsForbidden and manager:IsForbidden() then return end
+        if manager.IsProtected and manager:IsProtected() then return end
+        if manager.SetAlpha then manager:SetAlpha(1) end
+        if manager.IsShown and not manager:IsShown() and manager.Show then manager:Show() end
+        for _, system in pairs(manager.alertFrameSubSystems or {}) do
+            local pool = system.alertFramePool
+            if pool and pool.EnumerateActive then
+                for frame in pool:EnumerateActive() do self:FilterCosmeticAlert(frame) end
+            end
+        end
+        for _, prefix in ipairs({ "AchievementAlertFrame", "CriteriaAlertFrame", "LootWonAlertFrame", "MoneyWonAlertFrame", "DungeonCompletionAlertFrame" }) do
+            self:FilterCosmeticAlert(_G[prefix])
+            for index = 1, 10 do self:FilterCosmeticAlert(_G[prefix .. index]) end
+        end
+    end)
+end
+
 function Mod:InstallHooks()
+    self:EnsureAlertFiltering()
     -- Unlike the static frames below, TalkingHeadFrame can appear after this
     -- function's first pass. Always retry it before the one-time early return.
     self:EnsureTalkingHeadHook()
@@ -1742,17 +1877,6 @@ function Mod:InstallHooks()
         _G.SubZoneTextFrame:HookScript("OnShow", function(frame)
             local db = Mod:GetDB()
             if IsModuleEnabled() and db.visibility.hideZoneText then
-                frame:Hide()
-            end
-        end)
-    end
-
-    if _G.AlertFrame and not _G.AlertFrame._KTEnhancementsHook then
-        _G.AlertFrame._KTEnhancementsHook = true
-        _G.AlertFrame:HookScript("OnShow", function(frame)
-            local db = Mod:GetDB()
-            if IsModuleEnabled() and ShouldHideAlerts(db) and not frame.KT_BNetToastVisible
-                and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
                 frame:Hide()
             end
         end)
@@ -1932,10 +2056,7 @@ function Mod:RefreshSettings()
     if IsModuleEnabled() and db.blocks.blockFriendRequests then
         self:DeclinePendingFriendInvites()
     end
-    if _G.AlertFrame and IsModuleEnabled() and ShouldHideAlerts(db)
-        and not (_G.BNToastFrame and _G.BNToastFrame.IsShown and _G.BNToastFrame:IsShown()) then
-        _G.AlertFrame:Hide()
-    end
+    self:EnsureAlertFiltering()
     if _G.BossBanner and IsModuleEnabled() and db.visibility.hideBossBanner then
         _G.BossBanner:Hide()
     end

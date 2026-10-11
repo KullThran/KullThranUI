@@ -30,9 +30,9 @@ local PREVIEW_SIDEBAR_ICONS = {
 local PREVIEW_MESSAGES = {
     { chatType = "GUILD", label = "Guild", author = "Silvermage", class = "MAGE", text = "Portal ready in Stormwind after this key." },
     { chatType = "PARTY", label = "Party", author = "Leafsong", class = "DRUID", text = "Rebuffing and topping everyone now." },
-    { chatType = "WHISPER", label = "Whisper", author = "Trumpsta", class = "ROGUE", text = "que pasa" },
-    { chatType = "INSTANCE_CHAT", label = "Instance", author = "Forastero", class = "WARRIOR", text = "oda" },
-    { chatType = "CHANNEL", label = "2. Trade - City", author = "Nikalmaj", text = "Busco craft |cffa335ee[Reprimenda de rompechizos]|r" },
+    { chatType = "WHISPER", label = "Whisper", author = "Trumpsta", class = "ROGUE", text = "what's up" },
+    { chatType = "INSTANCE_CHAT", label = "Instance", author = "Forastero", class = "WARRIOR", text = "hi all" },
+    { chatType = "CHANNEL", label = "2. Trade - City", author = "Nikalmaj", text = "LF crafter |cffa335ee[Spellbreaker's Rebuke]|r" },
     { chatType = "SYSTEM", text = "Total time played: 290 days, 18 hours, 56 minutes, 31 seconds" },
     { chatType = "SYSTEM", text = "You receive loot: |cff1eff00[Polished Ruby]|r" },
     { chatType = "BN_WHISPER", label = "Whisper", author = "BattleFriend", text = "Let's queue after this?" },
@@ -202,23 +202,24 @@ local function FormatPreviewAuthor(info, db)
 end
 
 local function FormatPreviewLine(info, db)
+    local text = LText(tostring(info.text or ""))
     if info.chatType == "SYSTEM" then
-        return string.format("|cff%02x%02x%02x%s|r", 255, 224, 72, tostring(info.text or ""))
+        return string.format("|cff%02x%02x%02x%s|r", 255, 224, 72, text)
     end
 
     local r, g, b = GetChatTypeColor(info.chatType)
-    local prefix = string.format("|cff%02x%02x%02x(%s)|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), tostring(info.label or info.chatType or "Chat"))
+    local prefix = string.format("|cff%02x%02x%02x(%s)|r", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), LText(tostring(info.label or info.chatType or "Chat")))
     local author = FormatPreviewAuthor(info, db)
 
     if info.chatType == "CHANNEL" then
-        return string.format("%s (%s): %s", prefix, author ~= "" and author or "Player", tostring(info.text or ""))
+        return string.format("%s (%s): %s", prefix, author ~= "" and author or LText("Player"), text)
     end
 
     if author ~= "" then
-        return string.format("%s %s: %s", prefix, author, tostring(info.text or ""))
+        return string.format("%s %s: %s", prefix, author, text)
     end
 
-    return string.format("%s %s", prefix, tostring(info.text or ""))
+    return string.format("%s %s", prefix, text)
 end
 
 local function SetPreviewBackdropColor(frame, r, g, b, a)

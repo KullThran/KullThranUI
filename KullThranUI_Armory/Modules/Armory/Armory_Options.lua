@@ -263,8 +263,8 @@ local function BindPreviewClick(frame, label, desc, getTargetBlock)
         if KT.AddAccentBorder then KT:AddAccentBorder(self, 1) end
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(label or "Armory Preview", 1, 1, 1)
-            GameTooltip:AddLine(desc or "Click to jump to its settings block.", 0.75, 0.82, 0.9, true)
+            GameTooltip:AddLine(label and LText(label) or LText("Armory Preview"), 1, 1, 1)
+            GameTooltip:AddLine(desc and LText(desc) or LText("Click to jump to its settings block."), 0.75, 0.82, 0.9, true)
             GameTooltip:Show()
         end
     end)

@@ -1239,7 +1239,7 @@ local function HookCastBarShield(unit, bar)
     if not bar or (bar.IsForbidden and bar:IsForbidden()) then return end
     local shield = bar.BorderShield or bar.BorderShieldFrame or bar.Shield
     
-    -- [FIX] Ensure shield is a Frame before hooking. Textures cannot be hooked.
+    -- Ensure shield is a Frame before hooking. Textures cannot be hooked.
     if not shield or not shield.IsObjectType or not shield:IsObjectType("Frame") then return end
     
     if not shield or not shield.HookScript or (shield.IsForbidden and shield:IsForbidden()) then return end
@@ -1268,7 +1268,7 @@ local function HookUnitFrameCastBar(unit, bar)
     HookCastBarShield(unit, bar)
     
     bar:HookScript("OnShow", function()
-        -- [FIX] Sync state from API instead of assuming defaults, handles non-interruptible correctly
+        -- Sync state from API instead of assuming defaults, handles non-interruptible correctly
         IG:SyncUnitState(unit)
         IG:ApplyGlowDecision()
     end)
@@ -1297,7 +1297,7 @@ function IG:SyncUnitState(unit)
     local channeling = UnitChannelInfo(unit)
     local active = (casting or channeling)
     
-    -- [FIX] Use SafeBool to prevent taint error on secret values
+    -- Use SafeBool to prevent taint error on secret values
     -- Logic correction: CastNI (Not Interruptible) should be true if the cast is shielded (notInterruptible=true)
     local _, _, _, _, _, _, _, notIntCast = UnitCastingInfo(unit)
     local _, _, _, _, _, _, notIntChannel = UnitChannelInfo(unit)

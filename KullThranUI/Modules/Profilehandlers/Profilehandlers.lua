@@ -11,6 +11,11 @@ local LibDeflate    = LibStub("LibDeflate", true)
 local LibSerialize  = LibStub("LibSerialize", true)
 local AceSerializer = LibStub("AceSerializer-3.0", true)
 
+local function Loc(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
+
 local function DeepCopy(orig)
     local t = type(orig)
     if t ~= "table" then return orig end
@@ -21,27 +26,27 @@ end
 
 function ns.Handlers.Decode_LibSerialize(encoded)
     if not LibDeflate or not LibSerialize then
-        return false, "LibSerialize no disponible"
+        return false, string.format(Loc("%s not available."), "LibSerialize")
     end
     local compressed = LibDeflate:DecodeForPrint(encoded)
-    if not compressed then return false, "DecodeForPrint falló" end
+    if not compressed then return false, string.format(Loc("%s failed."), "DecodeForPrint") end
     local serialized = LibDeflate:DecompressDeflate(compressed)
-    if not serialized then return false, "DecompressDeflate falló" end
+    if not serialized then return false, string.format(Loc("%s failed."), "DecompressDeflate") end
     local ok, data = LibSerialize:Deserialize(serialized)
-    if not ok then return false, "LibSerialize Deserialize falló" end
+    if not ok then return false, string.format(Loc("%s failed."), "LibSerialize Deserialize") end
     return true, data
 end
 
 function ns.Handlers.Decode_AceSer(encoded)
     if not LibDeflate or not AceSerializer then
-        return false, "AceSerializer/LibDeflate no disponible"
+        return false, string.format(Loc("%s not available."), "AceSerializer/LibDeflate")
     end
     local compressed = LibDeflate:DecodeForPrint(encoded)
-    if not compressed then return false, "DecodeForPrint falló" end
+    if not compressed then return false, string.format(Loc("%s failed."), "DecodeForPrint") end
     local serialized = LibDeflate:DecompressDeflate(compressed)
-    if not serialized then return false, "DecompressDeflate falló" end
+    if not serialized then return false, string.format(Loc("%s failed."), "DecompressDeflate") end
     local ok, data = AceSerializer:Deserialize(serialized)
-    if not ok then return false, "AceSerializer Deserialize falló" end
+    if not ok then return false, string.format(Loc("%s failed."), "AceSerializer Deserialize") end
     return true, data
 end
 
@@ -133,7 +138,7 @@ function ns.Handlers.DandersFrames(profileName, profileData)
     if type(profileData) == "string" then
         local clean = profileData:gsub("^!DFP%d+!", "")
         local ok, decoded = ns.Handlers.Decode_LibSerialize(clean)
-        if not ok then return false, "DandersFrames Decode Error" end
+        if not ok then return false, string.format(Loc("%s decode error."), "DandersFrames") end
         data = decoded
     end
 
@@ -157,7 +162,7 @@ function ns.Handlers.Plater(profileName, profileData)
     if type(profileData) == "string" then
         local clean = profileData:gsub("^!PLATER:%d+!", "")
         local ok, decoded = ns.Handlers.Decode_AceSer(clean)
-        if not ok then return false, "Plater Decode Error" end
+        if not ok then return false, string.format(Loc("%s decode error."), "Plater") end
         data = decoded
     end
 
@@ -177,7 +182,7 @@ function ns.Handlers.UnhaltedUnitFrames(profileName, profileData)
     if type(profileData) == "string" then
         local clean = profileData:gsub("^!UUF_T", "")
         local ok, decoded = ns.Handlers.Decode_LibSerialize(clean)
-        if not ok then return false, "UUF Decode Error" end
+        if not ok then return false, string.format(Loc("%s decode error."), "UUF") end
         data = decoded
     end
     local ok, err = pcall(ApplyAceDBProfile, "UUFDB", "UnhaltedUnitFrames", profileName, data)
@@ -191,7 +196,7 @@ function ns.Handlers.BetterCooldownManager(profileName, profileData)
     if type(profileData) == "string" then
         local clean = profileData:gsub("^!BCDM_T", "")
         local ok, decoded = ns.Handlers.Decode_AceSer(clean)
-        if not ok then return false, "BCM Decode Error" end
+        if not ok then return false, string.format(Loc("%s decode error."), "BCM") end
         data = decoded
     end
     
@@ -202,8 +207,8 @@ end
 
 -- Diálogo emergente para importar el Edit Mode de Blizzard
 StaticPopupDialogs["KT_EDITMODE_IMPORT"] = {
-    text = "Se ha detectado un perfil de Edit Mode de Blizzard.\nCopia el texto de abajo (CTRL+C) y pégalo en:\n|cffffff00Modo Edición -> Diseño -> Importar|r",
-    button1 = "Aceptar",
+    text = "",
+    button1 = OKAY or "OK",
     hasEditBox = true,
     OnShow = function(self, data)
         self.editBox:SetText(data)
@@ -221,12 +226,13 @@ StaticPopupDialogs["KT_EDITMODE_IMPORT"] = {
 function ns.Handlers.Layout(profileName, profileData)
     -- [1] Si es un código nativo de Blizzard, mostramos el popup para que el usuario lo importe
     if type(profileData) == "string" then
+        StaticPopupDialogs["KT_EDITMODE_IMPORT"].text = Loc("A Blizzard Edit Mode profile was detected.\nCopy the text below (CTRL+C) and paste it in:\n|cffffff00Edit Mode -> Layout -> Import|r")
         StaticPopup_Show("KT_EDITMODE_IMPORT", "", "", profileData)
         return true
     end
 
     -- [2] Si es un layout interno de KullThranUI (Escala y Marcos propios)
-    if type(profileData) ~= "table" then return false, "Formato de Layout inválido." end
+    if type(profileData) ~= "table" then return false, Loc("Invalid layout format.") end
 
     if KT.db:GetCurrentProfile() ~= profileName then
         KT.db:SetProfile(profileName)
@@ -267,7 +273,7 @@ function ns.Handlers.InstallAll(profileData, callback)
         { name = "Plater",                fn = ns.Handlers.Plater },
         { name = "UnhaltedUnitFrames",    fn = ns.Handlers.UnhaltedUnitFrames },
         { name = "BetterCooldownManager", fn = ns.Handlers.BetterCooldownManager },
-        { name = "Layout",                fn = ns.Handlers.Layout }, -- [FIX] Añadido aquí
+        { name = "Layout",                fn = ns.Handlers.Layout }, -- Añadido aquí
     }
 
     for _, step in ipairs(steps) do

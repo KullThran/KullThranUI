@@ -950,7 +950,7 @@ function EM:OnUpdateSettingsDialog(dialog, systemFrame)
 
     local name = attached:GetName()
     
-    -- [FIX DEFINITIVO] Detección de Barras
+    -- Detección de Barras
     local isBar1 = (name == "MainActionBar" or name == "MainMenuBar") -- Aquí estaba la clave
     local isBar2 = (attached == _G.MultiBarBottomLeft)
     local isBar3 = (attached == _G.MultiBarBottomRight)
@@ -1079,7 +1079,7 @@ function EM:RegisterFrame(frame, name, dbKey, options)
 
     overlay:SetScript("OnMouseDown", function(s, button)
         if button == "RightButton" then return end
-        -- [FIX] Removed SelectSystem call to prevent Taint (Blocked Action)
+        -- Removed SelectSystem call to prevent Taint (Blocked Action)
     end)
     
     overlay:SetScript("OnMouseUp", function(s, button)
@@ -1096,7 +1096,7 @@ function EM:RegisterFrame(frame, name, dbKey, options)
             if options.userPlaced and frame.SetUserPlaced then
                 SafeCall(frame.SetUserPlaced, frame, true)
             end
-            -- [FIX] Proteger llamadas de movimiento
+            -- Proteger llamadas de movimiento
             if not frame:IsMovable() then SafeCall(frame.SetMovable, frame, true) end
             if frame:IsMovable() then
                 SafeCall(frame.StartMoving, frame)
@@ -1114,7 +1114,7 @@ function EM:RegisterFrame(frame, name, dbKey, options)
             if options.onDragStop then options.onDragStop() end
             local currentName = self.RegisteredFrames[frame] and self.RegisteredFrames[frame].internalName or internalName
             self:SavePosition(frame, currentName)
-            -- [FIX] Removed OnSystemPositionChanged call to prevent Taint
+            -- Removed OnSystemPositionChanged call to prevent Taint
         end
     end)
 

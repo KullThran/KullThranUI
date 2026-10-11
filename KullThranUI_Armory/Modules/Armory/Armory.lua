@@ -407,7 +407,6 @@ local CLASS_BACKGROUND_FILES = {
 function AR:OnInitialize()
     local LSM = LibStub("LibSharedMedia-3.0", true)
     if LSM then
-        LSM:Register("background", "Blizzard Quest Log", "Interface\\QuestFrame\\UI-QuestLog-Book-BG")
         LSM:Register("background", "KullThran Armory", PANEL_BG)
     end
 
@@ -762,7 +761,7 @@ function AR:SafeRefresh()
         self:Refresh()
     end)
     if not ok and KT and KT.Print then
-        KT:Print("Armory refresh error: " .. tostring(err))
+        KT:Print(string.format(LText("Armory refresh error: %s"), tostring(err)))
     end
 end
 
@@ -820,7 +819,7 @@ function AR:UpdateHeader()
     local levelFont = (self.db.charLevelFont and SafeFont(self.db.charLevelFont, "GameFontHighlight")) or "GameFontHighlight"
     self.Header.Level:SetFont(levelFont, self.db.charLevelSize or 12, self.db.charLevelOutline or "OUTLINE")
     local level = UnitLevel("player")
-    self.Header.Level:SetText(LText("Level ") .. level)
+    self.Header.Level:SetText(string.format(LText("Level %s"), tostring(level)))
 
     -- D. ICONO SPEC
     local currentSpec = GetSpecialization()
@@ -924,9 +923,9 @@ function AR:CreateBackgroundSelector()
         btn:SetScript("OnClick", function(self)
             if not MenuUtil then return end 
             MenuUtil.CreateContextMenu(self, function(owner, root)
-                root:CreateTitle("Select Background")
+                root:CreateTitle(LText("Select Background"))
                 for _, data in ipairs(BACKGROUND_LIST) do
-                    root:CreateCheckbox(data.name, 
+                    root:CreateCheckbox(LText(data.name), 
                         function() return AR.db.backgroundType == data.key end, 
                         function() AR.db.backgroundType = data.key; AR:UpdateBackground() end
                     )

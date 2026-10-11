@@ -1394,7 +1394,7 @@ local function BuildKUITrackerUnitFramePreview(sc, yOffset, ct, onTrackerClick)
     nameText:SetPoint("LEFT", hpBar, "LEFT", 5 + (textSettings.leftTextX or 0), textSettings.leftTextY or 0)
     nameText:SetJustifyH("LEFT")
     nameText:SetTextColor(previewInfo.classColor.r or 1, previewInfo.classColor.g or 1, previewInfo.classColor.b or 1, 1)
-    nameText:SetText(previewInfo.playerName or "Player")
+    nameText:SetText(previewInfo.playerName or LText("Player"))
     if textSettings.leftTextContent == "none" then
         nameText:Hide()
     end
@@ -2311,7 +2311,7 @@ local function BuildCDMLivePreview(parent, yOff, resolvePreviewBlock)
             if barConf and barConf.showTooltip and self._spellID then
                 GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                 GameTooltip:SetSpellByID(self._spellID)
-                GameTooltip:AddLine(LText("Right-click: visibility rules") or "Right-click: visibility rules",
+                GameTooltip:AddLine(LText("Right-click: visibility rules"),
                     ACCENT.r, ACCENT.g, ACCENT.b)
                 GameTooltip:Show()
             end
@@ -3405,7 +3405,7 @@ local function BuildCustomTrackerTab(sc, W, startY, p)
             else
                 local infoType = GetCursorInfo()
                 if infoType then
-                    print("|cffff4444KullThranUI:|r Cannot track this object type: " .. tostring(infoType))
+                    print(string.format(LText("|cffff4444KullThranUI:|r Cannot track this object type: %s"), tostring(infoType)))
                 end
             end
         end
@@ -3485,7 +3485,7 @@ local function BuildCDMBarsTab(sc, W, startY, p)
             ns.ImportBlizzardDisplayedMainBars(true, false)
             Refresh()
         else
-            print("KUI: Blizzard CDM import unavailable.")
+            print(LText("KUI: Blizzard CDM import unavailable."))
         end
     end, 260, nil, nil, "CENTER", 28); y = y + h
 
@@ -3517,10 +3517,10 @@ local function BuildCDMBarsTab(sc, W, startY, p)
                             end
                         end
                     else
-                        print("|cffff4444KullThranUI:|r Se ha alcanzado el límite de Custom Bars (" .. (ns.MAX_CUSTOM_BARS or 12) .. ").")
+                        print(string.format(LText("|cffff4444KullThranUI:|r Custom bar limit reached (%d)."), ns.MAX_CUSTOM_BARS or 12))
                     end
                 else
-                    print("KUI: AddCDMBar unavailable.")
+                    print(LText("KUI: AddCDMBar unavailable."))
                 end
                 Refresh(); if KT.RefreshPage then KT:RefreshPage(true) end
             end
@@ -3538,7 +3538,7 @@ local function BuildCDMBarsTab(sc, W, startY, p)
                     end
                     selectedCDMBarIndex = 1; Refresh(); if KT.RefreshPage then KT:RefreshPage(true) end
                 else
-                    print("KUI: You cannot delete default Blizzard bars.")
+                    print(LText("KUI: You cannot delete default Blizzard bars."))
                 end
             end
         }
@@ -4285,7 +4285,7 @@ local function BuildCDMBarsBlocksTab(sc, W, startY, p)
                 ns.ImportBlizzardDisplayedMainBars(true, false)
                 Refresh()
             else
-                print("KUI: Blizzard CDM import unavailable.")
+                print(LText("KUI: Blizzard CDM import unavailable."))
             end
         end, 260, nil, nil, "CENTER", 28); blockY = blockY + blockRowHeight
 
@@ -4317,10 +4317,10 @@ local function BuildCDMBarsBlocksTab(sc, W, startY, p)
                                 end
                             end
                         else
-                            print("|cffff4444KullThranUI:|r Se ha alcanzado el límite de Custom Bars (" .. (ns.MAX_CUSTOM_BARS or 12) .. ").")
+                            print(string.format(LText("|cffff4444KullThranUI:|r Custom bar limit reached (%d)."), ns.MAX_CUSTOM_BARS or 12))
                         end
                     else
-                        print("KUI: AddCDMBar unavailable.")
+                        print(LText("KUI: AddCDMBar unavailable."))
                     end
                     Refresh()
                     if KT.RefreshPage then
@@ -4345,7 +4345,7 @@ local function BuildCDMBarsBlocksTab(sc, W, startY, p)
                             KT:RefreshPage(true)
                         end
                     else
-                        print("KUI: You cannot delete default Blizzard bars.")
+                        print(LText("KUI: You cannot delete default Blizzard bars."))
                     end
                 end
             }
@@ -6278,7 +6278,7 @@ local CDM_BUFFS_IMPORT_NOTICE = LText("You must first add the buffs in Blizzard 
 
 OpenBlizzardCDMSettings = function()
     if InCombatLockdown and InCombatLockdown() then
-        print("|cff0cd29fKUI:|r Blizzard CDM cannot be opened during combat.")
+        print(LText("|cff0cd29fKUI:|r Blizzard CDM cannot be opened during combat."))
         return false
     end
 
@@ -6303,7 +6303,7 @@ OpenBlizzardCDMSettings = function()
         return true
     end
 
-    print("|cff0cd29fKUI:|r Blizzard CDM is not available on this client.")
+    print(LText("|cff0cd29fKUI:|r Blizzard CDM is not available on this client."))
     return false
 end
 

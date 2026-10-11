@@ -12,6 +12,32 @@ local function LText(text)
     if L and L[text] ~= nil then return L[text] end
     return text
 end
+
+-- Display name for a menu entry: the client-localized name from the game API,
+-- falling back to the English name stored in the entry data.
+local function GetEntryDisplayName(item)
+    if type(item) ~= "table" then return "" end
+    local id, name = item.id, nil
+    if id then
+        if item.type == "spell" then
+            if C_Spell and C_Spell.GetSpellName then
+                local ok, value = pcall(C_Spell.GetSpellName, id)
+                if ok then name = value end
+            end
+        else
+            if item.type == "toy" and C_ToyBox and C_ToyBox.GetToyInfo then
+                local ok, _, toyName = pcall(C_ToyBox.GetToyInfo, id)
+                if ok then name = toyName end
+            end
+            if (type(name) ~= "string" or name == "") and C_Item and C_Item.GetItemNameByID then
+                local ok, value = pcall(C_Item.GetItemNameByID, id)
+                if ok then name = value end
+            end
+        end
+    end
+    if type(name) ~= "string" or name == "" then name = item.name or "" end
+    return name
+end
 local Mod = KT:NewModule("TeleportMenu", "AceEvent-3.0", "AceTimer-3.0", "AceConsole-3.0")
 local LDB     = LibStub("LibDataBroker-1.1", true)
 local LDBIcon = LibStub("LibDBIcon-1.0", true)
@@ -1310,7 +1336,7 @@ function Mod:ShowCategory(category)
             outline = "OUTLINE"
         end
         btn.nameLabel:SetFont(font, self.db.fontSize or 10, outline)
-        btn.nameLabel:SetText(item.name or "")
+        btn.nameLabel:SetText(GetEntryDisplayName(item))
         btn.nameLabel:SetWidth(cellW)
         btn.nameLabel:SetHeight(labelHeight > 0 and labelHeight or 1)
         if showLabels then btn.nameLabel:Show() else btn.nameLabel:Hide() end
@@ -1454,7 +1480,7 @@ function Mod:ShowCategory(category)
         content:SetSize(totalWidth, math.max(1, totalRows * (cellH + bSpace) + bSpace))
     end
 
-    frame.countLabel:SetText(#validItems .. " available")
+    frame.countLabel:SetText(string.format(LText("%d available"), #validItems))
     self:UpdateAllCooldowns()
 end
 
@@ -1535,8 +1561,7 @@ end
 function Mod:OnSpellInterrupted(_, unit)
     if unit == "player" and self.reequipData and not self.reequipTimer then
         local name = C_Item.GetItemInfo(self.reequipData.itemID)
-        print("|cff00FFFF[KT Teleport]|r Cast interrupted — re-equipping "
-              .. (name or "previous item") .. " in 12 s.")
+        print("|cff00FFFF[KT Teleport]|r " .. string.format(LText("Cast interrupted — re-equipping %s in 12 s."), name or LText("previous item")))
         local data = self.reequipData
         self.reequipTimer = C_Timer.NewTimer(12, function() self:DoReequip() end)
     end
@@ -1555,7 +1580,7 @@ function Mod:DoReequip()
         if not InCombatLockdown() then
             EquipItemByName(reequip.link or reequip.itemID)
             local name = C_Item.GetItemInfo(reequip.itemID)
-            print("|cff00FFFF[KT Teleport]|r Re-equipped " .. (name or "previous item") .. ".")
+            print("|cff00FFFF[KT Teleport]|r " .. string.format(LText("Re-equipped %s."), name or LText("previous item")))
         end
     end)
 end

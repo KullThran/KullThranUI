@@ -188,9 +188,54 @@ local function Build(frame)
         -- Coseno suave (periodo ~1.4 s), mismo valor para retrato y glow superior.
         local k = 0.575 + 0.425 * math.cos(t0 * 4.5)
         self:SetAlpha(k)
+        if self.nameGlow then self.nameGlow:SetAlpha(k) end
     end)
     g.pulse = { Play = function() end, Stop = function() end, IsPlaying = function() return true end }
     return g
+end
+
+-- Share the actual name opening with the reaction strip, below the frame rim.
+local function LayoutNameGlow(frame, g)
+    local theme = Theme()
+    local host = frame._ktForeverArtHost
+    if (theme ~= "retail" and theme ~= "forever") or not host then
+        if g.nameGlow then g.nameGlow:Hide() end
+        return false
+    end
+    local hb = frame.Health
+    if not hb or not hb:IsShown() then
+        if g.nameGlow then g.nameGlow:Hide() end
+        return false
+    end
+    local glow = g.nameGlow
+    if not glow then
+        glow = host:CreateTexture(nil, "BACKGROUND", nil, -1)
+        g.nameGlow = glow
+    end
+    glow:SetParent(host)
+    glow:SetDrawLayer("BACKGROUND", -1)
+    glow:SetTexture([[Interface\AddOns\KullThranUI\Libraries\texture\media\unitframes\UIUnitFrame-Retail.blp]])
+    glow:SetBlendMode("ADD")
+    glow:ClearAllPoints()
+    local strip = frame._ktNameReaction
+    if strip and frame._ktNameReactionActive then
+        glow:SetTexCoord(strip:GetTexCoord())
+        glow:SetAllPoints(strip)
+    else
+        -- Player has no reaction strip; use the same vertical gradient without
+        -- its transparent lower padding, directly above the health opening.
+        local backdrop = frame.Portrait and frame.Portrait.backdrop
+        local scale = backdrop and backdrop:GetWidth() / 60 or 1
+        glow:SetTexCoord(200 / 1024, 320 / 1024, 235 / 512, 249 / 512)
+        glow:SetPoint("BOTTOMLEFT", hb, "TOPLEFT", 0, 0)
+        glow:SetPoint("BOTTOMRIGHT", hb, "TOPRIGHT", 0, 0)
+        glow:SetHeight(14 * scale)
+    end
+    local color = g.color or {1, 0.12, 0.12}
+    glow:SetVertexColor(color[1], color[2], color[3], 0.55)
+    glow:SetAlpha(g:GetAlpha())
+    glow:Show()
+    return true
 end
 
 local function LayoutRestGlow(frame, g)
@@ -202,12 +247,14 @@ local function LayoutRestGlow(frame, g)
     end
     local atlas = "UI-HUD-UnitFrame-Player-PortraitOn-Status"
     local classic = Theme() == "classic"
+    local modern = Theme() == "retail" or Theme() == "forever"
     local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
     local texture = g.restGlow
     if not texture then
         texture = g:CreateTexture(nil, "OVERLAY", nil, 6)
         g.restGlow = texture
     end
+    if texture.SetParent then texture:SetParent(modern and g.clip or g) end
     local ok, failure = pcall(function()
         local native = info and info.width and info.height
         if native then
@@ -467,7 +514,8 @@ local function Layout(frame, g)
     end
 
     local nativeRest = LayoutRestGlow(frame, g)
-    if nativeRest then g.top:Hide() end
+    local nativeName = LayoutNameGlow(frame, g)
+    if nativeRest or nativeName then g.top:Hide() end
 
     -- Copia tintada del arte, recortada al retrato (no colorea el resto del atlas).
     g.tinted = {}
@@ -526,6 +574,7 @@ local function UpdateUnit(unitKey)
         if g then
             for src, o in pairs(g.saved or {}) do pcall(src.SetVertexColor, src, o[1], o[2], o[3], o[4]) end
             g.saved, g.tinted = {}, {}
+            if g.nameGlow then g.nameGlow:Hide() end
             g:Hide()
         end
         return

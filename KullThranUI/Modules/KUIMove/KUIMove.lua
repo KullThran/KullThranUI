@@ -62,7 +62,7 @@ local KUIMove = KT:NewModule(name, "AceConsole-3.0", "AceEvent-3.0", "AceHook-3.
 if not KUIMove then return; end
 
 local L = LibStub("AceLocale-3.0"):GetLocale(name, true) or LibStub("AceLocale-3.0"):GetLocale(INTERNAL_ADDON_NAME, true);
-if not L then L = setmetatable({}, { __index = function(t, k) return k end }) end
+if not L then L = setmetatable({}, { __index = function(t, k) local locale = KT and KT.GetLocale and KT:GetLocale(); return (locale and locale[k]) or k end }) end
 -- Various debug texts have been left untranslated on purpose, to make debugging easier. Instructions or information for users is translated.
 
 --- @type KUIMoveAPI_AddonFrameTable
@@ -193,7 +193,7 @@ end
 _G['KUIMove'] = KUIMove;
 do
     function KUIMove:DebugPrint(...)
-        if self.DB and self.DB.DebugPrints then self:Print("Debug message:\n", ...); end
+        if self.DB and self.DB.DebugPrints then self:Print(L["Debug message:"] .. "\n", ...); end
     end
 end
 
@@ -274,11 +274,11 @@ do
             elseif key == "FrameReference" then
                 if not IsFrame(value) then validationError = true; end
             else
-                self:Print("Ignoring unsupported key supplied in frameData, for frame:", frameName, "; key:", key);
+                self:Print(string__format(L["Ignoring unsupported key supplied in frameData, for frame: %s; key: %s"], tostring(frameName), tostring(key)));
             end
 
             if (validationError) then
-                self:Print('Validation error, frame:', frameName, '; key:', key, '; value:', value);
+                self:Print(string__format(L["Validation error, frame: %s; key: %s; value: %s"], tostring(frameName), tostring(key), tostring(value)));
 
                 return false;
             end
@@ -1453,7 +1453,7 @@ do
 
         if (not matchesBuild) then
             if (frame and not frameData.SilenceCompatabilityWarnings) then
-                self:Print(L["Frame was marked as incompatible, but does exist"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| KMVersion:", self.Config.version, "):", frameName);
+                self:Print(string__format(L["Frame was marked as incompatible, but does exist (Build: %s | Version: %s | KMVersion: %s): %s"], tostring(self.gameBuild), tostring(self.gameVersion), tostring(self.Config.version), tostring(frameName)));
             end
 
             return false;
@@ -1469,7 +1469,7 @@ do
             end
             self.notFoundFrames = self.notFoundFrames or {};
             tinsert(self.notFoundFrames, frameName);
-            self:Print(L["Could not find frame"], "( Build:", self.gameBuild, "| Version:", self.gameVersion, "| KMVersion:", self.Config.version, "):", frameName);
+            self:Print(string__format(L["Could not find frame (Build: %s | Version: %s | KMVersion: %s): %s"], tostring(self.gameBuild), tostring(self.gameVersion), tostring(self.Config.version), tostring(frameName)));
 
             return false;
         end
@@ -1719,13 +1719,13 @@ do
             or arg1 == commands.debugAnchor
             or arg1 == commands.dumpTopLevelFrames
         then
-            self:Print("Integrated KullThranUI KUIMove debug plugin is not bundled.");
+            self:Print(L["Integrated KullThranUI KUIMove debug plugin is not bundled."]);
             return;
         end
 
         if arg1 == commands.debugLoadAll then
             for addOnName, _ in pairs(self:GetRegisteredAddOns()) do
-                self:Print((LoadAddOn(addOnName) and "Loaded") or "Missing", addOnName);
+                self:Print((LoadAddOn(addOnName) and L["Loaded"]) or L["Missing"], addOnName);
             end
             return;
         elseif arg1 == commands.dumpMissingFrames then

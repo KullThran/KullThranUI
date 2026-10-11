@@ -121,7 +121,7 @@ function INS:HookInspectUI()
         self.inspectUnitHooked = true
     end
 
-    -- [FIX] Blizzard may update the PvP inspect pane while InspectFrame is
+    -- Blizzard may update the PvP inspect pane while InspectFrame is
     -- being hidden or switched. During that brief window INSPECTED_UNIT is
     -- nil, but InspectPVPFrame_Update still calls UnitFactionGroup() with it.
     -- Keep Blizzard's updater intact and skip only that invalid transition.
@@ -137,7 +137,7 @@ function INS:HookInspectUI()
         self.pvpUpdateFixHooked = true
     end
     
-    -- [FIX] Blizzard Bug: InspectGuildFrame crashes if guild name is nil (lag/cross-realm)
+    -- Blizzard Bug: InspectGuildFrame crashes if guild name is nil (lag/cross-realm)
     -- In Midnight 12.x, InspectGuildFrame_Update is a local upvalue; overriding _G won't reach it.
     -- Primary fix: replace the OnShow script to guard before the local upvalue is invoked.
     if not self.guildFixHooked and _G.InspectGuildFrame then
@@ -221,12 +221,12 @@ end
 
 function INS:SetupLayout()
     if not _G.InspectFrame then return end
-    if not _G.InspectPaperDollFrame then return end -- [FIX] Asegurar que existe para el parent
+    if not _G.InspectPaperDollFrame then return end -- Asegurar que existe para el parent
     
     _G.InspectFrame:SetScale(self.db.scale or 1)
-    -- [FIX] Eliminado tamaño forzado para evitar descentrado en pestañas PvP/Guild
+    -- Eliminado tamaño forzado para evitar descentrado en pestañas PvP/Guild
 
-    -- [FIX] Asegurar que el botón de cerrar esté por encima del modelo 3D
+    -- Asegurar que el botón de cerrar esté por encima del modelo 3D
     local closeBtn = _G.InspectFrameCloseButton or _G.InspectFrame.CloseButton
     if closeBtn then
         closeBtn:SetFrameStrata("DIALOG")
@@ -236,17 +236,17 @@ function INS:SetupLayout()
     -- MODELO 3D
     local model = _G.InspectModelFrame
     if model then
-        -- [FIX] Parent to PaperDollFrame so it hides on PvP/Guild tabs
+        -- Parent to PaperDollFrame so it hides on PvP/Guild tabs
         model:SetParent(_G.InspectPaperDollFrame)
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", _G.InspectFrame, "TOPLEFT", 20, -70)
         model:SetPoint("BOTTOMRIGHT", _G.InspectFrame, "BOTTOMRIGHT", -20, 25)
         model:SetFrameStrata("HIGH") 
-        -- [FIX] Usar ordenamiento dinámico para evitar que tape los slots
+        -- Usar ordenamiento dinámico para evitar que tape los slots
         model:Lower()
         model:Show()
         
-        -- [MODIFICADO] Habilitar rotación con ratón Y ZOOM con rueda
+        -- Habilitar rotación con ratón Y ZOOM con rueda
         model:EnableMouse(true)
         model:EnableMouseWheel(true) -- Importante para la rueda
 
@@ -302,7 +302,7 @@ function INS:SetupLayout()
 
     -- SLOTS
     if _G.InspectPaperDollFrame then 
-        -- [FIX] Ocultar texturas de fondo de Blizzard para que no tapen el modelo
+        -- Ocultar texturas de fondo de Blizzard para que no tapen el modelo
         for i=1, _G.InspectPaperDollFrame:GetNumRegions() do
             local region = select(i, _G.InspectPaperDollFrame:GetRegions())
             if region:IsObjectType("Texture") then
@@ -312,7 +312,7 @@ function INS:SetupLayout()
         
         _G.InspectPaperDollFrame:SetFrameStrata("HIGH")
         _G.InspectPaperDollFrame:Raise()
-        -- [FIX] Desactivar ratón en el marco contenedor para que los clics pasen al modelo 3D
+        -- Desactivar ratón en el marco contenedor para que los clics pasen al modelo 3D
         _G.InspectPaperDollFrame:EnableMouse(false)
     end
 
@@ -334,7 +334,7 @@ function INS:SetupLayout()
     
     -- ILVL PROMEDIO
     if not _G.InspectFrame.KT_AvgIlvl then
-        -- [FIX] Parent to PaperDollFrame so it hides on PvP/Guild tabs
+        -- Parent to PaperDollFrame so it hides on PvP/Guild tabs
         local f = CreateFrame("Frame", nil, _G.InspectPaperDollFrame)
         f:SetSize(100, 40) 
         f:SetFrameStrata("HIGH") 
@@ -426,9 +426,9 @@ function INS:CreateBackgroundSelector()
     btn:SetScript("OnClick", function(self)
         if not MenuUtil then return end 
         MenuUtil.CreateContextMenu(self, function(owner, root)
-            root:CreateTitle("Select Background")
+            root:CreateTitle(LText("Select Background"))
             for _, data in ipairs(BACKGROUND_LIST) do
-                root:CreateCheckbox(data.name, 
+                root:CreateCheckbox(LText(data.name), 
                     function() return INS.db.backgroundType == data.key end, 
                     function() INS.db.backgroundType = data.key; INS:UpdateBackground() end
                 )
@@ -446,7 +446,7 @@ function INS:CreateTalentOverlay()
     if not _G.InspectFrame then return end
     if _G.InspectFrame.KT_RaiderIOBtn then return end
 
-    -- [MODIFICADO] Botón Copy Raider.IO (Reemplaza Copy Build)
+    -- Botón Copy Raider.IO (Reemplaza Copy Build)
     local parent = _G.InspectPaperDollFrame
     local viewBtn = parent.ViewButton
     
@@ -808,7 +808,7 @@ function INS:GetEnchantText(itemLink)
         local text = lineAccessible and type(line) == "table" and line.leftText or nil
         if text and not (issecretvalue and issecretvalue(text))
             and (not canaccessvalue or canaccessvalue(text)) then
-            -- [FIX] Limpiar códigos de color para asegurar que el patrón coincida
+            -- Limpiar códigos de color para asegurar que el patrón coincida
             local icon = text:match(ENCHANT_QUALITY_ICON_PATTERN)
             local cleanText = text
                 :gsub("|c%x%x%x%x%x%x%x%x", "")
@@ -837,65 +837,65 @@ function INS:GetOptions()
     
     local bgValues = {}
     for _, v in ipairs(BACKGROUND_LIST) do
-        bgValues[v.key] = v.name
+        bgValues[v.key] = LText(v.name)
     end
 
     local options = {
-        name = "Inspect",
+        name = LText("Inspect"),
         type = "group",
         order = 20,
         args = {
-            header = { order = 0, type = "header", name = "Inspect Armory" },
+            header = { order = 0, type = "header", name = LText("Inspect Armory") },
             enable = {
-                order = 1, type = "toggle", name = "Enable",
+                order = 1, type = "toggle", name = LText("Enable"),
                 get = GetOpt,
                 set = function(info, value) self.db.enable = value; if value then self:OnEnable() else self:OnDisable() end end,
             },
             scale = {
-                order = 2, type = "range", name = "Scale", min = 0.6, max = 1.6, step = 0.05,
+                order = 2, type = "range", name = LText("Scale"), min = 0.6, max = 1.6, step = 0.05,
                 get = GetOpt, set = function(info, value) self.db.scale = value; if _G.InspectFrame then _G.InspectFrame:SetScale(value) end end,
             },
             backgroundType = {
-                order = 3, type = "select", name = "Background", values = bgValues,
+                order = 3, type = "select", name = LText("Background"), values = bgValues,
                 get = GetOpt, set = SetOpt,
             },
             generalGroup = {
-                order = 10, type = "group", name = "General Settings", inline = true,
+                order = 10, type = "group", name = LText("General Settings"), inline = true,
                 args = {
-                    showIlvl = { order = 1, type = "toggle", name = "Show Item Level", get = GetOpt, set = SetOpt },
-                    showEnchant = { order = 2, type = "toggle", name = "Show Enchants", get = GetOpt, set = SetOpt },
+                    showIlvl = { order = 1, type = "toggle", name = LText("Show Item Level"), get = GetOpt, set = SetOpt },
+                    showEnchant = { order = 2, type = "toggle", name = LText("Show Enchants"), get = GetOpt, set = SetOpt },
                 },
             },
             avgIlvlGroup = {
-                order = 20, type = "group", name = "Average iLvl (Big Number)", inline = true,
+                order = 20, type = "group", name = LText("Average iLvl (Big Number)"), inline = true,
                 args = {
                     avgIlvlFont = {
-                        type = "select", dialogControl = "LSM30_Font", order = 1, name = "Font",
+                        type = "select", dialogControl = "LSM30_Font", order = 1, name = LText("Font"),
                         values = LSM:HashTable("font"), get = GetOpt, set = SetOpt,
                     },
-                    avgIlvlSize = { order = 2, type = "range", name = "Size", min = 10, max = 60, step = 1, get = GetOpt, set = SetOpt },
+                    avgIlvlSize = { order = 2, type = "range", name = LText("Size"), min = 10, max = 60, step = 1, get = GetOpt, set = SetOpt },
                     avgIlvlOutline = {
-                        order = 3, type = "select", name = "Outline",
-                        values = { ["NONE"] = "None", ["OUTLINE"] = "Outline", ["THICKOUTLINE"] = "Thick Outline" },
+                        order = 3, type = "select", name = LText("Outline"),
+                        values = { ["NONE"] = LText("None"), ["OUTLINE"] = LText("Outline"), ["THICKOUTLINE"] = LText("Thick Outline") },
                         get = GetOpt, set = SetOpt,
                     },
                     avgIlvlColor = {
-                        order = 4, type = "color", name = "Color", hasAlpha = false,
+                        order = 4, type = "color", name = LText("Color"), hasAlpha = false,
                         get = function(info) local c = self.db.avgIlvlColor; return c.r, c.g, c.b end,
                         set = function(info, r, g, b) self.db.avgIlvlColor = {r=r, g=g, b=b}; self:Refresh() end,
                     },
                 },
             },
             enchantGroup = {
-                order = 30, type = "group", name = "Enchants Text", inline = true,
+                order = 30, type = "group", name = LText("Enchants Text"), inline = true,
                 args = {
                     enchantFont = {
-                        type = "select", dialogControl = "LSM30_Font", order = 1, name = "Font",
+                        type = "select", dialogControl = "LSM30_Font", order = 1, name = LText("Font"),
                         values = LSM:HashTable("font"), get = GetOpt, set = SetOpt,
                     },
-                    enchantSize = { order = 2, type = "range", name = "Size", min = 8, max = 20, step = 1, get = GetOpt, set = SetOpt },
+                    enchantSize = { order = 2, type = "range", name = LText("Size"), min = 8, max = 20, step = 1, get = GetOpt, set = SetOpt },
                     enchantColor = {
-                        order = 3, type = "color", name = "Color", hasAlpha = false,
+                        order = 3, type = "color", name = LText("Color"), hasAlpha = false,
                         get = function(info) local c = self.db.enchantColor; return c.r, c.g, c.b end,
                         set = function(info, r, g, b) self.db.enchantColor = {r=r, g=g, b=b}; self:Refresh() end,
                     },

@@ -299,10 +299,11 @@ local function GetProfilesModule()
 end
 
 local function PrintStatus(msg)
+    local text = LText(msg)
     if KT and KT.Print then
-        KT:Print(msg)
+        KT:Print(text)
     else
-        print("|cFF00FFFF[KullThranUI]|r " .. tostring(msg))
+        print("|cFF00FFFF[KullThranUI]|r " .. tostring(text))
     end
 end
 
@@ -1872,7 +1873,7 @@ local function CreateStyleCards(parent, y)
                 PaintStyleCard(self)
             end)
             local label = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            label:SetPoint("TOP", card, "TOP", 0, -5); label:SetText(style.label)
+            label:SetPoint("TOP", card, "TOP", 0, -5); label:SetText(LText(style.label))
             card.label = label
             local sample = CreateLivePreview(card, 22, {
                 x = 4, width = card:GetWidth() - 8, height = 60, modeOverride = "party",

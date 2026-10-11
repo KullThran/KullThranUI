@@ -28,7 +28,7 @@ local COLOR_BG = {0.11, 0.11, 0.11, 1}
 local function IsSecureLFGSafeMode()
     local _, _, _, interfaceVersion = _G.GetBuildInfo and _G.GetBuildInfo()
     interfaceVersion = tonumber(interfaceVersion) or 0
-    -- [TAINT FIX] The premade group finder (LFGList) uses protected frames,
+    -- The premade group finder (LFGList) uses protected frames,
     -- secret values, and forbidden objects since 11.x. Skinning any part of
     -- it propagates taint through Blizzard's secure execution path, causing
     -- "Action blocked" errors during combat, role checks and ready checks.
@@ -552,7 +552,7 @@ local function SuppressTexture(tex)
     if tex.Hide then tex:Hide() end
     if not tex._ktSuppressedShowHook and hooksecurefunc then
         tex._ktSuppressedShowHook = true
-        -- [TAINT FIX] Midnight 12.x: Never call Hide() inside a Show hook.
+        -- Midnight 12.x: Never call Hide() inside a Show hook.
         -- Hide() in a hooksecurefunc("Show") propagates taint through the
         -- secure Show/Hide state machine. SetAlpha(0) alone is sufficient.
         hooksecurefunc(tex, "Show", function(self)
@@ -1990,7 +1990,7 @@ local function SkinLFG()
             if EntryCreation.Inset then S:StripTextures(EntryCreation.Inset) end
             PreserveLFGActionButton(EntryCreation.CancelButton, 12, _G.CANCEL or "Cancel")
             PreserveLFGActionButton(EntryCreation.ListGroupButton, 14)
-            -- [TAINT FIX] Midnight 12.x: several EntryCreation fields are secret values.
+            -- Midnight 12.x: several EntryCreation fields are secret values.
             -- Do not skin any EntryCreation editboxes/checkboxes to avoid tainting
             -- activeEntryInfo fields (name/comment/privateGroup/voiceChat/etc).
             if EntryCreation.GroupDropdown then S:HandleDropDownBox(EntryCreation.GroupDropdown) end
@@ -2005,7 +2005,7 @@ local function SkinLFG()
             PreserveLFGActionButton(_G.LFGListApplicationDialog.SignUpButton, 14, _G.SIGN_UP or "Sign Up")
             PreserveLFGActionButton(_G.LFGListApplicationDialog.CancelButton, 12, _G.CANCEL or "Cancel")
         end
-        -- [TAINT FIX] LFGListApplicationDialogDescription carries secret values in 12.x.
+        -- LFGListApplicationDialogDescription carries secret values in 12.x.
         -- Keep the application dialog description editbox untouched.
 
         local SearchPanel = LFGListFrame.SearchPanel

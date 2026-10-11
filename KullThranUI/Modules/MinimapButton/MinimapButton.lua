@@ -85,8 +85,8 @@ end
 
 -- Only launcher buttons belong in the drawer. Minimap POIs often look and
 -- behave like buttons too (tooltips, clicks and icon textures), so accepting
--- every small child of Minimap also captures TomTom waypoints, HandyNotes
--- pins, RareScanner markers and similar navigation overlays.
+-- every small child of Minimap also captures waypoint arrows, map
+-- pins, rare markers and similar navigation overlays.
 local NON_LAUNCHER_NAME_PATTERNS = {
     '^ttminimapbutton%d+$',
     '^handynotespin%d+$',
@@ -619,7 +619,7 @@ function Mod:Refresh()
         -- A perpetual full child scan caused regular allocation/CPU spikes.
     else
         if self.buttonBag then
-            -- [FIX] Release buttons back to Minimap when disabled
+            -- Release buttons back to Minimap when disabled
             for _, child in ipairs({self.buttonBag:GetChildren()}) do
                 if child._ktProxyCompartment then
                     child._ktCompartmentEntry = nil
@@ -768,7 +768,7 @@ function Mod:GetCompartmentProxyButton(index)
         end
 
         GameTooltip:SetOwner(proxy, "ANCHOR_RIGHT")
-        GameTooltip:SetText((entry and entry.text) or "Addon")
+        GameTooltip:SetText((entry and entry.text) or LText("Addon"))
         GameTooltip:Show()
     end)
 

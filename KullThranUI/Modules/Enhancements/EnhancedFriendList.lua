@@ -6071,7 +6071,7 @@ function EnhancedFriendList:InstallHooks()
                     runtime.DebugRaidState("NativeTab-OnClick-" .. definition.key)
                     runtime.DebugRaidDetail("NativeTab-OnClick-" .. definition.key)
                     if definition.key == "contacts" and debugstack and KT and KT.Print then
-                        KT:Print("|cff00c8ffEFL reset stack|r " .. string.gsub(debugstack(2, 5, 1), "[\r\n]+", " "))
+                        KT:Print(string.format(LText("|cff00c8ffEFL reset stack|r %s"), (string.gsub(debugstack(2, 5, 1), "[\r\n]+", " "))))
                     end
                 end
                 if (definition.key ~= "raid" or not runtime.raidNativeClickPending)

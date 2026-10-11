@@ -3,7 +3,7 @@ local S = KT:GetModule("Skins")
 local _G = _G
 local hooksecurefunc = hooksecurefunc
 
--- [NUEVO] Función para crear un checkbox con feedback visual sólido (Cuadrado de color)
+-- Función para crear un checkbox con feedback visual sólido (Cuadrado de color)
 local function SkinAddonCheckbox(checkbox)
     if not checkbox or checkbox.IsSkinnedCustom then return end
     

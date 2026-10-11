@@ -296,10 +296,14 @@ function KT:ForceSetProfile(addonName, profileName, altAddonName)
 end
 
 function KT:OpenExternalAddon(name, slashCmds, aceApp, directFunc, manualSlashKey)
-    local addonName = C_AddOns.GetAddOnInfo(name)
+    local addonName = C_AddOns and C_AddOns.GetAddOnInfo and C_AddOns.GetAddOnInfo(name)
     if not addonName then return end
-    
-    local isLoaded = C_AddOns.IsAddOnLoaded(name)
+
+    local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(name)
+    if not isLoaded and C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, name)
+        isLoaded = C_AddOns.IsAddOnLoaded(name)
+    end
     if not isLoaded then return end
 
     if self.MenuPrincipal and self.MenuPrincipal:IsShown() then 
@@ -310,10 +314,13 @@ function KT:OpenExternalAddon(name, slashCmds, aceApp, directFunc, manualSlashKe
     local ACR = LibStub("AceConfigRegistry-3.0", true)
 
     if aceApp and ACD and ACR then
-        local registered = pcall(ACR.GetOptionsTable, ACR, aceApp)
-        if registered then
-            ACD:Open(aceApp)
-            return
+        local aceApps = type(aceApp) == "table" and aceApp or { aceApp }
+        for _, appName in ipairs(aceApps) do
+            local ok, options = pcall(ACR.GetOptionsTable, ACR, appName)
+            if ok and options then
+                ACD:Open(appName)
+                return
+            end
         end
     end
 
@@ -333,7 +340,22 @@ function KT:OpenExternalAddon(name, slashCmds, aceApp, directFunc, manualSlashKe
             local upperCmd = cleanCmd:upper()
             if SlashCmdList[upperCmd] then pcall(SlashCmdList[upperCmd], ""); return end
             if SlashCmdList[cleanCmd] then pcall(SlashCmdList[cleanCmd], ""); return end
-            
+
+            -- Some addons register a different internal key from the visible
+            -- command (for example SLASH_ADDON1 = "/addon"). Resolve that
+            -- alias before giving up on the shortcut.
+            local wanted = "/" .. cleanCmd:lower()
+            for key, handler in pairs(SlashCmdList) do
+                if type(handler) == "function" then
+                    for index = 1, 10 do
+                        local registered = _G["SLASH_" .. key .. index]
+                        if type(registered) == "string" and registered:lower() == wanted then
+                            pcall(handler, "")
+                            return
+                        end
+                    end
+                end
+            end
         end
     end
 
@@ -414,8 +436,13 @@ function KT:SetupOptions()
         preferredIndex = 3,
     }
 
+    local function Loc(text)
+        local loc = self:GetLocale()
+        return (loc and loc[text]) or text
+    end
+
     -- Comandos de Debugging
-    self:RegisterChatCommand("ktdebug", function() self:Print("DB Loaded: " .. (self.db and "Yes" or "No")) end)
+    self:RegisterChatCommand("ktdebug", function() self:Print(string.format(Loc("DB loaded: %s"), self.db and Loc("Yes") or Loc("No"))) end)
     self:RegisterChatCommand("ktframe", function()
         local frame
         if _G.GetMouseFoci then
@@ -431,11 +458,11 @@ function KT:SetupOptions()
         
         if frame then
             local name = frame:GetName() or tostring(frame)
-            self:Print("|cff00FFFFFrame:|r " .. name)
-            self:Print("Parent: " .. (frame:GetParent() and (frame:GetParent():GetName() or tostring(frame:GetParent())) or "nil"))
-            self:Print("Size: " .. math.floor(frame:GetWidth()) .. "x" .. math.floor(frame:GetHeight()))
+            self:Print("|cff00FFFF" .. Loc("Frame:") .. "|r " .. name)
+            self:Print(string.format(Loc("Parent: %s"), (frame:GetParent() and (frame:GetParent():GetName() or tostring(frame:GetParent())) or "nil")))
+            self:Print(string.format(Loc("Size: %dx%d"), math.floor(frame:GetWidth()), math.floor(frame:GetHeight())))
         else
-            self:Print("No frame under mouse.")
+            self:Print(Loc("No frame under mouse."))
         end
     end)
 end

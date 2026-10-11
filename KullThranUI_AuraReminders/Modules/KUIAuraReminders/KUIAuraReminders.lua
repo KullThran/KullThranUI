@@ -1550,7 +1550,7 @@ local function ConfigurePetMenu(playerClass, anchorButton)
     local def = PET_REMINDER_DEFS[playerClass]
 
     menu:SetSize(width, height)
-    menu.Title:SetText((def and def.label) or "Pet")
+    menu.Title:SetText(LText((def and def.label) or "Pet"))
     menu._anchorButton = anchorButton
 
     for i, info in ipairs(entries) do
@@ -1599,7 +1599,7 @@ local function ConfigurePetMenu(playerClass, anchorButton)
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 12 + (col * (buttonSize + spacing)), -(32 + (row * (buttonSize + 18 + spacing))))
         btn.Icon:SetTexture(AR.GetSpellTextureCached(info.spellID) or 134400)
-        btn.Label:SetText(info.label or "")
+        btn.Label:SetText(LText(info.label or ""))
         btn:SetAttribute("type", "spell")
         btn:SetAttribute("spell", info.spellID)
         btn._spellID = info.spellID
@@ -1639,7 +1639,7 @@ local function SetPetMenuButton(btn, playerClass, texture, label)
     btn._tooltipItem = nil
     btn._petMenuClass = playerClass
     btn._icon:SetTexture(texture or (def and def.icon) or 134400)
-    btn._text:SetText(label or (def and def.label) or "Pet")
+    btn._text:SetText(LText(label or (def and def.label) or "Pet"))
 
     if not btn._petMenuHooked then
         btn._petMenuHooked = true
@@ -2454,7 +2454,7 @@ local function Refresh()
                     if safe then
                         local spellID = m.data and m.data.castSpell
                         local texture = (m.mode == "texture" and m.texture) or (spellID and AR.GetSpellTextureCached(spellID)) or 134400
-                        local label = (m.mode == "texture" and m.label) or (m.data and AR.GetReminderShortLabel(m.data.name)) or ""
+                        local label = (m.mode == "texture" and LText(m.label)) or (m.data and AR.GetReminderShortLabel(m.data.name)) or ""
                         if useCursor and IsImportantBuff(m) then
                             cursorIdx = cursorIdx + 1
                             AR.ShowCursorIcon(cursorIdx, spellID, texture, label)
@@ -3173,9 +3173,9 @@ SlashCmdList["KUIARDEBUG"] = function()
 
     local accentHex = string.format("%02x%02x%02x", (KT.C_R or 1) * 255, (KT.C_G or 0) * 255, (KT.C_B or 0.3333) * 255)
     local p = function(...) print("|cff" .. accentHex .. "[KUI AuraReminders Debug]|r", ...) end
-    p("--- Aura Reminders Debug ---")
+    p(LText("--- Aura Reminders Debug ---"))
 
-    if not db then p("|cffff4444db is nil PLAYER_LOGIN never fired or AceDB failed|r"); return end
+    if not db then p("|cffff4444" .. LText("db is nil: PLAYER_LOGIN never fired or AceDB failed") .. "|r"); return end
 
     local playerClass = AR.GetPlayerClass()
     local specID = AR.GetActiveSpecID()
@@ -3188,30 +3188,30 @@ SlashCmdList["KUIARDEBUG"] = function()
     local inGroup = IsInGroup()
     local inRaid = IsInRaid()
 
-    p("Class:", playerClass, "| Spec:", specID, "(" .. specName .. ")")
+    p(LText("Class:"), playerClass, "| " .. LText("Spec:"), specID, "(" .. specName .. ")")
     p("InInstance:", tostring(inInstance), "| InKeystone:", tostring(inKeystone), "| InCombat:", tostring(inCombat))
     p("InGroup:", tostring(inGroup), "| InRaid:", tostring(inRaid))
-    p("Options panel visible:", tostring(optionsPanelVisible))
-    p("iconAnchor:", iconAnchor and "exists" or "|cffff4444NIL|r",
+    p(LText("Options panel visible:"), tostring(optionsPanelVisible))
+    p("iconAnchor:", iconAnchor and LText("exists") or "|cffff4444NIL|r",
       iconAnchor and ("shown=" .. tostring(iconAnchor:IsShown())) or "")
-    p("Active icons:", #activeIcons)
-    p("Combat icons:", #combatActiveIcons)
+    p(LText("Active icons:"), #activeIcons)
+    p(LText("Combat icons:"), #combatActiveIcons)
 
     -- Raid Buffs
     local rb = db.profile.raidBuffs
-    p("--- Raid Buffs ---")
+    p(LText("--- Raid Buffs ---"))
     p("  showNonInstanced:", tostring(rb.showNonInstanced), "| showOthersMissing:", tostring(rb.showOthersMissing))
     local rbActive = inInstance or rb.showNonInstanced
-    p("  Category active (inInstance or showNonInstanced):", tostring(rbActive))
+    p("  " .. LText("Category active (inInstance or showNonInstanced):"), tostring(rbActive))
     if rbActive then
         for _, buff in ipairs(RAID_BUFFS) do
             local enabled = rb.enabled[buff.key]
             local classMatch = buff.class == playerClass
             local known = Known(buff.castSpell)
             local status = ""
-            if not enabled then status = "DISABLED"
-            elseif not classMatch then status = "wrong class (" .. buff.class .. ")"
-            elseif not known then status = "spell not known"
+            if not enabled then status = LText("DISABLED")
+            elseif not classMatch then status = string.format(LText("wrong class (%s)"), buff.class)
+            elseif not known then status = LText("spell not known")
             else
                 local isMissing
                 if rb.showOthersMissing and (inGroup or inRaid) then
@@ -3219,7 +3219,7 @@ SlashCmdList["KUIARDEBUG"] = function()
                 else
                     isMissing = not PlayerHasAuraByID(buff.buffIDs)
                 end
-                status = isMissing and "|cffff4444MISSING|r" or "buff present"
+                status = isMissing and ("|cffff4444" .. LText("MISSING") .. "|r") or LText("buff present")
             end
             p("  " .. buff.key .. " (" .. buff.name .. "): " .. status)
         end
@@ -3227,10 +3227,10 @@ SlashCmdList["KUIARDEBUG"] = function()
 
     -- Auras
     local au = db.profile.auras
-    p("--- Auras ---")
+    p(LText("--- Auras ---"))
     p("  showNonInstanced:", tostring(au.showNonInstanced))
     local auActive = inInstance or au.showNonInstanced
-    p("  Category active:", tostring(auActive))
+    p("  " .. LText("Category active:"), tostring(auActive))
     if auActive then
         for _, aura in ipairs(AURAS) do
             local enabled = au.enabled[aura.key]
@@ -3242,30 +3242,30 @@ SlashCmdList["KUIARDEBUG"] = function()
                 for _, s in ipairs(aura.specs) do if s == specID then specOk = true; break end end
             end
             local status = ""
-            if not enabled then status = "DISABLED"
-            elseif not classMatch then status = "wrong class (" .. aura.class .. ")"
-            elseif not known then status = "spell not known"
-            elseif not specOk then status = "wrong spec"
-            elseif aura.requireInstanceGroup and (not inInstance or not (inGroup or inRaid)) then status = "skipped (requireInstanceGroup: not in instance+group)"
-            elseif inCombat and not aura.combatOk then status = "skipped (in combat, not combatOk)"
+            if not enabled then status = LText("DISABLED")
+            elseif not classMatch then status = string.format(LText("wrong class (%s)"), aura.class)
+            elseif not known then status = LText("spell not known")
+            elseif not specOk then status = LText("wrong spec")
+            elseif aura.requireInstanceGroup and (not inInstance or not (inGroup or inRaid)) then status = LText("skipped (requireInstanceGroup: not in instance+group)")
+            elseif inCombat and not aura.combatOk then status = LText("skipped (in combat, not combatOk)")
             else
                 local isMissing
                 if aura.check == "mineOnRaid" then
                     if inCombat then
-                        status = "skipped (in combat, mineOnRaid can't check others)"
+                        status = LText("skipped (in combat, mineOnRaid can't check others)")
                     else
                         isMissing = not BuffExistsOnAnyGroupMember(aura.buffIDs)
-                        if not (inGroup or inRaid) then isMissing = false; status = "not in group"; end
+                        if not (inGroup or inRaid) then isMissing = false; status = LText("not in group"); end
                     end
                 elseif aura.check == "ownOnRaid" then
                     if inCombat then
                         local cached = _preCombatOwnOnRaidCache[aura.buffIDs[1]]
                         isMissing = (cached == false)
-                        status = "ownOnRaid (combat snapshot: " .. tostring(cached) .. ")"
+                        status = string.format(LText("ownOnRaid (combat snapshot: %s)"), tostring(cached))
                     else
                         isMissing = not PlayerOwnBuffOnAnyGroupMember(aura.buffIDs)
                     end
-                    if not (inGroup or inRaid) then isMissing = false; status = "not in group"; end
+                    if not (inGroup or inRaid) then isMissing = false; status = LText("not in group"); end
                 elseif aura.check == "playerSelfCast" then
                     isMissing = not PlayerHasSelfCastAuraByID(aura.buffIDs)
                 end
@@ -3273,7 +3273,7 @@ SlashCmdList["KUIARDEBUG"] = function()
                     if aura.check ~= "mineOnRaid" and aura.check ~= "ownOnRaid" and aura.check ~= "playerSelfCast" then
                         isMissing = not PlayerHasAuraByID(checkIDs)
                     end
-                    status = isMissing and "|cffff4444MISSING should show icon|r" or "buff present"
+                    status = isMissing and ("|cffff4444" .. LText("MISSING: should show icon") .. "|r") or LText("buff present")
                 end
             end
             p("  " .. aura.key .. " (" .. aura.name .. "): " .. status)
@@ -3282,12 +3282,12 @@ SlashCmdList["KUIARDEBUG"] = function()
 
     -- Consumables
     local co = db.profile.consumables
-    p("--- Consumables ---")
+    p(LText("--- Consumables ---"))
     p("  inKeystone:", tostring(inKeystone), "| inInstance:", tostring(inInstance))
     p("  showSpecialsNonInstanced:", tostring(co.showSpecialsNonInstanced))
     local specialsActive = inInstance or co.showSpecialsNonInstanced
     local coActive = not inKeystone
-    p("  Category active (not inKeystone):", tostring(coActive), "| Specials active:", tostring(specialsActive))
+    p("  " .. LText("Category active (not inKeystone):"), tostring(coActive), "| " .. LText("Specials active:"), tostring(specialsActive))
     if coActive and not inCombat then
         if playerClass == "ROGUE" then
             for _, poison in ipairs(ROGUE_POISONS) do
@@ -3305,12 +3305,12 @@ SlashCmdList["KUIARDEBUG"] = function()
         p("  augment_rune enabled:", tostring(co.enabled.augment_rune), "| inM0/MythicRaid:", tostring(AR.IsMythicZeroOrMythicRaid()))
         p("  weapon_enchant enabled:", tostring(co.enabled.weapon_enchant))
         local hasMH = AR.GetTemporaryWeaponEnchants()
-        p("  MH enchant present:", tostring(hasMH))
+        p("  " .. LText("Main-hand enchant present:"), tostring(hasMH))
     elseif inCombat then
-        p("  (skipped in combat)")
+        p("  " .. LText("(skipped in combat)"))
     end
 
-    p("--- End Debug ---")
+    p(LText("--- End Debug ---"))
 end
 
 -------------------------------------------------------------------------------
@@ -3320,7 +3320,7 @@ end
 SLASH_KUIARCOMBAT1 = "/kuiarcombat"
 SlashCmdList["KUIARCOMBAT"] = function()
     local p = function(...) print("|cffff9900[KUIAR Combat]|r", ...) end
-    p("--- Combat Aura Debug ---")
+    p(LText("--- Combat Aura Debug ---"))
     p("InCombatLockdown:", tostring(InCombatLockdown()))
     p("issecretvalue global:", type(issecretvalue))
 
@@ -3402,11 +3402,11 @@ SlashCmdList["KUIARCOMBAT"] = function()
         p("  Snapshot=" .. tostring(cached) .. " | PlayerHasAuraByID=" .. wrapperStr)
     end
 
-    p("--- Icon counts ---")
+    p(LText("--- Icon counts ---"))
     p("  activeIcons:", #activeIcons, "combatActiveIcons:", #combatActiveIcons)
     p("  NON_SECRET_SPELL_IDS[465]:", tostring(NON_SECRET_SPELL_IDS[465]))
 
-    p("--- End Combat Debug ---")
+    p(LText("--- End Combat Debug ---"))
 end
 
 -------------------------------------------------------------------------------
@@ -3415,7 +3415,7 @@ end
 SLASH_KUIARLOG1 = "/kuiarlog"
 SlashCmdList["KUIARLOG"] = function()
     _kuiarLogEnabled = not _kuiarLogEnabled
-    print("|cffff9900[KUIAR]|r Combat aura logging " .. (_kuiarLogEnabled and "|cff00ff00ON|r" or "|cffff4444OFF|r"))
+    print("|cffff9900[KUIAR]|r " .. string.format(LText("Combat aura logging %s"), _kuiarLogEnabled and ("|cff00ff00" .. LText("ON") .. "|r") or ("|cffff4444" .. LText("OFF") .. "|r")))
 end
 
 -------------------------------------------------------------------------------
@@ -3424,13 +3424,13 @@ end
 SLASH_BEACONDEBUG1 = "/beacondebug"
 SlashCmdList["BEACONDEBUG"] = function()
     local p = function(...) print("|cffffcc00[Beacon Debug]|r", ...) end
-    p("--- Beacon Reminder Debug ---")
+    p(LText("--- Beacon Reminder Debug ---"))
     p("isPaladin:", tostring(_beaconIsPaladin))
-    p("db:", db and "exists" or "|cffff4444NIL|r")
-    p("IsSpellOverlayed:", IsSpellOverlayed and "exists" or "|cffff4444NIL|r")
+    p("db:", db and LText("exists") or "|cffff4444NIL|r")
+    p("IsSpellOverlayed:", IsSpellOverlayed and LText("exists") or "|cffff4444NIL|r")
     p("cachedInInstance:", tostring(_beaconCachedInInstance))
     p("overlayEventsRegistered:", tostring(_beaconOverlayRegistered))
-    p("beaconAnchor:", _beaconAnchor and "exists" or "|cffff4444NIL|r")
+    p("beaconAnchor:", _beaconAnchor and LText("exists") or "|cffff4444NIL|r")
     p("InGroup:", tostring(IsInGroup()), "InRaid:", tostring(IsInRaid()))
     p("InCombat:", tostring(InCombatLockdown()))
 
@@ -3452,13 +3452,13 @@ SlashCmdList["BEACONDEBUG"] = function()
         p("IsSpellOverlayed(BOL):", tostring(bolOverlay))
         p("IsSpellOverlayed(BOF):", tostring(bofOverlay))
     else
-        p("|cffff4444IsSpellOverlayed function not available|r")
+        p("|cffff4444" .. LText("IsSpellOverlayed function not available") .. "|r")
     end
 
     p("iconState[BOL]:", tostring(_beaconIconState[BEACON_BOL]))
     p("iconState[BOF]:", tostring(_beaconIconState[BEACON_BOF]))
-    p("icon frames: BOL=", _beaconIcons[BEACON_BOL] and "exists" or "NIL",
-      "BOF=", _beaconIcons[BEACON_BOF] and "exists" or "NIL")
+    p(LText("icon frames:") .. " BOL=", _beaconIcons[BEACON_BOL] and LText("exists") or "NIL",
+      "BOF=", _beaconIcons[BEACON_BOF] and LText("exists") or "NIL")
 
-    p("--- End Beacon Debug ---")
+    p(LText("--- End Beacon Debug ---"))
 end

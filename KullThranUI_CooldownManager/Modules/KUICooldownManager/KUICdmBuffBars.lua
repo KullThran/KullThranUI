@@ -5,6 +5,10 @@
 local ADDON_NAME, ns = ...
 local KT = (ns and ns.KT) or _G.KT or LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local issecretvalue = issecretvalue or (C_UI and C_UI.IsSecret) or function() return false end
+local function LText(text)
+    local L = KT and KT.GetLocale and KT:GetLocale()
+    return (L and L[text]) or text
+end
 
 -- Set to true to enable Tracked Buff Bars functionality
 local TBB_ENABLED = true
@@ -86,6 +90,7 @@ local TBB_POPULAR_BUFFS = {
     {
         key            = "bloodlust",
         name           = UnitFactionGroup("player") == "Horde" and "Bloodlust" or "Heroism",
+        nameSpellID    = UnitFactionGroup("player") == "Horde" and 2825 or 32182,
         icon           = 132313,
         spellIDs       = { 2825, 32182, 80353, 264667, 390386, 381301, 444062, 444257 },
         customDuration = 40,
@@ -178,6 +183,14 @@ local TBB_POPULAR_BUFFS = {
         class          = "WARLOCK",
     },
 }
+-- Prefer the client's localized spell name; the names above are fallbacks.
+for _, entry in ipairs(TBB_POPULAR_BUFFS) do
+    local sid = entry.nameSpellID or (entry.spellIDs and entry.spellIDs[1])
+    local localized = sid and C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(sid)
+    if type(localized) == "string" and localized ~= "" then
+        entry.name = localized
+    end
+end
 ns.TBB_POPULAR_BUFFS = TBB_POPULAR_BUFFS
 
 -- Build a fast lookup: spellID -> popular buff entry (for UNIT_AURA detection)
@@ -304,7 +317,7 @@ end
 
 local TBB_DEFAULT_BAR = {
     spellID   = 0,
-    name      = "New Bar",
+    name      = LText("New Bar"),
     enabled   = true,
     height    = 24,
     width     = 270,
@@ -396,7 +409,7 @@ function ns.AddTrackedBuffBar()
     end
     -- Always reset spell-specific fields
     newBar.spellID = 0
-    newBar.name = "Bar " .. (#tbb.bars + 1)
+    newBar.name = string.format(LText("Bar %d"), #tbb.bars + 1)
     newBar.id = "bar_" .. tostring(#tbb.bars + 1) .. "_" .. tostring(math.floor(GetTime() * 1000))
     tbb.bars[#tbb.bars + 1] = newBar
     tbb.selectedBar = #tbb.bars
@@ -2336,7 +2349,8 @@ function ns.RegisterTBBUnlockElements()
         if bar and ((not isGrouped) or (idx == groupAnchor)) then
             elements[#elements + 1] = {
                 key = "TBB_" .. posKey,
-                label = "Buff Bar: " .. (cfg.name or ("Bar " .. idx)) .. (isGrouped and " (Group)" or ""),
+                label = isGrouped and string.format(LText("Buff Bar: %s (Group)"), cfg.name or string.format(LText("Bar %d"), idx))
+                    or string.format(LText("Buff Bar: %s"), cfg.name or string.format(LText("Bar %d"), idx)),
                 group = "Cooldown Manager",
                 order = 650,
                 getFrame = function() return tbbFrames[idx] end,
