@@ -2455,6 +2455,20 @@ local function KT_AnchorChatAlertFrame()
     if not (alertFrame and window and alertFrame.SetPoint) then return end
     if alertFrame.IsForbidden and alertFrame:IsForbidden() then return end
     if InCombatLockdown and InCombatLockdown() then return end
+    -- QuickJoinToastButton lives inside that container: KUI has its own social
+    -- button, so keep Blizzard's pin icon invisible now that the container shows.
+    local quickJoin = _G.QuickJoinToastButton
+    if quickJoin and quickJoin.SetAlpha then
+        quickJoin:SetAlpha(0)
+        if quickJoin.EnableMouse then quickJoin:EnableMouse(false) end
+        if quickJoin.HookScript and not quickJoin.KT_QuickJoinHidden then
+            quickJoin:HookScript("OnShow", function(button)
+                button:SetAlpha(0)
+                if button.EnableMouse then button:EnableMouse(false) end
+            end)
+            quickJoin.KT_QuickJoinHidden = true
+        end
+    end
     if alertFrame.KT_AlertAnchor == window then return end
     alertFrame:ClearAllPoints()
     alertFrame:SetPoint("BOTTOMLEFT", window, "TOPLEFT", 0, 6)
