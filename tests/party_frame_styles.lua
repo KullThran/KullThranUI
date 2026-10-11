@@ -99,7 +99,8 @@ for _,key in ipairs({"retail","forever","classic"}) do
  local point=frame.pvpIcon.points[1]
  assert(point[1]=="CENTER" and point[2]==frame.portraitFrame and point[3]=="BOTTOMLEFT")
  local pad=frame._pfNativePad or 0
- assert(point[4]==3*frame._pfNativeScale+pad+2 and point[5]==3*frame._pfNativeScale+pad-1)
+ local shift=frame._pfNativeShift or 0
+ assert(point[4]==3*frame._pfNativeScale+pad-shift+2 and point[5]==3*frame._pfNativeScale+pad-1)
  combat=true
  local clear=frame.pvpIcon.ClearAllPoints
  frame.pvpIcon.ClearAllPoints=function() error("secure PvP anchor changed in combat") end

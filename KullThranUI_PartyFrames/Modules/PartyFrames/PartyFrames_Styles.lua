@@ -386,7 +386,7 @@ function Styles.LayoutPvP(frame, opts, g, scale, preview)
     if not preview and InCombatLockdown and InCombatLockdown() then return end
     frame.pvpIcon:ClearAllPoints()
     frame.pvpIcon:SetPoint("CENTER", frame.portraitFrame, "BOTTOMLEFT",
-        3 * scale + (frame._pfNativePad or 0) + (tonumber(opts.pvpX) or 0),
+        3 * scale + (frame._pfNativePad or 0) - (frame._pfNativeShift or 0) + (tonumber(opts.pvpX) or 0),
         3 * scale + (frame._pfNativePad or 0) + (tonumber(opts.pvpY) or 0))
 end
 function Styles.HideNativePartyReminder(frame, mode, key)
@@ -502,9 +502,10 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     local size = math.max(16, p[3] * s + (tonumber(cfg.portraitSize) or 0))
     -- The ring opening is wider than the portrait slot and the portrait frame
     -- clips its children, so the frame itself grows to the opening (same centre).
-    local pad = size * 0.075
-    frame._pfNativePad = pad
-    Box(frame.portraitFrame, host, p[1] + (tonumber(cfg.portraitX) or 0) / s - pad / s,
+    local pad = size * 0.095
+    local shift = size * 0.03 -- the opening sits slightly right of the slot centre
+    frame._pfNativePad, frame._pfNativeShift = pad, shift
+    Box(frame.portraitFrame, host, p[1] + (tonumber(cfg.portraitX) or 0) / s - pad / s + shift / s,
         p[2] - (tonumber(cfg.portraitY) or 0) / s - pad / s, (size + 2 * pad) / s, (size + 2 * pad) / s, s)
     local portraitMask = frame._pfNativePortraitMask
     if not portraitMask then
@@ -522,7 +523,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     if model then
         -- The ring frame draws above the model and covers its square corners, so
         -- the model can fill the circle instead of leaving a visible gap.
-        local inset = math.floor(size * 0.11 + 0.5)
+        local inset = math.floor(size * 0.13 + 0.5)
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
         model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
@@ -563,7 +564,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     end
     if frame.levelText and (not Mod.db or not Mod.db.levelAnchor or Mod.db.levelAnchor == "AUTO") then
         frame.levelText:ClearAllPoints()
-        frame.levelText:SetPoint("BOTTOM", frame.portraitFrame, "BOTTOM", (Mod.db and Mod.db.levelX or 0), -2 * s + (frame._pfNativePad or 0) + (Mod.db and Mod.db.levelY or 0))
+        frame.levelText:SetPoint("BOTTOM", frame.portraitFrame, "BOTTOM", (Mod.db and Mod.db.levelX or 0) - (frame._pfNativeShift or 0), -2 * s + (frame._pfNativePad or 0) + (Mod.db and Mod.db.levelY or 0))
     end
     Styles.LayoutPvP(frame, Mod.db, g, s, preview)
     if not frame._pfNativePowerText then
