@@ -8,7 +8,7 @@ on:
         description: 'Published release tag to announce (no package uploads)'
         required: true
         type: string
-        default: v5.1.4
+        default: v5.1.5
 
 permissions:
   contents: read

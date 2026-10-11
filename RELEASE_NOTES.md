@@ -1,27 +1,8 @@
-## 5.1.4 (2026-10-11)
+## 5.1.5 (2026-10-12)
 
-- Unlock Mode: right-clicking an element opens a complete Element Options menu. Width, height, X and Y have sliders and number boxes, and you can anchor the element to another one with its own offsets and extra width, pick the screen point positions are measured from, fade it on mouseover, center it, or reset its position and size.
-- Unlock Mode: Unit Frames, Cast Bar and Party Frames resize with the same width and height settings used on their option pages.
-- Unlock Mode: the unsaved changes dialog is back, with Exit Without Saving and Save & Exit. Esc or clicking outside returns you to editing.
-- Unlock Mode: movers are more opaque, the element list uses flat rows, and hovering a row highlights its element on screen while clicking it makes it flash. Elements also have new hover, click and selection animations.
-- Leaving Unlock Mode without saving no longer changes Unit Frame scale. The Player frame is restored once to 132% in the Classic, Forever and Retail styles.
-- Resource Bars: new Autoattack Bars that replace Blizzard's autoattack bars while enabled, with fill or empty direction, color, a test button and artwork that follows the selected visual style.
-- Damage Meter: new Visual Style selector (KUI, Retail, Forever, Classic). Only the look changes; every window keeps its own mode, session, size and position.
-- Classic style: Holy Power, Soul Shards, Runes, Essence, Chi and Arcane Charges use a classic gem tray under the Player frame, aligned like the combo points.
-- Retail and Forever styles keep Blizzard's own class resource art and animations under the Player frame.
-- Target of Target and Focus Target use the small Blizzard frame with power bar and portrait in the Classic, Forever and Retail styles, and their previews match.
-- Druid combo points are only shown in Cat Form, in every combo style.
-- Party Frames: in the Classic, Retail and Forever styles, debuffs sit centered below the frame instead of over the health bar when the debuff anchor is Center.
-- Cooldown Manager: the KUI Tracker no longer shows another class's interrupt or defensive (for example Kick on a Warlock) when characters share a profile.
-- Cooldown Manager: bars keep their exact position after being dragged in Unlock Mode and when arena layouts reset.
-- Unit Frames: AFK, Dead, Ghost and Offline badges update correctly when you switch target or focus.
-- Unit Frames: names written in Korean, Chinese or Japanese characters display correctly instead of empty boxes.
-- Target auras refresh reliably after target changes.
-- Bags: using an item from the bags in combat no longer triggers a blocked-action warning. The bag updates as soon as combat ends.
-- Bags: item categories (Equipment, Consumables, Reagents, Junk and the rest) are now built into KullThranUI and work on their own.
-- Armory: the Stats, Titles, Equipment and Progress bar only appears on the Character tab and stays hidden on Reputation and Currency.
-- Objective Tracker: the accent-colored bar under the Quests header is also shown in KUI style.
-- Nameplates: KUI style bars no longer keep the fill texture left by a previously applied style, and group threat colors stay readable.
-- Teleport Menu shows destination names in your client's language.
-- Minimap layout refreshes with your current settings after combat.
-- Tooltip, Installer previews, Inspect, Minimap and Aura Reminders texts are now translated in every supported language.
+- Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.
+- Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.
+- Party Frames: fixed a Lua error that appeared when a party member was dead or offline.
+- Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.
+- Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.
+- Chat: Battle.net toasts (friend online, invites) are visible again.

@@ -958,10 +958,24 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.4"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.5"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.5"] = {
+        version = "5.1.5",
+        published = "2026-10-12",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.",
+            "Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.",
+            "Party Frames: fixed a Lua error that appeared when a party member was dead or offline.",
+            "Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.",
+            "Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.",
+            "Chat: Battle.net toasts (friend online, invites) are visible again.",
+        },
+    },
     ["5.1.4"] = {
         version = "5.1.4",
         published = "2026-10-11",
@@ -2317,12 +2331,12 @@ local CHANGELOG_ENTRIES = {
 local function GetCurrentKUIVersion()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
         or KT.VERSION
-        or "5.1.4"
+        or "5.1.5"
     -- When loaded from the source tree without the release packager the TOC
     -- still contains the literal "@project-version@" token.  Fall back to the
     -- hardcoded release version so the changelog and options never display it.
     if ver and ver:find("@", 1, true) then
-        ver = "5.1.4"
+        ver = "5.1.5"
     end
     return ver
 end
@@ -3422,7 +3436,7 @@ local function UpdateMenuThemeVisuals(menu)
         local vr = math.floor((accent.r or 1) * 255 + 0.5)
         local vg = math.floor((accent.g or 0) * 255 + 0.5)
         local vb = math.floor((accent.b or 0.333) * 255 + 0.5)
-	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.4")))
+	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.5")))
     end
 
     for _, btn in ipairs(menu._sizePresetButtons or {}) do
@@ -5053,12 +5067,12 @@ local function CreateMenuFrame()
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
     local verColor = string.format("%02x%02x%02x", accentR*255, accentG*255, accentB*255)
-	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.4") .. "|r")
+	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.5") .. "|r")
     titleTex:SetPoint("TOPLEFT", f, "TOPLEFT", 94, -68)
     titleTex:SetWidth(190)
     titleTex:SetJustifyH("LEFT")
     f._versionText = titleTex
-	f._versionValue = KT.VERSION or "5.1.4"
+	f._versionValue = KT.VERSION or "5.1.5"
 
     -- Corrupted generated comment removed.
     local nav = CreateFrame("Frame", nil, f)

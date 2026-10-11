@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Experience Bar
 ## Notes: KullThranUI module: Experience Bar
 ## Author: KullThran
-## Version: 5.1.4
+## Version: 5.1.5
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
