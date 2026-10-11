@@ -1428,6 +1428,23 @@ local function RestoreNPCNameplate(nameplate, unit)
     nameOnlyNPCSuppressed[nameplate] = nil
 end
 
+-- Drops every name-only friendly element (overlay name/guild/level/PvP marker
+-- and the hidden Blizzard UnitFrame) for a unit that just became attackable
+-- (duel) so the hostile bar plate is the only look left on the nameplate.
+function ns.RemoveFriendlyNameOnlyPresentation(unit, nameplate)
+    nameplate = nameplate or (unit and C_NamePlate.GetNamePlateForUnit(unit))
+    if nameplate then
+        if nameOnlyNPCSuppressed[nameplate] then
+            RestoreNPCNameplate(nameplate, unit)
+        else
+            HideNPCOverlay(nameplate)
+        end
+        HideFriendlyPlayerLevel(nameplate)
+        HideFriendlyPlayerPvPMarker(nameplate)
+    end
+    if unit and modifiedUFs[unit] then RestoreBlizzardUF(unit) end
+end
+
 -------------------------------------------------------------------------------
 --  NamePlateDriverFrame hooks — suppress Blizzard UFs at the earliest moment
 --  These fire synchronously inside Blizzard's nameplate creation, BEFORE

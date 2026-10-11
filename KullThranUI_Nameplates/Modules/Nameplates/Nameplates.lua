@@ -6896,6 +6896,12 @@ local function ReleaseEnemyPlate(unit)
 end
 
 local function RemoveFriendlyPresentation(unit)
+    -- Name-only look (overlay name/guild/level + hidden Blizzard UF) is not a
+    -- friendlyPlates entry, so it must be dropped explicitly or it stays drawn
+    -- underneath the hostile bar plate.
+    if ns.RemoveFriendlyNameOnlyPresentation then
+        ns.RemoveFriendlyNameOnlyPresentation(unit, GetSafeNamePlateForUnit(unit))
+    end
     if ns.RemoveFriendlyPlateNoRestore then
         ns.RemoveFriendlyPlateNoRestore(unit)
         return
@@ -6916,7 +6922,7 @@ transitionState.CreatePendingWatcher = function(unit, nameplate)
     f:RegisterUnitEvent("UNIT_NAME_UPDATE", unit)
     f:SetScript("OnEvent", function(self, _, u)
         -- Mientras siga sin ser atacable, no hay nada que hacer
-        if not UnitCanAttack("player", u) then return end
+        if not ns.IsEnemyNameplateUnit(u, GetSafeNamePlateForUnit(u)) then return end
 
         -- Limpieza del estado de transición antes de tocar la placa
         self:UnregisterAllEvents()
@@ -6926,7 +6932,10 @@ transitionState.CreatePendingWatcher = function(unit, nameplate)
         -- Promoción: retirar friendly → adquirir enemiga → vigilar retorno
         RemoveFriendlyPresentation(u)
         local np = GetSafeNamePlateForUnit(u)
-        if np then AcquireEnemyPlate(u, np) end
+        if np then
+            if ns.plates[u] then ReleaseEnemyPlate(u) end
+            AcquireEnemyPlate(u, np)
+        end
         transitionState.enemyWatchers[u] = transitionState.CreateEnemyWatcher(u)
     end)
     return f
@@ -6940,7 +6949,7 @@ transitionState.CreateEnemyWatcher = function(unit)
     local f = CreateFrame("Frame")
     f:RegisterUnitEvent("UNIT_FLAGS", unit)
     f:SetScript("OnEvent", function(self, _, u)
-        if UnitCanAttack("player", u) then return end
+        if ns.IsEnemyNameplateUnit(u, GetSafeNamePlateForUnit(u)) then return end
 
         self:UnregisterAllEvents()
         transitionState.enemyWatchers[u] = nil
@@ -6949,11 +6958,19 @@ transitionState.CreateEnemyWatcher = function(unit)
         -- Intentar restaurar presentación friendly y preparar el camino inverso
         local np = GetSafeNamePlateForUnit(u)
         if not np then return end
+        -- The enemy look hid the Blizzard UnitFrame children; bring them back
+        -- before the friendly look (bar or name-only overlay) is re-applied.
+        RestoreBlizzardFrame(np)
         transitionState.pendingUnits[u] = np
         transitionState.pendingWatchers[u] = transitionState.CreatePendingWatcher(u, np)
         if ns.TryAddFriendlyPlate then
             ns.TryAddFriendlyPlate(u)
         end
+        if ns.TrySuppressNPCHealthBar then ns.TrySuppressNPCHealthBar(u, np) end
+        if ns.TrySuppressFriendlyPlayerNameplate then
+            ns.TrySuppressFriendlyPlayerNameplate(u, np)
+        end
+        if ns.UpdateFriendlyPlayerLevel then ns.UpdateFriendlyPlayerLevel(np, u) end
     end)
     return f
 end
@@ -6979,7 +6996,7 @@ local function ReconcileFactionTransitions()
     for i = 1, #pending do
         local unit = pending[i]
         local watcher = transitionState.pendingWatchers[unit]
-        if watcher and UnitCanAttack("player", unit) then
+        if watcher and ns.IsEnemyNameplateUnit(unit, GetSafeNamePlateForUnit(unit)) then
             local handler = watcher:GetScript("OnEvent")
             if handler then handler(watcher, "UNIT_FACTION", unit) end
         end
@@ -6987,7 +7004,7 @@ local function ReconcileFactionTransitions()
     for i = 1, #enemies do
         local unit = enemies[i]
         local watcher = transitionState.enemyWatchers[unit]
-        if watcher and not UnitCanAttack("player", unit) then
+        if watcher and not ns.IsEnemyNameplateUnit(unit, GetSafeNamePlateForUnit(unit)) then
             local handler = watcher:GetScript("OnEvent")
             if handler then handler(watcher, "UNIT_FACTION", unit) end
         end
@@ -6997,7 +7014,8 @@ local function ReconcileFactionTransitions()
     -- small custom enemy-plate pool, and restore units that are now friendly.
     local staleEnemies = {}
     ns.SafeForEachPlate(function(unit, _)
-        if not transitionState.enemyWatchers[unit] and not UnitCanAttack("player", unit) then
+        if not transitionState.enemyWatchers[unit]
+            and not ns.IsEnemyNameplateUnit(unit, GetSafeNamePlateForUnit(unit)) then
             staleEnemies[#staleEnemies + 1] = unit
         end
     end)
@@ -7009,6 +7027,12 @@ local function ReconcileFactionTransitions()
             transitionState.pendingUnits[unit] = nameplate
             transitionState.pendingWatchers[unit] = transitionState.CreatePendingWatcher(unit, nameplate)
             if ns.TryAddFriendlyPlate then ns.TryAddFriendlyPlate(unit) end
+            RestoreBlizzardFrame(nameplate)
+            if ns.TrySuppressNPCHealthBar then ns.TrySuppressNPCHealthBar(unit, nameplate) end
+            if ns.TrySuppressFriendlyPlayerNameplate then
+                ns.TrySuppressFriendlyPlayerNameplate(unit, nameplate)
+            end
+            if ns.UpdateFriendlyPlayerLevel then ns.UpdateFriendlyPlayerLevel(nameplate, unit) end
         end
     end
 
@@ -7046,8 +7070,10 @@ transitionState.factionFrame:RegisterEvent("ROLE_CHANGED_INFORM")
 transitionState.factionFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 transitionState.factionFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 transitionState.factionFrame:RegisterEvent("DUEL_FINISHED")
+transitionState.factionFrame:RegisterEvent("DUEL_INBOUNDS")
+transitionState.factionFrame:RegisterEvent("DUEL_OUTOFBOUNDS")
 transitionState.factionFrame:SetScript("OnEvent", function(_, event, unit)
-    if event == "DUEL_FINISHED" then
+    if event == "DUEL_FINISHED" or event == "DUEL_INBOUNDS" or event == "DUEL_OUTOFBOUNDS" then
         ReconcileFactionTransitions()
         -- Faction/attackability can settle one client tick after the duel event.
         C_Timer.After(0.10, ReconcileFactionTransitions)
@@ -7210,6 +7236,12 @@ manager:SetScript("OnEvent", function(self, event, unit)
             end            return
         end
         transitionState.pendingUnits[unit] = nil
+        if transitionState.pendingWatchers[unit] then
+            transitionState.pendingWatchers[unit]:UnregisterAllEvents()
+            transitionState.pendingWatchers[unit] = nil
+        end
+        -- A recycled nameplate may still carry a friendly look (duel opponent).
+        RemoveFriendlyPresentation(unit)
         if ns.plates[unit] then
             ReleaseEnemyPlate(unit)
         end
