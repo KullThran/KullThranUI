@@ -109,11 +109,14 @@ local function LText(text)
     return text
 end
 
+-- Round half away from zero. The old negative branch (floor(value - 0.5))
+-- returned one less than the nearest integer, so every read-back of a negative
+-- coordinate shifted it by 1 and X/Y edits made the other axis drift.
 local function Round(value)
     if value >= 0 then
         return floor(value + 0.5)
     end
-    return floor(value - 0.5)
+    return -floor(-value + 0.5)
 end
 
 local function CopyPosition(pos)
