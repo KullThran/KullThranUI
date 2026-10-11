@@ -35,6 +35,24 @@ function Mod:GetModeDB(mode)
     if mode == "party" and cfg then
         self.db.partyDispelOverlayByStyle = self.db.partyDispelOverlayByStyle or {}
         local key = Styles.Current()
+        -- The native card art is built around the portrait: with the portrait
+        -- off it would fall back to the KUI look. Turn it on while a native style
+        -- is active and give KUI back its own setting afterwards.
+        if key == "kui" then
+            local before = self.db._pfPortraitBeforeNative
+            if before then
+                cfg.showPortrait, cfg.portraitStyle = before.show, before.style
+                self.db._pfPortraitBeforeNative = nil
+            end
+        else
+            if cfg.showPortrait ~= true or cfg.portraitStyle == "none" then
+                if not self.db._pfPortraitBeforeNative then
+                    self.db._pfPortraitBeforeNative = { show = cfg.showPortrait, style = cfg.portraitStyle }
+                end
+                cfg.showPortrait = true
+                if cfg.portraitStyle == nil or cfg.portraitStyle == "none" then cfg.portraitStyle = "circular" end
+            end
+        end
         local saved = self.db.partyDispelOverlayByStyle
         if saved[key] == nil then saved[key] = key == "kui" end
         cfg.showDispelOverlay = saved[key]
