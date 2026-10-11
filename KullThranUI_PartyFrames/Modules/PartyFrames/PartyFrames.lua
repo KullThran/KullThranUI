@@ -1267,7 +1267,17 @@ local function SafeHideManagedFrame(frame)
     if frame.SetMouseMotionEnabled then pcall(frame.SetMouseMotionEnabled, frame, false) end
 end
 
+-- Native party styles draw their debuffs centred just below the frame art, so
+-- every row reserves that strip instead of letting it cover the next frame.
 local function GetExternalAuraReserve(db, mode)
+    if mode == "party" and db and ns.PF_Styles and ns.PF_Styles.Current
+        and ns.PF_Styles.Current() ~= "kui"
+        and db.showAuras ~= false and db.showDebuffs ~= false
+        and (db.debuffAnchor or "CENTER") == "CENTER"
+        and (tonumber(db.auraMaxDebuffs) or 3) > 0 then
+        local size = math.max(10, math.min(28, tonumber(db.auraIconSize) or 18))
+        return math.max(size, 24) + 2
+    end
     return 0
 end
 
