@@ -4600,6 +4600,20 @@ local function LayoutCenteredAuraIcons(frame, db, buffCount, debuffCount)
     local gap = (buffCount > 0 and debuffCount > 0) and spacing or 0
     local totalW = math.max(0, (buffCount - 1) * stepB) + math.max(0, (debuffCount - 1) * stepD)
         + (buffCount > 0 and buffSize or 0) + (debuffCount > 0 and debuffSize or 0) + gap
+    -- Native party styles draw the bar as a small strip inside the frame art:
+    -- debuffs go centred just below the art (same as live frames), not over it.
+    local nativeHost = frame.mode == "party" and frame._pfNativeStyle and frame._pfNativeArt
+    if nativeHost and (not nativeHost:IsShown() or (db.debuffAnchor or "CENTER") ~= "CENTER") then
+        nativeHost = nil
+    end
+    if nativeHost then
+        local buffOnlyW = buffCount > 0 and (math.max(0, (buffCount - 1) * stepB) + buffSize) or 0
+        local halfBuffs = buffOnlyW / 2
+        local shift = math.max(0, (debuffCount - 1) * stepD) / 2
+        LayoutAuraIconSet(frame.debuffIcons, nativeHost, "TOP", "BOTTOM", debuffX - shift, debuffY - 2, debuffSize, spacing, "RIGHT")
+        LayoutAuraIconSet(frame.buffIcons, frame.health, "CENTER", "CENTER", halfBuffs - math.max(0, (buffCount - 1) * stepB) - buffSize / 2 + buffX, buffY, buffSize, spacing, "LEFT")
+        return
+    end
     local half = totalW / 2
     LayoutAuraIconSet(frame.debuffIcons, frame.health, "CENTER", "CENTER", -half + debuffSize / 2 + debuffX, debuffY, debuffSize, spacing, "RIGHT")
     LayoutAuraIconSet(frame.buffIcons, frame.health, "CENTER", "CENTER", half - math.max(0, (buffCount - 1) * stepB) - buffSize / 2 + buffX, buffY, buffSize, spacing, "LEFT")
@@ -6279,6 +6293,10 @@ end
 function Mod:UpdateFrameVisual(frame, refreshAuras)
     if not frame then return end
 
+    -- Portrait contents (class art for Party Test, unit portrait or model live).
+    local portraitDB = self:GetModeDB(frame.mode or "party")
+    local portraitData = frame.fakeUnit and GetTestUnitData(frame.fakeUnit, frame.mode or "party") or nil
+    self:UpdatePartyPortrait(frame, portraitDB, portraitData)
     local showPartyLevel = self:GetRootConfigValue("showCharacterLevel", false) == true and frame.mode == "party"
     ApplyCharacterLevelTextStyle(frame.levelText, self.db, frame)
     ns.PF_Portrait.SyncLevels(frame)
