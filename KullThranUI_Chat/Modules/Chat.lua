@@ -2446,6 +2446,21 @@ local function KT_HideBlizzardChatUtilityButtons()
     end
 end
 
+-- Blizzard anchors ChatAlertFrame (Battle.net toasts, Quick Join, TTS alerts) to
+-- ChatFrame1ButtonFrame, which this module parks off-screen. Without a new
+-- anchor every toast is drawn at -4000,-4000 and never shows up.
+local function KT_AnchorChatAlertFrame()
+    local alertFrame = _G.ChatAlertFrame
+    local window = _G.KT_ChatWindow
+    if not (alertFrame and window and alertFrame.SetPoint) then return end
+    if alertFrame.IsForbidden and alertFrame:IsForbidden() then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if alertFrame.KT_AlertAnchor == window then return end
+    alertFrame:ClearAllPoints()
+    alertFrame:SetPoint("BOTTOMLEFT", window, "TOPLEFT", 0, 6)
+    alertFrame.KT_AlertAnchor = window
+end
+
 local function KT_HideBlizzardChatFrames()
     KT_HideBlizzardChatUtilityButtons()
     KT_HideBlizzardChatNativeChrome()
@@ -2464,6 +2479,8 @@ local function KT_HideBlizzardChatFrames()
         KT_CHAT_HIDE_REGEN_FRAME:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
+
+    KT_AnchorChatAlertFrame()
 
     local primaryChatFrame = _G.ChatFrame1
     if primaryChatFrame then
