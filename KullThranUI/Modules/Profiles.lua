@@ -1516,13 +1516,17 @@ function Mod:ExportPageProfileString(pageID)
 end
 
 function Mod:ResetSubmoduleProfile(pageID)
-    local key = pageID == "damagemeter" and "damageMeter"
-        or pageID == "mythicplustimer" and "mplusTracker"
-    if not key then return false, LText("Unknown submodule profile.") end
+    -- Every Enhancements child profile (Damage Meter, Dungeon Timer, Debuff Tracker...)
+    -- declares its keys in MODULE_DEFS, so a new child needs no change here.
+    local definition = MODULE_BY_ID[pageID]
+    local keys = definition and definition.nested and definition.nested.enhancements
+    if type(keys) ~= "table" or #keys == 0 then return false, LText("Unknown submodule profile.") end
     local root = GetRootProfile()
     if not root then return false, LText("Profile unavailable.") end
     root.enhancements = root.enhancements or {}
-    root.enhancements[key] = nil
+    for _, key in ipairs(keys) do
+        root.enhancements[key] = nil
+    end
     self:RefreshProfileRuntime()
     PromptReloadPopup("Submodule profile reset.")
     return true
