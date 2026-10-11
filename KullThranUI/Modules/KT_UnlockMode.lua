@@ -3631,6 +3631,14 @@ function UM:OpenMoverMenu(key, anchor)
     menuFrame:SetPoint("TOPLEFT", anchor or self.movers[key] or self.unlockFrame, "TOPRIGHT", 6, 0)
     menuFrame:Show()
     menuFrame:Raise()
+    -- Pin the menu where it opened. Anchored to the mover it followed every X/Y
+    -- change, so the slider under the cursor moved too: the value kept changing,
+    -- the element ran away and flickered.
+    local left, top = menuFrame:GetLeft(), menuFrame:GetTop()
+    if left and top then
+        menuFrame:ClearAllPoints()
+        menuFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
 end
 
 function UM:RefreshMovers()
