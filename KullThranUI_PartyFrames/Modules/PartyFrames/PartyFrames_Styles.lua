@@ -239,6 +239,19 @@ function Styles.Clear(frame)
         end
         frame._pfNativePortraitMask:Hide()
         frame._pfNativePortraitMaskApplied = nil
+        -- Undo the native outset so the KUI portrait fills its own slot again.
+        for _, texture in ipairs({ frame.portrait, frame.portraitBG }) do
+            texture:ClearAllPoints()
+            texture:SetAllPoints(frame.portraitFrame)
+        end
+        if frame.portraitClass then
+            frame.portraitClass:ClearAllPoints()
+            frame.portraitClass:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", 2, -2)
+            frame.portraitClass:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -2, 2)
+        end
+        if frame.portraitModel and ns.PF_Portrait.AnchorModel and ns.PF_Portrait.GetMetrics then
+            ns.PF_Portrait.AnchorModel(frame, ns.PF_Portrait.GetMetrics(Mod.db, frame:GetHeight()))
+        end
     end
     if frame._pfNativePowerText then frame._pfNativePowerText:Hide() end
     local wasNative = frame._pfNativeStyle
@@ -492,9 +505,21 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     if not portraitMask then
         portraitMask = frame.portraitFrame:CreateMaskTexture()
         portraitMask:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        portraitMask:SetAllPoints(frame.portraitFrame)
         frame._pfNativePortraitMask = portraitMask
     end
+    -- The ring opening is wider than the portrait slot: grow the disc, its
+    -- circle mask and the model to the opening so no gap is left around it.
+    local pad = size * 0.075
+    local function Outset(region)
+        if not region then return end
+        region:ClearAllPoints()
+        region:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", -pad, pad)
+        region:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", pad, -pad)
+    end
+    Outset(portraitMask)
+    Outset(frame.portrait)
+    Outset(frame.portraitBG)
+    Outset(frame.portraitClass)
     if not frame._pfNativePortraitMaskApplied then
         for _, texture in ipairs({ frame.portrait, frame.portraitBG, frame.portraitClass }) do texture:AddMaskTexture(portraitMask) end
         frame._pfNativePortraitMaskApplied = true
@@ -504,7 +529,7 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     if model then
         -- The ring frame draws above the model and covers its square corners, so
         -- the model can fill the circle instead of leaving a visible gap.
-        local inset = math.floor(size * 0.12 + 0.5)
+        local inset = math.floor(size * 0.04 + 0.5)
         model:ClearAllPoints()
         model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
         model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
