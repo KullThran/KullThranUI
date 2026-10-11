@@ -35,6 +35,7 @@ Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/al
 - Unit Frames: the PvP icon of the previous target no longer stays on the frame when you switch targets in combat.
 - Cast Bar: chaining fast casts no longer hides the first cast halfway through.
 - Chat: Battle.net toasts (friend online, invites) are visible again; they were drawn off-screen together with the hidden Blizzard chat.
+- Minimap: the Teleport Menu, Guild, Friends and KUI options icons can be placed on the left, right, top or bottom of the minimap and shown or hidden one by one. The live preview now shows the real art of the zone you are standing in inside the chosen shape, with the icons in place, and the Retail ring style no longer errors in the shape picker.
 
 ## 5.1.3 (2026-10-06)
 - Party Frames now offer KUI, Forever, Retail and Classic style cards with independent class-color or health-color selections.

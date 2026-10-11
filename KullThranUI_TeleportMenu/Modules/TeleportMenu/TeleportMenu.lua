@@ -1706,8 +1706,15 @@ function Mod:ApplyTeleportMinimapButtonStyle()
     button:SetAlpha(1)
     button:EnableMouse(true)
     button:Show()
-    button:ClearAllPoints()
-    button:SetPoint('BOTTOMRIGHT', Minimap, 'BOTTOMLEFT', 0, 0)
+    -- The Minimap module stacks this icon with the Friends/Guild/KUI launchers on the
+    -- side chosen in its options; the old fixed anchor is the fallback.
+    local minimapModule = KT:GetModule('Minimap', true)
+    if minimapModule and minimapModule.LayoutSideIcons and minimapModule.db then
+        minimapModule:LayoutSideIcons()
+    else
+        button:ClearAllPoints()
+        button:SetPoint('BOTTOMRIGHT', Minimap, 'BOTTOMLEFT', 0, 0)
+    end
     button:SetFrameStrata('HIGH')
     button:SetFrameLevel(51)
 

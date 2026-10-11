@@ -916,6 +916,16 @@ function Mod:OnInitialize()
     self.db.showKUISettingsIcon = self.db.showKUISettingsIcon ~= false
     self.db.showFriends = self.db.showFriends ~= false
     self.db.showGuild = self.db.showGuild ~= false
+    -- Side icons (Teleport Menu, Friends, Guild, KUI options): shown independently of
+    -- the text buttons. The old text toggles seed them once so nothing reappears.
+    if self.db.showFriendsIcon == nil then self.db.showFriendsIcon = self.db.showFriends ~= false end
+    if self.db.showGuildIcon == nil then self.db.showGuildIcon = self.db.showGuild ~= false end
+    self.db.showTeleportIcon = self.db.showTeleportIcon ~= false
+    self.db.showKUISettingsIcon = self.db.showKUISettingsIcon ~= false
+    local iconPosition = self.db.iconPosition
+    if iconPosition ~= "LEFT" and iconPosition ~= "RIGHT" and iconPosition ~= "TOP" and iconPosition ~= "BOTTOM" then
+        self.db.iconPosition = "LEFT"
+    end
     for _, key in ipairs({ "location", "coords", "clock", "performance", "friends", "guild" }) do
         self.db[key .. "OffsetX"] = tonumber(self.db[key .. "OffsetX"]) or 0
         self.db[key .. "OffsetY"] = tonumber(self.db[key .. "OffsetY"]) or 0
@@ -1790,6 +1800,60 @@ function Mod:CreateLayout()
     self:ApplyElementOffsets()
 end
 
+-- The four launcher icons (Teleport Menu, Guild, Friends, KUI options) stack next to
+-- the minimap on the chosen side (db.iconPosition); each can be hidden on its own.
+local SIDE_ICON_STEP = 22
+
+function Mod:GetSideIconButtons()
+    local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+    local teleport = (LDBIcon and LDBIcon.GetMinimapButton and LDBIcon:GetMinimapButton("KT_Teleport"))
+        or _G.KT_TeleportNativeButton
+    local db = self.db
+    return {
+        { button = teleport, show = db.showTeleportIcon ~= false },
+        { button = self.guildMinimapButton, show = db.showGuildIcon ~= false },
+        { button = self.friendsMinimapButton, show = db.showFriendsIcon ~= false },
+        { button = self.kuiSettingsButton, show = db.showKUISettingsIcon ~= false },
+    }
+end
+
+function Mod:LayoutSideIcons()
+    if not (self.db and holder) then return end
+    if self:DeferProtectedLayout() then return end
+    local position = self.db.iconPosition
+    local index = 0
+    for _, item in ipairs(self:GetSideIconButtons()) do
+        local button = item.button
+        if button then
+            button._ktSideHidden = not item.show
+            if not button._ktSideHideHooked and button.HookScript then
+                button._ktSideHideHooked = true
+                -- LibDBIcon re-shows its buttons on its own refreshes.
+                button:HookScript("OnShow", function(shown)
+                    if shown._ktSideHidden then shown:Hide() end
+                end)
+            end
+            if item.show then
+                local offset = index * SIDE_ICON_STEP
+                button:ClearAllPoints()
+                if position == "RIGHT" then
+                    button:SetPoint("BOTTOMLEFT", holder, "BOTTOMRIGHT", 0, offset)
+                elseif position == "TOP" then
+                    button:SetPoint("BOTTOMLEFT", holder, "TOPLEFT", offset, 0)
+                elseif position == "BOTTOM" then
+                    button:SetPoint("TOPLEFT", holder, "BOTTOMLEFT", offset, 0)
+                else
+                    button:SetPoint("BOTTOMRIGHT", holder, "BOTTOMLEFT", 0, offset)
+                end
+                button:Show()
+                index = index + 1
+            else
+                button:Hide()
+            end
+        end
+    end
+end
+
 function Mod:ApplyElementOffsets()
     if self:DeferProtectedLayout() then return end
     if not holder then return end
@@ -1804,6 +1868,7 @@ function Mod:ApplyElementOffsets()
     Place(performanceButton, "BOTTOMLEFT", holder, "BOTTOMLEFT", 4, 16, "performance")
     Place(friendsButton, "BOTTOMLEFT", holder, "BOTTOMLEFT", 4, 3, "friends")
     Place(guildButton, "BOTTOMRIGHT", holder, "BOTTOMRIGHT", -4, 3, "guild")
+    self:LayoutSideIcons()
 end
 
 function Mod:ApplyDefaultOffset()
@@ -2683,15 +2748,7 @@ function Mod:UpdateOverlayVisibility(force)
     if guildButton then
         guildButton:SetShown(self.db.showGuild ~= false)
     end
-    if self.guildMinimapButton then
-        self.guildMinimapButton:SetShown(self.db.showGuild ~= false)
-    end
-    if self.kuiSettingsButton then
-        self.kuiSettingsButton:SetShown(self.db.showKUISettingsIcon ~= false)
-    end
-    if self.friendsMinimapButton then
-        self.friendsMinimapButton:SetShown(self.db.showFriends ~= false)
-    end
+    self:LayoutSideIcons()
     if calendarButton then
         calendarButton:Show()
     end

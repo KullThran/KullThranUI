@@ -176,6 +176,58 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
     previewShade:AddMaskTexture(previewRoundMask)
     previewRoundMask:Hide()
 
+    -- Real preview: the art of the zone the player is standing in, centred on the
+    -- player and masked like the live minimap (round or square).
+    local function BuildPlayerMapTiles()
+        if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition
+            and C_Map.GetMapArtLayers and C_Map.GetMapArtLayerTextures) then return end
+        local mapOK, mapID = pcall(C_Map.GetBestMapForUnit, "player")
+        if not mapOK or not IsSafePreviewValue(mapID, "number") then return end
+        local posOK, position = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
+        if not posOK or not position then return end
+        local xyOK, px, py = pcall(function() return position:GetXY() end)
+        if not xyOK or not IsSafePreviewValue(px, "number") or not IsSafePreviewValue(py, "number") then return end
+        local layersOK, layers = pcall(C_Map.GetMapArtLayers, mapID)
+        local layer = layersOK and layers and layers[1]
+        local texOK, textures = pcall(C_Map.GetMapArtLayerTextures, mapID, 1)
+        if not (layer and texOK and textures and #textures > 0) then return end
+        local tileW, tileH = tonumber(layer.tileWidth) or 0, tonumber(layer.tileHeight) or 0
+        local layerW, layerH = tonumber(layer.layerWidth) or 0, tonumber(layer.layerHeight) or 0
+        if tileW <= 0 or tileH <= 0 or layerW <= 0 or layerH <= 0 then return end
+        local cols = math.ceil(layerW / tileW)
+        local size = previewMap:GetWidth()
+        local scale = size / (layerW * 0.12) -- the preview shows ~12% of the zone
+        local tw, th = tileW * scale, tileH * scale
+        local cx, cy = px * layerW * scale, py * layerH * scale
+        local built = 0
+        for index, file in ipairs(textures) do
+            local col = (index - 1) % cols
+            local row = math.floor((index - 1) / cols)
+            local x0 = size / 2 + col * tw - cx
+            local y0 = size / 2 + row * th - cy
+            local x1, y1 = x0 + tw, y0 + th
+            if x1 > 0 and x0 < size and y1 > 0 and y0 < size then
+                local l, top = math.max(0, x0), math.max(0, y0)
+                local r, bottom = math.min(size, x1), math.min(size, y1)
+                local tile = previewMap:CreateTexture(nil, "BACKGROUND", nil, 1)
+                tile:SetTexture(file)
+                tile:SetTexCoord((l - x0) / tw, (r - x0) / tw, (top - y0) / th, (bottom - y0) / th)
+                tile:SetPoint("TOPLEFT", previewMap, "TOPLEFT", l, -top)
+                tile:SetSize(r - l, bottom - top)
+                tile:AddMaskTexture(previewRoundMask)
+                built = built + 1
+            end
+        end
+        if built == 0 then return end
+        previewTexture:SetColorTexture(0.02, 0.03, 0.04, 1)
+        local arrow = previewMap:CreateTexture(nil, "ARTWORK", nil, 3)
+        arrow:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
+        arrow:SetSize(24, 24)
+        arrow:SetPoint("CENTER", previewMap, "CENTER", 0, 0)
+        return true
+    end
+    pcall(BuildPlayerMapTiles)
+
     local previewCircleSegments = {}
     for index = 1, 128 do
         local segment = previewOverlay:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -230,6 +282,59 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
     local previewGuild = previewOverlay:CreateFontString(nil, "OVERLAY")
     previewGuild:SetPoint("BOTTOMRIGHT", previewMap, "BOTTOMRIGHT", -4, 3)
     previewGuild:SetJustifyH("RIGHT")
+
+
+    -- Launcher icons around the preview, on the side chosen in the options.
+    local ICON_DIR = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\extra\\"
+    local SIDE_ICON_FILES = {
+        { key = "Teleport", file = ICON_DIR .. "PortalMinimapIconCustom.png" },
+        { key = "Guild", file = ICON_DIR .. "guildminimap.png" },
+        { key = "Friends", file = ICON_DIR .. "friendlistminimap.png" },
+        { key = "KUISettings", file = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png" },
+    }
+    local previewSideIcons = {}
+    for index, def in ipairs(SIDE_ICON_FILES) do
+        local box = CreateFrame("Frame", nil, previewOverlay)
+        box:SetSize(22, 22)
+        local back = box:CreateTexture(nil, "BACKGROUND")
+        back:SetAllPoints()
+        back:SetColorTexture(0.012, 0.012, 0.016, 0.96)
+        box.icon = box:CreateTexture(nil, "ARTWORK")
+        box.icon:SetPoint("CENTER")
+        box.icon:SetSize(16, 16)
+        box.icon:SetTexture(def.file)
+        box.key = def.key
+        previewSideIcons[index] = box
+    end
+
+    local function LayoutPreviewSideIcons()
+        local r, g, b = 1, 0.486, 0.039
+        if KT.GetStyleAccentRGB then
+            local ar, ag, ab = KT:GetStyleAccentRGB()
+            if ar and ag and ab then r, g, b = ar, ag, ab end
+        end
+        local position = db.iconPosition
+        local shown = 0
+        for _, box in ipairs(previewSideIcons) do
+            local visible = db["show" .. box.key .. "Icon"] ~= false
+            box.icon:SetVertexColor(r, g, b, 1)
+            box:SetShown(visible)
+            if visible then
+                local offset = shown * 22
+                box:ClearAllPoints()
+                if position == "RIGHT" then
+                    box:SetPoint("BOTTOMLEFT", previewMap, "BOTTOMRIGHT", 0, offset)
+                elseif position == "TOP" then
+                    box:SetPoint("BOTTOMLEFT", previewMap, "TOPLEFT", offset, 0)
+                elseif position == "BOTTOM" then
+                    box:SetPoint("TOPLEFT", previewMap, "BOTTOMLEFT", offset, 0)
+                else
+                    box:SetPoint("BOTTOMRIGHT", previewMap, "BOTTOMLEFT", 0, offset)
+                end
+                shown = shown + 1
+            end
+        end
+    end
 
     local shapePicker = CreateFrame("Frame", nil, prevContainer)
     shapePicker:SetSize(360, 34)
@@ -303,7 +408,7 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
                 if d.key == key and key ~= "none" then
                     -- ring outer edge = preview size; the map circle sits in its hole
                     local diam = previewMap:GetWidth() * (d.base / 253)
-                    if d.file then diam = previewMap:GetWidth() * (d.base / d.size) end
+                    if d.file then diam = previewMap:GetWidth() * (d.base / (d.width or d.size or d.base)) end
                     if KT.DrawMinimapRing(d, previewRing, previewRingTex, previewMap, diam) then
                         local inset = (previewMap:GetWidth() - diam) / 2
                         if inset > 0 then
@@ -507,6 +612,7 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
         previewFriends:SetPoint("BOTTOMLEFT", previewMap, "BOTTOMLEFT", 8 + (tonumber(db.friendsOffsetX) or 0), 8 + (tonumber(db.friendsOffsetY) or 0))
         previewGuild:ClearAllPoints()
         previewGuild:SetPoint("BOTTOMRIGHT", previewMap, "BOTTOMRIGHT", -8 + (tonumber(db.guildOffsetX) or 0), 8 + (tonumber(db.guildOffsetY) or 0))
+        LayoutPreviewSideIcons()
     end
 
     previewRefresh()
@@ -643,6 +749,22 @@ KT:RegisterPage("minimap", "Minimap", 40, function(sc, W)
             _, h = W:Toggle(container, "Show Guild", -by,
                 function() return db.showGuild ~= false end,
                 function(v) db.showGuild = v; RefreshMM() end); by = by + h
+
+            _, h = W:SectionHeader(container, "Side Icons", -by); by = by + h
+            _, h = W:Dropdown(container, "Icon Position", -by,
+                { LEFT = "Left", RIGHT = "Right", TOP = "Top", BOTTOM = "Bottom" },
+                function() return db.iconPosition or "LEFT" end,
+                function(v) db.iconPosition = v; RefreshMM() end,
+                { "LEFT", "RIGHT", "TOP", "BOTTOM" }); by = by + h
+            _, h = W:Toggle(container, "Show Teleport Menu Icon", -by,
+                function() return db.showTeleportIcon ~= false end,
+                function(v) db.showTeleportIcon = v; RefreshMM() end); by = by + h
+            _, h = W:Toggle(container, "Show Friends Icon", -by,
+                function() return db.showFriendsIcon ~= false end,
+                function(v) db.showFriendsIcon = v; RefreshMM() end); by = by + h
+            _, h = W:Toggle(container, "Show Guild Icon", -by,
+                function() return db.showGuildIcon ~= false end,
+                function(v) db.showGuildIcon = v; RefreshMM() end); by = by + h
             _, h = W:Toggle(container, "Show KUI Options Icon", -by,
                 function() return db.showKUISettingsIcon ~= false end,
                 function(v) db.showKUISettingsIcon = v; RefreshMM() end); by = by + h
