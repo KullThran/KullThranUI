@@ -6260,6 +6260,22 @@ function Mod:SetFrameUnit(frame, unit)
     return true
 end
 
+-- The AFK texture is wider than the others: put the state icon back to its
+-- regular square size before a Dead/Offline texture is applied.
+function Mod:RestoreStatusIconGeometry(frame)
+    if not frame or not frame.statusIcon then return end
+    local width = tonumber(frame._ktStatusIconBaseWidth)
+    local height = tonumber(frame._ktStatusIconBaseHeight)
+    if not width then
+        local currentWidth, currentHeight = frame.statusIcon:GetSize()
+        width = tonumber(currentHeight) or tonumber(currentWidth) or 14
+        height = width
+        frame._ktStatusIconBaseWidth, frame._ktStatusIconBaseHeight = width, height
+    end
+    frame.statusIcon:SetSize(width, height or width)
+    frame.statusIcon:SetTexCoord(0, 1, 0, 1)
+end
+
 function Mod:UpdateFrameVisual(frame, refreshAuras)
     if not frame then return end
 
