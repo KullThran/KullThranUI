@@ -1344,6 +1344,26 @@ function Mod:UNIT_SPELLCAST_CHANNEL_START(event, unit, castGUID, spellID)
     self:DebugCastBar(event or "UNIT_SPELLCAST_CHANNEL_START", castGUID)
 end
 
+-- A stop/failed/interrupted event can belong to a cast that is no longer the
+-- one on screen (chained fast casts, queued spells). Before hiding the bar,
+-- check what the player is really casting and keep showing that instead.
+function Mod:ResyncOrHideBar()
+    local unit = "player"
+    local name, _, _, _, endTime, _, castID, _, spellID = UnitCastingInfo(unit)
+    if name and endTime and (endTime / 1000 - GetTime()) > 0.05 then
+        self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", unit, castID, spellID)
+        return
+    end
+    local cname, _, _, _, cEnd, _, _, cSpellID, isEmpowered = UnitChannelInfo(unit)
+    if cname and cEnd and (cEnd / 1000 - GetTime()) > 0.05 then
+        self:UNIT_SPELLCAST_CHANNEL_START(
+            isEmpowered and "UNIT_SPELLCAST_EMPOWER_START" or "UNIT_SPELLCAST_CHANNEL_START",
+            unit, self.bar.castID, cSpellID)
+        return
+    end
+    self:HideBarNow()
+end
+
 function Mod:HandleCastStop(eventCastID)
     if not self.bar or not (self.bar.casting or self.bar.channeling or self.bar.empowering) then return end
     if eventCastID and self.bar.castID and eventCastID ~= self.bar.castID then
@@ -1351,7 +1371,7 @@ function Mod:HandleCastStop(eventCastID)
         return
     end
     self:DebugCastBar("HandleCastStop match", eventCastID)
-    self:HideBarNow()
+    self:ResyncOrHideBar()
 end
 
 function Mod:HandleCastFailed(eventCastID)
@@ -1361,7 +1381,7 @@ function Mod:HandleCastFailed(eventCastID)
         return
     end
     self:DebugCastBar("HandleCastFailed match", eventCastID)
-    self:HideBarNow()
+    self:ResyncOrHideBar()
 end
 
 function Mod:HandleChannelStop(eventCastID)
@@ -1371,7 +1391,7 @@ function Mod:HandleChannelStop(eventCastID)
         return
     end
     self:DebugCastBar("HandleChannelStop match", eventCastID)
-    self:HideBarNow()
+    self:ResyncOrHideBar()
 end
 
 function Mod:UNIT_SPELLCAST_STOP(event, unit, castGUID, spellID)

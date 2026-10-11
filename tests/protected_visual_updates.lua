@@ -70,7 +70,10 @@ chunk=assert(loadstring(source:sub(a,b-1).."return RefreshForeverMetadata"))
 setfenv(chunk,env); local refresh=chunk()
 env.frame={unit="target"}
 local badgeUpdates=0
+local pvpUpdates=0
+env.RefreshPvPIcon=function(unit) assert(unit=="target");pvpUpdates=pvpUpdates+1 end
 env.ns={RefreshLevelBadgeVisibility=function(_,unit) assert(unit=="target");badgeUpdates=badgeUpdates+1 end}
 combat=true; refresh(); combat=false
+assert(pvpUpdates==1,"combat refresh must update the PvP icon")
 assert(badgeUpdates==1,"combat refresh must update level visibility while skipping geometry")
 print("PASS: protected minimap visibility avoided; mask retries and art updates deferred/coalesced through combat")
