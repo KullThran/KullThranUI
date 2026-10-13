@@ -931,6 +931,25 @@ local function SkinProfessions()
             CraftingPage.RankBar:SetHeight(14)
             if CraftingPage.RankBar.Border then CraftingPage.RankBar.Border:Hide() end
             if CraftingPage.RankBar.Background then CraftingPage.RankBar.Background:Hide() end
+
+            -- RankBar is not a StatusBar: Blizzard draws progress with the Fill texture
+            -- clipped by Mask (it animates Mask's width), so both must stay visible after
+            -- StripTextures and fit inside the 14px skinned bar.
+            local rankBar = CraftingPage.RankBar
+            if rankBar.Fill then
+                local fillWidth = (rankBar:GetWidth() or 453) - 2
+                rankBar.Fill:SetAlpha(1)
+                rankBar.Fill:ClearAllPoints()
+                rankBar.Fill:SetPoint("TOPLEFT", rankBar, "TOPLEFT", 1, -1)
+                rankBar.Fill:SetSize(fillWidth, 12)
+                if rankBar.Mask then
+                    rankBar.Mask:SetAlpha(1)
+                    rankBar.Mask:ClearAllPoints()
+                    rankBar.Mask:SetPoint("LEFT", rankBar.Fill, "LEFT", 0, 0)
+                    rankBar.Mask:SetHeight(12)
+                    if rankBar.ratio then rankBar.Mask:SetWidth(fillWidth * rankBar.ratio) end
+                end
+            end
         end
     end
 
