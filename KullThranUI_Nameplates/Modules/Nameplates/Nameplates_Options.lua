@@ -1465,6 +1465,13 @@ initFrame:SetScript("OnEvent", function(self)
             pip._bg = bg
             CP.pips[i] = pip
         end
+        -- Hides a preview pip with its background, circle ring and pip border.
+        CP.HidePip = function(pip)
+            pip:Hide()
+            if pip._bg then pip._bg:Hide() end
+            if pip._circleBorder then pip._circleBorder:Hide() end
+            if ns.SetClassPowerPipDecor then ns.SetClassPowerPipDecor(pip, false) end
+        end
         -- Bar-type class resource (e.g. stagger) preview
         CP.bar = CreateFrame("StatusBar", nil, pf)
         CP.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
@@ -1618,7 +1625,14 @@ initFrame:SetScript("OnEvent", function(self)
                 if cpPos == "top" then
                     local cpScale = DBVal("classPowerScale") or defaults.classPowerScale
                     local cpYOff  = DBVal("classPowerYOffset") or defaults.classPowerYOffset
-                    cpPush        = CP.PIP_H * cpScale + cpYOff
+                    local pipH    = CP.PIP_H * cpScale
+                    local _, pClass = UnitClass("player")
+                    local cpInfo  = CP.CLASS_MAP[pClass]
+                    if cpInfo and cpInfo[1] == Enum.PowerType.ComboPoints and ns.ClassPowerPipLayout then
+                        local _, lh = ns.ClassPowerPipLayout(true, cpScale, DBVal("classPowerGap") or defaults.classPowerGap)
+                        pipH = lh
+                    end
+                    cpPush        = pipH + cpYOff
                 end
             end
 
@@ -2427,10 +2441,7 @@ initFrame:SetScript("OnEvent", function(self)
 
                 if cpIsBarType then
                     -- Bar-type preview (stagger): single StatusBar
-                    for i = 1, CP.MAX_POSSIBLE do
-                        CP.pips[i]:Hide()
-                        if CP.pips[i]._bg then CP.pips[i]._bg:Hide() end
-                    end
+                    for i = 1, CP.MAX_POSSIBLE do CP.HidePip(CP.pips[i]) end
                     local cpScale = DBVal("classPowerScale") or defaults.classPowerScale
                     local cpYOff  = DBVal("classPowerYOffset") or defaults.classPowerYOffset
                     local cpXOff  = DBVal("classPowerXOffset") or defaults.classPowerXOffset
@@ -2466,10 +2477,7 @@ initFrame:SetScript("OnEvent", function(self)
                         cpExtraH = cpYOff + scaledH
                     end
                 elseif cpMax <= 0 then
-                    for i = 1, CP.MAX_POSSIBLE do
-                        CP.pips[i]:Hide()
-                        if CP.pips[i]._bg then CP.pips[i]._bg:Hide() end
-                    end
+                    for i = 1, CP.MAX_POSSIBLE do CP.HidePip(CP.pips[i]) end
                     CP.bar:Hide()
                 else
                     CP.bar:Hide()
@@ -2478,9 +2486,15 @@ initFrame:SetScript("OnEvent", function(self)
                     local cpXOff    = DBVal("classPowerXOffset") or defaults.classPowerXOffset
                     local cpPos     = DBVal("classPowerPos") or defaults.classPowerPos
                     local cpGap     = DBVal("classPowerGap") or defaults.classPowerGap
-                    local scaledW   = Snap(CP.PIP_W * cpScale)
-                    local scaledH   = Snap(CP.PIP_H * cpScale)
-                    local scaledGap = Snap(cpGap * cpScale)
+                    -- Same size, spacing, shape and colours as the real plates
+                    local isCombo = cpInfo and cpInfo[1] == Enum.PowerType.ComboPoints
+                    local lw, lh, lg, cpRound, cpComboCol = CP.PIP_W * cpScale, CP.PIP_H * cpScale, cpGap * cpScale, false, false
+                    if ns.ClassPowerPipLayout then
+                        lw, lh, lg, cpRound, cpComboCol = ns.ClassPowerPipLayout(isCombo, cpScale, cpGap)
+                    end
+                    local scaledW   = Snap(lw)
+                    local scaledH   = Snap(lh)
+                    local scaledGap = Snap(lg)
                     local totalPipW = cpMax * scaledW + (cpMax - 1) * scaledGap
 
                     -- Determine anchor frame and direction
@@ -2520,25 +2534,36 @@ initFrame:SetScript("OnEvent", function(self)
                             pip:SetPoint(leftAnchor, anchorFrame, anchorRelPoint,
                                 pipLeftX, Snap(yDir * cpYOff))
 
+                            if ns.ApplyClassPowerPipShape then ns.ApplyClassPowerPipShape(pip, cpRound) end
+
                             -- Background behind each pip
                             local bg = pip._bg
                             if bg then
                                 bg:ClearAllPoints()
                                 bg:SetAllPoints(pip)
-                                bg:SetColorTexture(cpBgCol.r, cpBgCol.g, cpBgCol.b, cpBgCol.a)
+                                if cpComboCol then
+                                    bg:SetColorTexture(0.22, 0.02, 0.02, cpBgCol.a)
+                                else
+                                    bg:SetColorTexture(cpBgCol.r, cpBgCol.g, cpBgCol.b, cpBgCol.a)
+                                end
                                 bg:Show()
                             end
 
                             if i <= cpCur then
-                                pip:SetColorTexture(cpColor[1], cpColor[2], cpColor[3], 1)
+                                if cpComboCol then
+                                    pip:SetColorTexture(1.0, 0.05, 0.05, 1)
+                                else
+                                    pip:SetColorTexture(cpColor[1], cpColor[2], cpColor[3], 1)
+                                end
+                            elseif cpComboCol then
+                                pip:SetColorTexture(0.22, 0.02, 0.02, cpEmptyCol.a)
                             else
                                 pip:SetColorTexture(cpEmptyCol.r, cpEmptyCol.g, cpEmptyCol.b, cpEmptyCol.a)
                             end
                             UnsnapTex(pip)
                             pip:Show()
                         else
-                            pip:Hide()
-                            if pip._bg then pip._bg:Hide() end
+                            CP.HidePip(pip)
                         end
                     end
                     -- Extra height only when pips are below the cast bar
@@ -2547,10 +2572,7 @@ initFrame:SetScript("OnEvent", function(self)
                     end
                 end
             else
-                for i = 1, CP.MAX_POSSIBLE do
-                    CP.pips[i]:Hide()
-                    if CP.pips[i]._bg then CP.pips[i]._bg:Hide() end
-                end
+                for i = 1, CP.MAX_POSSIBLE do CP.HidePip(CP.pips[i]) end
                 CP.bar:Hide()
             end
 
