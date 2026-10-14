@@ -292,7 +292,7 @@ local CATEGORY_ICONS = {
     automation = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Automation&Social.tga",
     interface = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Interface&Combat.tga",
     system = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\SystemTuning.tga",
-    afk = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png",
+    afk = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIAFK.png",
 }
 
 local CATEGORY_ICON_COLORS = {

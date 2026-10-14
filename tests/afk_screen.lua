@@ -15,6 +15,8 @@ local function Widget()
         if k == "GetWidth" then return function() return 1920 end end
         if k == "GetHeight" then return function() return 1080 end end
         if k == "GetEffectiveScale" then return function() return 1 end end
+        if k == "GetFrameLevel" then return function(self) return rawget(self, "level") or 1 end end
+        if k == "SetFrameLevel" then return function(self, v) self.level = v end end
         if k == "SetScript" then return function(self, name, fn) self[name] = fn end end
         if k == "RegisterEvent" then return function(self, e) self.events[e] = true end end
         if k == "UnregisterEvent" then return function(self, e) self.events[e] = nil end end
@@ -63,6 +65,9 @@ driver.OnEvent(driver, "PLAYER_FLAGS_CHANGED", "player")
 local screen = frames.KullThranUIAFKFrame
 assert(screen and screen.shown and not uiParent.shown and spinning, "AFK flag shows the screen")
 assert(screen.chat.events.CHAT_MSG_WHISPER, "AFK chat listens to whispers")
+local logoLevel
+for _, frame in ipairs(frames) do logoLevel = rawget(frame, "level") or logoLevel end
+assert(logoLevel and logoLevel > screen.bar:GetFrameLevel(), "logo draws above the bottom bar")
 
 screen.OnKeyDown(screen, "W")
 assert(not screen.shown and uiParent.shown and not spinning, "a key press restores the UI")

@@ -23,8 +23,8 @@ local format = string.format
 
 local CAMERA_SPEED = 0.035
 local DEFAULT_FONT = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
--- White KUI logo, tinted with the active style accent (same art Unlock Mode uses).
-local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png"
+-- White "AFK" version of the KUI claw logo, tinted with the active style accent.
+local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIAFK.png"
 
 -- Same animation set ElvUI uses; facing/idle values keep the model looking at the camera.
 Mod.AFK_ANIMATIONS = {
@@ -191,8 +191,12 @@ local function BuildUI()
         fs:SetJustifyH("LEFT")
     end
 
-    -- Bottom-centre, rising out of the info bar like ElvUI's logo.
-    f.logo = f:CreateTexture(nil, "OVERLAY")
+    -- Bottom-centre, rising out of the info bar like ElvUI's logo. It lives on
+    -- its own frame above the bar so the bar background never covers it.
+    local logoFrame = CreateFrame("Frame", nil, f)
+    logoFrame:SetAllPoints(f)
+    logoFrame:SetFrameLevel(bar:GetFrameLevel() + 20)
+    f.logo = logoFrame:CreateTexture(nil, "OVERLAY")
     f.logo:SetPoint("BOTTOM", bar, "BOTTOM", 0, 8)
     f.logo:SetTexture(LOGO_TEXTURE)
 
