@@ -23,8 +23,8 @@ local format = string.format
 
 local CAMERA_SPEED = 0.035
 local DEFAULT_FONT = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
--- White "AFK" version of the KUI claw logo, tinted with the active style accent.
-local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIAFK.png"
+-- White KUI logo, tinted with the active style accent (same art Unlock Mode uses).
+local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png"
 
 -- Same animation set ElvUI uses; facing/idle values keep the model looking at the camera.
 Mod.AFK_ANIMATIONS = {
