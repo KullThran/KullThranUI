@@ -171,6 +171,28 @@ local function StyleText(frame)
     end
 end
 
+-- Same KUI artwork as the Settings window (S:ApplyKuiSurface): the shared
+-- surface texture at the window alpha under the default dark wash. Both layers
+-- are marked as popup art so the strip passes never fade them.
+local function ApplyPopupArtwork(frame, anchor, color)
+    if not (KT and KT.ApplyTexturedSurface) then return false end
+    local artwork, wash = KT:ApplyTexturedSurface(frame, color)
+    if not artwork then return false end
+    for _, tex in ipairs({ artwork, wash }) do
+        tex._ktKuiPopupArt = true
+        tex:ClearAllPoints()
+        tex:SetAllPoints(anchor or frame)
+    end
+    frame._ktPopupArtwork = artwork
+    frame._ktPopupWash = wash
+    return true
+end
+
+local function HidePopupArtwork(frame)
+    if frame._ktPopupArtwork then frame._ktPopupArtwork:Hide() end
+    if frame._ktPopupWash then frame._ktPopupWash:Hide() end
+end
+
 local function EnsureSurface(frame, opts)
     if not frame then return end
     opts = opts or {}
@@ -290,8 +312,14 @@ RefreshSurface = function(frame)
         backgroundAlpha = 1
     end
     bg:SetColorTexture(bgR, bgG, bgB, backgroundAlpha)
+    -- Queue-ready dialogs keep their dungeon illustration on the solid shade.
+    -- Every other popup gets the Settings artwork and, like S:ApplyKuiSurface,
+    -- hides the flat fill behind it.
+    local textured = not opts.solidBackground and ApplyPopupArtwork(frame, bg, windowColor)
+    if not textured then HidePopupArtwork(frame) end
+    bg:SetAlpha(textured and 0 or 1)
     if frame.SetBackdropColor then
-        frame:SetBackdropColor(bgR, bgG, bgB, backgroundAlpha)
+        frame:SetBackdropColor(bgR, bgG, bgB, textured and 0 or backgroundAlpha)
     end
     if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(ar, ag, ab, opts.borderAlpha or 0.90) end
 
@@ -514,20 +542,20 @@ local function StyleButton(button, role)
 
 
     if not button._ktPopupEnabledHooks then
+        -- Blizzard toggles these buttons from StaticPopup_Show and the queue/
+        -- death dialogs' OnShow. Repaint on the next frame, never inside that
+        -- secure call, for the same reason as ReskinStaticPopup below.
+        local function QueueRefresh()
+            C_Timer.After(0, function() RefreshButtonArt(button, false) end)
+        end
         if button.Enable then
-            hooksecurefunc(button, "Enable", function()
-                RefreshButtonArt(button, false)
-            end)
+            hooksecurefunc(button, "Enable", QueueRefresh)
         end
         if button.Disable then
-            hooksecurefunc(button, "Disable", function()
-                RefreshButtonArt(button, false)
-            end)
+            hooksecurefunc(button, "Disable", QueueRefresh)
         end
         if button.SetEnabled then
-            hooksecurefunc(button, "SetEnabled", function()
-                RefreshButtonArt(button, false)
-            end)
+            hooksecurefunc(button, "SetEnabled", QueueRefresh)
         end
         -- StaticPopup can receive its final enabled state a frame after OnShow.
         -- Recheck while visible so the death button never relies on mouse-over
@@ -1560,6 +1588,7 @@ local function EnsureReadyCheckSurface(frame, shown)
     if shown == false then
 
         if background then background:Hide() end
+        HidePopupArtwork(frame)
 
         return
 
@@ -1586,6 +1615,9 @@ local function EnsureReadyCheckSurface(frame, shown)
         windowColor[4] or 0.98
     )
     background:Show()
+    -- Same Settings artwork as the other popups; the flat fill only remains
+    -- visible when the shared surface helper is unavailable.
+    background:SetAlpha(ApplyPopupArtwork(frame, frame, windowColor) and 0 or 1)
 
 
 
@@ -2124,13 +2156,20 @@ local function SkinAllStaticPopups()
         end
     end
 end
+-- Same rule as ReskinStaticPopup: these dialogs are shown by Blizzard's
+-- queue, death and resurrect flows, so their OnShow hook only schedules work.
+local function ReskinNamedDialog(frame)
+    if not frame then return end
+    C_Timer.After(0, function() SkinNamedDialog(frame) end)
+end
+
 local function SkinAllNamedDialogs()
     for _, name in ipairs(NAMED_DIALOGS) do
         local frame = _G[name]
         if frame then
             SkinNamedDialog(frame)
             if not frame._ktPopupOnShowHooked then
-                frame:HookScript("OnShow", SkinNamedDialog)
+                frame:HookScript("OnShow", ReskinNamedDialog)
                 frame._ktPopupOnShowHooked = true
             end
         end
@@ -2147,7 +2186,6 @@ local function SkinPopups()
     for _, frame in ipairs({ _G.LFGDungeonReadyDialog, _G.LFGDungeonReadyPopup }) do
         if frame and not frame._ktLFGRoleIconOnShowHooked then
             frame:HookScript("OnShow", function(self)
-                RestoreLFGProposalRoleIcon(self)
                 C_Timer.After(0, function() RestoreLFGProposalRoleIcon(self) end)
                 C_Timer.After(0.05, function() RestoreLFGProposalRoleIcon(self) end)
                 C_Timer.After(0.20, function() RestoreLFGProposalRoleIcon(self) end)
@@ -2165,8 +2203,11 @@ local function SkinPopups()
             C_Timer.After(0.20, function() StyleReadyCheckFrame(readyCheckFrame) end)
         end)
         readyCheckFrame:HookScript("OnHide", function(self)
-            self._ktReadyCheckInitiator = nil
-            HideReadyCheckPromptArt(self)
+            C_Timer.After(0, function()
+                if self:IsShown() then return end
+                self._ktReadyCheckInitiator = nil
+                HideReadyCheckPromptArt(self)
+            end)
         end)
         readyCheckFrame._ktReadyCheckOnShowHooked = true
     end

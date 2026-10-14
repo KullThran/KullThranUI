@@ -252,7 +252,7 @@ local function SetSystemSectionState(key, value)
     db.ui.activeEnhancementSystemSection = value and key or nil
 end
 
-local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "system" }
+local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "afk", "system" }
 
 local CATEGORY_META = {
     instance = {
@@ -275,6 +275,10 @@ local CATEGORY_META = {
         title = LText("Interface & Comfort"),
         description = LText("Visual cleanup, text sizing, and general comfort options for the client UI."),
     },
+    afk = {
+        title = LText("AFK Screen"),
+        description = LText("What you see while away: character model, info bar, accent logo and whispers."),
+    },
     system = {
         title = LText("System Tuning"),
         description = LText("Performance presets, graphics CVars, spell queue tuning, and live diagnostics."),
@@ -288,6 +292,7 @@ local CATEGORY_ICONS = {
     automation = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Automation&Social.tga",
     interface = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Interface&Combat.tga",
     system = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\SystemTuning.tga",
+    afk = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\AFK.tga",
 }
 
 local CATEGORY_ICON_COLORS = {
@@ -297,6 +302,7 @@ local CATEGORY_ICON_COLORS = {
     automation = { 0.20, 1.00, 0.35 }, -- green
     interface = { 0.20, 0.55, 1.00 }, -- blue
     system = { 1.00, 1.00, 1.00 }, -- white
+    afk = { 1.00, 0.55, 0.10 }, -- orange
 }
 
 local CATEGORY_BUTTON_WIDTH = 198
@@ -2288,6 +2294,87 @@ local function BuildSystemAccordion(parent, W, db, startY)
     return y
 end
 
+local function BuildAFKScreenBlock(container, W, db)
+    local afk = Mod.GetAFKConfig and Mod:GetAFKConfig()
+    if not afk then return 0 end
+    local function Toggle(label, key)
+        return { label = label, get = function() return afk[key] ~= false end, set = function(v) afk[key] = v and true or false end }
+    end
+    local y = AddToggleList(container, W, {
+        Toggle(LText("Enable AFK Screen"), "enabled"),
+        Toggle(LText("Camera Spin"), "spin"),
+        Toggle(LText("Show Character Model"), "showModel"),
+        Toggle(LText("Show Whispers and Guild Chat"), "showChat"),
+        Toggle(LText("Show Logo"), "showLogo"),
+        Toggle(LText("Show Faction Icon"), "showFaction"),
+        Toggle(LText("Show Guild"), "showGuild"),
+        Toggle(LText("Show AFK Time"), "showTimer"),
+        Toggle(LText("Class Colored Name"), "classColorName"),
+    })
+    local h
+
+    local animations, animationOrder = {}, {}
+    for _, anim in ipairs(Mod.AFK_ANIMATIONS or {}) do
+        animations[anim.key] = LText(anim.label)
+        animationOrder[#animationOrder + 1] = anim.key
+    end
+    _, h = W:Dropdown(container, LText("Idle Animation"), -y, animations,
+        function() return afk.animation or "dance" end,
+        function(value) afk.animation = value; Refresh() end,
+        animationOrder)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Logo Size"), -y,
+        function() return tonumber(afk.logoSize) or 260 end,
+        function(v) afk.logoSize = math.floor(v + 0.5); Refresh() end,
+        60, 300, 5)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Logo Opacity"), -y,
+        function() return tonumber(afk.logoAlpha) or 0.9 end,
+        function(v) afk.logoAlpha = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.1, 1, 0.05)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Model Scale"), -y,
+        function() return tonumber(afk.modelScale) or 1 end,
+        function(v) afk.modelScale = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.5, 2, 0.05)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Bottom Bar Height"), -y,
+        function() return tonumber(afk.barHeight) or 10 end,
+        function(v) afk.barHeight = math.floor(v + 0.5); Refresh() end,
+        6, 20, 1)
+    y = y + h
+
+    _, h = W:Slider(container, LText("AFK Font Size"), -y,
+        function() return tonumber(afk.fontSize) or 20 end,
+        function(v) afk.fontSize = math.floor(v + 0.5); Refresh() end,
+        12, 32, 1)
+    y = y + h
+
+    _, h = W:ColorSwatch(container, LText("Bottom Bar Color"), -y,
+        function()
+            local c = afk.barColor or { r = 0.02, g = 0.02, b = 0.03, a = 0.85 }
+            return c.r or 0.02, c.g or 0.02, c.b or 0.03, c.a or 0.85
+        end,
+        function(r, g, b, a)
+            afk.barColor = { r = r, g = g, b = b, a = a or 1 }
+            Refresh()
+        end)
+    y = y + h
+
+    _, h = W:Button(container, LText("Preview AFK Screen"), -y,
+        function() if Mod.PreviewAFKScreen then Mod:PreviewAFKScreen() end end)
+    y = y + h
+
+    _, h = W:Label(container, LText("Shown when you are flagged AFK. Press any key to leave it; combat, group finder and battleground invites close it too."), -y, 11)
+    y = y + h
+
+    return y
+end
+
 local function BuildMythicPlusHistoryBlock(container, W, db)
     local history = Mod.MythicPlusHistory
     if not history then return 0 end
@@ -2357,6 +2444,9 @@ local CATEGORY_SECTIONS = {
     },
     system = {
     },
+    afk = {
+        { column = "left", title = LText("AFK Screen"), build = BuildAFKScreenBlock },
+    },
 }
 
 CATEGORY_SECTIONS.interface[#CATEGORY_SECTIONS.interface + 1] = {
@@ -2378,6 +2468,13 @@ local function BuildActiveCategory(parent, W, db)
 
     if activeKey == "system" then
         return BuildSystemAccordion(parent, W, db, y)
+    end
+
+    if activeKey == "afk" and CreateOptionBlock and FinalizeOptionBlock then
+        -- Single full-width block: half-width columns made the sliders too cramped.
+        local frame, content = CreateOptionBlock(parent, LText("AFK Screen"), 10, -y, math.max(280, parent:GetWidth() - 36))
+        local totalHeight = FinalizeOptionBlock(frame, content, BuildAFKScreenBlock(content, W, db))
+        return y + totalHeight + 14
     end
 
     if (activeKey == "damage" or activeKey == "timer") and CreateOptionBlock and FinalizeOptionBlock then

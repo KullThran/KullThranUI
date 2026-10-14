@@ -470,6 +470,14 @@ function KT.VisualThemes:ResetComboDefaults()
         local MM = KT.GetModule and KT:GetModule("Minimap", true)
         if MM and MM.Refresh then pcall(MM.Refresh, MM) end
     end
+    -- Party Frames: selecting a theme drops a style picked on the Party
+    -- Frames page, so the frames follow the chosen Visual Style again.
+    local pf = KT.db and KT.db.profile and KT.db.profile.partyFrames
+    if type(pf) == "table" and pf.partyFrameStyle ~= nil then
+        pf.partyFrameStyle = nil
+        local PF = KT.GetModule and KT:GetModule("PartyFrames", true)
+        if PF and PF.RefreshAll and not (InCombatLockdown and InCombatLockdown()) then pcall(PF.RefreshAll, PF) end
+    end
     local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
     if type(uf) ~= "table" then return end
     uf.comboUnderFrame = nil

@@ -306,6 +306,28 @@ function ns.RefreshGroupLeaderStyle(frame, unit, guide)
         frame.Portrait and frame.Portrait.backdrop, scale, guide)
 end
 
+-- Blizzard-art styles centre the raid marker on the portrait's top edge, as
+-- the stock Target/Player frames do; below the health bar it covers the power
+-- bar. The KUI style and portrait-less frames keep it under the health bar.
+function ns.RefreshRaidTargetAnchor(frame)
+    local tex = frame and frame.RaidTargetIndicator
+    if not tex then return false end
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+        and KT.VisualThemes:GetRenderedTheme()
+    local portrait = frame.Portrait and frame.Portrait.backdrop
+    local scale = (frame.GetWidth and frame:GetWidth() or 232) / 232
+    if scale <= 0 then scale = 1 end
+    tex:ClearAllPoints()
+    if theme and theme ~= "kui" and portrait and portrait:IsShown() then
+        tex:SetSize(24 * scale, 24 * scale)
+        tex:SetPoint("CENTER", portrait, "TOP", 0, 2 * scale)
+        return true
+    end
+    tex:SetSize(18, 18)
+    tex:SetPoint("TOP", frame.Health, "BOTTOM", 0, -2)
+    return true
+end
+
 function ns.UnitInCombat(unit)
     return ns.SafeCall(UnitAffectingCombat, unit) and true or false
 end
@@ -1704,6 +1726,9 @@ local function SetFSFont(fs, size, flags)
   end
   local f = flags or (Compat and Compat.GetFontOutlineFlag and Compat.GetFontOutlineFlag()) or ""
   local fontPath = GetSelectedFont()
+  -- This is the profile's own size: the stock styles rescale from it, so
+  -- their cached bases must follow a changed Text Size.
+  fs._ktStockBaseFontSize, fs._ktStockFitBaseFontSize, fs._ktForeverFitBaseFontSize = nil, nil, nil
   fs:SetFont(fontPath, size or 12, f)
   if KT and KT.EnableTextFontFallback then
     KT:EnableTextFontFallback(fs, fontPath)
@@ -3149,8 +3174,15 @@ local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
     -- player's mirror. A hidden model is only an ID probe; it never renders
     -- a replacement portrait or changes the 3D camera.
     local explicit = settings and settings.portraitFacingMode
-    if unit == "target" and not fullTexture and explicit ~= "normal" and explicit ~= "flipped"
-        and KT.PortraitMirrorModels and CreateFrame and UnitGUID then
+    -- A self-target already mirrors the player's resolved humanoid/form
+    -- facing; the model list can miss the player's own race.
+    local selfTarget = false
+    if unit == "target" and UnitIsUnit then
+        local ok, same = pcall(UnitIsUnit, "target", "player")
+        selfTarget = ok and not (issecretvalue and issecretvalue(same)) and same == true
+    end
+    if unit == "target" and not fullTexture and not selfTarget and explicit ~= "normal" and explicit ~= "flipped"
+        and KT.IsPortraitMirrorModel and CreateFrame and UnitGUID then
         local ok, guid = pcall(UnitGUID, unit)
         if ok and guid and not (issecretvalue and issecretvalue(guid)) then
             local probe = tex._ktFacingProbe
@@ -3179,7 +3211,7 @@ local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
             end
             local loaded, id = pcall(probe.GetModelFileID, probe)
             if loaded and type(id) == "number" and not (issecretvalue and issecretvalue(id)) and id > 0 then
-                facing = KT.PortraitMirrorModels[id] and "flipped" or "normal"
+                facing = KT.IsPortraitMirrorModel(id) and "flipped" or "normal"
             end
         end
     end
@@ -5404,13 +5436,26 @@ do
         texts.holder:SetFrameLevel(level + 2)
 
         local path, size, flags = ns.BlizzardFont("TextStatusBarText", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        -- Health Text and Text Size still apply: "both" (the default) keeps
+        -- Classic's "516/553 (93%)", any other choice uses its own format.
+        local settings = db and db.profile and db.profile[unit]
+        local display = type(settings) == "table" and settings.healthDisplay or nil
+        local hpTag = layout.hp
+        if display and display ~= "both" then
+            hpTag = display ~= "none" and ContentToTag(display) or nil
+        end
+        local textFactor = KT.VisualThemes and KT.VisualThemes.GetUnitTextSizeFactor
+            and KT.VisualThemes:GetUnitTextSizeFactor(frame, unit) or 1
         local bars = { hp = frame.Health, hpPct = frame.Health, pp = frame.Power, ppPct = frame.Power }
         for key, fs in pairs(texts.fs) do
             local tag = layout[key]
+            if key == "hp" then tag = hpTag end
             local bar = bars[key]
             if tag and bar and not (bar.IsShown and not bar:IsShown()) then
                 local barH = bar.GetHeight and bar:GetHeight() or 12
-                fs:SetFont(path, math.max(6, math.min(size, barH * CLASSIC_STATUS_TEXT_RATIO)), flags)
+                local textSize = math.min(size, barH * CLASSIC_STATUS_TEXT_RATIO)
+                if key == "hp" or key == "hpPct" then textSize = textSize * textFactor end
+                fs:SetFont(path, math.max(6, textSize), flags)
                 fs:SetTextColor(1, 1, 1, 1)
                 fs:SetShadowColor(0, 0, 0, 1)
                 fs:SetShadowOffset(1, -1)
@@ -5422,9 +5467,11 @@ do
                     fs:SetPoint("CENTER", bar, "CENTER", 0, 0)
                     fs:SetJustifyH("CENTER")
                 end
-                if fs._curTag ~= "[" .. tag .. "]" then
+                -- Classic tags are bare names; Health Text choices are full tag strings.
+                local fullTag = tag:find("[", 1, true) and tag or ("[" .. tag .. "]")
+                if fs._curTag ~= fullTag then
                     if fs._curTag then frame:Untag(fs) end
-                    fs._curTag = "[" .. tag .. "]"
+                    fs._curTag = fullTag
                     frame:Tag(fs, fs._curTag)
                 end
                 fs:Show()
@@ -6503,6 +6550,7 @@ local function SetupUnitIndicators(frame, unit)
         else
             ns.RefreshGroupLeaderStyle(frame, u)
         end
+        ns.RefreshRaidTargetAnchor(frame)
         local portraitRing = frame._kuiClassificationPortraitRing
         if portraitBackdrop and not portraitRing then
             -- Keep the normal portrait border and render classification outside it.
@@ -7116,6 +7164,7 @@ local function SetupUnitIndicators(frame, unit)
         -- away from the resting/status icons that occupy the upper-left corner.
         tex:SetPoint("TOP", health, "BOTTOM", 0, -2)
         tex:Hide()
+        tex.PostUpdate = function() ns.RefreshRaidTargetAnchor(frame) end
         frame.RaidTargetIndicator = tex
     end
 

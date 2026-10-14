@@ -1376,6 +1376,18 @@ function UM:GetElementRect(key)
         return left, top, max(right - left, width), max(top - bottom, height)
     end
 
+    -- A hidden element (oUF Focus / Focus Target with no unit) has no rect, so
+    -- the mover is rebuilt from data. A pending drag must win over the saved
+    -- position (otherwise the mover snaps back on every Sync while the frame
+    -- has moved), and its offsets are in the frame's own scale, not UI units.
+    local pending = self.pendingPositions and self.pendingPositions[key]
+    if pending and pending.point then
+        local scaled = CopyPosition(pending)
+        scaled.x = (pending.x or 0) * moverScale
+        scaled.y = (pending.y or 0) * moverScale
+        return BoundsFromStoredPosition(scaled, width, height)
+    end
+
     local stored = self:LoadElementPosition(key)
     if stored then
         return BoundsFromStoredPosition(stored, width, height)
@@ -2861,6 +2873,10 @@ function UM:ResetMover(key)
 
     local def = self:GetElementDef(key)
     local handled = false
+
+    -- Drop the pending drag first: Unit Frames skip ApplyFramePosition while a
+    -- pending position exists, so the reset would not move the frame.
+    self.pendingPositions[key] = nil
 
     -- Elements that persist into their own module store (Unit Frames) expose a
     -- resetPosition hook: it drops the user override and re-applies the shipped

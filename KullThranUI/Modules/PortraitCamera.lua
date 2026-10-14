@@ -3,6 +3,62 @@ KT.PortraitMirrorModels = {
     [118355] = true, [118135] = true, [1838560] = true, [1838562] = true, [878772] = true, [950080] = true, [116921] = true, [1100258] = true, [1839709] = true, [117170] = true, [1100087] = true, [1853408] = true, [1890763] = true, [1892825] = true, [1890765] = true, [1892543] = true, [117437] = true, [1022598] = true, [1822372] = true, [117721] = true, [1005887] = true, [1839253] = true, [119063] = true, [940356] = true, [1838564] = true, [119159] = true, [900914] = true, [1838566] = true, [119369] = true, [1838568] = true, [119376] = true, [1838570] = true, [1630402] = true, [1859379] = true, [1630218] = true, [1858265] = true, [119563] = true, [1000764] = true, [1838572] = true, [1842700] = true, [119940] = true, [1011653] = true, [1838385] = true, [1886724] = true, [1721003] = true, [1593999] = true, [1825438] = true, [1620605] = true, [1839042] = true, [2564806] = true, [2622502] = true, [1810676] = true, [1858099] = true, [1814471] = true, [1857801] = true, [120590] = true, [921844] = true, [1838574] = true, [120791] = true, [974343] = true, [1838576] = true, [121087] = true, [949470] = true, [1838580] = true, [121287] = true, [917116] = true, [1838578] = true, [1968587] = true, [1968838] = true, [1087591] = true, [1088030] = true, [589715] = true, [1853610] = true, [535052] = true, [1853956] = true, [121608] = true, [997378] = true, [1838582] = true, [121768] = true, [959310] = true, [1838584] = true, [121961] = true, [986648] = true, [1839008] = true, [122055] = true, [968705] = true, [1838586] = true, [122414] = true, [1018060] = true, [1838588] = true, [122560] = true, [1022938] = true, [1838590] = true, [1733758] = true, [1859345] = true, [1734034] = true, [1858367] = true, [1890759] = true, [1890761] = true, [307453] = true, [1838201] = true, [307454] = true, [1838592] = true, [1662187] = true, [1894572] = true, [1630447] = true, [1900779] = true, [4395382] = true, [4207724] = true, [4220448] = true, [7478494] = true, [7478487] = true
 }
 
+-- Player-race models missing from the list above (new races, model swaps)
+-- still need the humanoid mirror. The player's own caster-form model is a
+-- known humanoid, so its file ID is learned for this session.
+KT.PortraitLearnedMirrorModels = KT.PortraitLearnedMirrorModels or {}
+function KT.IsPortraitMirrorModel(id)
+    if type(id) ~= "number" or (issecretvalue and issecretvalue(id)) then return false end
+    return (KT.PortraitMirrorModels[id] or KT.PortraitLearnedMirrorModels[id]) and true or false
+end
+
+local function PlayerWearsOwnModel()
+    local ok, _, class = pcall(UnitClass, "player")
+    if not ok or (issecretvalue and issecretvalue(class)) then return false end
+    if (class == "DRUID" or class == "SHAMAN") and GetShapeshiftFormID then
+        local read, form = pcall(GetShapeshiftFormID)
+        if not read or (issecretvalue and issecretvalue(form)) or form ~= nil then return false end
+    end
+    if UnitHasVehicleUI then
+        local read, vehicle = pcall(UnitHasVehicleUI, "player")
+        if not read or (issecretvalue and issecretvalue(vehicle)) or vehicle then return false end
+    end
+    return true
+end
+
+local function LearnPlayerModel(probe)
+    if not PlayerWearsOwnModel() then return end
+    local ok, id = pcall(probe.GetModelFileID, probe)
+    if not ok or type(id) ~= "number" or (issecretvalue and issecretvalue(id)) or id <= 0 then return end
+    if KT.IsPortraitMirrorModel(id) then return end
+    KT.PortraitLearnedMirrorModels[id] = true
+    local targetFrame = _G.KullThranUI_UF_Target
+    local portrait = targetFrame and targetFrame.Portrait
+    if portrait and portrait.ForceUpdate then pcall(portrait.ForceUpdate, portrait) end
+end
+
+if CreateFrame then
+    local learner = CreateFrame("Frame")
+    local probe
+    local function Probe()
+        if not PlayerWearsOwnModel() then return end
+        if not probe then
+            probe = CreateFrame("PlayerModel", nil, UIParent)
+            probe:SetSize(32, 32)
+            if probe.SetKeepModelOnHide then probe:SetKeepModelOnHide(true) end
+            probe:Hide()
+            probe:SetScript("OnModelLoaded", LearnPlayerModel)
+        end
+        probe:ClearModel()
+        probe:SetUnit("player")
+        LearnPlayerModel(probe)
+    end
+    learner:RegisterEvent("PLAYER_ENTERING_WORLD")
+    learner:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+    if learner.RegisterUnitEvent then learner:RegisterUnitEvent("UNIT_MODEL_CHANGED", "player") end
+    learner:SetScript("OnEvent", function() pcall(Probe) end)
+end
+
 function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation, model)
     local lookRight
     if facingMode == "normal" then
@@ -51,7 +107,7 @@ function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation, model)
         yaw, viewShift = 0, 0
     elseif model and model.GetModelFileID then
         local ok, id = pcall(model.GetModelFileID, model)
-        if not ok or (issecretvalue and issecretvalue(id)) or not KT.PortraitMirrorModels[id] then
+        if not ok or (issecretvalue and issecretvalue(id)) or not KT.IsPortraitMirrorModel(id) then
             yaw, viewShift = 0, 0
         end
     end

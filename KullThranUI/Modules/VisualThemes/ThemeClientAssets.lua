@@ -248,12 +248,14 @@ end
 --- from the generic text pass are held to that look while it is active, but
 --- a smaller size (fitting a long name into the tab) is still allowed.
 --- Turned off with unitFrames.blizzardNameStyle = false.
-function KT.VisualThemes:ApplyBlizzardBarText(fs, scale, maxHeight, fontName)
+function KT.VisualThemes:ApplyBlizzardBarText(fs, scale, maxHeight, fontName, sizeFactor)
     if type(fs) ~= "table" or not fs.SetFont then return end
     fs._ktBlizzName = nil
     local path, size, flags = self:GetNativeStockFont(fontName or "TextStatusBarText", "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     size = size * scale
     if maxHeight then size = math.min(size, maxHeight * 0.9) end
+    -- Unit Frames "Text Size" (14 = native Blizzard size) scales the bar text.
+    size = size * (sizeFactor or 1)
     fs._ktBlizzBar = { path = path, size = math.max(6, size), flags = flags }
     if not fs._ktBlizzBarHook and hooksecurefunc then
         fs._ktBlizzBarHook = true
@@ -273,6 +275,18 @@ function KT.VisualThemes:ApplyBlizzardBarText(fs, scale, maxHeight, fontName)
     if fs.SetTextColor then fs:SetTextColor(1, 1, 1, 1) end
     if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, 1) end
     if fs.SetShadowOffset then fs:SetShadowOffset(scale, -scale) end
+end
+
+--- The Unit Frames "Text Size" setting relative to its default (14), so the
+--- stock styles keep the native Blizzard size until the player changes it.
+function KT.VisualThemes:GetUnitTextSizeFactor(frame, unit)
+    local health = type(frame) == "table" and frame.Health
+    local key = (health and health._kuiUnitKey) or unit
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    local settings = uf and type(key) == "string" and uf[key]
+    local size = type(settings) == "table" and tonumber(settings.textSize)
+    if not size or size <= 0 then return 1 end
+    return size / 14
 end
 
 -- GameFontNormalSmall is a font FAMILY: Blizzard draws Korean and Chinese
@@ -797,8 +811,20 @@ end
 function KT.VisualThemes:UpdateUnitFrameNameReaction(frame, unit)
     local strip = frame._ktNameReaction
     if not strip then return end
-    if unit == "player" or not frame._ktNameReactionActive or (self.GetRenderedTheme and self:GetRenderedTheme() == "kui") then
+    if not frame._ktNameReactionActive or (self.GetRenderedTheme and self:GetRenderedTheme() == "kui") then
         strip:Hide()
+        return
+    end
+    if unit == "player" then
+        -- Classic Player: only a non-class (green) health bar tints the name
+        -- window, with the class colour; otherwise it stays native.
+        local cr, cg, cb
+        if self.GetRenderedTheme and self:GetRenderedTheme() == "classic" then
+            cr, cg, cb = self:GetClassicNameClassColor(frame, unit)
+        end
+        if not cr then strip:Hide(); return end
+        strip:SetVertexColor(cr, cg, cb, 1)
+        strip:Show()
         return
     end
     local modern = self.GetRenderedTheme and (self:GetRenderedTheme() == "retail" or self:GetRenderedTheme() == "forever")
@@ -871,13 +897,19 @@ function KT.VisualThemes:UpdateUnitFrameNameReaction(frame, unit)
         elseif reaction == 3 then r, g, b = 1, 0.5, 0
         else r, g, b = 1, 0, 0 end
     end
+    -- Classic: with a non-class (green) health bar the class colour moves
+    -- to the name background; class-coloured health keeps the reaction.
+    if classic then
+        local cr, cg, cb = self:GetClassicNameClassColor(frame, unit)
+        if cr then r, g, b = cr, cg, cb end
+    end
     -- The texture carries its native shading; do not dim it with vertex alpha.
     strip:SetVertexColor(r, g, b, 1)
     strip:Show()
 end
 
 function KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, host, unit, geom, scale, shift, extension, preview)
-    if unit == "player" then
+    if unit == "player" and not (self.GetRenderedTheme and self:GetRenderedTheme() == "classic") then
         frame._ktNameReactionActive = nil
         if frame._ktNameReaction then frame._ktNameReaction:Hide() end
         return
@@ -904,13 +936,18 @@ function KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, host, unit, geom,
     end
     -- The mirrored Player artwork has a grey name panel. Tint its interior
     -- above that panel, with a one-pixel inset to preserve the native rim.
-    if strip.SetDrawLayer then strip:SetDrawLayer("ARTWORK", -7) end
+    -- Classic's name window is a hole in the frame art: like FrameXML's
+    -- NameBackground it sits beneath the art and fills the whole hole.
+    if strip.SetDrawLayer then
+        if modern then strip:SetDrawLayer("ARTWORK", -7) else strip:SetDrawLayer("BACKGROUND", -8) end
+    end
     strip:SetBlendMode("BLEND")
     if strip.SetParent then strip:SetParent(host) end
     frame._ktNameReactionActive = true
     frame._ktNameReactionHost = host
     frame._ktNameReactionPreview = preview
-    local height = geom.name.h or 14
+    -- Classic: FrameXML TargetFrameNameBackground is 119x19, ending on the health bar.
+    local height = modern and (geom.name.h or 14) or 19
     local inset = modern and 1 or 0
     local portraitCurve = modern and unit == "target" and 11 or 0
     strip:ClearAllPoints()
@@ -918,6 +955,28 @@ function KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, host, unit, geom,
         (geom.health.x + (shift or 0) + inset) * scale, -(geom.health.y - height + inset) * scale)
     strip:SetSize((geom.health.w + (extension or 0) + portraitCurve - inset * 2) * scale, (height - inset * 2) * scale)
     self:UpdateUnitFrameNameReaction(frame, unit)
+end
+
+-- Class colour for the Classic name background, or nil when the health bar
+-- already shows it (or the unit is not a player).
+function KT.VisualThemes:GetClassicNameClassColor(frame, unit)
+    local health = frame and (frame.Health or frame.health)
+    local key = (health and health._kuiUnitKey) or unit
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    local settings = uf and type(key) == "string" and uf[key]
+    if type(settings) ~= "table" or settings.healthClassColored ~= false then return end
+    if frame._ktNameReactionPreview then
+        local c = frame._ktNameReactionPreviewClassColor
+        if type(c) == "table" and c[1] then return c[1], c[2], c[3] end
+        return
+    end
+    local ok, isPlayer = pcall(UnitIsPlayer, unit)
+    if not ok or (issecretvalue and issecretvalue(isPlayer)) or isPlayer ~= true then return end
+    local read, _, class = pcall(UnitClass, unit)
+    if not read or (issecretvalue and issecretvalue(class)) or type(class) ~= "string" then return end
+    local c = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class])
+        or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[class])
+    if c and type(c.r) == "number" then return c.r, c.g, c.b end
 end
 
 function KT.VisualThemes:ApplyClassicUnitFrameArt(frame, unitRegion, unit)
@@ -1854,9 +1913,10 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     end
 
     local barTextMaxHeight = geom.health.h * scale
-    self:ApplyBlizzardBarText(frame.LeftText, scale, barTextMaxHeight)
-    self:ApplyBlizzardBarText(frame.RightText, scale, barTextMaxHeight)
-    self:ApplyBlizzardBarText(frame.CenterText, scale, barTextMaxHeight)
+    local textFactor = self:GetUnitTextSizeFactor(frame, unit)
+    self:ApplyBlizzardBarText(frame.LeftText, scale, barTextMaxHeight, nil, textFactor)
+    self:ApplyBlizzardBarText(frame.RightText, scale, barTextMaxHeight, nil, textFactor)
+    self:ApplyBlizzardBarText(frame.CenterText, scale, barTextMaxHeight, nil, textFactor)
     self:ApplyBlizzardBarText(frame.Power and frame.Power._ppFS, scale, geom.power.h * scale)
     -- A name long enough to overflow the real tab's
     -- real width shrinks further, on top of the uniform theme scale above,

@@ -958,10 +958,27 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.5"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.6"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.6"] = {
+        version = "5.1.6",
+        published = "2026-10-14",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "AFK Screen: new page in Enhancements. When you go AFK the interface hides, the camera turns slowly and a bottom bar shows your character, guild, time away and your model, with whispers and guild chat on screen. Any key, combat, or a group finder or battleground invite closes it.",
+            "Performance: Party Frames do less work in raids. Health, power and shield updates are handled separately, and power events are only registered while a power bar is shown. Nameplates stop re-laying out friendly plates every tick, and the Cooldown Manager skips icons without visibility rules and merges bursts of cooldown events.",
+            "New /kperf window with CPU and memory per module, with snapshots to compare before and after a change.",
+            "Unlock Mode: Focus and Focus Target no longer drift away from their mover while the unit is hidden, and Reset Position works after a drag.",
+            "Unit Frames: Text Size now scales the text of the Blizzard-style looks. In Classic the name window takes the class color when health is not class colored, and the raid marker sits on top of the portrait in the Blizzard-style looks.",
+            "Portraits: your own race and form are recognized, so a self-target portrait faces the right way.",
+            "Skins: popups use the Settings artwork, breath and fatigue bars get striped bars in Blizzard's colors, and the Professions rank bar no longer shows a floating flare over an empty bar.",
+            "Cooldown Manager: Midnight potions are supported, including the fleeting versions.",
+            "Compatibility: updated for client interface 120105, with item functions that moved to C_Item handled in Bags, Teleport Menu, Aura Reminders, Armory, Inspect and the Cooldown Manager.",
+        },
+    },
     ["5.1.5"] = {
         version = "5.1.5",
         published = "2026-10-12",
@@ -2331,12 +2348,12 @@ local CHANGELOG_ENTRIES = {
 local function GetCurrentKUIVersion()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
         or KT.VERSION
-        or "5.1.5"
+        or "5.1.6"
     -- When loaded from the source tree without the release packager the TOC
     -- still contains the literal "@project-version@" token.  Fall back to the
     -- hardcoded release version so the changelog and options never display it.
     if ver and ver:find("@", 1, true) then
-        ver = "5.1.5"
+        ver = "5.1.6"
     end
     return ver
 end
@@ -3436,7 +3453,7 @@ local function UpdateMenuThemeVisuals(menu)
         local vr = math.floor((accent.r or 1) * 255 + 0.5)
         local vg = math.floor((accent.g or 0) * 255 + 0.5)
         local vb = math.floor((accent.b or 0.333) * 255 + 0.5)
-	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.5")))
+	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.6")))
     end
 
     for _, btn in ipairs(menu._sizePresetButtons or {}) do
@@ -5067,12 +5084,12 @@ local function CreateMenuFrame()
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
     local verColor = string.format("%02x%02x%02x", accentR*255, accentG*255, accentB*255)
-	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.5") .. "|r")
+	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.6") .. "|r")
     titleTex:SetPoint("TOPLEFT", f, "TOPLEFT", 94, -68)
     titleTex:SetWidth(190)
     titleTex:SetJustifyH("LEFT")
     f._versionText = titleTex
-	f._versionValue = KT.VERSION or "5.1.5"
+	f._versionValue = KT.VERSION or "5.1.6"
 
     -- Corrupted generated comment removed.
     local nav = CreateFrame("Frame", nil, f)

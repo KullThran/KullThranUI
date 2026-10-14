@@ -253,9 +253,9 @@ ns.PF_HealthPowerFlushDriver:SetScript("OnUpdate", function(self)
     end
     local profiler = _G.KT and _G.KT.CombatProfiler
     local profileStarted = profiler and profiler:Begin("party.healthpower.flush")
-    for unit in pairs(pending) do
+    for unit, flags in pairs(pending) do
         pending[unit] = nil
-        Mod:FlushUnitHealthPower(unit)
+        Mod:FlushUnitHealthPower(unit, flags)
     end
     if profileStarted then profiler:End("party.healthpower.flush", profileStarted) end
 end)
@@ -277,6 +277,18 @@ ns.PF_RosterUnitEvents = {
     "UNIT_NAME_UPDATE", "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE",
     "UNIT_ABSORB_AMOUNT_CHANGED",
 }
+
+-- Power events are registered separately (Mod:SyncPowerEvents): they are the
+-- noisiest events in a raid and are pure waste while no mode shows a power bar.
+ns.PF_RosterPowerEvents = { "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }
+ns.PF_RosterBaseEvents = {}
+do
+    local isPower = {}
+    for _, evt in ipairs(ns.PF_RosterPowerEvents) do isPower[evt] = true end
+    for _, evt in ipairs(ns.PF_RosterUnitEvents) do
+        if not isPower[evt] then ns.PF_RosterBaseEvents[#ns.PF_RosterBaseEvents + 1] = evt end
+    end
+end
 
 function Mod:GetRosterUnitFrame(unit)
     Mod._rosterFrames = Mod._rosterFrames or {}
@@ -333,11 +345,12 @@ function Mod:RebuildRosterEvents()
     for unit in pairs(newSet) do
         if not oldSet[unit] then
             local f = self:GetRosterUnitFrame(unit)
-            for _, evt in ipairs(ns.PF_RosterUnitEvents) do
+            for _, evt in ipairs(ns.PF_RosterBaseEvents) do
                 f:RegisterUnitEvent(evt, unit)
             end
         end
     end
+    self:SyncPowerEvents(true)
 end
 
 function Mod:RegisterModuleEvent(event, handler)
@@ -7318,6 +7331,8 @@ function Mod:UpdateFrameHealthEvent(frame)
 
     local db = self:GetModeDB(frame.mode or "party")
     local hpPercent = UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
+    -- The text layout is repaired on every health event, even when the value did not
+    -- change: native frames lose their text anchors in combat (see party_frame_styles).
     if ns.PF_Styles and frame._pfNativeStyle then
         ns.PF_Styles.UpdateHealthText(frame, db)
     end
@@ -7412,9 +7427,19 @@ function Mod:OnUnitEvent(event, unit)
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH"
         or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER"
         or event == "UNIT_DISPLAYPOWER" then
+        local flag
+        if event == "UNIT_HEALTH" then
+            flag = 1
+        elseif event == "UNIT_MAXHEALTH" then
+            flag = 5 -- health + absorb bar range (depends on max health)
+        else
+            -- Power events: nothing to paint while no mode shows a power bar.
+            if self._powerEventsWanted == false then return end
+            flag = 2
+        end
         local pending = self._pendingHealthPowerUnits
         if not pending then pending = {} self._pendingHealthPowerUnits = pending end
-        pending[unit] = true
+        pending[unit] = bit.bor(pending[unit] or 0, flag)
         if not self._healthPowerFlushQueued then
             self._healthPowerFlushQueued = true
             ns.PF_HealthPowerFlushDriver:Show()
@@ -7446,20 +7471,73 @@ function Mod:OnUnitEvent(event, unit)
     if profileStarted then profiler:End("party.identity.paint", profileStarted) end
 end
 
-function Mod:FlushUnitHealthPower(unit)
+-- flags: 1 = health, 2 = power, 4 = absorb range. nil = everything.
+function Mod:FlushUnitHealthPower(unit, flags)
     local frames = self._auraUnitFrames and self._auraUnitFrames[unit]
     if not frames then return end
+    flags = flags or 7
+    local band = bit.band
+    local doHealth, doPower, doAbsorb = band(flags, 1) ~= 0, band(flags, 2) ~= 0, band(flags, 4) ~= 0
     for i = 1, #frames do
         local frame = frames[i]
         if frame and frame:IsShown() then
-            self:UpdateFrameHealthEvent(frame)
-            self:UpdateFramePowerEvent(frame, "UNIT_POWER_FREQUENT")
-            if frame.unit and self.UpdateFrameAbsorbEvent then
+            if doHealth then self:UpdateFrameHealthEvent(frame) end
+            if doPower then self:UpdateFramePowerEvent(frame, "UNIT_POWER_FREQUENT") end
+            if doAbsorb and frame.unit and self.UpdateFrameAbsorbEvent then
                 self:UpdateFrameAbsorbEvent(frame)
             end
         end
     end
 end
+
+-- True when any mode can display a power bar. Mirrors the check in
+-- UpdateFramePowerEvent (`showPowerBar == false` hides it), so a nil setting
+-- keeps the old behaviour.
+function Mod:AnyPowerBarShown()
+    for _, mode in ipairs(MODE_ORDER) do
+        local db = self:GetModeDB(mode)
+        if db and db.showPowerBar ~= false then return true end
+    end
+    return false
+end
+
+-- Register/unregister the power events on every roster unit frame according to
+-- AnyPowerBarShown. Cheap when nothing changed (single boolean compare).
+function Mod:SyncPowerEvents(force)
+    local want = self:AnyPowerBarShown()
+    if not force and self._powerEventsWanted == want then return end
+    self._powerEventsWanted = want
+    local frames, units = Mod._rosterFrames, Mod._rosterUnits
+    if not (frames and units) then return end
+    for unit in pairs(units) do
+        local f = frames[unit]
+        if f then
+            for _, evt in ipairs(ns.PF_RosterPowerEvents) do
+                if want then f:RegisterUnitEvent(evt, unit) else f:UnregisterEvent(evt) end
+            end
+        end
+    end
+end
+
+-- Settings can flip showPowerBar from the options panel or a layout/profile
+-- change: re-sync after the entry points that apply them.
+-- A method (not a bare `do` block) so no file-level local is added: the main
+-- chunk sits at the 200-local cap.
+function Mod:InstallPowerSyncWrappers()
+    if self._powerSyncWrapped then return end
+    self._powerSyncWrapped = true
+    for _, name in ipairs({ "ApplyLayout", "RefreshAll", "SetConfigValue" }) do
+        local original = self[name]
+        if type(original) == "function" then
+            self[name] = function(this, ...)
+                local a, b, c = original(this, ...)
+                this:SyncPowerEvents()
+                return a, b, c
+            end
+        end
+    end
+end
+Mod:InstallPowerSyncWrappers()
 
 function Mod:FlushUnitAbsorbs(unit)
     local frames = self._auraUnitFrames and self._auraUnitFrames[unit]

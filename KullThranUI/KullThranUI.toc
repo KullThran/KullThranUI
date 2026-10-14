@@ -1,8 +1,8 @@
-## Interface: 120100, 120007, 120005, 120001, 120000
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
 ## Title: KullThranUI
 ## Notes: UI Replacement Logic
 ## Author: KullThran
-## Version: 5.1.5
+## Version: 5.1.6
 ## X-Curse-Project-ID: 1448826
 ## X-Wago-ID: rNkye4Ka
 ## SavedVariables: KullThranDB, KullThranUINameplatesDB, KUIAuraRemindersDB, KUISpellDurationDB
@@ -104,10 +104,12 @@ Locales\Modules\OptionsCoverage.lua
 Locales\Modules\FontsColors.lua
 Locales\Modules\OptionsGaps.lua
 Locales\Modules\MinimapIcons.lua
+Locales\Modules\AFKScreen.lua
 Locales\Modules\VisualStyles.lua
 Locales\Modules\CooldownManager.lua
 Locales\Modules\AuraReminders.lua
 Locales\Generated.lua
+Locales\Modules\PerfMonitor.lua
 Locales\Modules\Completion.lua
 Modules\Defaults\Defaults.lua
 
@@ -155,6 +157,7 @@ Modules\Profilehandlers\Profilehandlers.lua
 Modules\Profilehandlers\Profiledata.lua
 Modules\Profiler.lua
 Modules\CombatCPUProfiler.lua
+Modules\PerfMonitor.lua
 
 # --- EXTERNAL INTEGRATION ---
 # Modules\Grid2Integration.lua

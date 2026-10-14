@@ -325,6 +325,17 @@ function ns.EvaluateCDMUsableVisibility()
             local usableID = LiveIconSpellID(icon)
             local mode = configuredID and ns.GetCDMUsableVisibilityMode(barKey, configuredID) or "always"
             local modifiers = configuredID and ns.GetCDMCooldownStateModifiers(barKey, configuredID) or {}
+            -- Nothing configured for this icon and nothing of ours left to undo:
+            -- skip the whole pass (SpellState alone is 5 pcall'd C_Spell calls
+            -- plus a table per icon, every tick and every cooldown event).
+            local active = mode ~= "always"
+            if not active then
+                for _, on in pairs(modifiers) do
+                    if on then active = true break end
+                end
+            end
+            if active or icon._kuiUVTouched then
+            icon._kuiUVTouched = active or nil
             local state = SpellState(usableID)
             local editing = Editing()
             local hide, lowerAlpha, glow = false, false, false
@@ -359,6 +370,18 @@ function ns.EvaluateCDMUsableVisibility()
             icon:SetAlpha(hide and 0 or (lowerAlpha and 0.5 or BaseAlpha(icon, barKey)))
             ApplyModifiers(icon, barKey, modifiers, state)
             ApplyStateGlow(icon, glow and not hide)
+            else
+                -- Nothing configured and nothing of ours to undo: skip the spell
+                -- queries and modifier work, but keep the icon aligned with its bar
+                -- exactly as a full pass would (native icons follow the bar alpha).
+                if icon._kuiUsableShiftHidden ~= false then
+                    icon._kuiUsableShiftHidden = false
+                    relayout = true
+                end
+                icon._kuiUsableVisibilityHidden = nil
+                icon._kuiUsableVisibilityAlpha = nil
+                icon:SetAlpha(BaseAlpha(icon, barKey))
+            end
         end
         if relayout and ns.LayoutCDMBar then ns.LayoutCDMBar(barKey) end
     end
@@ -390,6 +413,16 @@ local function HasRules()
     return false
 end
 
+local rulesCheckedAt, rulesCached = -10, false
+local function HasRulesCached()
+    local now = GetTime()
+    if now - rulesCheckedAt > 1 then
+        rulesCheckedAt = now
+        rulesCached = HasRules()
+    end
+    return rulesCached
+end
+
 local ticker
 local function SyncTicker()
     local needed = HasRules()
@@ -402,6 +435,7 @@ local function SyncTicker()
 end
 
 function ns.RefreshCDMUsableVisibility()
+    rulesCheckedAt = -10
     SyncTicker()
     ns.EvaluateCDMUsableVisibility()
 end
@@ -418,10 +452,19 @@ events:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
 events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 events:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
+-- SPELL_UPDATE_COOLDOWN / USABLE / CHARGES burst many times per frame in
+-- combat; each used to schedule its own full evaluation. One per frame is
+-- enough since the pass reads live state.
+local evalQueued = false
+local function RunQueuedEvaluate()
+    evalQueued = false
+    ns.EvaluateCDMUsableVisibility()
+end
 events:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_SPECIALIZATION_CHANGED" then
         C_Timer.After(0.5, ns.RefreshCDMUsableVisibility)
-    elseif HasRules() then
-        C_Timer.After(0, ns.EvaluateCDMUsableVisibility)
+    elseif not evalQueued and HasRulesCached() then
+        evalQueued = true
+        C_Timer.After(0, RunQueuedEvaluate)
     end
 end)

@@ -10,7 +10,7 @@ local Reload = Opt.Reload or function() StaticPopup_Show("KULLTHRANUI_RELOAD") e
 local S = KT:GetModule("Skins", true)
 
 KT:RegisterPage("skins", "Skins", 20, function(sc, W)
-    local y, h = 0, 0
+    local _, y, h = nil, 0, 0
     local db = KT.db.profile.skin
 
     _, h = W:SectionHeader(sc, "Window Style", -y); y = y + h

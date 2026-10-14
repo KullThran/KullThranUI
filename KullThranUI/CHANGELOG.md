@@ -1,9 +1,21 @@
 # KullThranUI Changelog
 
-Current addon version: **5.1.5**
+Current addon version: **5.1.6**
 
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
+
+## 5.1.6 (2026-10-14)
+
+- AFK Screen: new page in Enhancements. When you go AFK the interface hides, the camera turns slowly and a bottom bar shows your character, guild, time away and your model, with whispers and guild chat on screen. Any key, combat, or a group finder or battleground invite closes it.
+- Performance: Party Frames do less work in raids. Health, power and shield updates are handled separately, and power events are only registered while a power bar is shown. Nameplates stop re-laying out friendly plates every tick, and the Cooldown Manager skips icons without visibility rules and merges bursts of cooldown events.
+- New /kperf window with CPU and memory per module, with snapshots to compare before and after a change.
+- Unlock Mode: Focus and Focus Target no longer drift away from their mover while the unit is hidden, and Reset Position works after a drag.
+- Unit Frames: Text Size now scales the text of the Blizzard-style looks. In Classic the name window takes the class color when health is not class colored, and the raid marker sits on top of the portrait in the Blizzard-style looks.
+- Portraits: your own race and form are recognized, so a self-target portrait faces the right way.
+- Skins: popups use the Settings artwork, breath and fatigue bars get striped bars in Blizzard's colors, and the Professions rank bar no longer shows a floating flare over an empty bar.
+- Cooldown Manager: Midnight potions are supported, including the fleeting versions.
+- Compatibility: updated for client interface 120105, with item functions that moved to C_Item handled in Bags, Teleport Menu, Aura Reminders, Armory, Inspect and the Cooldown Manager.
 
 ## 5.1.5 (2026-10-12)
 

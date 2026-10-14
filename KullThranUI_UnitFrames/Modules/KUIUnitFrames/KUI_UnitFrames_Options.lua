@@ -93,7 +93,7 @@ local PREVIEW_STOCK_GEOMETRY = {
             -- (a different convention than Forever's TOPLEFT one this preview
             -- code expects); approximated here as a TOPLEFT offset sitting
             -- just above the health bar instead, close enough for a preview.
-            name = { x = 106, y = -30, w = 100 },
+            name = { x = 106, y = -30, w = 100, point = "CENTER", cx = 50, cy = 19 },
         },
         target = {
             w = 232, h = 100,
@@ -102,7 +102,7 @@ local PREVIEW_STOCK_GEOMETRY = {
             portrait = { point = "TOPRIGHT", x = -42, y = -12, size = 64 },
             health = { x = 7, y = 41, w = 119, h = 12 },
             power = { x = 7, y = 52, w = 119, h = 12 },
-            name = { x = 7, y = -30, w = 100 },
+            name = { x = 7, y = -30, w = 100, point = "CENTER", cx = -50, cy = 19 },
         },
         -- Pet: UI-SmallTargetingFrame (128x64 sheet in a 128x53 box); mirrors PetArt.geom.classic.
         pet = {
@@ -503,10 +503,20 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
         frame._ktNameReactionActive = nil
         if frame._ktNameReaction then frame._ktNameReaction:Hide() end
     elseif KT.VisualThemes.ConfigureUnitFrameNameReaction then
+        frame._ktNameReactionPreviewClassColor = { GetPreviewClassColor(unitKey) }
         KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, frame.stockArtFrame, unitKey, geom, scale, 0, 0, true)
     end
     frame.name:ClearAllPoints()
-    frame.name:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
+    if geom.name.point == "CENTER" then
+        -- Classic: the live frame centres the name in the name window.
+        frame.name:SetPoint("CENTER", frame, "CENTER", geom.name.cx * scale, geom.name.cy * scale)
+        frame.name:SetWidth(geom.name.w * scale)
+        frame.name:SetJustifyH("CENTER")
+    else
+        frame.name:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
+        frame.name:SetWidth(0)
+        frame.name:SetJustifyH("LEFT")
+    end
     frame.value:ClearAllPoints()
     frame.value:SetPoint("TOPRIGHT", frame, "TOPRIGHT",
         -(geom.w - (geom.name.x + geom.name.w)) * scale, geom.name.y * scale)
@@ -626,6 +636,14 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
             ox * scale + levelTextXNudge - levelXNudge, oy * scale)
     end
     ns.CenterStockLevelText(frame.levelText, frame.levelCircle, themeKey)
+    -- The level number belongs on the level frame: on the unit frame itself
+    -- it sat under the circle and the art, leaving an empty circle.
+    frame.levelText:SetParent(frame.levelFrame)
+    frame.levelText:SetDrawLayer("OVERLAY", 7)
+    if themeKey == "classic" and not (ns.StockStyleToggle and ns.StockStyleToggle(ufDB, "levelBlizzardStyle")) then
+        frame.levelText:SetTextColor(1, 0.82, 0, 1)
+    end
+    frame.levelText:SetText(unitKey == "player" and "80" or "70")
     frame.levelCircle:Show()
     frame.levelText:Show()
     return true
@@ -640,6 +658,20 @@ end
 --- @param unitKey string
 --- @param nameText string|nil
 --- @param valueText string|nil
+-- Sample health text for the preview, in the format a Health Text choice shows.
+local function PreviewHealthText(display, cur, maxHP, pct)
+    if display == "none" then return nil end
+    local short = string.format("%.1fK", cur / 1000)
+    local full = BreakUpLargeNumbers and BreakUpLargeNumbers(cur) or tostring(cur)
+    if display == "curhpshort" then return short end
+    if display == "curhp" then return full end
+    if display == "perhp" then return string.format("%d%%", pct) end
+    if display == "curhp_perhp" then return string.format("%s | %d%%", full, pct) end
+    if display == "perhpnum" then return string.format("%d%% | %s", pct, short) end
+    if display == "deficit" then return cur < maxHP and ("-" .. (maxHP - cur)) or "" end
+    return string.format("%s | %d%%", short, pct)
+end
+
 local function ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameText, valueText)
     frame.health:SetMinMaxValues(0, 100)
     local showAbsorbPreview = unitKey == "player" and settings.showPlayerAbsorb == true
@@ -691,8 +723,9 @@ local function ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameT
     if (theme == "retail" or theme == "forever") and (unitKey == "player" or unitKey == "target") then
         local scale = (settings.frameScale or 100) / 100
         local vt = KT.VisualThemes
-        vt:ApplyBlizzardBarText(frame.value, scale, frame.health:GetHeight())
-        vt:ApplyBlizzardBarText(frame.healthPercent, scale, frame.health:GetHeight())
+        local textFactor = (tonumber(settings.textSize) or 14) / 14
+        vt:ApplyBlizzardBarText(frame.value, scale, frame.health:GetHeight(), nil, textFactor)
+        vt:ApplyBlizzardBarText(frame.healthPercent, scale, frame.health:GetHeight(), nil, textFactor)
         vt:ApplyBlizzardBarText(frame.powerValue, scale, frame.power:GetHeight())
         frame.healthPercent:SetText(string.format("%d%%", healthValue))
         frame.healthPercent:Show()
@@ -700,6 +733,43 @@ local function ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameT
         frame.powerValue:Show()
         frame.value:SetText(BreakUpLargeNumbers and BreakUpLargeNumbers(1928 * healthValue / 100) or "1928")
         return
+    end
+    if theme == "classic" and frame.stockArt:IsShown() then
+        local barH = frame.health:GetHeight() or 12
+        local textFactor = (tonumber(settings.textSize) or 14) / 14
+        local status = (unitKey == "player" or unitKey == "target" or unitKey == "pet")
+            and ns.StockStyleToggle and ns.StockStyleToggle(globalDB, "classicStatusText", "classic")
+        if status then
+            -- Classic Bar Text: "516/553 (93%)" centred in both bars
+            -- (pet: no percentage), following Health Text and Text Size.
+            local path, size, flags = ns.BlizzardFont("TextStatusBarText", PREVIEW_FONT, 10, "OUTLINE")
+            frame.value:SetFont(path, math.max(6, math.min(size, barH * 0.85) * textFactor), flags)
+            frame.powerValue:SetFont(path, math.max(6, math.min(size, (frame.power:GetHeight() or 12) * 0.85)), flags)
+            local maxHP = 1928
+            local cur = math.floor(maxHP * healthValue / 100 + 0.5)
+            local full = unitKey ~= "pet"
+            local display = settings.healthDisplay
+            local text
+            if display and display ~= "both" then
+                text = PreviewHealthText(display, cur, maxHP, healthValue)
+            elseif full then
+                text = string.format("%d/%d (%d%%)", cur, maxHP, healthValue)
+            else
+                text = string.format("%d/%d", cur, maxHP)
+            end
+            frame.value:SetText(text or "")
+            frame.value:SetShown(text ~= nil)
+            frame.powerValue:ClearAllPoints()
+            frame.powerValue:SetPoint("CENTER", frame.power, "CENTER", 0, 0)
+            frame.powerValue:SetJustifyH("CENTER")
+            frame.powerValue:SetText(full and "100/100 (100%)" or "100/100")
+            frame.powerValue:Show()
+            return
+        end
+        -- Profile text, scaled and capped to the bar like the live frame.
+        local scale = (settings.frameScale or 100) / 100
+        frame.value:SetFont(PREVIEW_FONT,
+            math.max(6, math.min((settings.rightTextSize or textSize) * scale, barH * 0.65)), "OUTLINE")
     end
     if showAbsorbPreview then
         frame.value:SetText(string.format("%d%%", healthValue))
@@ -1396,6 +1466,7 @@ local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText
     frame.name:SetPoint("LEFT", frame.health, "LEFT", nameInset, 0)
     frame.value:SetPoint("RIGHT", frame.health, "RIGHT", -valueInset, 0)
     local metadataAnchor = showPortrait and frame.portraitFrame or frame.health
+    if frame.levelText:GetParent() ~= frame then frame.levelText:SetParent(frame) end
     frame.levelText:ClearAllPoints()
     if unitKey == "target" then
         frame.levelText:SetPoint("BOTTOMRIGHT", metadataAnchor, "TOPRIGHT", -(tonumber(globalDB.levelX) or 2), tonumber(globalDB.levelY) or 2)
@@ -2221,23 +2292,28 @@ local function CreateUnitFramesLivePreview(parent, options)
         ns.ApplyPreviewUnit(targetTargetPreview, "totPet", db.totPet, db, LText("ToT"), "100%")
         ns.ApplyPreviewUnit(focusTargetPreview, "focustarget", db.totPet, db, LText("Focus Target"), "100%")
 
+        -- Compact layout: Player/Target on top; the small frames share one
+        -- row below them (Pet + Focus left, ToT + Focus Target right).
+        local top, rowGap, sideGap = 26, 8, 10
         playerPreview:ClearAllPoints()
-        playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 18, -34)
+        playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 14, -top)
         targetPreview:ClearAllPoints()
-        targetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -18, -34)
+        targetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -14, -top)
+        local mainH = math.max(playerPreview:GetHeight() or 0, targetPreview:GetHeight() or 0)
+        local rowY = -(top + mainH + rowGap)
         petPreview:ClearAllPoints()
-        petPreview:SetPoint("TOPLEFT", playerPreview, "BOTTOMLEFT", 0, -12)
+        petPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 14, rowY)
         focusPreview:ClearAllPoints()
-        focusPreview:SetPoint("TOPLEFT", petPreview, "BOTTOMLEFT", 0, -20)
-        targetTargetPreview:ClearAllPoints()
-        targetTargetPreview:SetPoint("TOPRIGHT", targetPreview, "BOTTOMRIGHT", -5, -8)
+        focusPreview:SetPoint("TOPLEFT", petPreview, "TOPRIGHT", sideGap, 0)
         focusTargetPreview:ClearAllPoints()
-        focusTargetPreview:SetPoint("TOPRIGHT", targetTargetPreview, "BOTTOMRIGHT", 0, -12)
+        focusTargetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -14, rowY)
+        targetTargetPreview:ClearAllPoints()
+        targetTargetPreview:SetPoint("TOPRIGHT", focusTargetPreview, "TOPLEFT", -sideGap, 0)
 
         if previewWidth > 0 then
-            local leftStackHeight = (playerPreview:GetHeight() or 0) + (petPreview:GetHeight() or 0) + (focusPreview:GetHeight() or 0) + 86
-            local rightStackHeight = (targetPreview:GetHeight() or 0) + (targetTargetPreview:GetHeight() or 0) + (focusTargetPreview:GetHeight() or 0) + 66
-            preview:SetHeight(math.max(leftStackHeight, rightStackHeight))
+            local rowH = math.max(petPreview:GetHeight() or 0, focusPreview:GetHeight() or 0,
+                targetTargetPreview:GetHeight() or 0, focusTargetPreview:GetHeight() or 0)
+            preview:SetHeight(top + mainH + rowGap + rowH + 12)
         end
     end
     preview:Refresh()
