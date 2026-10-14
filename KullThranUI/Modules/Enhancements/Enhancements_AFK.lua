@@ -23,10 +23,8 @@ local format = string.format
 
 local CAMERA_SPEED = 0.035
 local DEFAULT_FONT = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf"
-local LOGOS = {
-    wordmark = { path = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KullThranUI.tga", width = 360, height = 201 },
-    square = { path = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUILogoCuadrado.png", width = 110, height = 110 },
-}
+-- White KUI logo, tinted with the active style accent (same art Unlock Mode uses).
+local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png"
 
 -- Same animation set ElvUI uses; facing/idle values keep the model looking at the camera.
 Mod.AFK_ANIMATIONS = {
@@ -47,7 +45,8 @@ local DEFAULTS = {
     modelScale = 1,
     showChat = true,
     showLogo = true,
-    logo = "wordmark",
+    logoSize = 260,
+    logoAlpha = 0.9,
     showFaction = true,
     showGuild = true,
     showTimer = true,
@@ -192,8 +191,9 @@ local function BuildUI()
         fs:SetJustifyH("LEFT")
     end
 
-    bar.logo = f:CreateTexture(nil, "OVERLAY")
-    bar.logo:SetPoint("CENTER", bar, "TOP", 0, 10)
+    f.logo = f:CreateTexture(nil, "ARTWORK")
+    f.logo:SetPoint("CENTER", f, "CENTER", 0, 0)
+    f.logo:SetTexture(LOGO_TEXTURE)
 
     -- Holder controls the model position; the model itself is oversized so
     -- animations never clip (same trick as ElvUI).
@@ -280,10 +280,11 @@ local function ApplyLayout()
     bar.time:SetTextColor(0.7, 0.7, 0.7)
     bar.time:SetShown(config.showTimer ~= false)
 
-    local logo = LOGOS[config.logo] or LOGOS.wordmark
-    bar.logo:SetTexture(logo.path)
-    bar.logo:SetSize(logo.width, logo.height)
-    bar.logo:SetShown(config.showLogo ~= false)
+    local logoSize = tonumber(config.logoSize) or 260
+    local accentR, accentG, accentB = AccentColor()
+    f.logo:SetSize(logoSize, logoSize)
+    f.logo:SetVertexColor(accentR, accentG, accentB, tonumber(config.logoAlpha) or 0.9)
+    f.logo:SetShown(config.showLogo ~= false)
 
     local model = bar.model
     model:SetSize(screenW * 2, screenH * 2)

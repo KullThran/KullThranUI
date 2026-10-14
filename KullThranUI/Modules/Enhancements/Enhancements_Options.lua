@@ -252,7 +252,7 @@ local function SetSystemSectionState(key, value)
     db.ui.activeEnhancementSystemSection = value and key or nil
 end
 
-local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "system" }
+local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "afk", "system" }
 
 local CATEGORY_META = {
     instance = {
@@ -275,6 +275,10 @@ local CATEGORY_META = {
         title = LText("Interface & Comfort"),
         description = LText("Visual cleanup, text sizing, and general comfort options for the client UI."),
     },
+    afk = {
+        title = LText("AFK Screen"),
+        description = LText("What you see while away: character model, info bar, accent logo and whispers."),
+    },
     system = {
         title = LText("System Tuning"),
         description = LText("Performance presets, graphics CVars, spell queue tuning, and live diagnostics."),
@@ -288,6 +292,7 @@ local CATEGORY_ICONS = {
     automation = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Automation&Social.tga",
     interface = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Interface&Combat.tga",
     system = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\SystemTuning.tga",
+    afk = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png",
 }
 
 local CATEGORY_ICON_COLORS = {
@@ -297,6 +302,7 @@ local CATEGORY_ICON_COLORS = {
     automation = { 0.20, 1.00, 0.35 }, -- green
     interface = { 0.20, 0.55, 1.00 }, -- blue
     system = { 1.00, 1.00, 1.00 }, -- white
+    afk = { 1.00, 0.55, 0.10 }, -- orange
 }
 
 local CATEGORY_BUTTON_WIDTH = 198
@@ -2318,11 +2324,16 @@ local function BuildAFKScreenBlock(container, W, db)
         animationOrder)
     y = y + h
 
-    _, h = W:Dropdown(container, LText("Logo Style"), -y,
-        { wordmark = "KullThranUI", square = LText("Square Logo") },
-        function() return afk.logo or "wordmark" end,
-        function(value) afk.logo = value; Refresh() end,
-        { "wordmark", "square" })
+    _, h = W:Slider(container, LText("Logo Size"), -y,
+        function() return tonumber(afk.logoSize) or 260 end,
+        function(v) afk.logoSize = math.floor(v + 0.5); Refresh() end,
+        100, 600, 10)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Logo Opacity"), -y,
+        function() return tonumber(afk.logoAlpha) or 0.9 end,
+        function(v) afk.logoAlpha = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.1, 1, 0.05)
     y = y + h
 
     _, h = W:Slider(container, LText("Model Scale"), -y,
@@ -2428,11 +2439,13 @@ local CATEGORY_SECTIONS = {
         { column = "right", title = LText("Text Size"), build = BuildTextSizeBlock },
         { column = "right", title = LText("Combat Status Text"), build = BuildCombatTextBlock },
         { column = "left", title = LText("Combat Timer"), build = BuildCombatTimerBlock },
-        { column = "right", title = LText("AFK Screen"), build = BuildAFKScreenBlock },
         { column = "left", title = LText("Graphics and Sound"), build = BuildGraphicsSoundBlock },
         { column = "right", title = LText("Legacy Game Options"), build = BuildLegacyGameOptionsBlock },
     },
     system = {
+    },
+    afk = {
+        { column = "left", title = LText("AFK Screen"), build = BuildAFKScreenBlock },
     },
 }
 
@@ -2455,6 +2468,13 @@ local function BuildActiveCategory(parent, W, db)
 
     if activeKey == "system" then
         return BuildSystemAccordion(parent, W, db, y)
+    end
+
+    if activeKey == "afk" and CreateOptionBlock and FinalizeOptionBlock then
+        -- Single full-width block: half-width columns made the sliders too cramped.
+        local frame, content = CreateOptionBlock(parent, LText("AFK Screen"), 10, -y, math.max(280, parent:GetWidth() - 36))
+        local totalHeight = FinalizeOptionBlock(frame, content, BuildAFKScreenBlock(content, W, db))
+        return y + totalHeight + 14
     end
 
     if (activeKey == "damage" or activeKey == "timer") and CreateOptionBlock and FinalizeOptionBlock then
