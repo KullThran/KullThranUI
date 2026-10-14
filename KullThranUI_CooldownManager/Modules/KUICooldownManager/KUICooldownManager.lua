@@ -5923,6 +5923,26 @@ local POTION_TRACKER_PREPOT_PRIORITY = {
     212249, 212248, 212247, -- Frontline Potion
 }
 -- Kept on ns: this chunk is at Lua's 200-local limit.
+-- A manually added combat potion only swaps ranks inside its own potion: a
+-- Recklessness entry must not turn into Light's Potential because that stack
+-- is bigger. The automatic combat slot still searches every family.
+ns.CDMPotionTrackerFamilies = {
+    { 245898, 245897, 241308, 241309 }, -- Light's Potential
+    { 245902, 245903, 241288, 241289 }, -- Potion of Recklessness
+    { 245910, 245911, 241292, 241293 }, -- Draught of Rampant Abandon
+    { 245901, 245900, 241296, 241297 }, -- Potion of Zealotry
+    { 212941, 212940, 212939, 212265, 212264, 212263, 212262, 212261, 212260,
+      212259, 212258, 212257, 212243, 212242, 212241, 210969, 210968, 210967,
+      212249, 212248, 212247 }, -- The War Within potions
+}
+ns.CDMPotionTrackerFamilyFor = function(itemID)
+    for _, family in ipairs(ns.CDMPotionTrackerFamilies) do
+        for _, id in ipairs(family) do
+            if id == itemID then return family end
+        end
+    end
+    return nil
+end
 ns.CDMPotionTrackerManaPriority = {
     245916, 245917, 241300, 241301, -- Lightfused Mana Potion (fleeting first)
 }
@@ -6344,7 +6364,8 @@ ns.ResolvePotionTrackerDisplayItem = function(itemID)
     local class = playerIdentity.class or select(2, UnitClass("player"))
 
     if POTION_TRACKER_PREPOT_SET[normalizedItemID] then
-        return ChooseTrackerItemFromPriority(POTION_TRACKER_PREPOT_PRIORITY, "potion")
+        return ChooseTrackerItemFromPriority(
+            ns.CDMPotionTrackerFamilyFor(normalizedItemID) or POTION_TRACKER_PREPOT_PRIORITY, "potion")
     end
 
     if POTION_TRACKER_HEALTH_SET[normalizedItemID] then
