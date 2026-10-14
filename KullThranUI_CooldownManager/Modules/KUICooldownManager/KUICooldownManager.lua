@@ -1267,8 +1267,10 @@ local function ItemMatchesSyntheticGroup(itemID, group)
     return GetSyntheticItemCooldownGroup(normalizedItemID) == group
 end
 
+-- Current Retail clients only expose C_Item.GetItemCount; the global is a
+-- fallback for older clients. Checked inline: this chunk is at the 200-local limit.
 local function GetTrackerOwnedItemCount(candidateItemID)
-    if not candidateItemID or not GetItemCount then
+    if not candidateItemID or not (C_Item and C_Item.GetItemCount or GetItemCount) then
         return 0
     end
 
@@ -1277,6 +1279,10 @@ local function GetTrackerOwnedItemCount(candidateItemID)
         if count ~= nil then
             return count or 0
         end
+    end
+
+    if not GetItemCount then
+        return 0
     end
 
     local count = GetItemCount(candidateItemID, false, true)
@@ -1289,7 +1295,7 @@ end
 
 local function GetTrackedItemDisplayCount(itemID)
     local normalizedItemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
-    if not normalizedItemID or not GetItemCount then
+    if not normalizedItemID or not (C_Item and C_Item.GetItemCount or GetItemCount) then
         return 0
     end
 
@@ -5872,7 +5878,7 @@ end
 
 local function FindOwnedTrackerItem(priorityList, filterPotionQuality)
     if type(priorityList) ~= "table" then return nil end
-    if not GetItemCount then return nil end
+    if not (C_Item and C_Item.GetItemCount or GetItemCount) then return nil end
     local preferMost = filterPotionQuality and GetPotionTrackerSelectionMode() == 'most'
     local selectedItemID, selectedCount
     for i = 1, #priorityList do
@@ -6291,7 +6297,8 @@ GetPotionTooltipClass = function(itemID, itemLink)
     local foundPotionLike = false
     local foundExcluded = false
 
-    local itemName = GetItemInfo and GetItemInfo(normalizedItemID)
+    local itemName = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(normalizedItemID))
+        or (GetItemInfo and GetItemInfo(normalizedItemID))
     if itemName then
         foundPotionLike = ContainsKeyword(itemName, ns.CDMPotionKeywordsPotionLike) or foundPotionLike
         foundExcluded = ContainsKeyword(itemName, ns.CDMPotionKeywordsExclude) or foundExcluded
@@ -11092,7 +11099,7 @@ local function GetExtraSpells()
     -- Health potions
     for _, item in ipairs(HEALTH_ITEMS) do
         if not item.class or item.class == playerIdentity.class then
-            local sName = (item.spellID and C_Spell.GetSpellName(item.spellID)) or item.name or (GetItemInfo and GetItemInfo(item.itemID))
+            local sName = (item.spellID and C_Spell.GetSpellName(item.spellID)) or item.name or (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(item.itemID)) or (GetItemInfo and GetItemInfo(item.itemID))
             local sTex  = C_Item.GetItemIconByID(item.itemID)
             if sName then
                 extras[#extras + 1] = {
