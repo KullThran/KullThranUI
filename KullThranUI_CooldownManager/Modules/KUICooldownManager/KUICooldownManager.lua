@@ -5842,6 +5842,10 @@ ns.RACE_RACIALS = {
 }
 
 HEALTH_ITEMS = {
+    -- Midnight (12.1)
+    { itemID = 271884, cooldown = 300, name = "Concentrated Silvermoon Health Potion" }, -- Quality 2
+    { itemID = 271883, cooldown = 300, name = "Concentrated Silvermoon Health Potion" }, -- Quality 1
+
     -- Midnight (12.0)
     { itemID = 241304, spellID = 1234768, cooldown = 300, name = "Silvermoon Health Potion" }, -- Quality 2
     { itemID = 241305, spellID = 1234768, cooldown = 300, name = "Silvermoon Health Potion" }, -- Quality 1
@@ -5872,8 +5876,18 @@ for _, item in ipairs(HEALTH_ITEMS) do
 end
 
 PREPOT_ITEM_IDS = {
-    -- Midnight (12.0)
+    -- Midnight (12.0) - Light's Potential
     [241308] = true, [241309] = true,
+    [245897] = true, [245898] = true, -- Fleeting
+    -- Potion of Recklessness
+    [241288] = true, [241289] = true,
+    [245902] = true, [245903] = true, -- Fleeting
+    -- Draught of Rampant Abandon
+    [241292] = true, [241293] = true,
+    [245910] = true, [245911] = true, -- Fleeting
+    -- Potion of Zealotry (its tooltip has no stat keyword, so it needs its ID here)
+    [241296] = true, [241297] = true,
+    [245900] = true, [245901] = true, -- Fleeting
     -- The War Within (11.0) - Tempered Potion / Potion templada
     [212260] = true, [212261] = true, [212262] = true,
     [212263] = true, [212264] = true, [212265] = true,
@@ -5889,6 +5903,7 @@ PREPOT_ITEM_IDS = {
 }
 ns.CDMPrepotItemIDs = PREPOT_ITEM_IDS
 local POTION_TRACKER_HEALTH_PRIORITY = {
+    271884, 271883, -- Concentrated Silvermoon Health Potion (12.1)
     241304, 241305, 241306, 241307, -- Midnight (Q2/Q1 pairs)
     244839, 244838, 244835, 244849, -- TWW latest patch
     212302, 212301, 212300,
@@ -5896,12 +5911,20 @@ local POTION_TRACKER_HEALTH_PRIORITY = {
 }
 do
 local POTION_TRACKER_PREPOT_PRIORITY = {
-    241308, 241309, -- Midnight (Quality 2, Quality 1)
+    -- Midnight (Quality 2, Quality 1); fleeting copies first, they are lost otherwise
+    245898, 245897, 241308, 241309, -- Light's Potential
+    245902, 245903, 241288, 241289, -- Potion of Recklessness
+    245910, 245911, 241292, 241293, -- Draught of Rampant Abandon
+    245901, 245900, 241296, 241297, -- Potion of Zealotry
     212941, 212940, 212939, -- Fleeting Tempered Potion
     212265, 212264, 212263, 212262, 212261, 212260, -- Tempered Potion
     212259, 212258, 212257, -- Potion of Unwavering Focus
     212243, 212242, 212241, 210969, 210968, 210967, -- Cavedweller's Delight
     212249, 212248, 212247, -- Frontline Potion
+}
+-- Kept on ns: this chunk is at Lua's 200-local limit.
+ns.CDMPotionTrackerManaPriority = {
+    245916, 245917, 241300, 241301, -- Lightfused Mana Potion (fleeting first)
 }
 local POTION_TRACKER_HEALTHSTONE_PRIORITY_BY_CLASS = {
     WARLOCK = { 224464, 5512 },
@@ -5913,6 +5936,14 @@ local POTION_TRACKER_QUALITY_BY_ITEM_ID = {
     [241306] = 2, [241307] = 1, -- Refreshing Serum
     [241308] = 2, [241309] = 1, -- Light's Potential
     [245898] = 2, [245897] = 1, -- Fleeting Light's Potential
+    [271884] = 2, [271883] = 1, -- Concentrated Silvermoon Health Potion
+    [241288] = 2, [241289] = 1, -- Potion of Recklessness
+    [245902] = 2, [245903] = 1, -- Fleeting Potion of Recklessness
+    [241292] = 2, [241293] = 1, -- Draught of Rampant Abandon
+    [241296] = 2, [241297] = 1, -- Potion of Zealotry
+    [245901] = 2, [245900] = 1, -- Fleeting Potion of Zealotry
+    [241300] = 2, [241301] = 1, -- Lightfused Mana Potion
+    [245916] = 2, [245917] = 1, -- Fleeting Lightfused Mana Potion
 }
 local potionTrackerQualityCache = {}
 
@@ -6224,7 +6255,8 @@ local function ResolvePotionTrackerSlotItemFresh(slotKey)
             or POTION_TRACKER_HEALTHSTONE_PRIORITY_BY_CLASS.DEFAULT
         return ChooseTrackerItemFromPriority(priority, "healthstone")
     elseif slotKey == "mana" then
-        return GetActiveSyntheticPotionForClass("mana")
+        return ChooseTrackerItemFromPriority(ns.CDMPotionTrackerManaPriority, "potion")
+            or GetActiveSyntheticPotionForClass("mana")
             or (ns.FindOwnedManaPotionFallbackItem and ns.FindOwnedManaPotionFallbackItem())
     end
 
