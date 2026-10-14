@@ -5,6 +5,8 @@
 -- ============================================================================
 
 local KT  = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+-- Current Retail clients no longer expose these global item helpers.
+local GetItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
 -- KUI localization helper (resolved at call time; falls back to the raw text)
 local function LText(text)
     if type(text) ~= "string" then return text end
@@ -59,7 +61,7 @@ local PlayerHasToy     = PlayerHasToy
 local IsPlayerSpell    = IsPlayerSpell
 local GetInventoryItemID   = GetInventoryItemID
 local GetInventoryItemLink = GetInventoryItemLink
-local EquipItemByName      = EquipItemByName
+local EquipItemByName      = (C_Item and C_Item.EquipItemByName) or _G.EquipItemByName
 local UnitClass = UnitClass
 local UnitRace  = UnitRace
 local GameTooltip = GameTooltip
