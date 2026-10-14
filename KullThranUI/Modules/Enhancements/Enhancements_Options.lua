@@ -2288,6 +2288,82 @@ local function BuildSystemAccordion(parent, W, db, startY)
     return y
 end
 
+local function BuildAFKScreenBlock(container, W, db)
+    local afk = Mod.GetAFKConfig and Mod:GetAFKConfig()
+    if not afk then return 0 end
+    local function Toggle(label, key)
+        return { label = label, get = function() return afk[key] ~= false end, set = function(v) afk[key] = v and true or false end }
+    end
+    local y = AddToggleList(container, W, {
+        Toggle(LText("Enable AFK Screen"), "enabled"),
+        Toggle(LText("Camera Spin"), "spin"),
+        Toggle(LText("Show Character Model"), "showModel"),
+        Toggle(LText("Show Whispers and Guild Chat"), "showChat"),
+        Toggle(LText("Show Logo"), "showLogo"),
+        Toggle(LText("Show Faction Icon"), "showFaction"),
+        Toggle(LText("Show Guild"), "showGuild"),
+        Toggle(LText("Show AFK Time"), "showTimer"),
+        Toggle(LText("Class Colored Name"), "classColorName"),
+    })
+    local h
+
+    local animations, animationOrder = {}, {}
+    for _, anim in ipairs(Mod.AFK_ANIMATIONS or {}) do
+        animations[anim.key] = LText(anim.label)
+        animationOrder[#animationOrder + 1] = anim.key
+    end
+    _, h = W:Dropdown(container, LText("Idle Animation"), -y, animations,
+        function() return afk.animation or "dance" end,
+        function(value) afk.animation = value; Refresh() end,
+        animationOrder)
+    y = y + h
+
+    _, h = W:Dropdown(container, LText("Logo Style"), -y,
+        { wordmark = "KullThranUI", square = LText("Square Logo") },
+        function() return afk.logo or "wordmark" end,
+        function(value) afk.logo = value; Refresh() end,
+        { "wordmark", "square" })
+    y = y + h
+
+    _, h = W:Slider(container, LText("Model Scale"), -y,
+        function() return tonumber(afk.modelScale) or 1 end,
+        function(v) afk.modelScale = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.5, 2, 0.05)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Bottom Bar Height"), -y,
+        function() return tonumber(afk.barHeight) or 10 end,
+        function(v) afk.barHeight = math.floor(v + 0.5); Refresh() end,
+        6, 20, 1)
+    y = y + h
+
+    _, h = W:Slider(container, LText("AFK Font Size"), -y,
+        function() return tonumber(afk.fontSize) or 20 end,
+        function(v) afk.fontSize = math.floor(v + 0.5); Refresh() end,
+        12, 32, 1)
+    y = y + h
+
+    _, h = W:ColorSwatch(container, LText("Bottom Bar Color"), -y,
+        function()
+            local c = afk.barColor or { r = 0.02, g = 0.02, b = 0.03, a = 0.85 }
+            return c.r or 0.02, c.g or 0.02, c.b or 0.03, c.a or 0.85
+        end,
+        function(r, g, b, a)
+            afk.barColor = { r = r, g = g, b = b, a = a or 1 }
+            Refresh()
+        end)
+    y = y + h
+
+    _, h = W:Button(container, LText("Preview AFK Screen"), -y,
+        function() if Mod.PreviewAFKScreen then Mod:PreviewAFKScreen() end end)
+    y = y + h
+
+    _, h = W:Label(container, LText("Shown when you are flagged AFK. Press any key to leave it; combat, group finder and battleground invites close it too."), -y, 11)
+    y = y + h
+
+    return y
+end
+
 local function BuildMythicPlusHistoryBlock(container, W, db)
     local history = Mod.MythicPlusHistory
     if not history then return 0 end
@@ -2352,6 +2428,7 @@ local CATEGORY_SECTIONS = {
         { column = "right", title = LText("Text Size"), build = BuildTextSizeBlock },
         { column = "right", title = LText("Combat Status Text"), build = BuildCombatTextBlock },
         { column = "left", title = LText("Combat Timer"), build = BuildCombatTimerBlock },
+        { column = "right", title = LText("AFK Screen"), build = BuildAFKScreenBlock },
         { column = "left", title = LText("Graphics and Sound"), build = BuildGraphicsSoundBlock },
         { column = "right", title = LText("Legacy Game Options"), build = BuildLegacyGameOptionsBlock },
     },
