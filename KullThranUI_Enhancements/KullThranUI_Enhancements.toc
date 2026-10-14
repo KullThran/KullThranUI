@@ -26,5 +26,6 @@ Init.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistory.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistoryUI.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_CombatTimer.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_AFK.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_Options.lua
 
