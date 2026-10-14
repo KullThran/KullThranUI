@@ -12,6 +12,12 @@
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 local Mod = KT:NewModule("Bags", "AceEvent-3.0")
 local L = KT.GetLocale and KT:GetLocale() or nil
+-- Current Retail clients no longer expose the global item helpers; use C_Item.
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+local GetItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+local GetItemIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
+local GetDetailedItemLevelInfo = (C_Item and C_Item.GetDetailedItemLevelInfo) or _G.GetDetailedItemLevelInfo
+local GetItemFamily = (C_Item and C_Item.GetItemFamily) or _G.GetItemFamily
 
 local function LText(key, fallback)
     local value = L and L[key]

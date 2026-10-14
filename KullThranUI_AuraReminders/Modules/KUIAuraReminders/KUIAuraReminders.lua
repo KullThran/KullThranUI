@@ -4,6 +4,9 @@
 -------------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
 local KT = (ns and ns.KT) or (_G and (_G.KT or _G.KullThranUI)) or LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
+-- Current Retail clients no longer expose these global item helpers.
+local GetItemIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
+local GetItemCount = (C_Item and C_Item.GetItemCount) or _G.GetItemCount
 -- KUI localization helper (resolved at call time; falls back to the raw text)
 local function LText(text)
     if type(text) ~= "string" then return text end

@@ -23,7 +23,7 @@ end
 local _G = _G
 local pairs, select, tonumber, string, math = pairs, select, tonumber, string, math
 local GetInventoryItemLink = GetInventoryItemLink
-local GetItemInfo = GetItemInfo
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
 local C_Item = C_Item
 local C_TooltipInfo = C_TooltipInfo
 local C_PaperDollInfo = C_PaperDollInfo

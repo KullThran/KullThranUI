@@ -1,5 +1,7 @@
 local _, ns = ...
 local KT = (ns and ns.KT) or _G.KT
+-- Current Retail clients no longer expose these global item helpers.
+local GetItemIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
 local Mod = KT and KT:GetModule("Enhancements", true)
 local H = Mod and Mod.MythicPlusHistory
 if not H then return end

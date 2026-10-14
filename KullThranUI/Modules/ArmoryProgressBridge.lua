@@ -1,4 +1,6 @@
 local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI", true)
+-- Current Retail clients no longer expose these global item helpers.
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
 -- KUI localization helper (resolved at call time; falls back to the raw text)
 local function LText(text)
     if type(text) ~= "string" then return text end
