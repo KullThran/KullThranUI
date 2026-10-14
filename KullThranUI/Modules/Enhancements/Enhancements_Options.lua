@@ -2325,9 +2325,9 @@ local function BuildAFKScreenBlock(container, W, db)
     y = y + h
 
     _, h = W:Slider(container, LText("Logo Size"), -y,
-        function() return tonumber(afk.logoSize) or 260 end,
+        function() return tonumber(afk.logoSize) or 140 end,
         function(v) afk.logoSize = math.floor(v + 0.5); Refresh() end,
-        100, 600, 10)
+        60, 300, 5)
     y = y + h
 
     _, h = W:Slider(container, LText("Logo Opacity"), -y,

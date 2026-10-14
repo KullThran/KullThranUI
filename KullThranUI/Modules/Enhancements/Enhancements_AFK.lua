@@ -45,7 +45,7 @@ local DEFAULTS = {
     modelScale = 1,
     showChat = true,
     showLogo = true,
-    logoSize = 260,
+    logoSize = 140,
     logoAlpha = 0.9,
     showFaction = true,
     showGuild = true,
@@ -191,8 +191,9 @@ local function BuildUI()
         fs:SetJustifyH("LEFT")
     end
 
-    f.logo = f:CreateTexture(nil, "ARTWORK")
-    f.logo:SetPoint("CENTER", f, "CENTER", 0, 0)
+    -- Bottom-centre, rising out of the info bar like ElvUI's logo.
+    f.logo = f:CreateTexture(nil, "OVERLAY")
+    f.logo:SetPoint("BOTTOM", bar, "BOTTOM", 0, 8)
     f.logo:SetTexture(LOGO_TEXTURE)
 
     -- Holder controls the model position; the model itself is oversized so
@@ -280,7 +281,7 @@ local function ApplyLayout()
     bar.time:SetTextColor(0.7, 0.7, 0.7)
     bar.time:SetShown(config.showTimer ~= false)
 
-    local logoSize = tonumber(config.logoSize) or 260
+    local logoSize = tonumber(config.logoSize) or 140
     local accentR, accentG, accentB = AccentColor()
     f.logo:SetSize(logoSize, logoSize)
     f.logo:SetVertexColor(accentR, accentG, accentB, tonumber(config.logoAlpha) or 0.9)
