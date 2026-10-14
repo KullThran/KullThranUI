@@ -976,6 +976,7 @@ local CHANGELOG_ENTRIES = {
             "Portraits: your own race and form are recognized, so a self-target portrait faces the right way.",
             "Skins: popups use the Settings artwork, breath and fatigue bars get striped bars in Blizzard's colors, and the Professions rank bar no longer shows a floating flare over an empty bar.",
             "Cooldown Manager: Midnight potions are supported, including the fleeting versions.",
+            "Cooldown Manager: buff icons appear as soon as you gain the buff (they could wait until combat), and no longer stay hidden for seconds when combat starts.",
             "Compatibility: updated for client interface 120105, with item functions that moved to C_Item handled in Bags, Teleport Menu, Aura Reminders, Armory, Inspect and the Cooldown Manager.",
         },
     },

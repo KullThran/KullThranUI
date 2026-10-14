@@ -9851,6 +9851,9 @@ function ns.UpdateNativeCDMBarIcons(barKey)
         if ns.SyncProcGlowIndexForIcon then ns.SyncProcGlowIndexForIcon(nativeFrame) end
     end
     container._prevVisibleCount = #icons
+    if ns._lagTrace and barKey == "buffs" then
+        ns._lagTrace("claimed:" .. #icons .. (compositionChanged and "+comp" or ""), true)
+    end
     return compositionChanged
 end
 
@@ -9859,7 +9862,50 @@ function ns.NativeCDMHostingEnabled()
     return p and p.cdmBars and p.cdmBars.enabled
 end
 
+-- Opt-in latency trace (/ktcdmlag): a timeline from the aura event to the buffs row being
+-- claimed, to tell Blizzard's delay from KUI's. Off by default; hooks only pay a nil check.
+function ns.CDMLagToggle()
+    if ns._lagTrace then
+        ns._lagTrace = nil
+        if ns._lagFrame then ns._lagFrame:UnregisterAllEvents() end
+        print("|cff00ff88[ktcdmlag]|r off")
+        return
+    end
+    local marks, t0, now = {}, nil, (GetTimePreciseSec or GetTime)
+    ns._lagTrace = function(stage, done)
+        local t = now()
+        if t0 and t - t0 > 3 then marks, t0 = {}, nil end -- stale half trace
+        if not t0 then t0 = t end
+        -- Consecutive repeats (a viewer refresh sets a cooldown ID on every icon) collapse into
+        -- "stage xN"; the closing mark is always kept, however long the trace got.
+        local last = marks[#marks]
+        if last and last.stage == stage and not done then
+            last.count = last.count + 1
+            return
+        end
+        if #marks < 24 or done then
+            marks[#marks + 1] = { stage = stage, count = 1, ms = (t - t0) * 1000 }
+        end
+        if done then
+            local out = {}
+            for i, m in ipairs(marks) do
+                out[i] = string.format("%s%s +%.0fms", m.stage, m.count > 1 and (" x" .. m.count) or "", m.ms)
+            end
+            print("|cff00ff88[ktcdmlag]|r " .. table.concat(out, "  "))
+            marks, t0 = {}, nil
+        end
+    end
+    local frame = ns._lagFrame or CreateFrame("Frame")
+    ns._lagFrame = frame
+    frame:RegisterUnitEvent("UNIT_AURA", "player")
+    frame:SetScript("OnEvent", function() ns._lagTrace("unit_aura") end)
+    print("|cff00ff88[ktcdmlag]|r on: gain a buff and read the timeline")
+end
+SLASH_KTCDMLAG1 = "/ktcdmlag"
+SlashCmdList.KTCDMLAG = function() ns.CDMLagToggle() end
+
 function ns.NativeCDMViewerChanged(reason, viewerName)
+    if ns._lagTrace then ns._lagTrace("changed:" .. tostring(reason)) end
     if not ns.NativeCDMHostingEnabled() then return end
     local barKey
     if viewerName == "EssentialCooldownViewer" then
@@ -9883,6 +9929,7 @@ function ns.NativeCDMViewerChanged(reason, viewerName)
     if ns._nativeViewerChangedPending then return end
     ns._nativeViewerChangedPending = true
     C_Timer.After(0.05, function()
+        if ns._lagTrace then ns._lagTrace("changed_timer") end
         ns._nativeViewerChangedPending = false
         -- Always consume what accumulated: a burst that keeps arriving during
         -- the window must still invalidate the snapshot when the timer fires,
@@ -9937,6 +9984,12 @@ function ns.ReassertNativeCDMViewerLayout(viewerName)
         end
         if protected then
             ns._cdmLayoutPending = true
+            -- Geometry must wait for combat end, but alpha is not a protected
+            -- operation. Blizzard can run a Layout right as combat starts and
+            -- rewrite the alpha of the hosted frames; claimed frames have no SetAlpha
+            -- guard, so without this the row stays invisible until combat ends.
+            container._kuiNativeAlpha = nil
+            ns.SyncNativeCDMBarAlpha(barKey)
             return false
         end
     end
@@ -10041,6 +10094,7 @@ function ns.SetupNativeCDMViewerHooks()
         if mixin and mixin.OnCooldownIDSet and not hookState.mixins[mixin] then
             hookState.mixins[mixin] = true
             hooksecurefunc(mixin, "OnCooldownIDSet", function(itemFrame)
+                if ns._lagTrace then ns._lagTrace("cooldown_id") end
                 local cooldownID = itemFrame and itemFrame.cooldownID
                 if itemFrame and itemFrame._kuiNativeCooldownID == cooldownID then
                     return
@@ -10071,6 +10125,7 @@ function ns.SetupNativeCDMViewerHooks()
             if itemFramePool and itemFramePool.Acquire and not hookState.pools[itemFramePool] then
                 hookState.pools[itemFramePool] = true
                 hooksecurefunc(itemFramePool, "Acquire", function()
+                    if ns._lagTrace then ns._lagTrace("pool_acquire") end
                     if isTrackedBarViewer then ns.WakeTrackedBuffBars() end
                     ns.NativeCDMViewerChanged("native_pool_acquire", sourceViewerName)
                 end)
@@ -10078,7 +10133,17 @@ function ns.SetupNativeCDMViewerHooks()
             if viewer.OnAcquireItemFrame and not hookState.acquire[viewer] then
                 hookState.acquire[viewer] = true
                 hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, itemFrame)
-                    if ns.NativeCDMHostingEnabled() and itemFrame then itemFrame:SetAlpha(0) end
+                    if ns._lagTrace then ns._lagTrace("acquire_item") end
+                    if ns.NativeCDMHostingEnabled() and itemFrame then
+                        itemFrame:SetAlpha(0)
+                        -- The claim pass restores alpha through SyncNativeCDMBarAlpha, which
+                        -- skips the work while the container alpha is unchanged. A recycled,
+                        -- already-claimed frame blanked here (pool churn at combat start) would
+                        -- then stay invisible until a periodic Layout dropped the cache.
+                        local hostedKey = GetHostedBarKeyForViewer(sourceViewerName)
+                        local hostedContainer = hostedKey and cdmBarFrames[hostedKey]
+                        if hostedContainer then hostedContainer._kuiNativeAlpha = nil end
+                    end
                     if isTrackedBarViewer then ns.WakeTrackedBuffBars() end
                     ns.NativeCDMViewerChanged("native_item_acquire", sourceViewerName)
                 end)
@@ -10086,6 +10151,7 @@ function ns.SetupNativeCDMViewerHooks()
             if viewer.Layout and not hookState.layout[viewer] then
                 hookState.layout[viewer] = true
                 hooksecurefunc(viewer, "Layout", function()
+                    if ns._lagTrace then ns._lagTrace("layout") end
                     ns.NativeCDMViewerLayoutObserved(sourceViewerName)
                 end)
             end
@@ -12130,6 +12196,9 @@ local function UpdateAllCDMBars(dt)
     end
 
     local wasDirty, viewerDirty, dirtyBars, allBarsDirty = CDMRT:ConsumeDirty()
+    if ns._lagTrace and ((dirtyBars and dirtyBars.buffs) or allBarsDirty or forceFullPass) then
+        ns._lagTrace("update_pass")
+    end
     -- Only a full pass when explicitly requested. `not next(dirtyBars)` used to
     -- make a NON-targeted dirty reason (e.g. every UNIT_SPELLCAST_SUCCEEDED and
     -- SPELL_UPDATE_COOLDOWN in combat) rebuild EVERY bar -- UpdateCDMBarIcons on
@@ -12208,7 +12277,15 @@ local function UpdateAllCDMBars(dt)
             shouldRefreshViewerSnapshot = true
         end
     end
+    -- A buffs pass must not trust a stale mirror: a buff that merely becomes shown changes neither
+    -- the pool hooks nor the pool signature, and stayed invisible until combat churned the pool.
+    if not shouldRefreshViewerSnapshot and (dirtyBars.buffs or updateAllBars) and ns.GetBuffViewerShownSignature then
+        if ns.GetBuffViewerShownSignature() ~= CDMRT.buffShownSignature then
+            shouldRefreshViewerSnapshot = true
+        end
+    end
     if shouldRefreshViewerSnapshot then
+        if ns._lagTrace then ns._lagTrace("snapshot") end
         CDMRT.viewerSnapshotElapsed = 0
         do
             local hasBlizzardBar = false
@@ -12281,6 +12358,9 @@ local function UpdateAllCDMBars(dt)
             end
         end
         CDMRT.viewerSnapshotReady = true
+        if ns.GetBuffViewerShownSignature then
+            CDMRT.buffShownSignature = ns.GetBuffViewerShownSignature()
+        end
         if probedViewerSignature ~= nil then
             CDMRT.viewerPoolSignature = probedViewerSignature
         elseif ns.GetCDMViewerPoolSignature then
@@ -12399,6 +12479,25 @@ function ns.RunCDMUpdateIfIdle(forceImmediate)
 end
 
 ns._lateCDMRefreshToken = ns._lateCDMRefreshToken or 0
+-- Which pooled frames of the buff viewer are currently shown. A buff can become active without any
+-- pool change (Blizzard already has its frame acquired), so the pool signature cannot see it;
+-- this one can. Order independent, a handful of frames, no API calls beyond IsShown.
+function ns.GetBuffViewerShownSignature()
+    local viewer = _G.BuffIconCooldownViewer
+    local pool = viewer and viewer.itemFramePool
+    if not (pool and pool.EnumerateActive) then return "" end
+    local entries = {}
+    for child in pool:EnumerateActive() do
+        if child.IsShown and child:IsShown() then
+            local cooldownID = child.cooldownID or (child.cooldownInfo and child.cooldownInfo.cooldownID)
+            local ok, value = pcall(tostring, cooldownID or child)
+            entries[#entries + 1] = ok and value or "restricted"
+        end
+    end
+    table.sort(entries)
+    return table.concat(entries, ",")
+end
+
 function ns.GetCDMViewerPoolSignature()
     local signature = {}
     for _, viewerName in ipairs(_cdmViewerNames) do
