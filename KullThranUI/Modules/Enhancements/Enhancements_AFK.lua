@@ -1,7 +1,7 @@
 -- ============================================================================
 -- ENHANCEMENTS - AFK SCREEN
 -- ============================================================================
--- Pantalla de ausencia inspirada en el AFK de ElvUI: al marcarse AFK se oculta
+-- Pantalla de ausencia: al marcarse AFK se oculta
 -- la interfaz, la camara gira despacio y aparece una barra inferior con el
 -- personaje, la hermandad, el tiempo ausente y el modelo del jugador. Cualquier
 -- tecla (o entrar en combate, una cola de grupo o un campo de batalla) la cierra.
@@ -26,7 +26,7 @@ local DEFAULT_FONT = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_A
 -- White KUI logo, tinted with the active style accent (same art Unlock Mode uses).
 local LOGO_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUIBlanco.png"
 
--- Same animation set ElvUI uses; facing/idle values keep the model looking at the camera.
+-- Idle emotes for the model; facing/idle values keep it looking at the camera.
 Mod.AFK_ANIMATIONS = {
     { key = "dance", label = "Dance", id = 69, facing = 6, wait = 30, duration = 300 },
     { key = "salute", label = "Salute", id = 113, facing = 6, wait = 30, duration = 5 },
@@ -107,7 +107,7 @@ local function AccentColor()
 end
 
 -- ----------------------------------------------------------------------------
--- Chat (whispers and guild only, like ElvUI)
+-- Chat (whispers and guild only)
 -- ----------------------------------------------------------------------------
 local CHAT_EVENTS = { "CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_GUILD" }
 
@@ -191,7 +191,7 @@ local function BuildUI()
         fs:SetJustifyH("LEFT")
     end
 
-    -- Bottom-centre, rising out of the info bar like ElvUI's logo. It lives on
+    -- Bottom-centre, rising out of the info bar. It lives on
     -- its own frame above the bar so the bar background never covers it.
     local logoFrame = CreateFrame("Frame", nil, f)
     logoFrame:SetAllPoints(f)
@@ -201,7 +201,7 @@ local function BuildUI()
     f.logo:SetTexture(LOGO_TEXTURE)
 
     -- Holder controls the model position; the model itself is oversized so
-    -- animations never clip (same trick as ElvUI).
+    -- animations never clip.
     local holder = CreateFrame("Frame", nil, bar)
     holder:SetSize(150, 150)
     holder:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -200, 220)
