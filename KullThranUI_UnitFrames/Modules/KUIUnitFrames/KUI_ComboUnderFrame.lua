@@ -207,8 +207,30 @@ local function ArtFor(style)
     return ATLAS.modernEmpty, ATLAS.modernFill
 end
 
+-- Forever's bronze-ringed combo orbs, packaged so the Forever style looks the same on every
+-- client (Retail's own uf-roguecp atlases have a gold rim). 64x32 sheet: ring (0,0,22x22),
+-- unlit ring (24,0), red gem (48,0,14x14).
+local FOREVER_COMBO_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_combo.tga]]
+function CUF.UsesForeverArt(style)
+    if style ~= "modern" then return false end
+    local vt = KT.VisualThemes
+    return vt and vt.GetRenderedTheme and vt:GetRenderedTheme() == "forever" or false
+end
+
 local function ApplyPipArt(p, style, gem)
     local emptyAtlas, fillAtlas = ArtFor(style)
+    p._foreverArt = CUF.UsesForeverArt(style) and not gem
+    if p._foreverArt then
+        p.empty:SetTexture(FOREVER_COMBO_FILE)
+        p.empty:SetTexCoord(0, 22 / 64, 0, 22 / 32)
+        p.empty:SetVertexColor(1, 1, 1, 1)
+        p.bar:SetStatusBarTexture(FOREVER_COMBO_FILE)
+        local t = p.bar:GetStatusBarTexture()
+        if t then t:SetTexCoord(48 / 64, 62 / 64, 0, 14 / 32) end
+        p.bar:SetStatusBarColor(1, 1, 1, 1)
+        return
+    end
+    if p.empty.SetTexCoord then p.empty:SetTexCoord(0, 1, 0, 1) end
     if HasAtlas(emptyAtlas) then
         p.empty:SetAtlas(emptyAtlas, false)
         p.empty:SetVertexColor(1, 1, 1, 1)
@@ -444,6 +466,14 @@ function Widget:Layout()
             if i <= n then
                 p:SetSize(S, S)
                 p:SetPoint("LEFT", f, "LEFT", (i - 1) * (S + gap), 0)
+                p.bar:ClearAllPoints()
+                if p._foreverArt then
+                    -- the gem is 14px inside the 22px ring
+                    p.bar:SetPoint("CENTER", p, "CENTER", 0, 0)
+                    p.bar:SetSize(S * 14 / 22, S * 14 / 22)
+                else
+                    p.bar:SetAllPoints()
+                end
             end
         end
     end

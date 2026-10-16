@@ -30,7 +30,7 @@ KT.VisualThemes:RegisterModule("actionbars", {
             profile.buttonStyle = "SIMPLICITY"
             profile.buttonShape = "NONE"
             profile.buttonBackdropColor = { r = 0.12, g = 0.08, b = 0.03, a = 1 }
-            profile.frameArtKit = "default"
+            profile.frameArtKit = "forever"
         elseif themeKey == "retail" then
             profile.buttonStyle = "BLIZZARD"
             profile.buttonShape = "NONE"
@@ -54,11 +54,17 @@ KT.VisualThemes:RegisterModule("actionbars", {
             profile._ktForeverSquareIcons = true
             if profile.buttonShape == "CIRCLE" then profile.buttonShape = "NONE" end
         end
+        -- The Forever theme used to leave the client's own bar art ("default"), which
+        -- is the Retail gryphon on a Retail client: move it to Forever's own kit once.
+        if themeKey == "forever" and not profile._ktForeverCapKit and profile.frameArtKit == "default" then
+            profile.frameArtKit = "forever"
+        end
+        if themeKey == "forever" then profile._ktForeverCapKit = true end
         -- frameArtKit is the player's choice (Action Bar Art cards); only repair invalid values.
-        local kits = { default = true, classic = true, retail = true }
+        local kits = { default = true, classic = true, retail = true, forever = true }
         if not kits[profile.frameArtKit] then
             profile.frameArtKit = themeKey == "classic" and "classic"
-                or (themeKey == "retail" and "retail" or "default")
+                or (themeKey == "retail" and "retail" or (themeKey == "forever" and "forever" or "default"))
         end
     end,
 })

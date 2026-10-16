@@ -947,6 +947,17 @@ function KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, host, unit, geom,
     frame._ktNameReactionHost = host
     frame._ktNameReactionPreview = preview
     -- Classic: FrameXML TargetFrameNameBackground is 119x19, ending on the health bar.
+    if modern and geom.strip then
+        -- Current Forever plate: the tint covers exactly the name tab's interior
+        -- (a plain section of the reputation art, no portrait curve).
+        strip:SetTexCoord(195 / 1024, 319 / 1024, 235 / 512, 249 / 512)
+        strip:ClearAllPoints()
+        strip:SetPoint("TOPLEFT", frame, "TOPLEFT",
+            (geom.strip.x + (shift or 0)) * scale, -geom.strip.y * scale)
+        strip:SetSize((geom.strip.w + (extension or 0)) * scale, geom.strip.h * scale)
+        self:UpdateUnitFrameNameReaction(frame, unit)
+        return
+    end
     local height = modern and (geom.name.h or 14) or 19
     local inset = modern and 1 or 0
     local portraitCurve = modern and unit == "target" and 11 or 0
@@ -1181,6 +1192,8 @@ function KT.VisualThemes:ApplyClassicUnitFrameArt(frame, unitRegion, unit)
         buffs:SetSize(tabWidth, iconSize)
         buffs.size = iconSize
         buffs.spacing = gap
+        buffs.spacingX = gap
+        buffs.spacingY = gap
         buffs["size-x"] = math.max(1, math.floor((tabWidth + gap) / (iconSize + gap)))
         if buffs.ForceUpdate then buffs:ForceUpdate() end
         -- Height of the aura row above the frame's top edge: KUI Tracker bars
@@ -1239,6 +1252,7 @@ local FOREVER_FRAME_GEOMETRY = {
         power = {
             x = 85, y = 61, w = 124, h = 10,
             mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Mana-Mask",
+            plain = true,
             mx = -2, my = 2,
         },
         name = { x = 88, y = -27, w = 96, h = 14 },
@@ -1270,6 +1284,7 @@ local FOREVER_FRAME_GEOMETRY = {
         power = {
             x = 23, y = 61, w = 124, h = 10,
             mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Mana-Mask",
+            plain = true,
             mx = -2, my = 2,
         },
         name = { x = 48, y = -27, w = 96, h = 14 },
@@ -1293,6 +1308,36 @@ local FOREVER_FRAME_GEOMETRY = {
 -- large or too small.
 local BUFFS_TAB_GAP = 3
 
+-- Geometry for forever_frames.tga (the current Forever plate). The art is drawn at
+-- its native size centred in the 232x100 box, so offsets are art offset
+-- (17, 14.5) + position inside the art. Bars are plain rectangles: the plate's
+-- bands already frame them, and Retail's bar masks do not fit this art.
+local FOREVER_PACKED_GEOMETRY = {
+    player = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        portrait = { point = "TOPLEFT", x = 24, y = -19, size = 60 },
+        health = { x = 89, y = 46.5, w = 122, h = 13, plain = true,
+            mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health-Mask", mx = -2, my = 6 },
+        power = { x = 89, y = 62.5, w = 122, h = 8, plain = true,
+            mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Mana-Mask", mx = -2, my = 2 },
+        name = { x = 93, y = -28.5, w = 114, h = 14 },
+        strip = { x = 89, y = 28.5, w = 122, h = 14 },
+    },
+    target = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        mirror = true,
+        portrait = { point = "TOPRIGHT", x = -24, y = -19, size = 60 },
+        health = { x = 21, y = 46.5, w = 122, h = 13, plain = true,
+            mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health-Mask", mx = -2, my = 6 },
+        power = { x = 21, y = 62.5, w = 122, h = 8, plain = true,
+            mask = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Mana-Mask", mx = -2, my = 2 },
+        name = { x = 25, y = -28.5, w = 114, h = 14 },
+        strip = { x = 21, y = 28.5, w = 122, h = 14 },
+    },
+}
+
 local function UnsnapTexture(texture)
     if not texture then return end
     if texture.SetSnapToPixelGrid then texture:SetSnapToPixelGrid(false) end
@@ -1309,13 +1354,23 @@ end
 
 
 
-local function ApplyForeverBarMask(bar, geom, scale, portraitExtension, dropOnExtension)
+local function ApplyForeverBarMask(bar, geom, scale, portraitExtension, dropOnExtension, packagedArt)
     if not (bar and geom and geom.mask and C_Texture and C_Texture.GetAtlasInfo) then return end
     -- Power bar with a Rare/Elite ring: the stock Mana mask has a transparent left
     -- section (that part is tucked under the stock ring), so once the base art is hidden
     -- the bar showed only a thin sliver at its far left and a gap after it. Drop the
     -- mask for this case and let the bar be a plain rectangle.
-    if dropOnExtension and portraitExtension and portraitExtension ~= 0 then
+    -- packagedArt: the geometry was calibrated against Retail's bar masks. Any
+    -- other client lays them out differently and clips the bars short of their
+    -- bands, so the bar is left a plain rectangle unless the mask really is
+    -- Retail's (health / mana mask sheet file IDs).
+    local plainRect = geom.plain == true
+    if packagedArt and not plainRect then
+        local live = C_Texture.GetAtlasInfo(geom.mask)
+        local file = live and (live.file or live.filename)
+        plainRect = file ~= 4697851 and file ~= 4697854
+    end
+    if plainRect or (dropOnExtension and portraitExtension and portraitExtension ~= 0) then
         local m = bar._ktForeverMask
         if m then
             local fill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
@@ -1482,13 +1537,49 @@ end
 --- must always show real Retail art even while another theme is active.
 --- @param atlasName string
 --- @return table|nil info shaped like C_Texture.GetAtlasInfo's own return
+-- Forever's frames after the latest Forever patch: the current three-band bronze
+-- plate, with the portrait ring KullThranUI keeps (circle with the bronze corner).
+-- forever_frames.tga (256x128) holds the player/target box at (0,0,198,71) and the
+-- small ToT/Pet/Focus-target box at (0,72,120,49).
+local FOREVER_FRAMES_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_frames.tga]]
 function KT.VisualThemes:GetForeverAtlasPixels(atlasName)
-    if type(atlasName) ~= "string" or atlasName:lower() ~= "ui-hud-unitframe-player-portraiton" then return nil end
+    if type(atlasName) ~= "string" then return nil end
+    local name = atlasName:lower()
+    if name == "ui-hud-unitframe-player-portraiton" then
+        return {
+            file = FOREVER_FRAMES_FILE, width = 198, height = 71,
+            leftTexCoord = 0, rightTexCoord = 198 / 256,
+            topTexCoord = 0, bottomTexCoord = 71 / 128,
+        }
+    elseif name == "ui-hud-unitframe-targetoftarget-portraiton" then
+        return {
+            file = FOREVER_FRAMES_FILE, width = 120, height = 49,
+            leftTexCoord = 0, rightTexCoord = 120 / 256,
+            topTexCoord = 72 / 128, bottomTexCoord = 121 / 128,
+        }
+    end
+    return nil
+end
+
+-- Forever's own action bar end caps (bronze gryphon / wyvern, "C60" art). They
+-- live in one 512x512 sheet bundled with the addon so any client can draw them;
+-- the Forever client also has them natively as the "-c60" atlases.
+local FOREVER_CAP_SHEET = [[Interface\AddOns\KullThranUI\Libraries\texture\media\actionbar\UI-HUD-ActionBar-Caps-C60.blp]]
+local FOREVER_CAP_RECTS = {
+    gryphon = { left = { 1, 241, 1, 141 }, right = { 243, 483, 1, 141 } },
+    wyvern = { left = { 1, 241, 143, 283 }, right = { 243, 483, 143, 283 } },
+}
+--- @param kind string "gryphon" (Alliance) or "wyvern" (Horde)
+--- @param side string "left" or "right"
+function KT.GetForeverCapPixels(kind, side)
+    local rects = FOREVER_CAP_RECTS[kind]
+    local rect = rects and rects[side]
+    if not rect then return nil end
     return {
-        file = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_unitframe.tga]],
-        width = 198, height = 71,
-        leftTexCoord = 1 / 256, rightTexCoord = 199 / 256,
-        topTexCoord = 246 / 512, bottomTexCoord = 317 / 512,
+        file = FOREVER_CAP_SHEET,
+        width = rect[2] - rect[1], height = rect[4] - rect[3],
+        leftTexCoord = rect[1] / 512, rightTexCoord = rect[2] / 512,
+        topTexCoord = rect[3] / 512, bottomTexCoord = rect[4] / 512,
     }
 end
 
@@ -1565,15 +1656,18 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
 
     local renderedTheme = self.GetRenderedTheme and self:GetRenderedTheme()
     local isRetailTheme = renderedTheme == "retail"
-    local geom = unit and FOREVER_FRAME_GEOMETRY[unit]
+    local geom = unit and ((renderedTheme == "forever" and FOREVER_PACKED_GEOMETRY[unit])
+        or FOREVER_FRAME_GEOMETRY[unit])
     if not geom then
         self:ClearForeverUnitFrameArt(frame)
         return
     end
 
     local retailOverrideInfo = ResolveRetailAtlasOverride(geom.art)
-    local foreverOverrideInfo = renderedTheme == "forever" and _G.WOW_PROJECT_MAINLINE
-        and _G.WOW_PROJECT_ID == _G.WOW_PROJECT_MAINLINE and self:GetForeverAtlasPixels(geom.art)
+    -- The packaged Forever box draws on every client under the Forever style.
+    -- The Forever client's own atlas of this name is a plain circular ring, not
+    -- the dome ornament this theme uses, so no client flag may gate the override.
+    local foreverOverrideInfo = renderedTheme == "forever" and self:GetForeverAtlasPixels(geom.art)
     local info = foreverOverrideInfo or retailOverrideInfo
         or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(geom.art))
     if not info then
@@ -1861,7 +1955,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
         health._rightInset = (geom.w - geom.health.x - geom.health.w) * scale
             - ((unit == "target") and portraitExtension or 0)
         health._topOffset = geom.health.y * scale
-        ApplyForeverBarMask(health, geom.health, scale, portraitExtension)
+        ApplyForeverBarMask(health, geom.health, scale, portraitExtension, nil, foreverOverrideInfo ~= nil)
         ResizeHealthPrediction(frame, geom.health.w * scale + portraitExtension, geom.health.h * scale)
         -- TEMPORARY debug: cache the exact arithmetic that just ran, and the
         -- width immediately after SetSize, so the diagnostic dump can show whether
@@ -1879,7 +1973,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
         power:SetPoint("TOPLEFT", frame, "TOPLEFT",
             geom.power.x * scale + barShiftX, -geom.power.y * scale)
         power:SetSize(geom.power.w * scale + portraitExtension, geom.power.h * scale)
-        ApplyForeverBarMask(power, geom.power, scale, portraitExtension, true)
+        ApplyForeverBarMask(power, geom.power, scale, portraitExtension, true, foreverOverrideInfo ~= nil)
     end
 
     SeatStockCastbar(frame, geom, scale)
@@ -1905,6 +1999,8 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
             geom.name.x * scale + nameShiftX, geom.name.y * scale)
         if nameText.SetWidth then nameText:SetWidth(nameWidth) end
         if nameText.SetJustifyH then nameText:SetJustifyH(geom.name.justify or "LEFT") end
+        if geom.name.h and nameText.SetHeight then nameText:SetHeight(geom.name.h * scale) end
+        if geom.name.h and nameText.SetJustifyV then nameText:SetJustifyV("MIDDLE") end
         frame._ktDebugNameCalc = string.format(
             "point=%s x=%.4f y=%.4f w=%.4f postSetGetWidth=%s postSetText=%s",
             tostring(point), geom.name.x * scale + nameShiftX, geom.name.y * scale, nameWidth,
@@ -1960,6 +2056,8 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
         buffs:SetSize(tabW, iconSize)
         buffs.size = iconSize
         buffs.spacing = gap
+        buffs.spacingX = gap
+        buffs.spacingY = gap
         buffs["size-x"] = math.max(1, math.floor((tabW + gap) / (iconSize + gap)))
         if buffs.ForceUpdate then buffs:ForceUpdate() end
         frame._ktAuraRowLift = math.max(0, buffsY * scale + iconSize)
@@ -2039,6 +2137,17 @@ end
     fonts, texts and border settings stay user-editable.
 ]]
 local PetArt = {}
+-- Current Forever mini plate (forever_frames.tga), same 120x49 box as the atlas.
+PetArt.geomPacked = {
+    w = 120, h = 49,
+    atlas = "UI-HUD-UnitFrame-TargetofTarget-PortraitOn",
+    portrait = { point = "TOPLEFT", x = 6, y = -8, size = 33 },
+    health = { x = 47, y = 20, w = 67, h = 9, plain = true,
+        mask = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Mask", mx = -29, my = 3 },
+    power = { x = 47, y = 31, w = 67, h = 6, plain = true,
+        mask = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Mana-Mask", mx = -27, my = 4 },
+    name = { x = 48, y = -8, w = 65, h = 9 },
+}
 PetArt.geom = {
     classic = {
         w = 128, h = 53,
@@ -2084,6 +2193,9 @@ end
 function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
     if type(frame) ~= "table" or type(unitRegion) ~= "table" then return end
     local geom = PetArt.geom[kind]
+    if kind == "forever" and self.GetRenderedTheme and self:GetRenderedTheme() == "forever" then
+        geom = PetArt.geomPacked
+    end
     if not (geom and frame.Health) then return end
     local atlasInfo
     if kind == "forever" then
@@ -2167,7 +2279,7 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
     health._xOffset = geom.health.x * scale
     health._rightInset = (geom.w - geom.health.x - geom.health.w) * scale
     health._topOffset = geom.health.y * scale
-    if kind == "forever" then ApplyForeverBarMask(health, geom.health, scale) end
+    if kind == "forever" then ApplyForeverBarMask(health, geom.health, scale, nil, nil, geom.health.plain) end
     ResizeHealthPrediction(frame, geom.health.w * scale, geom.health.h * scale)
 
     local power = frame.Power
@@ -2175,7 +2287,7 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
         power:ClearAllPoints()
         power:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.power.x * scale, -geom.power.y * scale)
         power:SetSize(geom.power.w * scale, geom.power.h * scale)
-        if kind == "forever" then ApplyForeverBarMask(power, geom.power, scale) end
+        if kind == "forever" then ApplyForeverBarMask(power, geom.power, scale, nil, nil, geom.power.plain) end
     end
 
     local nameText = frame._ktStockNameText or frame.LeftText
@@ -2184,7 +2296,9 @@ function KT.VisualThemes:ApplyPetFrameArt(frame, unitRegion, kind, opts)
         nameText:ClearAllPoints()
         nameText:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
         if nameText.SetWidth then nameText:SetWidth(geom.name.w * scale) end
-        if nameText.SetJustifyH then nameText:SetJustifyH("LEFT") end
+        if nameText.SetJustifyH then nameText:SetJustifyH(geom.name.justify or "LEFT") end
+        if geom.name.h and nameText.SetHeight then nameText:SetHeight(geom.name.h * scale) end
+        if geom.name.h and nameText.SetJustifyV then nameText:SetJustifyV("MIDDLE") end
     end
     local ratio = (kind == "classic") and CLASSIC_BAR_TEXT_HEIGHT_RATIO or STOCK_BAR_TEXT_HEIGHT_RATIO
     local barMax = geom.health.h * scale

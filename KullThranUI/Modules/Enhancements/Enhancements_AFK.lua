@@ -118,7 +118,7 @@ end
 -- ----------------------------------------------------------------------------
 local CHAT_EVENTS = { "CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_GUILD" }
 
-local function Chat_OnEvent(self, event, message, sender)
+local function Chat_OnEvent(self, event, message, sender, _, _, _, _, _, _, _, _, _, guid)
     local chatType = event:sub(10)
     local info = _G.ChatTypeInfo and _G.ChatTypeInfo[chatType]
     local prefix = _G["CHAT_" .. chatType .. "_GET"] or "%s: "
@@ -127,6 +127,15 @@ local function Chat_OnEvent(self, event, message, sender)
         if chatType ~= "BN_WHISPER" and _G.Ambiguate then name = _G.Ambiguate(sender, "short") end
         local link = chatType == "BN_WHISPER" and ("[" .. name .. "]")
             or format("|Hplayer:%s|h[%s]|h", sender, name)
+        -- The sender is shown in their class colour (guild and whispers carry the GUID).
+        if chatType ~= "BN_WHISPER" and guid and _G.GetPlayerInfoByGUID then
+            local okInfo, _, classFile = pcall(_G.GetPlayerInfoByGUID, guid)
+            local classColors = _G.CUSTOM_CLASS_COLORS or _G.RAID_CLASS_COLORS
+            local color = okInfo and classFile and classColors and classColors[classFile]
+            if color then
+                link = format("|cff%02x%02x%02x%s|r", color.r * 255, color.g * 255, color.b * 255, link)
+            end
+        end
         return format(prefix, link) .. message
     end)
     if ok and line then
@@ -139,6 +148,15 @@ local function Chat_OnMouseWheel(self, delta)
 end
 
 -- ----------------------------------------------------------------------------
+-- Camera factor for the player's current form: druid forms are far larger than a
+-- humanoid, so the camera moves back by 2.5x for them.
+local function FormFitFactor()
+    local _, class = UnitClass("player")
+    local form = GetShapeshiftForm and GetShapeshiftForm() or 0
+    if class == "DRUID" and form and form > 0 then return 0.4 end
+    return 1
+end
+
 -- Model animation loop: wave on entry, then the chosen emote with idle pauses
 -- ----------------------------------------------------------------------------
 local function PlayAnimation(model, anim)
@@ -300,7 +318,7 @@ local function ApplyLayout()
 
     local model = bar.model
     model:SetSize(screenW * 2, screenH * 2)
-    pcall(model.SetCamDistanceScale, model, 4.5 / math.max(0.3, tonumber(config.modelScale) or 1))
+    pcall(model.SetCamDistanceScale, model, 4.5 / (math.max(0.3, tonumber(config.modelScale) or 1) * FormFitFactor()))
     bar.modelHolder:SetShown(config.showModel ~= false)
 
     f.chat:SetShown(config.showChat ~= false)
@@ -354,6 +372,9 @@ function Mod:SetAFKScreen(show, preview)
         if config.showModel ~= false then
             local model = f.bar.model
             model:SetUnit("player")
+            -- Big shapeshift models (travel/flight forms) would fill the screen at
+            -- the humanoid distance: pull the camera back for them.
+            pcall(model.SetCamDistanceScale, model, 4.5 / (math.max(0.3, tonumber(config.modelScale) or 1) * FormFitFactor()))
             PlayAnimation(model, WAVE)
         end
         if config.showChat ~= false then

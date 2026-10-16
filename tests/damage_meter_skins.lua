@@ -58,8 +58,13 @@ for _, live in ipairs({true,false}) do
     Mod.ApplyDamageMeterAtlasArt(frame,{},"forever",20)
     assert(#frame._meterSwingEdges==8 and frame._meterSwingEdges[1].width==16)
     assert(frame._meterSwingEdges[1].height==8, "ornament corners retain their size")
-    assert(row._meterSwingFrame.atlas=="ui-swingtimerbar-frame")
+    assert(not row._meterSwingFrame:IsShown(), "Forever bars no longer use the swing ornament")
+    assert(row.background.atlas=="ui-damagemeters-bar-shadowbg" and row._meterNativeEdge.atlas=="ui-damagemeters-bar-shadowedge")
+    assert(fill.atlas=="UI-HUD-CoolDownManager-Bar" and fill.color[1]==.8, "Forever bars use Retail's native fill")
     assert(not frame._skinPanelEdges[1]:IsShown())
+    Mod.ApplyDamageMeterAtlasArt(frame,{},"classic",20)
+    assert(not row._meterSwingFrame:IsShown(), "Classic no longer wears Forever's swing ornament")
+    assert(not row._meterNativeEdge:IsShown())
     Mod.ApplyDamageMeterAtlasArt(frame,{},"retail",20)
     assert(not row._meterSwingFrame:IsShown() and not frame._meterSwingEdges[1]:IsShown())
     assert(frame._meterNativeHeader.atlas=="ui-damagemeters-header-bar")
@@ -75,10 +80,10 @@ for _, live in ipairs({true,false}) do
     Mod.ApplyDamageMeterAtlasArt(frame,{},"kui",20)
     assert(not frame._meterNativeHeader:IsShown() and not row._meterNativeEdge:IsShown())
     assert(not frame.resizeHandle._meterNativeAtlas and frame.resizeHandle.width==16)
-    missing["ui-swingtimerbar-frame"]=true
+    missing["ui-damagemeters-bar-shadowedge"]=true
     Mod.ApplyDamageMeterAtlasArt(frame,{},"forever",20)
-    assert(not row._meterSwingFrame:IsShown(), "missing atlas falls back without stale art")
-    missing["ui-swingtimerbar-frame"]=nil
+    assert(not row._meterNativeEdge:IsShown(), "missing atlas falls back without stale art")
+    missing["ui-damagemeters-bar-shadowedge"]=nil
     missing["UI-HUD-CoolDownManager-Bar"]=true
     fill:SetTexture("custom-fill")
     Mod.ApplyDamageMeterAtlasArt(frame,{},"retail",20)
@@ -105,9 +110,10 @@ for _, key in ipairs({"forever","retail","classic","kui","forever"}) do
     fill:SetTexture("selected-fill")
     row.background:SetColorTexture(0,0,0,1)
     Mod.ApplyDamageMeterSkin(frame,{},20)
-    assert(row._meterSwingFrame:IsShown() == (key=="forever"))
+    assert(not row._meterSwingFrame:IsShown())
+    assert(row._meterNativeEdge:IsShown() == (key=="retail" or key=="forever"))
     assert(frame._meterNativeHeader:IsShown() == (key=="retail"))
-    if key~="retail" then assert(fill.texture=="selected-fill") end
+    if key~="retail" and key~="forever" then assert(fill.texture=="selected-fill") end
 end
 local options = read("KullThranUI/Modules/Enhancements/Enhancements_Options.lua")
 assert(options:find("Mod.ApplyDamageMeterSkin(meter, cfg",1,true), "preview shares live skin")
@@ -122,9 +128,10 @@ missing["ui-swingtimerbar-frame"]=true
 theme="forever"
 frame,row,fill=meter(false)
 Mod.ApplyDamageMeterSkin(frame,{},20)
-assert(row._meterSwingFrame:IsShown() and row._meterSwingFrame.texture:find("UISwingTimerBar-Forever.blp",1,true))
 assert(frame._meterSwingEdges[1]:IsShown() and frame._meterSwingEdges[1].width==16)
 assert(not frame._skinPanelEdges[1]:IsShown())
+theme="classic";Mod.ApplyDamageMeterSkin(frame,{},20)
+assert(not row._meterSwingFrame:IsShown())
 theme="kui";Mod.ApplyDamageMeterSkin(frame,{},20)
 assert(not row._meterSwingFrame:IsShown() and not frame._meterSwingEdges[1]:IsShown())
 print("PASS: full Damage Meter skin uses packaged Forever ornaments on Retail and cleans up on theme switch")

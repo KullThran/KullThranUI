@@ -958,31 +958,45 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.6"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.7"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.7"] = {
+        version = "5.1.7",
+        published = "2026-10-17",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "Forever style reworked for the new Forever art: Player, Target, Focus, Target of Target, Pet, Focus Target and Party Frames fit the new three-band plate (bars, names, icons and portraits) and keep the round portrait ring. It looks the same on the Retail and Forever clients.",
+            "Retail and Forever styles use Blizzard's own bar fill on Unit Frames, Raid Frames and Resource Bars, without the baked edge or the diagonal end that left gaps.",
+            "Resource Bars: smoother fill and no stale value after a change of resource or talents.",
+            "Portraits face the right way in every Druid form and for class icons.",
+            "Damage Meter: the Classic style uses the real Recount bar texture in the live preview, the options and the installer, and Retail and Forever use Blizzard-style bars.",
+            "Action Bars: end caps span the whole bar group up to the bags, with a new End Cap Width option (Bar Group or Bar 1). Action buttons and Cooldown Manager icons glow following their shape instead of a plain swipe.",
+            "Cooldown Manager: the KUI Tracker shows again in the outdoor world.",
+            "Chat: print and debug output shows in the chat frame again, not only in the copy window.",
+            "Unit Frames: in KUI Style the target buffs clear the health bar and the combo points circle the portrait. Aura timers use the KUI global font and sit on the icon, stack counts are smaller and buff rows keep their distance.",
+            "Combo points under the Player frame use Forever's bronze rings in the Forever style, on any client.",
+        },
+    },
     ["5.1.6"] = {
         version = "5.1.6",
         published = "2026-10-14",
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
-            "AFK Screen: new page in Enhancements. When you go AFK the interface hides, the camera turns slowly and a bottom bar shows your character, guild, time away and your model, with whispers and guild chat on screen. Any key, combat, or a group finder or battleground invite closes it.",
-            "Performance: Party Frames do less work in raids. Health, power and shield updates are handled separately, and power events are only registered while a power bar is shown. Nameplates stop re-laying out friendly plates every tick, and the Cooldown Manager skips icons without visibility rules and merges bursts of cooldown events.",
-            "New /kperf window with CPU and memory per module, with snapshots to compare before and after a change.",
-            "Unlock Mode: Focus and Focus Target no longer drift away from their mover while the unit is hidden, and Reset Position works after a drag.",
-            "Unit Frames: Text Size now scales the text of the Blizzard-style looks. In Classic the name window takes the class color when health is not class colored, and the raid marker sits on top of the portrait in the Blizzard-style looks.",
-            "Portraits: your own race and form are recognized, so a self-target portrait faces the right way.",
-            "Skins: popups use the Settings artwork, breath and fatigue bars get striped bars in Blizzard's colors, and the Professions rank bar no longer shows a floating flare over an empty bar.",
-            "Cooldown Manager: Midnight potions are supported, including the fleeting versions.",
-            "Cooldown Manager: buff icons appear as soon as you gain the buff (they could wait until combat), and no longer stay hidden for seconds when combat starts.",
-            "Compatibility: updated for client interface 120105, with item functions that moved to C_Item handled in Bags, Teleport Menu, Aura Reminders, Armory, Inspect and the Cooldown Manager.",
+            "Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.",
+            "Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.",
+            "Party Frames: fixed a Lua error that appeared when a party member was dead or offline.",
+            "Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.",
+            "Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.",
+            "Chat: Battle.net toasts (friend online, invites) are visible again.",
         },
     },
     ["5.1.5"] = {
         version = "5.1.5",
-        published = "2026-10-12",
+        published = "2026-10-11",
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
@@ -1017,7 +1031,7 @@ local CHANGELOG_ENTRIES = {
             "Unit Frames: AFK, Dead, Ghost and Offline badges update correctly when you switch target or focus.",
             "Unit Frames: names written in Korean, Chinese or Japanese characters display correctly instead of empty boxes.",
             "Target auras refresh reliably after target changes.",
-            "Bags: using an item from the bags in combat no longer triggers a blocked-action warning. The bag updates as soon as combat ends.",
+            "Bags: using an item from the bags in combat no longer triggers a blocked-action warning. The bag updates as soon as combat ends.",
             "Bags: item categories (Equipment, Consumables, Reagents, Junk and the rest) are now built into KullThranUI and work on their own.",
             "Armory: the Stats, Titles, Equipment and Progress bar only appears on the Character tab and stays hidden on Reputation and Currency.",
             "Objective Tracker: the accent-colored bar under the Quests header is also shown in KUI style.",
@@ -1097,6 +1111,8 @@ local CHANGELOG_ENTRIES = {
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
+            "KullThranUI 5.1.1",
+            "KullThranUI 5.1.1.",
             "Added separate Only Name and instance-display controls for friendly players and NPCs, with KUI bars, name-only mode, and hidden friendly plates.",
             "Reduced active friendly nameplate health-bar dimensions and stabilized custom overlays, font handling, and Blizzard-frame suppression.",
             "Added a runtime /knpdebug comparison for nameplate ownership and layout.",
@@ -1114,8 +1130,10 @@ local CHANGELOG_ENTRIES = {
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
+            "KullThranUI 5.1.0",
             "Added a dedicated gold border highlight for quest items in Bags, with container metadata and item-class fallback detection.",
             "Corrected parent-scale handling for standard and friendly Nameplates so rendered plates keep the intended scale during reassignment and cleanup.",
+            "Updated KUI and every module to the 5.1.0 release version.",
         },
     },
     ["5.0.9"] = {
@@ -1133,9 +1151,9 @@ local CHANGELOG_ENTRIES = {
             "Cleaned up interrupted Unit Frames cast bars so stale icons, text, and tint layers are removed immediately.",
             "Added optional character-level display for Retail Nameplates, Unit Frames, and Party Frames, with independent font, size, outline, colour, and offset controls. The option remains disabled by default.",
             "Added an optional PvP faction icon for Nameplates and player or target frames, shown only while PvP is active and configurable from the relevant module settings.",
-            "Added KUIMove, the built-in window mover, with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.",
+            "Integrated the former BlizzMove functionality as KUIMove with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.",
             "Renamed KUIMove's user-facing and internal ownership paths throughout KullThranUI, including commands, profile handling, localization, options, and module loading.",
-            "Added migration support for saved window layouts from earlier versions so they can continue to be used without imposing new level or PvP display settings.",
+            "Added migration support for existing BlizzMove and KUIMove SavedVariables so previous window layouts can continue to be used without imposing new level or PvP display settings.",
             "Reworked the legacy KUIMove configuration into a KUI-style layout with clearer Control Center, Movement & Memory, Frame Library, and Safe Defaults sections.",
             "Removed duplicate KUIMove loading from the Enhancements package path, preventing conflicting ownership and reducing the chance of duplicate hooks or Lua errors.",
             "Hardened level, PvP, protected-value, and secret-value handling across Nameplates, Party Frames, and Unit Frames for current Retail and WoW Forever API behaviour.",
@@ -1214,7 +1232,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -1354,7 +1372,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -1502,7 +1520,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -1642,7 +1660,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -1726,9 +1744,9 @@ local CHANGELOG_ENTRIES = {
         notes = {
             "Added optional character-level display for Retail Nameplates, Unit Frames, and Party Frames, with independent font, size, outline, colour, and offset controls. The option remains disabled by default.",
             "Added an optional PvP faction icon for Nameplates and player or target frames, shown only while PvP is active and configurable from the relevant module settings.",
-            "Added KUIMove, the built-in window mover, with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.",
+            "Integrated the former BlizzMove functionality as KUIMove with its own API, General settings page, frame library, safe defaults, movement controls, scale memory, and reset actions.",
             "Renamed KUIMove's user-facing and internal ownership paths throughout KullThranUI, including commands, profile handling, localization, options, and module loading.",
-            "Added migration support for saved window layouts from earlier versions so they can continue to be used without imposing new level or PvP display settings.",
+            "Added migration support for existing BlizzMove and KUIMove SavedVariables so previous window layouts can continue to be used without imposing new level or PvP display settings.",
             "Reworked the legacy KUIMove configuration into a KUI-style layout with clearer Control Center, Movement & Memory, Frame Library, and Safe Defaults sections.",
             "Removed duplicate KUIMove loading from the Enhancements package path, preventing conflicting ownership and reducing the chance of duplicate hooks or Lua errors.",
             "Hardened level, PvP, protected-value, and secret-value handling across Nameplates, Party Frames, and Unit Frames for current Retail and WoW Forever API behaviour.",
@@ -1807,7 +1825,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -1947,7 +1965,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -2103,7 +2121,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -2251,7 +2269,7 @@ local CHANGELOG_ENTRIES = {
             "Reworked private whisper persistence so opened character and Battle.net conversations can survive a UI reload, including conversations opened before any message is exchanged, while closed conversations remain dismissed and session state is cleared on disconnect.",
             "Hardened Chat against protected and secret strings when capturing whisper targets or copying chat history, and prevented closed temporary Blizzard whisper windows from reopening automatically.",
             "Corrected Action Bar cooldown presentation so active cooldowns use a properly darkened swipe over every supported button shape instead of retaining the normal colored background.",
-            "Rebuilt Damage Meter player pinning around a pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
+            "Rebuilt Damage Meter player pinning around a Details-style pinned final row: the player remains visible without corrupting the real ranking order, scrolling can inspect the complete list, and combat-start refreshes no longer push the meter to an unrelated position.",
             "Improved Damage Meter combat-session handling, saved history, protected-value support, and live refresh scheduling to avoid redundant delayed updates during continuous combat events.",
             "Added a genuinely opaque Objective Tracker background mode with a solid black surface, an accent-colored top border, and an accurate live preview that cannot inherit the legacy gradient or fade.",
             "Expanded Armory PvP item-level support with a working live-preview indicator and independent controls for visibility, label, decimals, font, size, outline, color, and horizontal or vertical positioning.",
@@ -2349,7 +2367,7 @@ local CHANGELOG_ENTRIES = {
 local function GetCurrentKUIVersion()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
         or KT.VERSION
-        or "5.1.6"
+        or "5.1.7"
     -- When loaded from the source tree without the release packager the TOC
     -- still contains the literal "@project-version@" token.  Fall back to the
     -- hardcoded release version so the changelog and options never display it.
@@ -3454,7 +3472,7 @@ local function UpdateMenuThemeVisuals(menu)
         local vr = math.floor((accent.r or 1) * 255 + 0.5)
         local vg = math.floor((accent.g or 0) * 255 + 0.5)
         local vb = math.floor((accent.b or 0.333) * 255 + 0.5)
-	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.6")))
+	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.7")))
     end
 
     for _, btn in ipairs(menu._sizePresetButtons or {}) do
@@ -5085,12 +5103,12 @@ local function CreateMenuFrame()
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
     local verColor = string.format("%02x%02x%02x", accentR*255, accentG*255, accentB*255)
-	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.6") .. "|r")
+	titleTex:SetText("|cff" .. verColor .. "v" .. (KT.VERSION or "5.1.7") .. "|r")
     titleTex:SetPoint("TOPLEFT", f, "TOPLEFT", 94, -68)
     titleTex:SetWidth(190)
     titleTex:SetJustifyH("LEFT")
     f._versionText = titleTex
-	f._versionValue = KT.VERSION or "5.1.6"
+	f._versionValue = KT.VERSION or "5.1.7"
 
     -- Corrupted generated comment removed.
     local nav = CreateFrame("Frame", nil, f)

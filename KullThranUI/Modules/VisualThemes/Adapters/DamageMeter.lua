@@ -3,6 +3,7 @@ local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
 KT.VisualThemes = KT.VisualThemes or {}
 
 local BLIZZARD_BAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
+local RECOUNT_BAR_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga"
 local KUI_BAR_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga"
 
 local function GetProfile()
@@ -19,13 +20,16 @@ KT.VisualThemes:RegisterModule("damagemeter", {
     getOwnedPaths = function()
         return { "barTexture", "showBackground", "visualStyle" }
     end,
-    -- classic/retail/forever share the same real "Blizzard style" bar texture.
+    -- retail/forever share the Blizzard style bar texture; classic wears Recount's.
     -- The header/border recolor (gold for classic/retail, bronze for forever)
     -- lives in ThemeEngine:GetDamageMeterAccentColor, not in the seed, so
     -- class colors and any user texture choice under kui stay untouched.
     seed = function(profile, themeKey)
         profile.visualStyle = themeKey
-        if themeKey == "classic" or themeKey == "retail" or themeKey == "forever" then
+        if themeKey == "classic" then
+            profile.barTexture = RECOUNT_BAR_TEXTURE
+            profile.showBackground = true
+        elseif themeKey == "retail" or themeKey == "forever" then
             profile.barTexture = BLIZZARD_BAR_TEXTURE
             profile.showBackground = true
         else

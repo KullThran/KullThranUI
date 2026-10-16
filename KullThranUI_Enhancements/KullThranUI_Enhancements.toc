@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Enhancements
 ## Notes: KullThranUI module: Enhancements
 ## Author: KullThran
-## Version: 5.1.6
+## Version: 5.1.7
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 

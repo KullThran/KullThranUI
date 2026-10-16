@@ -280,6 +280,15 @@ function ns.PF_UpdateAuraContainers(frame, db)
     local nativeHost = frame.mode == "party" and frame._pfNativeStyle and frame._pfNativeArt
     if nativeHost and not nativeHost:IsShown() then nativeHost = nil end
     if nativeHost and debuffAnchor ~= "CENTER" then nativeHost = nil end
+    -- Native styles: the health bar is a thin band inside the art, so buffs shrink
+    -- to its height and sit centred on it instead of spilling over the name tab
+    -- and the power band.
+    local nativeBar = frame.mode == "party" and frame._pfNativeStyle == "forever" and frame._pfNativeArt
+    if nativeBar and not nativeBar:IsShown() then nativeBar = nil end
+    local buffFit = size
+    if nativeBar and frame.health and frame.health.GetHeight then
+        buffFit = math.max(8, math.min(size, frame.health:GetHeight() or size))
+    end
     local debuffStartX = dx
     if nativeHost then debuffAnchor = "TOP" end
     if debuffAnchor == (nativeHost and "TOP" or "CENTER") and maxDebuffs > 1 then
@@ -310,7 +319,8 @@ function ns.PF_UpdateAuraContainers(frame, db)
     -- re-position the existing buttons in place without creating or discarding
     -- any, so mutating them is leak-free and cheap.
     local hash = strjoin(":", size, tostring(raid), spacing, bx, by, dx, dy, ax, ay,
-        debuffAnchor, debuffGrowthH, debuffGrowthV, nativeHost and "native" or "std")
+        debuffAnchor, debuffGrowthH, debuffGrowthV, nativeHost and "native" or "std",
+        nativeBar and ("bar" .. math.floor(buffFit * 10)) or "")
     if frame._ktAuraLayoutHash ~= hash then
         frame._ktAuraLayoutHash = hash
 
@@ -319,8 +329,15 @@ function ns.PF_UpdateAuraContainers(frame, db)
         b.debuffs:SetAuraGroupMaxFrameCount("pf", maxDebuffs)
         b.cc:SetAuraGroupMaxFrameCount("pf", maxCC)
 
-        Layout(b.buffs, "TOPRIGHT", frame.health, "TOPRIGHT", -3 + bx, -3 + by,
-            "TOPRIGHT", "LEFT", "DOWN", size, spacing)
+        if nativeBar then
+            -- Beside the plate, like the native party frame: the 12px health band
+            -- has no room for icons and their text at once.
+            Layout(b.buffs, "LEFT", nativeBar, "RIGHT", 3 + bx, by,
+                "LEFT", "RIGHT", "DOWN", size, spacing)
+        else
+            Layout(b.buffs, "TOPRIGHT", frame.health, "TOPRIGHT", -3 + bx, -3 + by,
+                "TOPRIGHT", "LEFT", "DOWN", size, spacing)
+        end
         local debuffY = dy + (raid and -3 or 0)
         if nativeHost then
             Layout(b.debuffs, "TOP", nativeHost, "BOTTOM", debuffStartX, debuffY - 2,
@@ -330,7 +347,7 @@ function ns.PF_UpdateAuraContainers(frame, db)
                 debuffAnchor, debuffGrowthH, debuffGrowthV, debuffSize, spacing)
         end
         Layout(b.cc, "CENTER", frame.health, "CENTER", ax, ay,
-            "CENTER", "RIGHT", "DOWN", ccSize, spacing)
+            "CENTER", "RIGHT", "DOWN", nativeBar and buffFit or ccSize, spacing)
     end
 
     ns.PF_BindAuraContainers(frame, frame.unit)

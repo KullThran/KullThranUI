@@ -555,11 +555,12 @@ local function RestoreUnitFramePlacement(snapshot)
         local settings = type(uf[key]) == "table" and uf[key] or nil
         local newScale = ((settings and settings.frameScale) or 100) / 100
         if newScale > 0 and math.abs(newScale - old.scale) > 0.0001 then
-            -- Keep the frame's centre on the same screen spot:
-            -- centre = scale * (offset + anchorFactor * size).
-            local ax, ay = AnchorFactors(old.point)
-            local nx = (old.x + ax * old.w) * old.scale / newScale - ax * old.w
-            local ny = (old.y + ay * old.h) * old.scale / newScale - ay * old.h
+            -- Keep the anchored point (the corner or edge the player placed, e.g. the
+            -- TOPLEFT of the focus frame under the player's auras) on the same screen
+            -- spot. Keeping the centre instead made a frame whose size changes with
+            -- the style slide sideways: screen position = scale * offset.
+            local nx = old.x * old.scale / newScale
+            local ny = old.y * old.scale / newScale
             local pos = uf.positions[key]
             if type(pos) == "table" then
                 pos.x, pos.y = nx, ny

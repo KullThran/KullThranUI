@@ -21,6 +21,8 @@ local StaticPopupDialogs = StaticPopupDialogs
 -- Constants
 local ICON_PATH = "Interface\\AddOns\\KullThranUI\\Modules\\Installers\\Icons\\"
 local DISCORD_INVITE_URL = "https://discord.gg/cqAVWpeVvd"
+local STEP_PROFILE = 19
+local INSTALLER_STEP_ORDER = { 1, 2, 19, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 20 }
 local TOTAL_INSTALLER_STEPS = 20
 local KUI_TEXTURE_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\"
 local KUI_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\"
@@ -95,6 +97,145 @@ local function CreateBackdrop(f)
     end
 end
 
+-------------------------------------------------------------------------
+-- ANIMATED BUTTON (diagonal sweep + glow, driven by OnUpdate)
+-------------------------------------------------------------------------
+local SWEEP_EDGE_TEXTURE = KUI_TEXTURE_PATH .. "SweepEdge.tga"
+local SWEEP_DURATION = 0.30
+local SWEEP_SKEW = 0.58 -- tan(30 degrees): width of the slanted leading edge per pixel of height
+local SWEEP_TEXT_FILLED = 0.04
+
+local function UpdateButtonSweep(btn, progress)
+    local sweep = btn.KT_Sweep
+    if not sweep then return end
+    local width, height = btn:GetWidth() or 0, btn:GetHeight() or 0
+    local inner = width - 2
+    local edge = height * SWEEP_SKEW
+    local r, g, b = KT_COLOR[1], KT_COLOR[2], KT_COLOR[3]
+    local eased = progress * progress * (3 - 2 * progress)
+
+    if eased <= 0.001 or inner <= 0 or edge <= 0 then
+        sweep.body:Hide()
+        sweep.edge:Hide()
+    else
+        local reach = eased * (inner + edge)
+        local bodyWidth = math.max(0, math.min(inner, reach - edge))
+        local edgeWidth = math.max(0, math.min(edge, reach - bodyWidth, inner - bodyWidth))
+
+        sweep.body:SetVertexColor(r * 0.8, g * 0.8, b * 0.8, 1)
+        if bodyWidth > 0.5 then
+            sweep.body:SetWidth(bodyWidth)
+            sweep.body:Show()
+        else
+            sweep.body:Hide()
+        end
+
+        sweep.edge:SetVertexColor(r * 0.8, g * 0.8, b * 0.8, 1)
+        if edgeWidth > 0.5 then
+            sweep.edge:ClearAllPoints()
+            sweep.edge:SetPoint("TOPLEFT", btn, "TOPLEFT", 1 + bodyWidth, -1)
+            sweep.edge:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1 + bodyWidth, 1)
+            sweep.edge:SetWidth(edgeWidth)
+            sweep.edge:SetTexCoord(0, edgeWidth / edge, 0, 1)
+            sweep.edge:Show()
+        else
+            sweep.edge:Hide()
+        end
+    end
+
+    sweep.glow:SetBackdropBorderColor(r, g, b, 0.38 * eased)
+end
+
+-- Hover animation for any Button: a skewed accent fill sweeps across the
+-- button, the text flips to dark while it is filled, and a soft glow fades in.
+local function AttachButtonSweep(btn)
+    if btn.KT_Sweep then return end
+    local sweep = {
+        progress = 0,
+        target = 0,
+        body = btn:CreateTexture(nil, "BACKGROUND", nil, 7),
+        edge = btn:CreateTexture(nil, "BACKGROUND", nil, 7),
+        glow = CreateFrame("Frame", nil, btn, "BackdropTemplate"),
+        driver = CreateFrame("Frame", nil, btn),
+    }
+    btn.KT_Sweep = sweep
+
+    sweep.body:SetTexture(EFL_WHITE8X8)
+    sweep.body:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    sweep.body:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
+    sweep.body:Hide()
+    sweep.edge:SetTexture(SWEEP_EDGE_TEXTURE)
+    sweep.edge:Hide()
+
+    sweep.glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -3, 3)
+    sweep.glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 3, -3)
+    sweep.glow:SetFrameLevel(math.max(0, btn:GetFrameLevel() - 1))
+    sweep.glow:SetBackdrop({ edgeFile = EFL_WHITE8X8, edgeSize = 3 })
+    sweep.glow:SetBackdropBorderColor(0, 0, 0, 0)
+
+    local function Step(_, elapsed)
+        local delta = elapsed / SWEEP_DURATION
+        if sweep.progress < sweep.target then
+            sweep.progress = math.min(sweep.target, sweep.progress + delta)
+        else
+            sweep.progress = math.max(sweep.target, sweep.progress - delta)
+        end
+        UpdateButtonSweep(btn, sweep.progress)
+        if sweep.progress == sweep.target then
+            sweep.driver:SetScript("OnUpdate", nil)
+        end
+    end
+    local function Animate(target)
+        if target == 1 and sweep.progress == 0 then
+            local fs = btn:GetFontString()
+            if fs then
+                local r, g, b = fs:GetTextColor()
+                sweep.restColor = { r, g, b }
+                local fontPath, fontSize, fontFlags = fs:GetFont()
+                sweep.restFont = { fontPath, fontSize, fontFlags }
+            end
+        end
+        sweep.target = target
+        sweep.driver:SetScript("OnUpdate", Step)
+    end
+
+    -- The sweep handlers are the button's primary scripts and any script the
+    -- caller sets later (the language / style buttons set their own OnEnter and
+    -- OnLeave) is chained in front of them. A plain HookScript would be lost then.
+    local rawSetScript = btn.SetScript
+    local userScripts = {}
+    local ours = {
+        OnEnter = function(self)
+            if self:IsEnabled() then Animate(1) end
+        end,
+        OnLeave = function() Animate(0) end,
+        OnHide = function()
+            sweep.progress, sweep.target = 0, 0
+            sweep.driver:SetScript("OnUpdate", nil)
+            UpdateButtonSweep(btn, 0)
+        end,
+    }
+    local function Install(name)
+        rawSetScript(btn, name, function(self, ...)
+            local user = userScripts[name]
+            if user then user(self, ...) end
+            ours[name](self, ...)
+        end)
+    end
+    for name in pairs(ours) do
+        userScripts[name] = btn:GetScript(name)
+        Install(name)
+    end
+    btn.SetScript = function(self, name, handler)
+        if ours[name] then
+            userScripts[name] = handler
+            Install(name)
+        else
+            rawSetScript(self, name, handler)
+        end
+    end
+end
+
 local function SkinButton(btn)
     -- Remove default textures
     if btn.Left then btn.Left:SetAlpha(0) end
@@ -144,6 +285,8 @@ local function SkinButton(btn)
     fs:SetFont(GetKTFont(), fittedSize, "OUTLINE")
     fs:SetTextColor(0.95, 0.95, 0.95)
     
+    AttachButtonSweep(btn)
+
     -- Scripts for Hover Effect
     btn:HookScript("OnEnter", function(self)
         self:SetBackdropColor(unpack(COLOR_BTN_HOVER))
@@ -374,6 +517,69 @@ local function GetInstallerClassColor()
         return color.r, color.g, color.b
     end
     return 1, 1, 1
+end
+
+-- Flat silhouette of the player's own character (race, gear and class stance),
+-- the same idea as the character-creation class preview but drawn in one colour.
+-- Returns the model frame, or nil when the client cannot light it flat.
+local function CreateInstallerClassSilhouette(parent)
+    local okFrame, model = pcall(CreateFrame, "PlayerModel", nil, parent)
+    if not okFrame or not model then return nil end
+    -- Kept below the description text (up to three lines) and between the buttons.
+    model:SetSize(220, 235)
+    model:SetPoint("BOTTOM", parent, "BOTTOM", 0, 44)
+    -- Third argument: the character's native form, so a shapeshifted druid still
+    -- shows the humanoid; some builds only take the unit, hence the fallback.
+    if not pcall(model.SetUnit, model, "player", false, true) and not pcall(model.SetUnit, model, "player") then
+        model:Hide()
+        return nil
+    end
+    local r, g, b = KT_COLOR[1] * 0.75, KT_COLOR[2] * 0.75, KT_COLOR[3] * 0.75
+    -- Only ambient light, full intensity: every surface gets the same colour.
+    local lit = pcall(model.SetLight, model, true, {
+        omnidirectional = false,
+        point = CreateVector3D and CreateVector3D(0, 0, 0) or { x = 0, y = 0, z = 0 },
+        ambientIntensity = 1,
+        ambientColor = CreateColor and CreateColor(r, g, b) or { r = r, g = g, b = b },
+        diffuseIntensity = 0,
+        diffuseColor = CreateColor and CreateColor(0, 0, 0) or { r = 0, g = 0, b = 0 },
+    })
+    if not lit then
+        lit = pcall(model.SetLight, model, true, false, 0, 0, 0, 1, r, g, b, 0, 0, 0, 0)
+    end
+    if not lit then
+        model:Hide()
+        return nil
+    end
+    pcall(model.SetPortraitZoom, model, 0)
+    pcall(model.SetFacing, model, math.rad(-18))
+    return model
+end
+
+-- Flat class crest for the welcome page. Returns true when a class image was applied.
+local function ApplyInstallerClassShape(texture)
+    local _, classTag = UnitClass("player")
+    if not classTag then return false end
+    local atlas = "classicon-" .. classTag:lower()
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
+    local applied = false
+    if info and texture.SetAtlas then
+        texture:SetAtlas(atlas)
+        applied = true
+    else
+        local coords = _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[classTag]
+        if coords then
+            texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+            texture:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+            applied = true
+        end
+    end
+    if not applied then return false end
+    texture:SetSize(300, 300)
+    if texture.SetDesaturated then texture:SetDesaturated(true) end
+    local r, g, b = GetInstallerClassColor()
+    texture:SetVertexColor(r, g, b, 0.28)
+    return true
 end
 
 local function GetInstallerCursorModule()
@@ -1123,10 +1329,15 @@ local function CreateBagsInstallerLivePreview(parent)
     local textR, textG, textB = GetInstallerPreviewTextRGB()
     local mutedR, mutedG, mutedB = GetInstallerPreviewMutedRGB()
     local groups = CollectInstallerBagPreviewItems()
+    -- Text is designed at the real window size, then the whole preview is scaled.
+    local function PreviewLabel(labelParent, size, ...)
+        return InstallerCreatePreviewLabel(labelParent, size * 1.45, ...)
+    end
 
     local root = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    root:SetPoint("TOPLEFT", 8, -8)
-    root:SetPoint("BOTTOMRIGHT", -8, 8)
+    root:SetSize(780, 540)
+    root:SetPoint("CENTER")
+    root:SetScale(math.min(((parent:GetWidth() or 700) - 16) / 780, ((parent:GetHeight() or 320) - 16) / 540))
     CreateBackdrop(root)
     root:SetBackdropColor(0.05, 0.07, 0.09, 0.97)
     root:SetBackdropBorderColor(0.10, 0.10, 0.10, 1)
@@ -1139,7 +1350,7 @@ local function CreateBagsInstallerLivePreview(parent)
     local header = CreateFrame("Frame", nil, root, "BackdropTemplate")
     header:SetPoint("TOPLEFT", 6, -6)
     header:SetPoint("TOPRIGHT", -6, -6)
-    header:SetHeight(32)
+    header:SetHeight(36)
     InstallerApplyPreviewSectionStyle(header, nil, 0.97, 0.74)
 
     local bagIcon = header:CreateTexture(nil, "ARTWORK")
@@ -1149,7 +1360,7 @@ local function CreateBagsInstallerLivePreview(parent)
     bagIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     bagIcon:SetVertexColor(accentR, accentG, accentB, 1)
 
-    local title = InstallerCreatePreviewLabel(header, 11, textR, textG, textB, "OUTLINE")
+    local title = PreviewLabel(header, 11, textR, textG, textB, "OUTLINE")
     title:SetPoint("CENTER")
     title:SetText(L["Bags"])
 
@@ -1160,7 +1371,7 @@ local function CreateBagsInstallerLivePreview(parent)
         CreateBackdrop(button)
         button:SetBackdropColor(isClose and 0.10 or 0.07, isClose and 0.035 or 0.07, isClose and 0.035 or 0.085, 0.96)
         button:SetBackdropBorderColor(isClose and 0.55 or 0.20, isClose and 0.12 or 0.20, isClose and 0.12 or 0.24, 0.9)
-        local label = InstallerCreatePreviewLabel(button, 8, textR, textG, textB, "OUTLINE")
+        local label = PreviewLabel(button, 8, textR, textG, textB, "OUTLINE")
         label:SetPoint("CENTER")
         label:SetText(labelText)
         return button
@@ -1172,7 +1383,7 @@ local function CreateBagsInstallerLivePreview(parent)
     CreateBackdrop(closeButton)
     closeButton:SetBackdropColor(0.10, 0.035, 0.035, 0.96)
     closeButton:SetBackdropBorderColor(0.55, 0.12, 0.12, 0.9)
-    local closeText = InstallerCreatePreviewLabel(closeButton, 9, 1, 0.82, 0.82, "OUTLINE")
+    local closeText = PreviewLabel(closeButton, 9, 1, 0.82, 0.82, "OUTLINE")
     closeText:SetPoint("CENTER")
     closeText:SetText("X")
 
@@ -1197,7 +1408,7 @@ local function CreateBagsInstallerLivePreview(parent)
     searchIcon:SetPoint("LEFT", 8, 0)
     searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
     searchIcon:SetVertexColor(accentR, accentG, accentB, 0.9)
-    local searchText = InstallerCreatePreviewLabel(search, 9, mutedR, mutedG, mutedB)
+    local searchText = PreviewLabel(search, 9, mutedR, mutedG, mutedB)
     searchText:SetPoint("LEFT", searchIcon, "RIGHT", 7, 0)
     searchText:SetText((LText("Search")) .. "...")
 
@@ -1205,7 +1416,7 @@ local function CreateBagsInstallerLivePreview(parent)
     watch:SetSize(48, 27)
     watch:SetPoint("RIGHT", -116, 0)
     InstallerApplyPreviewSectionStyle(watch, nil, 0.95, 0.54)
-    local watchText = InstallerCreatePreviewLabel(watch, 8, textR, textG, textB, "OUTLINE")
+    local watchText = PreviewLabel(watch, 8, textR, textG, textB, "OUTLINE")
     watchText:SetPoint("CENTER")
     watchText:SetText(LText("Watch"))
 
@@ -1238,13 +1449,46 @@ local function CreateBagsInstallerLivePreview(parent)
     local footer = CreateFrame("Frame", nil, root, "BackdropTemplate")
     footer:SetPoint("BOTTOMLEFT", 6, 6)
     footer:SetPoint("BOTTOMRIGHT", -6, 6)
-    footer:SetHeight(27)
+    footer:SetHeight(44)
     InstallerApplyPreviewSectionStyle(footer, nil, 0.97, 0.68)
-    local footerSlots = InstallerCreatePreviewLabel(footer, 8, mutedR, mutedG, mutedB, "OUTLINE")
-    footerSlots:SetPoint("LEFT", 8, 0)
+    local previousBag
+    for bagIndex = 0, 4 do
+        local texture = "Interface\\Buttons\\Button-Backpack-Up"
+        if bagIndex > 0 then
+            local equipped = _G.GetInventoryItemTexture and _G.GetInventoryItemTexture("player", (_G.CONTAINER_BAG_OFFSET or 19) + bagIndex)
+            texture = equipped or "Interface\\Icons\\INV_Misc_Bag_08"
+        end
+        local bagButton = CreateInstallerPreviewIcon(footer, 28, texture)
+        if previousBag then
+            bagButton:SetPoint("LEFT", previousBag, "RIGHT", 4, 0)
+        else
+            bagButton:SetPoint("LEFT", 8, 0)
+        end
+        bagButton:SetBackdropBorderColor(accentR, accentG, accentB, bagIndex == 0 and 0.88 or 0.45)
+        previousBag = bagButton
+    end
+    local footerSlots = PreviewLabel(footer, 8, mutedR, mutedG, mutedB, "OUTLINE")
+    footerSlots:SetPoint("LEFT", previousBag, "RIGHT", 12, 0)
     footerSlots:SetText(string.format("%d %s", #groups.consumable + #groups.equipment + #groups.other, LText("items")))
-    local footerGold = InstallerCreatePreviewLabel(footer, 8, textR, textG, textB, "OUTLINE")
+    local footerGold = PreviewLabel(footer, 8, textR, textG, textB, "OUTLINE")
     footerGold:SetPoint("RIGHT", -8, 0)
+    -- Up to two tracked currencies, placed left of the gold like the real footer.
+    local previousCurrency = footerGold
+    local currencyAPI = _G.C_CurrencyInfo
+    for currencyIndex = 1, 2 do
+        local info = currencyAPI and currencyAPI.GetBackpackCurrencyInfo and currencyAPI.GetBackpackCurrencyInfo(currencyIndex)
+        if info and info.iconFileID then
+            local currencyIcon = footer:CreateTexture(nil, "ARTWORK")
+            currencyIcon:SetSize(18, 18)
+            currencyIcon:SetPoint("RIGHT", previousCurrency, "LEFT", -14, 0)
+            currencyIcon:SetTexture(info.iconFileID)
+            currencyIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local currencyText = PreviewLabel(footer, 8, textR, textG, textB, "OUTLINE")
+            currencyText:SetPoint("RIGHT", currencyIcon, "LEFT", -3, 0)
+            currencyText:SetText(tostring(info.quantity or 0))
+            previousCurrency = currencyText
+        end
+    end
     if _G.GetMoneyString and _G.GetMoney then
         footerGold:SetText(_G.GetMoneyString(_G.GetMoney() or 0, true))
     else
@@ -1258,9 +1502,9 @@ local function CreateBagsInstallerLivePreview(parent)
     local sidebar = CreateFrame("Frame", nil, content, "BackdropTemplate")
     sidebar:SetPoint("TOPLEFT")
     sidebar:SetPoint("BOTTOMLEFT")
-    sidebar:SetWidth(142)
+    sidebar:SetWidth(196)
     InstallerApplyPreviewInsetStyle(sidebar, nil, 0.97)
-    local sidebarTitle = InstallerCreatePreviewLabel(sidebar, 8, mutedR, mutedG, mutedB, "OUTLINE")
+    local sidebarTitle = PreviewLabel(sidebar, 8, mutedR, mutedG, mutedB, "OUTLINE")
     sidebarTitle:SetPoint("TOPLEFT", 8, -7)
     sidebarTitle:SetText(L["Categories"])
 
@@ -1275,7 +1519,7 @@ local function CreateBagsInstallerLivePreview(parent)
         local row = CreateFrame("Frame", nil, sidebar, "BackdropTemplate")
         row:SetPoint("LEFT", 5, 0)
         row:SetPoint("RIGHT", -5, 0)
-        row:SetHeight(23)
+        row:SetHeight(42)
         if previousCategory then
             row:SetPoint("TOP", previousCategory, "BOTTOM", 0, -2)
         else
@@ -1287,14 +1531,14 @@ local function CreateBagsInstallerLivePreview(parent)
             row:SetBackdropBorderColor(accentR, accentG, accentB, 0.72)
         end
         local icon = row:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(17, 17)
-        icon:SetPoint("LEFT", 4, 0)
+        icon:SetSize(32, 32)
+        icon:SetPoint("LEFT", 5, 0)
         icon:SetTexture(category[3])
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        local label = InstallerCreatePreviewLabel(row, 8, textR, textG, textB)
+        local label = PreviewLabel(row, 8, textR, textG, textB)
         label:SetPoint("LEFT", icon, "RIGHT", 5, 0)
         label:SetText(category[1])
-        local count = InstallerCreatePreviewLabel(row, 8, mutedR, mutedG, mutedB)
+        local count = PreviewLabel(row, 8, mutedR, mutedG, mutedB)
         count:SetPoint("RIGHT", -5, 0)
         count:SetText(tostring(category[2]))
         previousCategory = row
@@ -1304,7 +1548,7 @@ local function CreateBagsInstallerLivePreview(parent)
     gridPanel:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 7, 0)
     gridPanel:SetPoint("BOTTOMRIGHT")
     InstallerApplyPreviewInsetStyle(gridPanel, nil, 0.96)
-    local gridTitle = InstallerCreatePreviewLabel(gridPanel, 9, textR, textG, textB, "OUTLINE")
+    local gridTitle = PreviewLabel(gridPanel, 9, textR, textG, textB, "OUTLINE")
     gridTitle:SetPoint("TOPLEFT", 8, -6)
     gridTitle:SetText(L["Backpack Categories"])
 
@@ -1313,9 +1557,9 @@ local function CreateBagsInstallerLivePreview(parent)
         { label = L["Equipment"], items = groups.equipment },
         { label = LText("Other"), items = groups.other },
     }
-    local groupY = -23
+    local groupY = -36
     for _, category in ipairs(categoryData) do
-        local label = InstallerCreatePreviewLabel(gridPanel, 8, textR, textG, textB, "OUTLINE")
+        local label = PreviewLabel(gridPanel, 8, textR, textG, textB, "OUTLINE")
         label:SetPoint("TOPLEFT", 8, groupY)
         label:SetText(category.label)
         local divider = gridPanel:CreateTexture(nil, "ARTWORK")
@@ -1324,14 +1568,14 @@ local function CreateBagsInstallerLivePreview(parent)
         divider:SetHeight(1)
         divider:SetColorTexture(accentR, accentG, accentB, 0.34)
 
-        for index = 1, math.min(11, #category.items) do
+        for index = 1, math.min(10, #category.items) do
             local item = category.items[index]
             local countText = item.count and item.count > 1 and tostring(item.count) or nil
-            local icon = CreateInstallerPreviewIcon(gridPanel, 25, item.texture, countText)
-            icon:SetPoint("TOPLEFT", 8 + ((index - 1) * 28), groupY - 11)
+            local icon = CreateInstallerPreviewIcon(gridPanel, 40, item.texture, countText)
+            icon:SetPoint("TOPLEFT", 8 + ((index - 1) * 43), groupY - 16)
             SetInstallerPreviewQualityBorder(icon, item.quality)
         end
-        groupY = groupY - 38
+        groupY = groupY - 76
     end
 
     return root
@@ -1401,10 +1645,39 @@ local function GetInstallerClassPreviewColor(classToken)
     return { 0.75, 0.75, 0.75 }
 end
 
+-- Classes this client really has (Forever has no Death Knight, Demon Hunter or Evoker).
+local INSTALLER_FOREVER_MISSING_CLASSES = { DEATHKNIGHT = true, DEMONHUNTER = true, EVOKER = true }
+local function IsInstallerClassAvailable(classToken)
+    if KT.IsForever and KT:IsForever() and INSTALLER_FOREVER_MISSING_CLASSES[classToken] then
+        return false
+    end
+    if _G.GetNumClasses and _G.GetClassInfo then
+        local classCount = _G.GetNumClasses()
+        if classCount and classCount > 0 then
+            for index = 1, classCount do
+                local _, classFile = _G.GetClassInfo(index)
+                if classFile == classToken then return true end
+            end
+            return false
+        end
+    end
+    return true
+end
+
+-- Spec icons do not exist in every client: fall back to the class icon.
+local function ApplyInstallerClassIconFallback(iconFrame, classToken, specIcon)
+    if specIcon and specIcon ~= "Interface\\Icons\\INV_Misc_QuestionMark" then return end
+    local coords = classToken and _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[classToken]
+    if coords and iconFrame and iconFrame.Icon then
+        iconFrame.Icon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        iconFrame.Icon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    end
+end
+
 local function GetRandomInstallerDamageHeroes(count, excludedClassToken)
     local candidates = {}
     for _, hero in ipairs(INSTALLER_DAMAGE_METER_HEROES) do
-        if hero.classToken ~= excludedClassToken then
+        if hero.classToken ~= excludedClassToken and IsInstallerClassAvailable(hero.classToken) then
             candidates[#candidates + 1] = hero
         end
     end
@@ -1477,34 +1750,94 @@ local function CreateDamageMeterInstallerPreview(parent)
     return root
 end
 
-local function CreateDamageMeterInstallerLivePreview(parent)
+local METER_PREVIEW_SKINS = {
+    kui = { panel = { 0.03, 0.032, 0.04, 0.95 }, edge = { 0.18, 0.18, 0.22, 1 }, rowBg = { 0.025, 0.028, 0.038, 0.88 },
+        barTexture = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga" },
+    classic = { panel = { 0.06, 0.04, 0.03, 0.96 }, edge = { 0, 0, 0, 1 }, header = { 0.60, 0.06, 0.05, 1 },
+        title = { 1, 0.9, 0.45 }, rowBg = { 0.05, 0.03, 0.02, 0.7 },
+        -- Recount's own bar texture (BantoBar), same file as the live Classic meter.
+        barTexture = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga" },
+    retail = { panel = { 0.03, 0.035, 0.045, 0.94 }, edge = { 0.12, 0.12, 0.14, 1 }, title = { 1, 0.82, 0.1 },
+        rowBg = { 0.02, 0.02, 0.03, 0.9 }, barTexture = "Interface\\TargetingFrame\\UI-StatusBar" },
+    forever = { panel = { 0.15, 0.11, 0.075, 0.9 }, edge = { 0.72, 0.55, 0.30, 1 }, title = { 0.862745, 0.521569, 0.376471 },
+        rowBg = { 0.075, 0.055, 0.04, 0.9 }, iconBorder = { 0.55, 0.42, 0.24, 1 },
+        barTexture = "Interface\\TargetingFrame\\UI-StatusBar" },
+}
+
+local function CreateDamageMeterInstallerLivePreview(parent, styleKey)
     local textR, textG, textB = GetInstallerPreviewTextRGB()
-    local root = CreateFrame("Frame", nil, parent)
-    root:SetPoint("TOPLEFT", 28, -20)
-    root:SetPoint("BOTTOMRIGHT", -28, 20)
+    local skin = METER_PREVIEW_SKINS[styleKey or ""] or METER_PREVIEW_SKINS.kui
+    local titleR, titleG, titleB = textR, textG, textB
+    if skin.title then titleR, titleG, titleB = skin.title[1], skin.title[2], skin.title[3] end
+    local root = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    root:SetPoint("TOPLEFT", 14, -14)
+    root:SetPoint("BOTTOMRIGHT", -14, 14)
+    CreateBackdrop(root)
+    root:SetBackdropColor(unpack(skin.panel))
+    root:SetBackdropBorderColor(unpack(skin.edge))
+
+    -- Retail and Forever draw the real meter's own art (same atlases as the live meter).
+    local nativeStyle = (styleKey == "retail" or styleKey == "forever") and styleKey or nil
+    local function StyleAtlas(texture, name)
+        local themes = KT.VisualThemes
+        local info = name and ((themes and themes.GetStyleAtlasInfo and themes:GetStyleAtlasInfo(name))
+            or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)))
+        if not info then return false end
+        if info.packaged then
+            texture:SetTexture(info.file)
+            texture:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+        else
+            texture:SetAtlas(name)
+        end
+        texture:SetVertexColor(1, 1, 1, 1)
+        texture:Show()
+        return true
+    end
+    if nativeStyle == "retail" then
+        local panelArt = root:CreateTexture(nil, "BACKGROUND", nil, 1)
+        panelArt:SetAllPoints()
+        if StyleAtlas(panelArt, "damagemeters-background") then
+            root:SetBackdropColor(0, 0, 0, 0)
+        else
+            panelArt:Hide()
+        end
+        local headerArt = root:CreateTexture(nil, "BACKGROUND", nil, 4)
+        headerArt:SetPoint("TOPLEFT", root, "TOPLEFT", 0, 0)
+        headerArt:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, 0)
+        headerArt:SetHeight(32)
+        if not StyleAtlas(headerArt, "ui-damagemeters-header-bar") then headerArt:Hide() end
+    end
+    if skin.header then
+        local band = root:CreateTexture(nil, "BACKGROUND")
+        band:SetPoint("TOPLEFT", 1, -1)
+        band:SetPoint("TOPRIGHT", -1, -1)
+        band:SetHeight(30)
+        band:SetColorTexture(unpack(skin.header))
+    end
 
     local modeIcon = root:CreateTexture(nil, "ARTWORK")
     modeIcon:SetSize(18, 18)
-    modeIcon:SetPoint("TOPLEFT", 4, -1)
+    modeIcon:SetPoint("TOPLEFT", 10, -7)
     modeIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\DPS.png")
 
-    local mode = InstallerCreatePreviewLabel(root, 12, textR, textG, textB, "OUTLINE")
+    local mode = InstallerCreatePreviewLabel(root, 12, titleR, titleG, titleB, "OUTLINE")
     mode:SetPoint("LEFT", modeIcon, "RIGHT", 5, 0)
     mode:SetText((LText("Damage Done")) .. "  v")
-    local session = InstallerCreatePreviewLabel(root, 12, textR, textG, textB, "OUTLINE")
-    session:SetPoint("TOPRIGHT", -4, -2)
+    local session = InstallerCreatePreviewLabel(root, 12, titleR, titleG, titleB, "OUTLINE")
+    session:SetPoint("TOPRIGHT", -10, -9)
     session:SetText((LText("Current")) .. "  v")
 
     local playerName, playerSpecID, playerSpecIcon, playerColor, playerClassToken = GetInstallerPlayerSpecPreview()
     local rows = {
-        { playerName, 12.35, "154.4K", playerSpecID, playerSpecIcon or "Interface\\Icons\\INV_Misc_QuestionMark", playerColor },
+        { playerName, 12.35, "154.4K", playerSpecID, playerSpecIcon or "Interface\\Icons\\INV_Misc_QuestionMark", playerColor, playerClassToken },
     }
     local exampleValues = {
         { 9.82, "122.7K" },
         { 7.41, "92.6K" },
         { 5.16, "64.5K" },
+        { 3.88, "48.5K" },
     }
-    for index, hero in ipairs(GetRandomInstallerDamageHeroes(3, playerClassToken)) do
+    for index, hero in ipairs(GetRandomInstallerDamageHeroes(4, playerClassToken)) do
         local values = exampleValues[index]
         rows[#rows + 1] = {
             hero.name,
@@ -1513,35 +1846,37 @@ local function CreateDamageMeterInstallerLivePreview(parent)
             hero.specID,
             "Interface\\Icons\\INV_Misc_QuestionMark",
             GetInstallerClassPreviewColor(hero.classToken),
+            hero.classToken,
         }
     end
     local maxValue = rows[1][2]
     local previous
     for index, data in ipairs(rows) do
         local row = CreateFrame("Frame", nil, root)
-        row:SetPoint("LEFT", 0, 0)
-        row:SetPoint("RIGHT", 0, 0)
-        row:SetHeight(30)
+        row:SetPoint("LEFT", 8, 0)
+        row:SetPoint("RIGHT", -8, 0)
+        row:SetHeight(28)
         if previous then
-            row:SetPoint("TOP", previous, "BOTTOM", 0, -5)
+            row:SetPoint("TOP", previous, "BOTTOM", 0, -4)
         else
-            row:SetPoint("TOP", root, "TOP", 0, -34)
+            row:SetPoint("TOP", root, "TOP", 0, -40)
         end
 
         local specIcon = GetInstallerSpecializationIcon(data[4], data[5])
         local icon = CreateInstallerPreviewIcon(row, 28, specIcon)
         icon:SetPoint("LEFT", 0, 0)
-        icon:SetBackdropBorderColor(data[6][1], data[6][2], data[6][3], 0.95)
+        if skin.iconBorder then icon:SetBackdropBorderColor(unpack(skin.iconBorder)) else icon:SetBackdropBorderColor(data[6][1], data[6][2], data[6][3], 0.95) end
+        ApplyInstallerClassIconFallback(icon, data[7], specIcon)
 
         local background = row:CreateTexture(nil, "BACKGROUND")
         background:SetPoint("TOPLEFT", icon, "TOPRIGHT", 1, -1)
         background:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 1)
-        background:SetColorTexture(0.025, 0.028, 0.038, 0.88)
+        background:SetColorTexture(unpack(skin.rowBg))
 
         local bar = CreateFrame("StatusBar", nil, row)
         bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 1, -1)
         bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 1)
-        bar:SetStatusBarTexture(INSTALLER_MELLI_TEXTURE)
+        bar:SetStatusBarTexture(skin.barTexture)
         bar:SetStatusBarColor(data[6][1], data[6][2], data[6][3], 0.92)
         bar:SetMinMaxValues(0, maxValue)
         bar:SetValue(data[2])
@@ -1549,6 +1884,19 @@ local function CreateDamageMeterInstallerLivePreview(parent)
         local shade = bar:CreateTexture(nil, "ARTWORK")
         shade:SetAllPoints()
         shade:SetColorTexture(0, 0, 0, 0.13)
+
+        if nativeStyle then
+            -- Fill, row shadow and edge exactly as the live Retail/Forever meter builds them.
+            local fill = bar:GetStatusBarTexture()
+            if fill and StyleAtlas(fill, "UI-HUD-CoolDownManager-Bar") then
+                fill:SetVertexColor(data[6][1], data[6][2], data[6][3], 0.92)
+            end
+            StyleAtlas(background, "ui-damagemeters-bar-shadowbg")
+            local edgeArt = bar:CreateTexture(nil, "OVERLAY", nil, 4)
+            edgeArt:SetPoint("TOPLEFT", background, "TOPLEFT", -2, 2)
+            edgeArt:SetPoint("BOTTOMRIGHT", background, "BOTTOMRIGHT", 2, -2)
+            if not StyleAtlas(edgeArt, "ui-damagemeters-bar-shadowedge") then edgeArt:Hide() end
+        end
 
         local textLayer = CreateFrame("Frame", nil, bar)
         textLayer:SetAllPoints()
@@ -2309,6 +2657,7 @@ local function CreatePartyFramesInstallerLivePreview(parent)
             attachSticky = false,
             registerGlobal = false,
             controls = false,
+            keepTestButtons = true,
             modeOverride = "party",
             countOverride = 4,
             directionOverride = "VERTICAL",
@@ -2325,6 +2674,7 @@ local function CreatePartyFramesInstallerLivePreview(parent)
             attachSticky = false,
             registerGlobal = false,
             controls = false,
+            keepTestButtons = true,
             modeOverride = "party",
             countOverride = 5,
             directionOverride = "HORIZONTAL",
@@ -2402,13 +2752,39 @@ local function CreatePartyFramesInstallerLivePreview(parent)
     return CreateInstallerPreviewUnavailable(parent, "KullThranUI Party Frames preview unavailable")
 end
 
-local function CreateNameplatesInstallerPreview(parent)
+local function CreateNameplatesInstallerPreview(parent, styleKey)
     local accentR, accentG, accentB = GetInstallerPreviewAccentRGB()
     local textR, textG, textB = GetInstallerPreviewTextRGB()
     local mutedR, mutedG, mutedB = GetInstallerPreviewMutedRGB()
     local root = CreateFrame("Frame", nil, parent)
     root:SetPoint("TOPLEFT", 20, -12)
     root:SetPoint("BOTTOMRIGHT", -20, 12)
+
+    -- The look of the chosen style, taken from the same seed the options use.
+    local validStyles = { kui = "KUI", forever = "Forever", retail = "Retail", classic = "Classic" }
+    styleKey = validStyles[styleKey or ""] and styleKey or nil
+    if not styleKey then
+        local stored = (_G.KullThranUINameplatesDB or {}).nameplateStyle
+        local themes = KT.VisualThemes
+        local rendered = themes and themes.GetRenderedTheme and themes:GetRenderedTheme()
+        styleKey = validStyles[stored or ""] and stored or (validStyles[rendered or ""] and rendered or "kui")
+    end
+    local seeded = {}
+    local nameplateAdapter = KT.VisualThemes and KT.VisualThemes.GetModuleAdapter and KT.VisualThemes:GetModuleAdapter("nameplates")
+    if nameplateAdapter and nameplateAdapter.seed then pcall(nameplateAdapter.seed, seeded, styleKey) end
+    local barTexture = INSTALLER_MELLI_TEXTURE
+    local sharedMedia = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if sharedMedia and seeded.healthBarTexture then
+        local fetched = sharedMedia:Fetch("statusbar", seeded.healthBarTexture, true)
+        if fetched then barTexture = fetched end
+    end
+    local border = seeded.borderColor
+    local borderR = border and border.r or accentR
+    local borderG = border and border.g or accentG
+    local borderB = border and border.b or accentB
+    local borderAlpha = seeded.borderStyle == "none" and 0 or 0.95
+    local fill = seeded.enemyInCombat or seeded.hostile or { r = 0.80, g = 0.137, b = 0.137 }
+    local barHeight = 30
 
     -- A nameplate preview must describe the enemy, not the player's class or
     -- cooldown loadout. These are four distinct, well-known debuffs whose
@@ -2448,15 +2824,15 @@ local function CreateNameplatesInstallerPreview(parent)
     classification:SetText(LText("Elite"))
 
     local health = CreateFrame("StatusBar", nil, root, "BackdropTemplate")
-    health:SetSize(330, 30)
+    health:SetSize(330, barHeight)
     health:SetPoint("TOP", root, "TOP", 0, -139)
-    health:SetStatusBarTexture(INSTALLER_MELLI_TEXTURE)
-    health:SetStatusBarColor(0.80, 0.137, 0.137, 1)
+    health:SetStatusBarTexture(barTexture)
+    health:SetStatusBarColor(fill.r, fill.g, fill.b, 1)
     health:SetMinMaxValues(0, 100)
     health:SetValue(83)
     CreateBackdrop(health)
     health:SetBackdropColor(0.06, 0.06, 0.07, 0.98)
-    health:SetBackdropBorderColor(accentR, accentG, accentB, 0.92)
+    health:SetBackdropBorderColor(borderR, borderG, borderB, borderAlpha)
 
     local hp = InstallerCreatePreviewLabel(health, 11, 1, 1, 1, "OUTLINE")
     hp:SetPoint("RIGHT", -7, 0)
@@ -2482,7 +2858,7 @@ local function CreateNameplatesInstallerPreview(parent)
     local cast = CreateFrame("StatusBar", nil, root, "BackdropTemplate")
     cast:SetSize(330, 18)
     cast:SetPoint("TOP", health, "BOTTOM", 0, -4)
-    cast:SetStatusBarTexture(INSTALLER_MELLI_TEXTURE)
+    cast:SetStatusBarTexture(barTexture)
     cast:SetStatusBarColor(0.70, 0.40, 0.90, 1)
     cast:SetMinMaxValues(0, 100)
     cast:SetValue(72)
@@ -2503,6 +2879,12 @@ local function CreateNameplatesInstallerPreview(parent)
     local castTime = InstallerCreatePreviewLabel(cast, 9, 1, 1, 1, "OUTLINE")
     castTime:SetPoint("RIGHT", -6, 0)
     castTime:SetText("1.4")
+
+    local styleTag = InstallerCreatePreviewLabel(root, 10, accentR, accentG, accentB, "OUTLINE")
+    styleTag:SetPoint("TOP", cast, "BOTTOM", 0, -10)
+    styleTag:SetWidth(330)
+    styleTag:SetJustifyH("CENTER")
+    styleTag:SetText(string.format(LText("Nameplate style: %s"), LText(validStyles[styleKey])))
 
     return root
 end
@@ -2581,7 +2963,7 @@ local function ShowInstallerModuleToggleStep(self, spec)
     end
 
     local previewFrame = CreateFrame("Frame", nil, content, "BackdropTemplate")
-    previewFrame:SetSize(700, 282)
+    previewFrame:SetSize(spec.previewWidth or 700, spec.previewHeight or 282)
     previewFrame:SetPoint("TOP", infoAnchor, "BOTTOM", 0, -12)
     previewFrame:SetClipsChildren(true)
     CreateBackdrop(previewFrame)
@@ -2589,7 +2971,13 @@ local function ShowInstallerModuleToggleStep(self, spec)
     local accentR, accentG, accentB = GetInstallerPreviewAccentRGB()
     previewFrame:SetBackdropBorderColor(accentR, accentG, accentB, 0.48)
 
-    local preview = spec.createPreview(previewFrame)
+    local preview = spec.createPreview(previewFrame, spec.styleRow and spec.styleRow.get() or nil)
+    if spec.fitPreview and preview and preview.GetHeight then
+        -- Shrink the frame to the preview instead of leaving a large empty box.
+        previewFrame:SetHeight(math.max(110, (preview:GetHeight() or 0) + 24))
+        previewFrame:ClearAllPoints()
+        previewFrame:SetPoint("TOP", infoAnchor, "BOTTOM", 0, -50)
+    end
 
     local disabledOverlay = CreateFrame("Frame", nil, previewFrame, "BackdropTemplate")
     disabledOverlay:SetAllPoints()
@@ -2603,11 +2991,56 @@ local function ShowInstallerModuleToggleStep(self, spec)
 
     local controlsFrame = CreateFrame("Frame", nil, content)
     controlsFrame:SetSize(600, 58)
-    controlsFrame:SetPoint("BOTTOM", content, "BOTTOM", 0, 82)
+    if spec.fitPreview then
+        controlsFrame:SetPoint("TOP", previewFrame, "BOTTOM", 0, -48)
+    else
+        controlsFrame:SetPoint("BOTTOM", content, "BOTTOM", 0, 82)
+    end
 
     local stateText = controlsFrame:CreateFontString(nil, "OVERLAY")
     stateText:SetPoint("BOTTOM", controlsFrame, "TOP", 0, 5)
     stateText:SetFont(GetKTFont(), 14, "OUTLINE")
+
+    if spec.styleRow then
+        local themes = KT.VisualThemes
+        local styleLabels = { kui = "KUI", forever = "Forever", retail = "Retail", classic = "Classic" }
+        local styleKeys = {}
+        for _, key in ipairs({ "kui", "forever", "retail", "classic" }) do
+            if not (themes and themes.IsKnownTheme) or themes:IsKnownTheme(key) then
+                styleKeys[#styleKeys + 1] = key
+            end
+        end
+        local styleButtons = {}
+        local function RefreshStyleButtons()
+            local current = spec.styleRow.get()
+            for _, styleButton in ipairs(styleButtons) do
+                styleButton.KT_selected = (styleButton.styleKey == current)
+                styleButton:SetBackdropBorderColor(unpack(styleButton.KT_selected and KT_COLOR or COLOR_BORDER))
+            end
+        end
+        for index, key in ipairs(styleKeys) do
+            local styleButton = CreateFrame("Button", nil, content, "BackdropTemplate")
+            styleButton:SetSize(118, 26)
+            styleButton:SetPoint("TOP", previewFrame, "BOTTOM", (index - (#styleKeys + 1) / 2) * 126, -8)
+            styleButton:SetText(LText(styleLabels[key]))
+            styleButton.styleKey = key
+            SkinButton(styleButton)
+            styleButton:HookScript("OnLeave", function(self)
+                self:SetBackdropBorderColor(unpack(self.KT_selected and KT_COLOR or COLOR_BORDER))
+            end)
+            styleButton:SetScript("OnClick", function()
+                spec.styleRow.set(key)
+                RefreshStyleButtons()
+                if spec.styleRow.rebuild then
+                    if preview then preview:Hide() end
+                    preview = spec.createPreview(previewFrame, key)
+                    if preview then preview:SetAlpha(spec.get() and 1 or 0.34) end
+                end
+            end)
+            styleButtons[#styleButtons + 1] = styleButton
+        end
+        RefreshStyleButtons()
+    end
 
     local btnEnable = CreateFrame("Button", nil, controlsFrame, "BackdropTemplate")
     btnEnable:SetSize(286, 34)
@@ -2780,9 +3213,86 @@ function Mod:OnInitialize()
         end,
         timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
     }
+    -- Keep every static popup (reload prompts, confirmations, copy boxes)
+    -- above the installer window, which sits in the TOOLTIP strata.
+    if not self._popupsAboveInstaller then
+        self._popupsAboveInstaller = true
+        local function RaisePopup(popup)
+            local installerFrame = self.frame
+            if not (popup and installerFrame and installerFrame:IsShown()) then return end
+            if popup._ktBaseStrata == nil then
+                popup._ktBaseStrata = popup:GetFrameStrata()
+                if not popup._ktRestoreHooked then
+                    popup._ktRestoreHooked = true
+                    popup:HookScript("OnHide", function(shown)
+                        if shown._ktBaseStrata then
+                            shown:SetFrameStrata(shown._ktBaseStrata)
+                            shown._ktBaseStrata = nil
+                        end
+                    end)
+                end
+            end
+            popup:SetFrameStrata("TOOLTIP")
+            popup:SetFrameLevel(installerFrame:GetFrameLevel() + 100)
+            popup:Raise()
+        end
+        local function RaiseShownPopups()
+            if StaticPopup_ForEachShownDialog then
+                StaticPopup_ForEachShownDialog(RaisePopup)
+                return
+            end
+            for index = 1, (STATICPOPUP_NUMDIALOGS or 4) do
+                local popup = _G["StaticPopup" .. index]
+                if popup and popup:IsShown() then RaisePopup(popup) end
+            end
+        end
+        hooksecurefunc("StaticPopup_Show", function()
+            RaiseShownPopups()
+            C_Timer.After(0, RaiseShownPopups)
+        end)
+
+        -- Any reload requested while the installer is open (including the
+        -- generic "settings changed" popups) brings the installer back on
+        -- the same page afterwards.
+        hooksecurefunc("ReloadUI", function()
+            local installerDb = KT and KT.db and KT.db.profile and KT.db.profile.installer
+            if not (installerDb and self.frame and self.frame:IsShown()) then return end
+            -- Whatever the "Don't show again" box says, a reload done on purpose while
+            -- the installer is open brings it back on the same page.
+            if KT.db.global then
+                KT.db.global.installerReloadResume = { step = tonumber(installerDb.step) or 1, time = time() }
+            end
+            if installerDb.dontShowAgain == true then return end
+            if installerDb.reopenStep or installerDb.resumeStep then return end
+            local step = tonumber(installerDb.step) or 1
+            installerDb.step = step
+            installerDb.reopenStep, installerDb.resumeStep = step, step
+            installerDb.reopenOnReload, installerDb.isOpen = true, true
+        end)
+    end
 end
 
 function Mod:OnEnable()
+    -- Reopen after a deliberate /reload (see the ReloadUI hook in OnInitialize).
+    local resumeAttempts = 0
+    local function ResumeAfterReload()
+        resumeAttempts = resumeAttempts + 1
+        local global = KT and KT.db and KT.db.global
+        local resume = global and global.installerReloadResume
+        if resume then
+            global.installerReloadResume = nil
+            local profileDb = KT.db.profile and KT.db.profile.installer
+            if profileDb and type(resume.time) == "number" and (time() - resume.time) < 300 then
+                profileDb.step = tonumber(resume.step) or 1
+                profileDb.resumeStep = profileDb.step
+                self:CreateInstallerWindow()
+            end
+            return
+        end
+        if resumeAttempts < 6 then C_Timer.After(1.5, ResumeAfterReload) end
+    end
+    C_Timer.After(1, ResumeAfterReload)
+
     local reopenAttempts = 0
     local function ReopenInstallerAfterReload()
         reopenAttempts = reopenAttempts + 1
@@ -2998,7 +3508,7 @@ function Mod:OpenCurrentStep()
     elseif step == 12 then self:ShowMythicPlusTimerStep()
     elseif step == 13 then self:ShowUnitFramesStep()
     elseif step == 14 then self:ShowPartyFramesStep()
-    elseif step == 15 then self:ShowResourceBarsStep()
+    elseif step == 15 then self:ShowCooldownManagerStep()
     elseif step == 16 then self:ShowCooldownManagerStep()
     elseif step == 17 then self:ShowNameplatesStep()
     elseif step == 18 then self:ShowAddonListStep()
@@ -3131,7 +3641,7 @@ function Mod:CreateInstallerWindow(onlyConflicts)
         progressBar:SetPoint("BOTTOMRIGHT", -20, 20)
         progressBar:SetHeight(8)
         progressBar:SetStatusBarTexture(EFL_WHITE8X8)
-        progressBar:SetMinMaxValues(1, TOTAL_INSTALLER_STEPS)
+        progressBar:SetMinMaxValues(1, #INSTALLER_STEP_ORDER)
         self.progressBar = progressBar
         
         self.frame = f
@@ -3176,7 +3686,11 @@ end
 function Mod:UpdateProgressBar(step)
     if self.progressBar then
         self.progressBar:Show()
-        self.progressBar:SetValue(step)
+        local position = step
+        for index, stepId in ipairs(INSTALLER_STEP_ORDER) do
+            if stepId == step then position = index break end
+        end
+        self.progressBar:SetValue(position)
     end
 end
 
@@ -3454,12 +3968,19 @@ function Mod:ShowWelcomeStep()
     text:SetTextColor(0.9, 0.9, 0.9)
     text:SetJustifyH("CENTER")
     
-    -- Feral Shape Background
+    -- Class shape background: the crest of the player's own class, drawn flat
+    -- (2D) and tinted with the class colour. Falls back to the feral shape.
+    local silhouette = CreateInstallerClassSilhouette(content)
     local shape = content:CreateTexture(nil, "BACKGROUND")
-    shape:SetSize(665, 285)
-    shape:SetPoint("CENTER", -50, -100) -- Debajo del texto
-    shape:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\feralshape.tga")
-    shape:SetVertexColor(1, 1, 1, 0.25)
+    shape:SetPoint("CENTER", 0, -95)
+    if silhouette then
+        shape:Hide()
+    elseif not ApplyInstallerClassShape(shape) then
+        shape:SetSize(665, 285)
+        shape:SetPoint("CENTER", -50, -100)
+        shape:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\feralshape.tga")
+        shape:SetVertexColor(1, 1, 1, 0.25)
+    end
     
     -- Botones
     local btnNext = CreateFrame("Button", nil, content, "BackdropTemplate")
@@ -3519,6 +4040,7 @@ function Mod:ShowLanguageStep()
         btn:SetText(LText(label))
         CreateBackdrop(btn)
         btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+        AttachButtonSweep(btn)
         local fs = btn:GetFontString()
         if fs then
             fs:SetFont(GetKTFont(), 14, "OUTLINE")
@@ -3627,7 +4149,7 @@ function Mod:ShowLanguageStep()
     btnNext:SetPoint("BOTTOMRIGHT", -30, 30)
     btnNext:SetText(L["Next Step"])
     SkinButton(btnNext)
-    btnNext:SetScript("OnClick", function() self:ShowThemeStep() end)
+    btnNext:SetScript("OnClick", function() self:ShowProfileStep() end)
 
     local btnBack = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnBack:SetSize(120, 30)
@@ -3834,7 +4356,7 @@ function Mod:ShowThemeStep()
     btnBack:SetPoint("RIGHT", btnNext, "LEFT", -10, 0)
     btnBack:SetText(L["Previous"])
     SkinButton(btnBack)
-    btnBack:SetScript("OnClick", function() ClearResume(); self:ShowLanguageStep() end)
+    btnBack:SetScript("OnClick", function() ClearResume(); self:ShowProfileStep() end)
 
     local btnSkip = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnSkip:SetSize(120, 30)
@@ -4190,6 +4712,12 @@ function Mod:ShowButtonStyleStep()
         SHIELD = PREVIEW_SHAPE_MEDIA .. "shield_border.tga",
     }
 
+    local SHAPE_IDLE_COLOR = { 0.74, 0.74, 0.78, 1 }
+    local divider = styleFrame:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(1, 1, 1, 0.08)
+    divider:SetPoint("TOP", styleFrame, "TOP", 0, -78)
+    divider:SetSize(1, 320)
+
     local function ClearInstallerPreviewShape(frame)
         if not frame then
             return
@@ -4481,7 +5009,7 @@ function Mod:ShowButtonStyleStep()
     
     -- 1. ACTION BARS
     local abHeader = styleFrame:CreateFontString(nil, "OVERLAY")
-    abHeader:SetPoint("TOP", styleFrame, "TOP", 0, -6)
+    abHeader:SetPoint("TOP", styleFrame, "TOP", -200, -78)
     abHeader:SetFont(GetKTFont(), 16, "OUTLINE")
     abHeader:SetText(L["Action Bars"])
     abHeader:SetTextColor(0.9, 0.9, 0.9)
@@ -4524,6 +5052,20 @@ function Mod:ShowButtonStyleStep()
             actionBarPreviewTextures[#actionBarPreviewTextures + 1] = texture
         end
     end
+    -- Real icons from the character's own action bars come first.
+    if _G.GetActionTexture then
+        for slot = 1, 24 do
+            if #actionBarPreviewTextures >= 8 then break end
+            local ok, texture = pcall(_G.GetActionTexture, slot)
+            if ok and texture then
+                local key = type(texture) .. ":" .. tostring(texture)
+                if not actionBarPreviewTextureSeen[key] then
+                    actionBarPreviewTextureSeen[key] = true
+                    actionBarPreviewTextures[#actionBarPreviewTextures + 1] = texture
+                end
+            end
+        end
+    end
     for _, spellID in ipairs(actionBarSpellIDs) do
         AddActionBarPreviewSpell(spellID)
     end
@@ -4552,8 +5094,41 @@ function Mod:ShowButtonStyleStep()
     while #actionBarPreviewTextures < 8 do
         actionBarPreviewTextures[#actionBarPreviewTextures + 1] = actionBarStaticTextures[((#actionBarPreviewTextures - 1) % #actionBarStaticTextures) + 1]
     end
-    local buffPreviewSpellIDs = { 1459, 6673, 1126, 21562 }
-    local debuffPreviewSpellIDs = { 589, 980, 172, 55095 }
+    -- Typical self-buffs per class; debuffs a player can really carry.
+    local CLASS_BUFF_SPELLS = {
+        WARRIOR = { 6673, 18499, 97462, 3411 },
+        PALADIN = { 465, 642, 1022, 31884 },
+        HUNTER = { 5118, 186257, 19574, 109304 },
+        ROGUE = { 2983, 1784, 5277, 1966 },
+        PRIEST = { 21562, 17, 586, 2096 },
+        DEATHKNIGHT = { 48707, 3714, 48792, 49039 },
+        SHAMAN = { 2645, 546, 974, 192106 },
+        MAGE = { 1459, 66, 45438, 12472 },
+        WARLOCK = { 5697, 687, 20707, 104773 },
+        MONK = { 116841, 101643, 119085, 122278 },
+        DRUID = { 1126, 768, 5487, 22812 },
+        DEMONHUNTER = { 188501, 162264, 198589, 196718 },
+        EVOKER = { 358267, 364342, 363916, 374348 },
+    }
+    local GENERIC_BUFF_SPELLS = { 1459, 6673, 1126, 21562 }
+    local QUESTION_MARK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+    local function ResolveClassAuraSpells(preferred, generic)
+        local resolved, seen = {}, {}
+        for _, list in ipairs({ preferred or {}, generic }) do
+            for _, spellID in ipairs(list) do
+                if #resolved >= 4 then break end
+                if not seen[spellID] and GetInstallerSpellTexture(spellID, QUESTION_MARK_ICON) ~= QUESTION_MARK_ICON then
+                    seen[spellID] = true
+                    resolved[#resolved + 1] = spellID
+                end
+            end
+        end
+        while #resolved < 4 do resolved[#resolved + 1] = generic[#resolved + 1] or generic[1] end
+        return resolved
+    end
+    local _, previewClassToken = UnitClass("player")
+    local buffPreviewSpellIDs = ResolveClassAuraSpells(CLASS_BUFF_SPELLS[previewClassToken], GENERIC_BUFF_SPELLS)
+    local debuffPreviewSpellIDs = ResolveClassAuraSpells({ 57723, 25771, 6788, 11196 }, { 589, 980, 172, 55095 })
     local buffPreviewTextures, debuffPreviewTextures = {}, {}
     for i, spellID in ipairs(buffPreviewSpellIDs) do
         buffPreviewTextures[i] = GetInstallerSpellTexture(spellID, "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -4626,7 +5201,7 @@ function Mod:ShowButtonStyleStep()
     local UpdateABShapeButtons
     local function CreateABBtn(label, style, xOffset)
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
-        btn:SetSize(150, 28)
+        btn:SetSize(116, 28)
         btn:SetPoint("TOP", abPreview, "BOTTOM", xOffset, -4)
         btn:SetText(LText(label))
         
@@ -4636,6 +5211,7 @@ function Mod:ShowButtonStyleStep()
         if btn.SetPushedTexture then btn:SetPushedTexture("") end
         CreateBackdrop(btn)
         btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+        AttachButtonSweep(btn)
         local fs = btn:GetFontString()
         if fs then fs:SetFont(GetKTFont(), 12, "OUTLINE") end
         
@@ -4679,9 +5255,9 @@ function Mod:ShowButtonStyleStep()
         return btn
     end
     
-    local abBtnLeft = CreateABBtn("Blizzard", "BLIZZARD", -200)
+    local abBtnLeft = CreateABBtn("Blizzard", "BLIZZARD", -120)
     local abBtnMid = CreateABBtn("Modern KUI", "KUI", 0)
-    local abBtnRight = CreateABBtn("Simplicity", "SIMPLICITY", 200)
+    local abBtnRight = CreateABBtn("Simplicity", "SIMPLICITY", 120)
 
     -- Shape selector (Action Bars)
     local abShapeHeader = styleFrame:CreateFontString(nil, "OVERLAY")
@@ -4704,14 +5280,14 @@ function Mod:ShowButtonStyleStep()
                     if enabled and (selected or b.KT_PreviewShapeHover) then
                         b.KT_PreviewShapeBorder:SetVertexColor(unpack(KT_COLOR))
                     else
-                        b.KT_PreviewShapeBorder:SetVertexColor(unpack(COLOR_BORDER))
+                        b.KT_PreviewShapeBorder:SetVertexColor(unpack(SHAPE_IDLE_COLOR))
                     end
                 end
                 if b.shapeValue == "NONE" or not b.KT_PreviewShapeBorder then
                     if enabled and selected then b:SetBackdropBorderColor(unpack(KT_COLOR))
-                    else b:SetBackdropBorderColor(unpack(COLOR_BORDER)) end
+                    else b:SetBackdropBorderColor(unpack(SHAPE_IDLE_COLOR)) end
                 else
-                    b:SetBackdropBorderColor(unpack(COLOR_BORDER))
+                    b:SetBackdropBorderColor(0, 0, 0, 0)
                 end
             end
         end
@@ -4719,14 +5295,14 @@ function Mod:ShowButtonStyleStep()
 
     local function CreateABShapeBtn(label, shape, anchor, xOffset, yOffset, previewTexture)
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
-        btn:SetSize(50, 50)
+        btn:SetSize(64, 64)
         btn:SetPoint("TOP", anchor, "BOTTOM", xOffset, yOffset)
         CreateBackdrop(btn)
-        btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+        btn:SetBackdropColor(0, 0, 0, 0)
 
         btn.Icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.Icon:SetPoint("TOPLEFT", 5, -5)
-        btn.Icon:SetPoint("BOTTOMRIGHT", -5, 5)
+        btn.Icon:SetPoint("TOPLEFT", 6, -6)
+        btn.Icon:SetPoint("BOTTOMRIGHT", -6, 6)
         btn.Icon:SetTexture(previewTexture or actionBarPreviewTextures[1])
         btn.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         btn.Cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
@@ -4741,7 +5317,7 @@ function Mod:ShowButtonStyleStep()
         local function RefreshShapeIcon()
             btn.KT_PreviewStyleOverride = "SIMPLICITY"
             btn.KT_PreviewShapeOverride = shape
-            SafeRenderInstallerShapePreview(btn, 0, 0, 0)
+            SafeRenderInstallerShapePreview(btn, SHAPE_IDLE_COLOR[1], SHAPE_IDLE_COLOR[2], SHAPE_IDLE_COLOR[3])
         end
         btn.KT_RefreshShapeIcon = RefreshShapeIcon
         RefreshShapeIcon()
@@ -4759,11 +5335,11 @@ function Mod:ShowButtonStyleStep()
         btn:SetScript("OnEnter", function(self)
             if not self:IsEnabled() then return end
             self.KT_PreviewShapeHover = true
-            self:SetBackdropColor(unpack(COLOR_BTN_HOVER))
+            self:SetBackdropColor(1, 1, 1, 0.06)
             if self.shapeValue == "NONE" or not self.KT_PreviewShapeBorder then
                 self:SetBackdropBorderColor(unpack(KT_COLOR))
             else
-                self:SetBackdropBorderColor(unpack(COLOR_BORDER))
+                self:SetBackdropBorderColor(0, 0, 0, 0)
                 self.KT_PreviewShapeBorder:SetVertexColor(unpack(KT_COLOR))
             end
             if GameTooltip then
@@ -4774,7 +5350,7 @@ function Mod:ShowButtonStyleStep()
         end)
         btn:SetScript("OnLeave", function(self)
             self.KT_PreviewShapeHover = nil
-            self:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+            self:SetBackdropColor(0, 0, 0, 0)
             UpdateABShapeButtons()
             if GameTooltip then GameTooltip:Hide() end
         end)
@@ -4782,13 +5358,13 @@ function Mod:ShowButtonStyleStep()
         return btn
     end
 
-    local abShapeRow1Left = CreateABShapeBtn("Square (Default)", "NONE", abShapeHeader, -190, -2, actionBarPreviewTextures[1])
-    local abShapeRow1Mid = CreateABShapeBtn("Circle", "CIRCLE", abShapeHeader, 0, -2, actionBarPreviewTextures[2])
-    local abShapeRow1Right = CreateABShapeBtn("Rounded Square", "CSQUARE", abShapeHeader, 190, -2, actionBarPreviewTextures[3])
+    local abShapeRow1Left = CreateABShapeBtn("Square (Default)", "NONE", abShapeHeader, -84, -4, actionBarPreviewTextures[1])
+    local abShapeRow1Mid = CreateABShapeBtn("Circle", "CIRCLE", abShapeHeader, 0, -4, actionBarPreviewTextures[2])
+    local abShapeRow1Right = CreateABShapeBtn("Rounded Square", "CSQUARE", abShapeHeader, 84, -4, actionBarPreviewTextures[3])
 
-    local abShapeRow2Mid = CreateABShapeBtn("Hexagon", "HEXAGON", abShapeRow1Mid, 0, -6, actionBarPreviewTextures[4])
-    CreateABShapeBtn("Diamond", "DIAMOND", abShapeRow1Mid, 190, -6, actionBarPreviewTextures[5])
-    CreateABShapeBtn("Shield", "SHIELD", abShapeRow1Mid, -190, -6, actionBarPreviewTextures[6])
+    local abShapeRow2Mid = CreateABShapeBtn("Hexagon", "HEXAGON", abShapeRow1Mid, 0, -10, actionBarPreviewTextures[4])
+    CreateABShapeBtn("Diamond", "DIAMOND", abShapeRow1Mid, 84, -10, actionBarPreviewTextures[5])
+    CreateABShapeBtn("Shield", "SHIELD", abShapeRow1Mid, -84, -10, actionBarPreviewTextures[6])
 
     UpdateABShapeButtons()
 
@@ -4825,7 +5401,7 @@ function Mod:ShowButtonStyleStep()
 
     -- 2. BUFFS & DEBUFFS
     local bdHeader = styleFrame:CreateFontString(nil, "OVERLAY")
-    bdHeader:SetPoint("TOP", abSectionEnd, "BOTTOM", 0, -4)
+    bdHeader:SetPoint("TOP", styleFrame, "TOP", 200, -78)
     bdHeader:SetFont(GetKTFont(), 16, "OUTLINE")
     bdHeader:SetText(L["Buffs & Debuffs"])
     bdHeader:SetTextColor(0.9, 0.9, 0.9)
@@ -4881,7 +5457,7 @@ function Mod:ShowButtonStyleStep()
     local UpdateBDShapeButtons
     local function CreateBDBtn(label, style, xOffset)
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
-        btn:SetSize(150, 28)
+        btn:SetSize(116, 28)
         btn:SetPoint("TOP", bdPreview, "BOTTOM", xOffset, -4)
         btn:SetText(LText(label))
         
@@ -4891,6 +5467,7 @@ function Mod:ShowButtonStyleStep()
         if btn.SetPushedTexture then btn:SetPushedTexture("") end
         CreateBackdrop(btn)
         btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+        AttachButtonSweep(btn)
         local fs = btn:GetFontString()
         if fs then fs:SetFont(GetKTFont(), 12, "OUTLINE") end
         
@@ -4934,9 +5511,9 @@ function Mod:ShowButtonStyleStep()
         return btn
     end
 
-    local bdBtnLeft = CreateBDBtn("Blizzard", "BLIZZARD", -200)
+    local bdBtnLeft = CreateBDBtn("Blizzard", "BLIZZARD", -120)
     local bdBtnMid = CreateBDBtn("Modern KUI", "KUI", 0)
-    local bdBtnRight = CreateBDBtn("Simplicity", "SIMPLICITY", 200)
+    local bdBtnRight = CreateBDBtn("Simplicity", "SIMPLICITY", 120)
 
     -- Shape selector (Buffs & Debuffs)
     local bdShapeHeader = styleFrame:CreateFontString(nil, "OVERLAY")
@@ -4959,14 +5536,14 @@ function Mod:ShowButtonStyleStep()
                     if enabled and (selected or b.KT_PreviewShapeHover) then
                         b.KT_PreviewShapeBorder:SetVertexColor(unpack(KT_COLOR))
                     else
-                        b.KT_PreviewShapeBorder:SetVertexColor(unpack(COLOR_BORDER))
+                        b.KT_PreviewShapeBorder:SetVertexColor(unpack(SHAPE_IDLE_COLOR))
                     end
                 end
                 if b.shapeValue == "NONE" or not b.KT_PreviewShapeBorder then
                     if enabled and selected then b:SetBackdropBorderColor(unpack(KT_COLOR))
-                    else b:SetBackdropBorderColor(unpack(COLOR_BORDER)) end
+                    else b:SetBackdropBorderColor(unpack(SHAPE_IDLE_COLOR)) end
                 else
-                    b:SetBackdropBorderColor(unpack(COLOR_BORDER))
+                    b:SetBackdropBorderColor(0, 0, 0, 0)
                 end
             end
         end
@@ -4974,14 +5551,14 @@ function Mod:ShowButtonStyleStep()
 
     local function CreateBDShapeBtn(label, shape, anchor, xOffset, yOffset, previewTexture)
         local btn = CreateFrame("Button", nil, styleFrame, "BackdropTemplate")
-        btn:SetSize(50, 50)
+        btn:SetSize(64, 64)
         btn:SetPoint("TOP", anchor, "BOTTOM", xOffset, yOffset)
         CreateBackdrop(btn)
-        btn:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+        btn:SetBackdropColor(0, 0, 0, 0)
 
         btn.Icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.Icon:SetPoint("TOPLEFT", 5, -5)
-        btn.Icon:SetPoint("BOTTOMRIGHT", -5, 5)
+        btn.Icon:SetPoint("TOPLEFT", 6, -6)
+        btn.Icon:SetPoint("BOTTOMRIGHT", -6, 6)
         btn.Icon:SetTexture(previewTexture or buffDebuffPreviewTextures[1])
         btn.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         btn.Cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
@@ -4996,7 +5573,7 @@ function Mod:ShowButtonStyleStep()
         local function RefreshShapeIcon()
             btn.KT_PreviewStyleOverride = "SIMPLICITY"
             btn.KT_PreviewShapeOverride = shape
-            SafeRenderInstallerShapePreview(btn, 0, 0, 0)
+            SafeRenderInstallerShapePreview(btn, SHAPE_IDLE_COLOR[1], SHAPE_IDLE_COLOR[2], SHAPE_IDLE_COLOR[3])
         end
         btn.KT_RefreshShapeIcon = RefreshShapeIcon
         RefreshShapeIcon()
@@ -5013,11 +5590,11 @@ function Mod:ShowButtonStyleStep()
         btn:SetScript("OnEnter", function(self)
             if not self:IsEnabled() then return end
             self.KT_PreviewShapeHover = true
-            self:SetBackdropColor(unpack(COLOR_BTN_HOVER))
+            self:SetBackdropColor(1, 1, 1, 0.06)
             if self.shapeValue == "NONE" or not self.KT_PreviewShapeBorder then
                 self:SetBackdropBorderColor(unpack(KT_COLOR))
             else
-                self:SetBackdropBorderColor(unpack(COLOR_BORDER))
+                self:SetBackdropBorderColor(0, 0, 0, 0)
                 self.KT_PreviewShapeBorder:SetVertexColor(unpack(KT_COLOR))
             end
             if GameTooltip then
@@ -5028,20 +5605,20 @@ function Mod:ShowButtonStyleStep()
         end)
         btn:SetScript("OnLeave", function(self)
             self.KT_PreviewShapeHover = nil
-            self:SetBackdropColor(unpack(COLOR_BTN_NORMAL))
+            self:SetBackdropColor(0, 0, 0, 0)
             UpdateBDShapeButtons()
             if GameTooltip then GameTooltip:Hide() end
         end)
         return btn
     end
 
-    local bdShapeRow1Left = CreateBDShapeBtn("Square (Default)", "NONE", bdShapeHeader, -190, -2, buffDebuffPreviewTextures[1])
-    local bdShapeRow1Mid = CreateBDShapeBtn("Circle", "CIRCLE", bdShapeHeader, 0, -2, buffDebuffPreviewTextures[2])
-    local bdShapeRow1Right = CreateBDShapeBtn("Rounded Square", "CSQUARE", bdShapeHeader, 190, -2, buffDebuffPreviewTextures[3])
+    local bdShapeRow1Left = CreateBDShapeBtn("Square (Default)", "NONE", bdShapeHeader, -84, -4, buffDebuffPreviewTextures[1])
+    local bdShapeRow1Mid = CreateBDShapeBtn("Circle", "CIRCLE", bdShapeHeader, 0, -4, buffDebuffPreviewTextures[2])
+    local bdShapeRow1Right = CreateBDShapeBtn("Rounded Square", "CSQUARE", bdShapeHeader, 84, -4, buffDebuffPreviewTextures[3])
 
-    local bdShapeRow2Mid = CreateBDShapeBtn("Hexagon", "HEXAGON", bdShapeRow1Mid, 0, -6, buffDebuffPreviewTextures[4])
-    CreateBDShapeBtn("Diamond", "DIAMOND", bdShapeRow1Mid, 190, -6, buffDebuffPreviewTextures[5])
-    CreateBDShapeBtn("Shield", "SHIELD", bdShapeRow1Mid, -190, -6, buffDebuffPreviewTextures[6])
+    local bdShapeRow2Mid = CreateBDShapeBtn("Hexagon", "HEXAGON", bdShapeRow1Mid, 0, -10, buffDebuffPreviewTextures[4])
+    CreateBDShapeBtn("Diamond", "DIAMOND", bdShapeRow1Mid, 84, -10, buffDebuffPreviewTextures[5])
+    CreateBDShapeBtn("Shield", "SHIELD", bdShapeRow1Mid, -84, -10, buffDebuffPreviewTextures[6])
 
     UpdateBDShapeButtons()
     
@@ -5104,8 +5681,8 @@ function Mod:ShowMinimapShapeStep()
     previewFrame:SetBackdropColor(0.06, 0.06, 0.06, 0.9)
 
     local previewMap = CreateFrame("Frame", nil, previewFrame, "BackdropTemplate")
-    previewMap:SetSize(210, 210)
-    previewMap:SetPoint("TOP", previewFrame, "TOP", 0, -18)
+    previewMap:SetSize(160, 160)
+    previewMap:SetPoint("TOP", previewFrame, "TOP", 0, -34)
     CreateBackdrop(previewMap)
     previewMap:SetBackdropColor(0.04, 0.06, 0.08, 0.95)
     previewMap:SetBackdropBorderColor(unpack(KT_COLOR))
@@ -5155,6 +5732,27 @@ function Mod:ShowMinimapShapeStep()
     previewCircleBorder:SetTexture("Interface\\AddOns\\KullThranUI\\Modules\\SimplicityTextures\\circle_border.tga")
     previewCircleBorder:SetVertexColor(unpack(KT_COLOR))
 
+    -- Decorative ring of the chosen visual style (same art as the real minimap).
+    -- A texture on the map itself (not a child frame) so the texts stay above it.
+    local previewRing = previewMap:CreateTexture(nil, "OVERLAY", nil, -8)
+    previewRing:Hide()
+
+    -- Square frame drawn one pixel outside the map so every edge stays visible.
+    local previewSquareFrame = CreateFrame("Frame", nil, previewMap, "BackdropTemplate")
+    previewSquareFrame:SetPoint("TOPLEFT", previewMap, "TOPLEFT", -1, 1)
+    previewSquareFrame:SetPoint("BOTTOMRIGHT", previewMap, "BOTTOMRIGHT", 1, -1)
+    previewSquareFrame:SetFrameLevel(previewMap:GetFrameLevel() + 6)
+    previewSquareFrame:SetBackdrop({ edgeFile = EFL_WHITE8X8, edgeSize = 2 })
+    previewSquareFrame:SetBackdropBorderColor(unpack(KT_COLOR))
+
+    local function ResolveRingKey()
+        local key = db.ringStyle
+        if key == "none" or key == "forever" or key == "retail" or key == "classic" then return key end
+        local themes = KT.VisualThemes
+        local theme = themes and themes.GetRenderedTheme and themes:GetRenderedTheme()
+        return (({ kui = "none", forever = "forever", retail = "retail", classic = "classic" })[theme]) or "none"
+    end
+
     local zoneText = previewMap:CreateFontString(nil, "OVERLAY")
     zoneText:SetPoint("TOP", previewMap, "TOP", 0, -15)
     zoneText:SetFont(GetKTFont(), 14, "OUTLINE")
@@ -5198,16 +5796,33 @@ function Mod:ShowMinimapShapeStep()
     guildText:SetTextColor(0.2, 1, 0.2)
 
     local buttons = {}
+    local ringButtons = {}
     local function RefreshPreviewShape()
         local shape = (db.shape or "SQUARE"):upper()
+        local ringKey = ResolveRingKey()
+        local ringDrawn = false
+        if shape == "ROUND" and ringKey ~= "none" and KT.DrawMinimapRing and KT.MinimapRingStyles then
+            for _, def in ipairs(KT.MinimapRingStyles) do
+                if def.key == ringKey then
+                    ringDrawn = KT.DrawMinimapRing(def, previewRing, previewRing, previewMap, previewMap:GetWidth()) and true or false
+                    break
+                end
+            end
+        end
+        previewRing:SetShown(ringDrawn)
+        previewSquareFrame:SetShown(shape ~= "ROUND")
         if shape == "ROUND" then
             previewMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            previewCircleBorder:Show()
+            previewCircleBorder:SetShown(not ringDrawn)
             previewMap:SetBackdropBorderColor(0, 0, 0, 0)
         else
             previewMask:SetTexture("Interface\\Buttons\\WHITE8X8", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
             previewCircleBorder:Hide()
-            previewMap:SetBackdropBorderColor(unpack(KT_COLOR))
+            previewMap:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+        for _, ringBtn in ipairs(ringButtons) do
+            ringBtn:SetBackdropBorderColor(unpack(ringBtn.ringKey == ringKey and KT_COLOR or COLOR_BORDER))
+            ringBtn:SetAlpha(shape == "ROUND" and 1 or 0.45)
         end
 
         for _, btn in ipairs(buttons) do
@@ -5243,6 +5858,27 @@ function Mod:ShowMinimapShapeStep()
 
     CreateShapeButton(L["Square"], "SQUARE", -100)
     CreateShapeButton(L["Round"], "ROUND", 100)
+
+    -- Border of each visual style (applies to the round minimap).
+    if KT.MinimapRingStyles then
+        local count = #KT.MinimapRingStyles
+        local width, gap = 104, 8
+        for index, def in ipairs(KT.MinimapRingStyles) do
+            local ringBtn = CreateFrame("Button", nil, previewFrame, "BackdropTemplate")
+            ringBtn:SetSize(width, 26)
+            ringBtn:SetPoint("BOTTOM", previewFrame, "BOTTOM", (index - (count + 1) / 2) * (width + gap), 64)
+            ringBtn:SetText(LText(def.label))
+            ringBtn.ringKey = def.key
+            SkinButton(ringBtn)
+            ringBtn:SetScript("OnClick", function()
+                db.ringStyle = def.key
+                db.shape = "ROUND"
+                RefreshInstallerMinimapShape()
+                RefreshPreviewShape()
+            end)
+            ringButtons[#ringButtons + 1] = ringBtn
+        end
+    end
     
     local function CreateToggle(label, key, anchorPoint, anchorTo, anchorPointTo, x, y)
         local cb = CreateFrame("CheckButton", nil, content, "BackdropTemplate")
@@ -5277,7 +5913,7 @@ function Mod:ShowMinimapShapeStep()
         return cb
     end
 
-    local chkCoords = CreateToggle(LText("Coordinates"), "showCoords", "TOPLEFT", previewFrame, "BOTTOMLEFT", 40, -10)
+    local chkCoords = CreateToggle(LText("Coordinates"), "showCoords", "TOPLEFT", previewFrame, "BOTTOM", -137, -10)
     local chkClock = CreateToggle(LText("Clock"), "showClock", "LEFT", chkCoords, "RIGHT", 110, 0)
     local chkFPS = CreateToggle(LText("FPS / MS"), "showFPS", "LEFT", chkClock, "RIGHT", 80, 0)
     
@@ -5807,6 +6443,7 @@ function Mod:ShowBagsStep()
         enableLabel = "Enable KullThranUI Bags",
         disableLabel = "Disable KullThranUI Bags",
         createPreview = CreateBagsInstallerLivePreview,
+        previewHeight = 320,
         get = function() return profile.bags.enable ~= false end,
         set = function(value) profile.bags.enable = value end,
         apply = function(value)
@@ -5837,6 +6474,19 @@ function Mod:ShowDamageMeterStep()
         enableLabel = "Enable KullThranUI Damage Meter",
         disableLabel = "Disable KullThranUI Damage Meter",
         createPreview = CreateDamageMeterInstallerLivePreview,
+        previewWidth = 460,
+        previewHeight = 256,
+        styleRow = {
+            get = function()
+                return enhancements and enhancements.GetDamageMeterStyle and enhancements:GetDamageMeterStyle() or "kui"
+            end,
+            set = function(key)
+                if enhancements and enhancements.SetDamageMeterStyle then
+                    pcall(enhancements.SetDamageMeterStyle, enhancements, key)
+                end
+            end,
+            rebuild = true,
+        },
         get = function() return db.damageMeter.moduleEnabled ~= false and db.damageMeter.enabled == true end,
         set = function(value)
             db.damageMeter.moduleEnabled = value and true or false
@@ -5892,6 +6542,19 @@ function Mod:ShowUnitFramesStep()
         disableLabel = "Use Unit Frames From Another Addon",
         disabledPreviewLabel = "Using unit frames from another addon",
         createPreview = CreateUnitFramesInstallerLivePreview,
+        fitPreview = true,
+        previewWidth = 560,
+        styleRow = {
+            get = function()
+                local themes = KT.VisualThemes
+                return themes and themes.GetRenderedTheme and themes:GetRenderedTheme() or "kui"
+            end,
+            -- Unit frames follow the global Visual Style; this asks to apply it.
+            set = function(key)
+                local themes = KT.VisualThemes
+                if themes and themes.RequestApply then themes:RequestApply(key) end
+            end,
+        },
         get = function() return profile.unitFrames.enable ~= false end,
         set = function(value) profile.unitFrames.enable = value end,
         next = function() self:ShowPartyFramesStep() end,
@@ -5916,27 +6579,8 @@ function Mod:ShowPartyFramesStep()
         createPreview = CreatePartyFramesInstallerLivePreview,
         get = function() return profile.partyFrames.enable ~= false end,
         set = function(value) profile.partyFrames.enable = value end,
-        next = function() self:ShowResourceBarsStep() end,
-        back = function() self:ShowUnitFramesStep() end,
-    })
-end
-function Mod:ShowResourceBarsStep()
-    local profile = KT.db.profile
-    profile.resourceBars = profile.resourceBars or {}
-    if profile.resourceBars.enabled == nil then profile.resourceBars.enabled = true end
-
-    ShowInstallerModuleToggleStep(self, {
-        step = 15,
-        requiresReload = true,
-        title = 'Resource Bars',
-        question = 'Do you want to enable or disable KullThranUI Resource Bars?',
-        enableLabel = 'Enable KullThranUI Resource Bars',
-        disableLabel = 'Disable KullThranUI Resource Bars',
-        createPreview = CreateResourceBarsInstallerLivePreview,
-        get = function() return profile.resourceBars.enabled ~= false end,
-        set = function(value) profile.resourceBars.enabled = value end,
         next = function() self:ShowCooldownManagerStep() end,
-        back = function() self:ShowPartyFramesStep() end,
+        back = function() self:ShowUnitFramesStep() end,
     })
 end
 
@@ -5956,7 +6600,8 @@ function Mod:ShowCooldownManagerStep()
         disableLabel = "Disable KullThranUI Cooldown Manager",
         location = "Recommended: import the Blizzard layout now so every Cooldown Manager bar starts in the intended position.",
         createPreview = CreateCooldownManagerInstallerLivePreview,
-        createExtraControls = function(_, previewFrame)
+        previewHeight = 262,
+        createExtraControls = function(content, previewFrame)
             local glow = previewFrame:CreateTexture(nil, "ARTWORK", nil, 1)
             glow:SetTexture("Interface\\Buttons\\WHITE8x8")
             glow:SetSize(270, 42)
@@ -5983,6 +6628,66 @@ function Mod:ShowCooldownManagerStep()
                 if _G._KUI_CDM_Apply then pcall(_G._KUI_CDM_Apply) end
                 self:SetText(ok and (LText("Layout Imported")) or (LText("Import unavailable")))
             end)
+
+            -- Resource Bars live with the Cooldown Manager: highlighted switch under the preview.
+            profile.resourceBars = profile.resourceBars or {}
+            if profile.resourceBars.enabled == nil then profile.resourceBars.enabled = true end
+            local panel = CreateFrame("Frame", nil, content, "BackdropTemplate")
+            panel:SetSize(700, 36)
+            panel:SetPoint("TOP", previewFrame, "BOTTOM", 0, -6)
+            CreateBackdrop(panel)
+            panel:SetBackdropColor(KT_COLOR[1] * 0.14, KT_COLOR[2] * 0.14, KT_COLOR[3] * 0.14, 0.95)
+            panel:SetBackdropBorderColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 1)
+            local pulse = panel:CreateTexture(nil, "ARTWORK", nil, 1)
+            pulse:SetTexture("Interface\\Buttons\\WHITE8x8")
+            pulse:SetPoint("TOPLEFT", 1, -1)
+            pulse:SetPoint("BOTTOMRIGHT", -1, 1)
+            pulse:SetVertexColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 0.10)
+            local pulseAnim = pulse:CreateAnimationGroup()
+            pulseAnim:SetLooping("BOUNCE")
+            local pulseFade = pulseAnim:CreateAnimation("Alpha")
+            pulseFade:SetFromAlpha(0.3)
+            pulseFade:SetToAlpha(1)
+            pulseFade:SetDuration(0.9)
+            pulseAnim:Play()
+
+            local panelTitle = panel:CreateFontString(nil, "OVERLAY")
+            panelTitle:SetPoint("LEFT", 12, 5)
+            panelTitle:SetFont(GetKTFont(), 14, "OUTLINE")
+            panelTitle:SetTextColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 1)
+            panelTitle:SetText(LText("Resource Bars"))
+            local panelHint = panel:CreateFontString(nil, "OVERLAY")
+            panelHint:SetPoint("LEFT", 12, -8)
+            panelHint:SetFont(GetKTFont(), 10)
+            panelHint:SetTextColor(0.8, 0.8, 0.8, 1)
+            panelHint:SetText(LText("Power bar shown with your Cooldown Manager."))
+
+            local btnRbDisable = CreateFrame("Button", nil, panel, "BackdropTemplate")
+            btnRbDisable:SetSize(120, 26)
+            btnRbDisable:SetPoint("RIGHT", panel, "RIGHT", -8, 0)
+            btnRbDisable:SetText(LText("Disable"))
+            SkinButton(btnRbDisable)
+            local btnRbEnable = CreateFrame("Button", nil, panel, "BackdropTemplate")
+            btnRbEnable:SetSize(120, 26)
+            btnRbEnable:SetPoint("RIGHT", btnRbDisable, "LEFT", -8, 0)
+            btnRbEnable:SetText(LText("Enable"))
+            SkinButton(btnRbEnable)
+            local function RefreshResourceBarButtons()
+                local enabled = profile.resourceBars.enabled ~= false
+                btnRbEnable:SetBackdropBorderColor(unpack(enabled and KT_COLOR or COLOR_BORDER))
+                btnRbDisable:SetBackdropBorderColor(unpack(enabled and COLOR_BORDER or KT_COLOR))
+            end
+            local function SetResourceBars(value)
+                if (profile.resourceBars.enabled ~= false) == value then return end
+                profile.resourceBars.enabled = value
+                RefreshResourceBarButtons()
+                RequestInstallerReload(self, 16)
+            end
+            btnRbEnable:SetScript("OnClick", function() SetResourceBars(true) end)
+            btnRbDisable:SetScript("OnClick", function() SetResourceBars(false) end)
+            btnRbEnable:HookScript("OnLeave", RefreshResourceBarButtons)
+            btnRbDisable:HookScript("OnLeave", RefreshResourceBarButtons)
+            RefreshResourceBarButtons()
         end,
         get = function() return profile.cooldownManager.cdmBars.enabled ~= false end,
         set = function(value) profile.cooldownManager.cdmBars.enabled = value end,
@@ -5992,7 +6697,7 @@ function Mod:ShowCooldownManagerStep()
             end
         end,
         next = function() self:ShowNameplatesStep() end,
-        back = function() self:ShowResourceBarsStep() end,
+        back = function() self:ShowPartyFramesStep() end,
     })
 end
 
@@ -6012,6 +6717,40 @@ function Mod:ShowNameplatesStep()
         disableLabel = "Use Nameplates From Another Addon",
         disabledPreviewLabel = "Using another nameplate addon",
         createPreview = CreateNameplatesInstallerPreview,
+        styleRow = {
+            get = function()
+                local key = _G.KullThranUINameplatesDB.nameplateStyle
+                if key == "kui" or key == "forever" or key == "retail" or key == "classic" then return key end
+                local themes = KT.VisualThemes
+                return themes and themes.GetRenderedTheme and themes:GetRenderedTheme() or "kui"
+            end,
+            set = function(key)
+                local d = _G.KullThranUINameplatesDB
+                local adapter = KT.VisualThemes and KT.VisualThemes.GetModuleAdapter and KT.VisualThemes:GetModuleAdapter("nameplates")
+                local P = (adapter and adapter.getProfile and adapter.getProfile()) or d
+                -- Same reset the Nameplates options tile performs: sizes go back to the style's own.
+                local prefixes = { "healthBar", "castBar", "cast", "enemyName", "level", "name", "classPower",
+                    "textSlot", "raidMarker", "rareElite", "targetArrow", "focusCast" }
+                for _, tbl in ipairs({ d, P }) do
+                    for field in pairs(tbl) do
+                        if type(field) == "string" and not field:find("^friendly") then
+                            for _, prefix in ipairs(prefixes) do
+                                if field:sub(1, #prefix) == prefix then tbl[field] = nil break end
+                            end
+                        end
+                    end
+                end
+                if adapter and adapter.seed then
+                    pcall(adapter.seed, P, key)
+                    if adapter.validate then pcall(adapter.validate, P) end
+                end
+                d.nameplateStyle = key
+                P.nameplateStyle = key
+                d.classPowerPos = "bottom"
+                RequestInstallerReload(self, 17)
+            end,
+            rebuild = true,
+        },
         get = function() return _G.KullThranUINameplatesDB.enable ~= false end,
         set = function(value) _G.KullThranUINameplatesDB.enable = value end,
         next = function() self:ShowAddonListStep() end,
@@ -6267,7 +7006,7 @@ function Mod:ShowAddonListStep()
     btnNext:SetPoint("BOTTOMRIGHT", -30, 30)
     btnNext:SetText(L["Next Step"])
     SkinButton(btnNext)
-    btnNext:SetScript("OnClick", function() self:ShowProfileStep() end)
+    btnNext:SetScript("OnClick", function() self:ShowModuleSelectionStep() end)
     
     local btnBack = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnBack:SetSize(120, 30)
@@ -6352,92 +7091,179 @@ function Mod:ShowProfileImportStep(addonName, profileString)
     btnBack:SetScript("OnClick", function() self:ShowAddonListStep() end)
 end
 
+-- Interface scale and frame positions. Nothing is changed until the player
+-- picks an option and presses Apply: the current scale and the saved
+-- positions are the defaults.
 function Mod:ShowProfileStep()
     L = KT:GetLocale()
-    KT.db.profile.installer.step = 19
-    self:UpdateProgressBar(19)
+    KT.db.profile.installer.step = STEP_PROFILE
+    self:UpdateProgressBar(STEP_PROFILE)
     if self.content then self.content:Hide() end
     local content = CreateFrame("Frame", nil, self.frame)
     content:SetAllPoints()
     self.content = content
-    
+
     local title = content:CreateFontString(nil, "OVERLAY")
     title:SetPoint("TOP", 0, -30)
     title:SetFont(GetKTFont(), 24, "OUTLINE")
-    title:SetText(L["Setup & Profiles"])
+    title:SetText(LText("Interface Scale & Positions"))
     title:SetTextColor(unpack(KT_COLOR))
-    
+
+    local intro = content:CreateFontString(nil, "OVERLAY")
+    intro:SetPoint("TOP", title, "BOTTOM", 0, -10)
+    intro:SetWidth(660)
+    intro:SetFont(GetKTFont(), 13)
+    intro:SetText(LText("Your current scale and your saved frame positions are kept unless you choose otherwise and press Apply."))
+    intro:SetTextColor(0.9, 0.9, 0.9)
+    intro:SetJustifyH("CENTER")
+
+    local function CreateChoice(label, width, anchorPoint, anchor, relPoint, x, y)
+        local btn = CreateFrame("Button", nil, content, "BackdropTemplate")
+        btn:SetSize(width, 32)
+        btn:SetPoint(anchorPoint, anchor, relPoint, x, y)
+        btn:SetText(LText(label))
+        SkinButton(btn)
+        btn:HookScript("OnLeave", function(self)
+            self:SetBackdropBorderColor(unpack(self.KT_selected and KT_COLOR or COLOR_BORDER))
+        end)
+        return btn
+    end
+    local function SelectChoice(group, selected)
+        for _, btn in ipairs(group) do
+            btn.KT_selected = (btn == selected)
+            btn:SetBackdropBorderColor(unpack(btn.KT_selected and KT_COLOR or COLOR_BORDER))
+        end
+    end
+    local function SetApplyEnabled(btn, enabled)
+        if enabled then btn:Enable() else btn:Disable() end
+        btn:SetAlpha(enabled and 1 or 0.4)
+    end
+
+    -- INTERFACE SCALE
+    local scaleTitle = content:CreateFontString(nil, "OVERLAY")
+    scaleTitle:SetPoint("TOP", intro, "BOTTOM", 0, -26)
+    scaleTitle:SetFont(GetKTFont(), 18, "OUTLINE")
+    scaleTitle:SetText(LText("Interface scale"))
+    scaleTitle:SetTextColor(0.9, 0.9, 0.9)
+
+    local scaleCurrent = content:CreateFontString(nil, "OVERLAY")
+    scaleCurrent:SetPoint("TOP", scaleTitle, "BOTTOM", 0, -6)
+    scaleCurrent:SetFont(GetKTFont(), 12)
+    scaleCurrent:SetTextColor(KT_COLOR[1], KT_COLOR[2], KT_COLOR[3], 1)
+    local function RefreshCurrentScale()
+        local scale = UIParent and UIParent.GetScale and UIParent:GetScale() or 1
+        scaleCurrent:SetText(string.format(LText("Current scale: %s"), string.format("%.2f", scale)))
+    end
+    RefreshCurrentScale()
+
+    local scaleChoices = {}
+    local scaleValue = "KEEP"
+    local scaleOptions = {
+        { label = "Keep my current scale", value = "KEEP", width = 190 },
+        { label = L["1080p"] or "1080p", value = "1080", width = 120 },
+        { label = L["2K (1440p)"] or "2K (1440p)", value = "2K", width = 140 },
+        { label = L["4K (2160p)"] or "4K (2160p)", value = "4K", width = 140 },
+    }
+    local previous
+    for index, option in ipairs(scaleOptions) do
+        local btn
+        if previous then
+            btn = CreateChoice(option.label, option.width, "LEFT", previous, "RIGHT", 10, 0)
+        else
+            -- Row is 190 + 120 + 140 + 140 + 3 * 10 wide; centre it.
+            btn = CreateChoice(option.label, option.width, "TOP", scaleCurrent, "BOTTOM", -((620 / 2) - (190 / 2)), -14)
+        end
+        btn.KT_value = option.value
+        scaleChoices[index] = btn
+        previous = btn
+    end
+
+    local btnApplyScale = CreateFrame("Button", nil, content, "BackdropTemplate")
+    btnApplyScale:SetSize(190, 30)
+    btnApplyScale:SetPoint("TOP", scaleCurrent, "BOTTOM", 0, -58)
+    btnApplyScale:SetText(L["Apply Scale"])
+    SkinButton(btnApplyScale)
+    SetApplyEnabled(btnApplyScale, false)
+    for _, btn in ipairs(scaleChoices) do
+        btn:SetScript("OnClick", function()
+            scaleValue = btn.KT_value
+            SelectChoice(scaleChoices, btn)
+            SetApplyEnabled(btnApplyScale, scaleValue ~= "KEEP")
+        end)
+    end
+    SelectChoice(scaleChoices, scaleChoices[1])
+    btnApplyScale:SetScript("OnClick", function()
+        if scaleValue == "KEEP" then return end
+        -- Silent: changes only the scale. Positions and the Edit Mode
+        -- profile are left alone, and no reload is needed.
+        self:ApplyScaleOnly(scaleValue, { silent = true })
+        RefreshCurrentScale()
+        scaleValue = "KEEP"
+        SelectChoice(scaleChoices, scaleChoices[1])
+        SetApplyEnabled(btnApplyScale, false)
+    end)
+
+    -- FRAME POSITIONS
+    local posTitle = content:CreateFontString(nil, "OVERLAY")
+    posTitle:SetPoint("TOP", btnApplyScale, "BOTTOM", 0, -22)
+    posTitle:SetFont(GetKTFont(), 18, "OUTLINE")
+    posTitle:SetText(LText("Frame positions"))
+    posTitle:SetTextColor(0.9, 0.9, 0.9)
+
+    local posChoices = {}
+    local keepPositions = CreateChoice("Keep my saved positions", 250, "TOP", posTitle, "BOTTOM", -130, -12)
+    local kuiPositions = CreateChoice("Use KullThranUI default positions", 250, "LEFT", keepPositions, "RIGHT", 10, 0)
+    keepPositions.KT_value, kuiPositions.KT_value = "KEEP", "KUI"
+    posChoices[1], posChoices[2] = keepPositions, kuiPositions
+    SelectChoice(posChoices, keepPositions)
+
+    local btnApplyPositions = CreateFrame("Button", nil, content, "BackdropTemplate")
+    btnApplyPositions:SetSize(250, 30)
+    btnApplyPositions:SetPoint("TOP", posTitle, "BOTTOM", 0, -58)
+    btnApplyPositions:SetText(LText("Apply Positions"))
+    SkinButton(btnApplyPositions)
+    SetApplyEnabled(btnApplyPositions, false)
+    for _, btn in ipairs(posChoices) do
+        btn:SetScript("OnClick", function()
+            SelectChoice(posChoices, btn)
+            SetApplyEnabled(btnApplyPositions, btn.KT_value == "KUI")
+        end)
+    end
+    btnApplyPositions:SetScript("OnClick", function()
+        local _, height = GetPhysicalScreenSize()
+        local layoutKey = (height and height >= 2160 and "4K") or (height and height >= 1440 and "2K") or "1080p"
+        local layout = ns.ProfileData and ns.ProfileData.Layouts and ns.ProfileData.Layouts[layoutKey]
+        if not (layout and ns.Handlers and ns.Handlers.Layout) then return end
+        StaticPopup_Show("KT_INSTALLER_PROFILE", LText("KullThranUI default positions"), nil, { func = function()
+            ns.Handlers.Layout(KT.db:GetCurrentProfile(), layout)
+            RequestInstallerReload(self, STEP_PROFILE)
+        end })
+    end)
+
+    local editModeNote = content:CreateFontString(nil, "OVERLAY")
+    editModeNote:SetPoint("TOP", btnApplyPositions, "BOTTOM", 0, -12)
+    editModeNote:SetWidth(620)
+    editModeNote:SetFont(GetKTFont(), 12)
+    editModeNote:SetText(LText("NOTE: Using the KullThranUI default positions replaces your Blizzard Edit Mode profile."))
+    editModeNote:SetTextColor(1, 0.85, 0.2)
+    editModeNote:SetJustifyH("CENTER")
+
     -- VERSION WARNING BOX
     local verFrame = CreateFrame("Frame", nil, content, "BackdropTemplate")
     verFrame:SetSize(600, 50)
-    verFrame:SetPoint("TOP", title, "BOTTOM", 0, -20)
+    verFrame:SetPoint("TOP", editModeNote, "BOTTOM", 0, -16)
     CreateBackdrop(verFrame)
     verFrame:SetBackdropColor(0.2, 0, 0, 0.5)
-    verFrame:SetBackdropBorderColor(1, 0.2, 0.2, 1) -- Red border
-    
+    verFrame:SetBackdropBorderColor(1, 0.2, 0.2, 1)
+
     local verText = verFrame:CreateFontString(nil, "OVERLAY")
     verText:SetPoint("CENTER", 0, 0)
     verText:SetWidth(560)
     verText:SetFont(GetKTFont(), 13)
-    verText:SetText(L["|cffff5555WARNING:|r If updating from version 3.0.0 or lower, it is highly recommended to |cffffffffRestore Defaults|r."])
+    local verMessage = L["|cffff5555WARNING:|r If updating from version 3.0.0 or lower, it is highly recommended to |cffffffffRestore Defaults|r."]
+        or "|cffff5555WARNING:|r If updating from version 3.0.0 or lower, it is highly recommended to |cffffffffRestore Defaults|r."
+    verText:SetText((verMessage:gsub("3%.0%.0", "5.0.0")))
     verText:SetTextColor(1, 1, 1)
-    
-    -- RESOLUTION PROFILES
-    local resTitle = content:CreateFontString(nil, "OVERLAY")
-    resTitle:SetPoint("TOP", verFrame, "BOTTOM", 0, -20)
-    resTitle:SetFont(GetKTFont(), 18, "OUTLINE")
-    resTitle:SetText(L["Select Resolution Profile"])
-    resTitle:SetTextColor(0.9, 0.9, 0.9)
-
-    local scaleWarn = content:CreateFontString(nil, "OVERLAY")
-    scaleWarn:SetPoint("TOP", resTitle, "BOTTOM", 0, -8)
-    scaleWarn:SetWidth(620)
-    scaleWarn:SetFont(GetKTFont(), 12)
-    scaleWarn:SetText(L["NOTE: Apply Profile replaces your Blizzard Edit Mode profile. If you do not want your Edit Mode profile changed, apply only the scale."])
-    scaleWarn:SetTextColor(1, 0.85, 0.2)
-    scaleWarn:SetJustifyH("CENTER")
-
-    local function CreateProfileRow(label, res, yOffset)
-        local text = content:CreateFontString(nil, "OVERLAY")
-        text:SetFont(GetKTFont(), 16, "OUTLINE")
-        text:SetText(LText(label))
-        text:SetPoint("TOPLEFT", content, "CENTER", -200, yOffset)
-        text:SetWidth(160)
-        text:SetJustifyH("LEFT")
-        
-        local btnScale = CreateFrame("Button", nil, content, "BackdropTemplate")
-        btnScale:SetSize(120, 30)
-        btnScale:SetPoint("LEFT", text, "RIGHT", 20, 0)
-        btnScale:SetText(L["Apply Scale"])
-        SkinButton(btnScale)
-        btnScale:SetScript("OnClick", function()
-            self:ApplyScaleOnly(res)
-        end)
-
-        local btnImport = CreateFrame("Button", nil, content, "BackdropTemplate")
-        btnImport:SetSize(120, 30)
-        btnImport:SetPoint("LEFT", btnScale, "RIGHT", 10, 0)
-        btnImport:SetText(L["Apply Profile"])
-        SkinButton(btnImport)
-        btnImport:SetScript("OnClick", function()
-            local profileKey = (res == "1080" and "1080p") or (res == "2K" and "2K") or (res == "4K" and "4K")
-            if ns.ProfileData.Layouts and ns.ProfileData.Layouts[profileKey] then
-                local currentProfile = KT.db:GetCurrentProfile()
-                ns.Handlers.Layout(currentProfile, ns.ProfileData.Layouts[profileKey])
-                RequestInstallerReload(self, KT.db.profile.installer.step)
-            end
-        end)
-
-        local warnIcon = content:CreateTexture(nil, "OVERLAY")
-        warnIcon:SetSize(16, 16)
-        warnIcon:SetPoint("LEFT", btnImport, "RIGHT", 6, 0)
-        warnIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
-        warnIcon:SetVertexColor(1, 0.85, 0.2, 0.95)
-    end
-
-    CreateProfileRow(L["1080p"], "1080", -20 - 18)
-    CreateProfileRow(L["2K (1440p)"], "2K", -70 - 18)
-    CreateProfileRow(L["4K (2160p)"], "4K", -120 - 18)
 
     local btnNext = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnNext:SetSize(120, 30)
@@ -6445,7 +7271,7 @@ function Mod:ShowProfileStep()
     btnNext:SetText(L["Next"])
     SkinButton(btnNext)
     btnNext:SetScript("OnClick", function()
-        self:ShowModuleSelectionStep()
+        self:ShowThemeStep()
     end)
 
     local btnBack = CreateFrame("Button", nil, content, "BackdropTemplate")
@@ -6453,7 +7279,7 @@ function Mod:ShowProfileStep()
     btnBack:SetPoint("RIGHT", btnNext, "LEFT", -10, 0)
     btnBack:SetText(L["Previous"])
     SkinButton(btnBack)
-    btnBack:SetScript("OnClick", function() self:ShowAddonListStep() end)
+    btnBack:SetScript("OnClick", function() self:ShowLanguageStep() end)
 end
 
 function Mod:ShowModuleSelectionStep()
@@ -6623,7 +7449,7 @@ function Mod:ShowModuleSelectionStep()
     btnBack:SetPoint("RIGHT", btnFinish, "LEFT", -10, 0)
     btnBack:SetText(L["Previous"])
     SkinButton(btnBack)
-    btnBack:SetScript("OnClick", function() self:ShowProfileStep() end)
+    btnBack:SetScript("OnClick", function() self:ShowAddonListStep() end)
 
     local btnDiscord = CreateFrame("Button", nil, content, "BackdropTemplate")
     btnDiscord:SetSize(150, 30)

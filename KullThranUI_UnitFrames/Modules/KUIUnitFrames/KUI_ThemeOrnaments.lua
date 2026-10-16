@@ -296,9 +296,11 @@ end
 -- top just enough to clear the PvP badge and the level.
 function O.LayoutRing(frame, portrait, maxPower, pipSize, above)
     local radius = (portrait:GetWidth() or 46) * 0.5
-    -- KUI has a rectangular health bar beside the portrait. A stock arc
-    -- curls into that bar; keep every point in a separate horizontal row.
-    if RenderedTheme() == "kui" then
+    -- KUI Style has a rectangular health bar beside the portrait: the arc may not
+    -- cross it. The arc is turned until it clears the bar and the badges; only if no
+    -- turn clears them does it fall back to a straight row above the frame.
+    local isKUI = RenderedTheme() == "kui"
+    local function KUIRow()
         local top = radius
         for _, region in ipairs({ frame.Health or frame.health or frame,
             frame._kuiLevelCircle or frame.portraitFrame or portrait }) do
@@ -319,6 +321,8 @@ function O.LayoutRing(frame, portrait, maxPower, pipSize, above)
         return row
     end
     local slots = O.ComboSlots(maxPower)
+    -- More points than the stock arc has slots for: keep them all in the row.
+    if isKUI and #slots < maxPower then return KUIRow() end
     local fx = frame.GetCenter and frame:GetCenter()
     local px = portrait:GetCenter()
     local mirror = fx and px and px < fx
@@ -330,6 +334,22 @@ function O.LayoutRing(frame, portrait, maxPower, pipSize, above)
         if ox then obstacles[#obstacles + 1] = { ox, oy, orad } end
     end
 
+    -- Health bar as a rectangle in portrait-local coordinates (KUI Style only).
+    local bar
+    if isKUI then
+        local region = frame.Health or frame.health
+        if region and region.IsShown and region:IsShown() and region.GetLeft and region:GetLeft() then
+            local es, rs = region:GetEffectiveScale(), portrait:GetEffectiveScale()
+            local rx, ry = portrait:GetCenter()
+            if rx then
+                bar = {
+                    left = (region:GetLeft() * es - rx * rs) / rs, right = (region:GetRight() * es - rx * rs) / rs,
+                    bottom = (region:GetBottom() * es - ry * rs) / rs, top = (region:GetTop() * es - ry * rs) / rs,
+                }
+            end
+        end
+    end
+
     local function Place(rotDeg)
         local a = math.rad(rotDeg)
         local ca, sa = math.cos(a), math.sin(a)
@@ -338,10 +358,18 @@ function O.LayoutRing(frame, portrait, maxPower, pipSize, above)
             local x, y = s[1] * radius, s[2] * radius
             x, y = x * ca - y * sa, x * sa + y * ca
             if mirror then x = -x end
-            out[i] = { x, y, onlyFilled = s.onlyFilled }
+            -- KUI Style keeps every socket visible (the stock arc hides the extra ones).
+            out[i] = { x, y, onlyFilled = (not isKUI) and s.onlyFilled or nil }
             for _, o in ipairs(obstacles) do
                 local d = math.sqrt((x - o[1]) ^ 2 + (y - o[2]) ^ 2)
                 local need = pipSize * 0.5 + o[3] + 1
+                if d < need then overlap = overlap + (need - d) end
+            end
+            if bar then
+                local dx = math.max(bar.left - x, 0, x - bar.right)
+                local dy = math.max(bar.bottom - y, 0, y - bar.top)
+                local d = math.sqrt(dx * dx + dy * dy)
+                local need = pipSize * 0.5 + 1
                 if d < need then overlap = overlap + (need - d) end
             end
         end
@@ -350,11 +378,12 @@ function O.LayoutRing(frame, portrait, maxPower, pipSize, above)
 
     local base = above and 40 or 0
     local best, bestOverlap
-    for step = 0, 18 do
+    for step = 0, (isKUI and 89 or 18) do
         local out, overlap = Place(base + step * 4)
         if overlap == 0 then return out end
         if not bestOverlap or overlap < bestOverlap then best, bestOverlap = out, overlap end
     end
+    if isKUI and (bestOverlap or 0) > 0 then return KUIRow() end
     return best
 end
 

@@ -1361,8 +1361,13 @@ local function RefreshLivePreview(preview)
             local show = canShowAuras and spellVisible and cfg.showAuras ~= false and cfg.showDebuffs ~= false and j <= maxDebuffs and j <= sampleAuraCount and not sampleCC and not sampleMissing
             RenderPreviewAuraIcon(icon, show and sampleDebuff.icon or nil, show and sampleDebuff.color or nil)
         end
+        local bandFit
+        if not isRaidMode and unit._pfNativeStyle == "forever" and unit._pfNativeGeometry and unit._pfNativeScale then
+            bandFit = math.max(8, unit._pfNativeGeometry.health[4] * unit._pfNativeScale)
+        end
+        local ccSize = bandFit or math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit))
         unit.ccIcon:ClearAllPoints()
-        unit.ccIcon:SetSize(math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)), math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)))
+        unit.ccIcon:SetSize(ccSize, ccSize)
         unit.ccIcon:SetPoint("CENTER", unit.health, "CENTER", auraX, auraY)
         local ccVisible = not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, 118) ~= false
         RenderPreviewAuraIcon(unit.ccIcon, canShowAuras and ccVisible and cfg.showAuras ~= false and cfg.showCrowdControl ~= false and sampleCC and 136071 or nil, { r = 1, g = 0.12, b = 0.12 })
@@ -1371,7 +1376,7 @@ local function RefreshLivePreview(preview)
             unit.missingBuffIcon:SetSize(missingSize, missingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         else
-            local partyMissingSize = math.min(missingSize, math.max(1, math.floor(29 * fit)))
+            local partyMissingSize = bandFit or math.min(missingSize, math.max(1, math.floor(29 * fit)))
             unit.missingBuffIcon:SetSize(partyMissingSize, partyMissingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         end
@@ -1628,7 +1633,10 @@ local function RefreshLivePreview(preview)
     end
     if preview.controlsEnabled == false then
         for _, key in ipairs({ "partyBtn", "raidBtn", "raid40Btn", "arenaBtn", "arenaEnemyBtn", "stopBtn", "scaleDown", "scaleUp" }) do
-            if preview[key] then preview[key]:Hide() end
+            -- The installer keeps the three test buttons visible so a test can
+            -- be stopped again after it starts.
+            local keep = preview.keepTestButtons and (key == "partyBtn" or key == "raidBtn" or key == "raid40Btn")
+            if preview[key] and not keep then preview[key]:Hide() end
         end
     end
 
@@ -1646,6 +1654,7 @@ local function CreateLivePreview(parent, y, options)
     frame:SetSize(options.width or (parent:GetWidth() - 20), options.height or 285)
     AddSimpleBorder(frame, 0.88)
     frame.controlsEnabled = options.controls ~= false
+    frame.keepTestButtons = options.keepTestButtons == true
     frame.styleOverride, frame.cardSample = options.styleOverride, options.cardSample
     frame.mode = options.modeOverride or activeMode
     frame.directionOverride = options.directionOverride
@@ -1794,9 +1803,9 @@ local function CreateLivePreview(parent, y, options)
     if options.controls == false then
         canvas:EnableMouseWheel(false)
         canvas:SetScript("OnMouseWheel", nil)
-        partyBtn:Hide()
-        raidBtn:Hide()
-        raid40Btn:Hide()
+        partyBtn:SetShown(options.keepTestButtons == true)
+        raidBtn:SetShown(options.keepTestButtons == true)
+        raid40Btn:SetShown(options.keepTestButtons == true)
         arenaBtn:Hide()
         arenaEnemyBtn:Hide()
         stopBtn:Hide()

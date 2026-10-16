@@ -52,9 +52,12 @@ local DAMAGE_METER_FONT_PATHS = {
 local function DAMAGE_METER_RESOLVED_FONT()
     return (KT and KT.ResolveStoredFontPath and KT:ResolveStoredFontPath(DAMAGE_METER_FONT)) or DAMAGE_METER_FONT
 end
+-- Recount's own default bar texture (BantoBar), the Classic style's real look.
+local RECOUNT_BAR_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga"
 local DAMAGE_METER_TEXTURE_PATHS = {
     [BAR_TEXTURE] = true,
     ["Interface\\TargetingFrame\\UI-StatusBar"] = true,
+    [RECOUNT_BAR_TEXTURE] = true,
     ["Interface\\AddOns\\KullThranUI\\Libraries\\texture\\MelliDark.tga"] = true,
     ["Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Clean.blp"] = true,
     ["Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Stripes_Thin.blp"] = true,
@@ -229,8 +232,8 @@ end
 --   classic: Recount-style red title bar on a dark brown panel.
 --   retail:  Blizzard's own Damage Meter: rounded dark panel, gold title,
 --            black-outlined bars and gold-framed class icons.
---   forever: retail's structure recolored to bronze, with a bronze inner
---            frame around the rows.
+--   forever: retail's structure and native bar art recolored to bronze,
+--            with a bronze border around the whole frame.
 -- ============================================================================
 local METER_SKINS = {
     classic = {
@@ -395,6 +398,19 @@ local function GetConfig()
         end
         db.damageMeter.layoutVersion = 7
     end
+    -- Classic used to seed Blizzard's UI-StatusBar; its real look is Recount's
+    -- bar. Move only the old seeded value, never a texture the user picked.
+    if not rawget(db.damageMeter, "_ktRecountTextureV1") then
+        db.damageMeter._ktRecountTextureV1 = true
+        local old = "Interface\\TargetingFrame\\UI-StatusBar"
+        local slots = rawget(db.damageMeter, "_ktDamageMeterStyleSlots")
+        if type(slots) == "table" and type(slots.classic) == "table" and slots.classic.barTexture == old then
+            slots.classic.barTexture = RECOUNT_BAR_TEXTURE
+        end
+        if rawget(db.damageMeter, "visualStyle") == "classic" and db.damageMeter.barTexture == old then
+            db.damageMeter.barTexture = RECOUNT_BAR_TEXTURE
+        end
+    end
     db.damageMeter.position = db.damageMeter.position
         or { point = "RIGHT", relativePoint = "RIGHT", x = -36, y = 0 }
     return db.damageMeter
@@ -418,6 +434,7 @@ function Mod:SetDamageMeterStyle(key)
     local appearance = cfg._ktDamageMeterStyleSlots[key]
     cfg.barTexture = appearance and appearance.barTexture or (key == "kui"
         and "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga"
+        or (key == "classic" and RECOUNT_BAR_TEXTURE)
         or "Interface\\TargetingFrame\\UI-StatusBar")
     if appearance then cfg.showBackground = appearance.showBackground else cfg.showBackground = true end
     cfg.visualStyle = key
@@ -2909,8 +2926,13 @@ function Mod.ApplyDamageMeterAtlasArt(frame, cfg, themeKey, iconGap)
         edge:ClearAllPoints()
         edge:SetPoint("TOPLEFT", row.background, "TOPLEFT", -2,2)
         edge:SetPoint("BOTTOMRIGHT", row.background, "BOTTOMRIGHT", 2,-2)
-        atlas(edge, retail and "ui-damagemeters-bar-shadowedge")
-        if retail then
+        -- Forever bars share Retail's native bar art; the bronze chrome stays
+        -- on the panel. Classic takes the swing-timer ornament instead.
+        local nativeBars = retail or forever
+        if atlas(edge, nativeBars and "ui-damagemeters-bar-shadowedge") and forever then
+            for _, texture in ipairs(row._skinBarEdges or {}) do texture:Hide() end
+        end
+        if nativeBars then
             -- Preview bars are textures; live bars are StatusBars. Setting the
             -- atlas on the fill preserves the value and the live class tint.
             local fill = row.bar.GetStatusBarTexture and row.bar:GetStatusBarTexture() or row.bar
@@ -2919,7 +2941,11 @@ function Mod.ApplyDamageMeterAtlasArt(frame, cfg, themeKey, iconGap)
                 atlas(fill, "UI-HUD-CoolDownManager-Bar")
                 fill:SetVertexColor(r,g,b,a)
             end
-            atlas(row.background, "ui-damagemeters-bar-shadowbg")
+            if retail or (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("ui-damagemeters-bar-shadowbg")) then
+                atlas(row.background, "ui-damagemeters-bar-shadowbg")
+            end
+        end
+        if retail then
             if NumberFontNormal then
                 for _, key in ipairs({"rank","name","rate","amount","value"}) do
                     if row[key] then row[key]:SetFontObject(NumberFontNormal) end
@@ -2930,10 +2956,9 @@ function Mod.ApplyDamageMeterAtlasArt(frame, cfg, themeKey, iconGap)
         ornament:ClearAllPoints()
         ornament:SetPoint("TOPLEFT", row.background, "TOPLEFT", -4,1)
         ornament:SetPoint("BOTTOMRIGHT", row.background, "BOTTOMRIGHT", 4,-1)
-        atlas(ornament, forever and "ui-swingtimerbar-frame")
-        if forever and ornament:IsShown() then
-            for _, texture in ipairs(row._skinBarEdges or {}) do texture:Hide() end
-        end
+        -- No style draws the swing-timer ornament any more: it is Forever's
+        -- bronze art and made Classic's bars read as Forever.
+        atlas(ornament, nil)
     end
     local handle = frame.resizeHandle
     if handle then

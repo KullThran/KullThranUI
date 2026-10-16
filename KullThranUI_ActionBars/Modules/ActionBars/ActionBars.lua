@@ -214,6 +214,12 @@ function Mod:OnEnable()
     if _G.ActionButton_UpdateOverlayGlow then
         self:SecureHook("ActionButton_UpdateOverlayGlow", "OnUpdateOverlayGlow")
     end
+    local alertManager = _G.ActionButtonSpellAlertManager
+    if alertManager and alertManager.ShowAlert and alertManager.HideAlert and not self._ktAlertHooked then
+        self._ktAlertHooked = true
+        hooksecurefunc(alertManager, "ShowAlert", function(_, button) Mod:OnSpellAlertShown(button) end)
+        hooksecurefunc(alertManager, "HideAlert", function(_, button) Mod:OnSpellAlertHidden(button) end)
+    end
 end
 
 function Mod:OnPlayerEnteringWorld()
@@ -429,12 +435,31 @@ local function SetClassicCapTexture(texture, mirrored)
     end
 end
 
+-- Native end caps differ between builds (frame with a .Texture child, or the
+-- texture itself); only ever use methods the object actually has.
+local function SetCapAlpha(capFrame, alpha)
+    if type(capFrame) ~= "table" then return end
+    if type(capFrame.SetAlpha) == "function" then
+        capFrame:SetAlpha(alpha)
+    elseif type(capFrame.Texture) == "table" and type(capFrame.Texture.SetAlpha) == "function" then
+        capFrame.Texture:SetAlpha(alpha)
+    end
+end
+
 local function RestoreNativeActionBarChrome(frame)
     if not frame then return end
 
     local caps = frame.EndCaps
     if caps and caps.KT_ClassicOriginalShown then
         caps:Show()
+    end
+    -- Undo the Forever kit's own cap art so another kit starts from the native caps.
+    if caps then
+        for _, side in ipairs({ "left", "right" }) do
+            local art = caps["KT_ForeverCap_" .. side]
+            if art then art:Hide() end
+            SetCapAlpha(side == "left" and caps.LeftEndCap or caps.RightEndCap, 1)
+        end
     end
 
     local border = frame.BorderArt
@@ -502,6 +527,192 @@ local function ApplyRetailActionBarCaps(frame)
     SetNativeActionBarCapTexture(left, leftAtlas)
     SetNativeActionBarCapTexture(right, rightAtlas)
     caps:Show()
+end
+
+-- Forever theme with the client-art kit: the end caps use Forever's own bronze
+-- art ("-c60" atlases in the Forever client, the bundled sheet elsewhere)
+-- instead of the Retail gryphon/wyvern the plain atlas names draw.
+-- Forever client: the micro menu and the bags sit to the right of the main bar,
+-- inside the strip the bar art is meant to wrap. Returns the last frame of that
+-- contiguous chain (or the bar itself) so the right cap can go after it.
+local FOREVER_STRIP_FRAMES = {
+    "MicroMenuContainer", "MicroMenu", "BagsBar", "MicroButtonAndBagsBar",
+    "MainMenuBarBackpackButton", "CharacterBag0Slot", "CharacterBag1Slot",
+    "CharacterBag2Slot", "CharacterBag3Slot", "CharacterReagentBag0Slot",
+}
+local function ForeverRightEdgeAnchor(frame)
+    local scale = frame.GetEffectiveScale and frame:GetEffectiveScale() or 1
+    local current = frame
+    local currentRight = (frame.GetRight and frame:GetRight() or 0) * scale
+    local function shown(f)
+        return f and f.IsShown and f:IsShown() and f.GetLeft and f:GetLeft() and f.GetRight and f:GetRight()
+    end
+    for _ = 1, 8 do
+        local found
+        for _, name in ipairs(FOREVER_STRIP_FRAMES) do
+            local f = _G[name]
+            if f ~= current and shown(f) and f:GetRight() > 0 then
+                local fs = f.GetEffectiveScale and f:GetEffectiveScale() or 1
+                local left, right = f:GetLeft() * fs, f:GetRight() * fs
+                if right > currentRight + 1 and left - currentRight < 140 and left >= currentRight - 400 then
+                    if not found or right > found.right then found = { frame = f, right = right } end
+                end
+            end
+        end
+        if not found then break end
+        current, currentRight = found.frame, found.right
+    end
+    return current
+end
+
+local function ApplyForeverActionBarCaps(frame)
+    local caps = frame and frame.EndCaps
+    if not caps then return end
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    local kind = faction == "Horde" and "wyvern" or "gryphon"
+    local getInfo = C_Texture and C_Texture.GetAtlasInfo
+    -- Our texture lives on the end-caps frame (or the bar), never on a cap that
+    -- may not be a real frame, and is anchored to the bar like the native cap.
+    local host = type(caps.CreateTexture) == "function" and caps
+        or (type(frame.CreateTexture) == "function" and frame or nil)
+    -- Option "End Cap Width": "group" (default) wraps bar 1, menu and bags;
+    -- "bar1" keeps the cap on the main bar only. The strip must be directly beside
+    -- the bar (Forever layout); a menu parked elsewhere is ignored. No client flag
+    -- is used: the Forever client does not always report itself as Forever.
+    local abdb = KT.db and KT.db.profile and KT.db.profile.actionbars
+    local spanGroup = not (abdb and abdb.capSpan == "bar1")
+    local spanAnchor = spanGroup and ForeverRightEdgeAnchor(frame) or nil
+    local rightAnchor = spanAnchor or frame
+    for _, side in ipairs({ "left", "right" }) do
+        local capFrame = side == "left" and caps.LeftEndCap or caps.RightEndCap
+        local atlas = "ui-hud-actionbar-" .. kind .. "-" .. side .. "-c60"
+        local native = type(capFrame) == "table" and capFrame.Texture or nil
+        local artKey = "KT_ForeverCap_" .. side
+        if getInfo and getInfo(atlas) and type(native) == "table" and native.SetAtlas then
+            -- The Forever client has these atlases itself.
+            native:SetAtlas(atlas)
+            native:SetTexCoord(0, 1, 0, 1)
+            SetCapAlpha(capFrame, 1)
+            if caps[artKey] then caps[artKey]:Hide() end
+        elseif host and KT.GetForeverCapPixels then
+            local px = KT.GetForeverCapPixels(kind, side)
+            if px then
+                local art = caps[artKey]
+                if not art then
+                    art = host:CreateTexture(nil, "OVERLAY", nil, 7)
+                    caps[artKey] = art
+                end
+                -- Forever's own layout (Blizzard_EditMode preset + MainMenuBarEndCaps):
+                -- a 154x95 cap whose inner edge sits 30px inside the bar, 5px above its centre.
+                -- /ktcaps <x> <y> <scale> nudges it from there.
+                local tune = KT.db and KT.db.profile and KT.db.profile.actionbars
+                tune = tune and tune.foreverCapTune or {}
+                local offsetX, offsetY, sizeScale = tune.x or 0, tune.y or 0, tune.scale or 1
+                art:SetTexture(px.file)
+                art:SetTexCoord(px.leftTexCoord, px.rightTexCoord, px.topTexCoord, px.bottomTexCoord)
+                art:SetSize(154 * sizeScale, 95 * sizeScale)
+                art:ClearAllPoints()
+                if side == "left" then
+                    art:SetPoint("RIGHT", frame, "LEFT", 30 + offsetX, 5 + offsetY)
+                else
+                    art:SetPoint("LEFT", rightAnchor, "RIGHT", -30 - offsetX, 5 + offsetY)
+                end
+                art:SetAlpha(1)
+                art:Show()
+                SetCapAlpha(capFrame, 0)
+            end
+        end
+    end
+    -- Forever client: wrap micro menu and bags too, not only the 12 buttons.
+    local extArt = caps.KT_ForeverCapRightExt
+    local anchor = spanAnchor
+    if anchor and anchor ~= frame and getInfo and getInfo("ui-hud-actionbar-" .. kind .. "-right-c60") then
+        local atlas = "ui-hud-actionbar-" .. kind .. "-right-c60"
+        local info = getInfo(atlas)
+        if info and host and type(host.CreateTexture) == "function" then
+            if not extArt then
+                extArt = host:CreateTexture(nil, "OVERLAY", nil, 7)
+                caps.KT_ForeverCapRightExt = extArt
+            end
+            local tune = KT.db and KT.db.profile and KT.db.profile.actionbars
+            tune = tune and tune.foreverCapTune or {}
+            extArt:SetAtlas(atlas, false)
+            extArt:SetSize((info.width or 154) * (tune.scale or 1), (info.height or 95) * (tune.scale or 1))
+            extArt:ClearAllPoints()
+            extArt:SetPoint("LEFT", anchor, "RIGHT", -30 - (tune.x or 0), 5 + (tune.y or 0))
+            extArt:SetAlpha(1)
+            extArt:Show()
+            SetCapAlpha(caps.RightEndCap, 0)
+            if caps.KT_ForeverCap_right then caps.KT_ForeverCap_right:Hide() end
+        end
+    elseif extArt then
+        extArt:Hide()
+    end
+    -- Micro menu / bags move after the first layout pass: refit when they do.
+    if not Mod._foreverCapWatchers then
+        Mod._foreverCapWatchers = true
+        local function refit()
+            if Mod._foreverCapRefit then return end
+            Mod._foreverCapRefit = true
+            C_Timer.After(0.25, function()
+                Mod._foreverCapRefit = nil
+                if InCombatLockdown() then return end
+                if _G.MainActionBar then ApplyForeverActionBarCaps(_G.MainActionBar) end
+                if _G.MainMenuBar and _G.MainMenuBar ~= _G.MainActionBar then ApplyForeverActionBarCaps(_G.MainMenuBar) end
+            end)
+        end
+        for _, name in ipairs(FOREVER_STRIP_FRAMES) do
+            local f = _G[name]
+            if f and f.HookScript then
+                f:HookScript("OnSizeChanged", refit)
+                f:HookScript("OnShow", refit)
+                f:HookScript("OnHide", refit)
+            end
+        end
+    end
+    caps:Show()
+end
+
+-- /ktcaps: prints what the end cap code sees (diagnostics for the Forever kit).
+SLASH_KTCAPS1 = "/ktcaps"
+SlashCmdList["KTCAPS"] = function(message)
+    local db = KT.db and KT.db.profile and KT.db.profile.actionbars
+    local x, y, s = tostring(message or ""):match("^%s*(-?[%d%.]+)%s+(-?[%d%.]+)%s+([%d%.]+)")
+    if db and x then
+        db.foreverCapTune = { x = tonumber(x), y = tonumber(y), scale = tonumber(s) }
+        ApplyForeverActionBarCaps(_G.MainActionBar or _G.MainMenuBar)
+        KT:Print(string.format("caps: x=%s y=%s scale=%s", x, y, s))
+        return
+    end
+    local frame = _G.MainActionBar or _G.MainMenuBar
+    local caps = frame and frame.EndCaps
+    local left = caps and caps.LeftEndCap
+    local art = caps and caps.KT_ForeverCap_left
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("ui-hud-actionbar-gryphon-left-c60")
+    KT:Print(string.format("caps: kit=%s theme=%s frame=%s endcaps=%s left=%s art=%s artShown=%s nativeAlpha=%s c60atlas=%s pixels=%s",
+        tostring(db and db.frameArtKit),
+        tostring(KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()),
+        tostring(frame and (frame.GetName and frame:GetName())), tostring(caps ~= nil), tostring(left ~= nil),
+        tostring(art ~= nil), tostring(art and art:IsShown()),
+        tostring(left and left.Texture and left.Texture:GetAlpha()), tostring(info ~= nil),
+        tostring(KT.GetForeverCapPixels ~= nil)))
+    -- Right-cap span (Forever client): what the chain detection sees.
+    local function rect(f)
+        if not (f and f.GetLeft and f:GetLeft()) then return "none" end
+        local sc = f.GetEffectiveScale and f:GetEffectiveScale() or 1
+        return string.format("%s L%.0f R%.0f T%.0f B%.0f sc%.2f shown=%s", tostring(f.GetName and f:GetName()),
+            f:GetLeft() * sc, f:GetRight() * sc, f:GetTop() * sc, f:GetBottom() * sc, sc, tostring(f:IsShown()))
+    end
+    local chainAnchor = frame and ForeverRightEdgeAnchor and ForeverRightEdgeAnchor(frame)
+    local ext = caps and caps.KT_ForeverCapRightExt
+    KT:Print(string.format("capspan: IS_FOREVER=%s span=%s bar=[%s] anchor=%s ext=%s extShown=%s extAtlas=%s extPt=%s",
+        tostring(KT.IS_FOREVER), tostring(db and db.capSpan or "group"), rect(frame),
+        tostring(chainAnchor and chainAnchor.GetName and chainAnchor:GetName()),
+        tostring(ext ~= nil), tostring(ext and ext:IsShown()), tostring(ext and ext.GetAtlas and ext:GetAtlas()),
+        tostring(ext and ext:GetPoint(1))))
+    for _, name in ipairs(FOREVER_STRIP_FRAMES) do
+        KT:Print("capspan " .. name .. ": " .. rect(_G[name]))
+    end
 end
 
 local _kuiPagingFrame
@@ -648,6 +859,7 @@ local function ApplyClassicActionBarCaps(db)
     local frameArtKit = db and db.frameArtKit or "default"
     local classic = frameArtKit == "classic"
     local retail = frameArtKit == "retail"
+    local foreverKit = frameArtKit == "forever"
 
     -- Edit Mode "Hide Bar Art": no kit may draw its caps/border (re-applied when it changes).
     if mainActionBar and not Mod._hideArtHooked and mainActionBar.UpdateSystemSettingHideBarArt then
@@ -681,6 +893,11 @@ local function ApplyClassicActionBarCaps(db)
             ApplyRetailActionBarCaps(mainActionBar)
             if mainMenuBar ~= mainActionBar then
                 ApplyRetailActionBarCaps(mainMenuBar)
+            end
+        elseif foreverKit then
+            ApplyForeverActionBarCaps(mainActionBar)
+            if mainMenuBar ~= mainActionBar then
+                ApplyForeverActionBarCaps(mainMenuBar)
             end
         end
         EnsureKUIActionBarPaging(mainActionBar or mainMenuBar, _G.MicroMenuContainer)
@@ -1085,6 +1302,90 @@ end
 -- SHAPE MASKING (Universal)
 -- ============================================================================
 
+-- ============================================================================
+-- SHAPED PROC GLOW
+-- Blizzard's proc alert is a square sprite. On a shaped button (circle, hexagon,
+-- ...) it is replaced by a pulsing additive glow cut from that shape's own mask
+-- plus its border, so the glow follows the silhouette instead of the square.
+-- ============================================================================
+function Mod:UpdateShapeProcGlow(btn)
+    if not btn then return end
+    local holder = btn.KT_ShapeProcGlow
+    local name = btn.GetName and btn:GetName()
+    local shape = name and GetShapeForButton(name)
+    local maskTex = shape and SHAPE_MASKS[shape]
+    local mask = btn.KT_ShapeMask
+    local active = btn.KT_ProcAlertActive and maskTex and mask and mask:IsShown()
+    local alert = btn.SpellActivationAlert
+    if not active then
+        if holder then
+            holder.pulse:Stop()
+            holder:Hide()
+        end
+        if alert and btn.KT_ProcAlertHidden then
+            alert:SetAlpha(1)
+            btn.KT_ProcAlertHidden = nil
+        end
+        return
+    end
+    if not holder then
+        holder = CreateFrame("Frame", nil, btn)
+        holder:EnableMouse(false)
+        holder.glow = holder:CreateTexture(nil, "OVERLAY", nil, 5)
+        holder.glow:SetBlendMode("ADD")
+        holder.edge = holder:CreateTexture(nil, "OVERLAY", nil, 7)
+        holder.edge:SetBlendMode("ADD")
+        holder.pulse = holder:CreateAnimationGroup()
+        holder.pulse:SetLooping("BOUNCE")
+        local fade = holder.pulse:CreateAnimation("Alpha")
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0.45)
+        fade:SetDuration(0.5)
+        btn.KT_ShapeProcGlow = holder
+    end
+    holder:SetFrameLevel(btn:GetFrameLevel() + 10)
+    holder:ClearAllPoints()
+    holder:SetAllPoints(btn)
+    local extend = math.min(btn:GetWidth() or 36, btn:GetHeight() or 36) * 0.10
+    holder.glow:ClearAllPoints()
+    holder.glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -extend, extend)
+    holder.glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", extend, -extend)
+    holder.glow:SetTexture(maskTex, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    holder.glow:SetVertexColor(1, 0.788, 0.137, 1)
+    holder.glow:SetAlpha(0.5)
+    pcall(holder.glow.RemoveMaskTexture, holder.glow, mask)
+    pcall(holder.glow.AddMaskTexture, holder.glow, mask)
+    holder.edge:ClearAllPoints()
+    holder.edge:SetAllPoints(btn)
+    local borderTex = SHAPE_BORDERS[shape]
+    if borderTex then
+        holder.edge:SetTexture(borderTex)
+        holder.edge:SetVertexColor(1, 0.788, 0.137, 1)
+        holder.edge:SetAlpha(0.6)
+        holder.edge:Show()
+    else
+        holder.edge:Hide()
+    end
+    holder:Show()
+    if not holder.pulse:IsPlaying() then holder.pulse:Play() end
+    if alert then
+        alert:SetAlpha(0)
+        btn.KT_ProcAlertHidden = true
+    end
+end
+
+function Mod:OnSpellAlertShown(btn)
+    if not btn then return end
+    btn.KT_ProcAlertActive = true
+    self:UpdateShapeProcGlow(btn)
+end
+
+function Mod:OnSpellAlertHidden(btn)
+    if not btn then return end
+    btn.KT_ProcAlertActive = nil
+    self:UpdateShapeProcGlow(btn)
+end
+
 function Mod:ApplyShape(btn)
     local db = KT.db.profile.actionbars
     local name = btn:GetName()
@@ -1138,6 +1439,7 @@ function Mod:ApplyShape(btn)
         end
         ConfigureCooldownSwipe(cooldown, "NONE", nil)
         ConfigureCooldownSwipe(chargeCd, "NONE", nil)
+        self:UpdateShapeProcGlow(btn)
         return
     end
 
@@ -1226,6 +1528,7 @@ function Mod:ApplyShape(btn)
 
     ConfigureCooldownSwipe(cooldown, shape, maskTex)
     ConfigureCooldownSwipe(chargeCd, shape, maskTex)
+    self:UpdateShapeProcGlow(btn)
 end
 
 local function RefreshCooldownSwipeShape(btn)
@@ -1283,11 +1586,21 @@ function Mod:StyleAllBars()
     if not db then return end
     -- The art kit is the user's choice (Action Bar Art cards); the theme only seeds it.
     -- Only repair a missing/invalid value.
-    if db.frameArtKit ~= "default" and db.frameArtKit ~= "retail" and db.frameArtKit ~= "classic" then
+    if db.frameArtKit ~= "default" and db.frameArtKit ~= "retail" and db.frameArtKit ~= "classic" and db.frameArtKit ~= "forever" then
         local activeTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
             and KT.VisualThemes:GetRenderedTheme()
         db.frameArtKit = activeTheme == "classic" and "classic"
             or (activeTheme == "retail" and "retail" or "default")
+    end
+    -- One-time: profiles on the Forever theme saved the client's own bar art
+    -- ("default", the Retail gryphon on a Retail client). Move them to Forever's kit.
+    if not db._ktForeverCapKit then
+        local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+            and KT.VisualThemes:GetRenderedTheme()
+        if renderedTheme == "forever" then
+            db._ktForeverCapKit = true
+            if db.frameArtKit == "default" then db.frameArtKit = "forever" end
+        end
     end
     -- ApplyClassicActionBarCaps already calls EnsureKUIActionBarPaging itself
     -- for every theme -- deferred (C_Timer.After(0,...)) with the correct

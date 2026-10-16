@@ -15,8 +15,10 @@ local valid = { kui = true, retail = true, forever = true, classic = true }
 Styles.geometry = {
     retail = { w = 120, h = 53, artW = 120, artH = 49, artX = 1, artY = 2,
         portrait = { 7, 6, 37 }, health = { 45, 19, 70, 10 }, power = { 41, 30, 74, 7 }, name = { 46, 6, 66 } },
+    -- Current Forever mini plate (forever_frames.tga): bands measured on the art,
+    -- offset by artX/artY inside the card. Plain bars, no Retail masks.
     forever = { w = 120, h = 53, artW = 120, artH = 49, artX = 1, artY = 2,
-        portrait = { 7, 6, 37 }, health = { 45, 19, 70, 10 }, power = { 41, 30, 74, 7 }, name = { 46, 6, 66 } },
+        portrait = { 6.5, 9, 33 }, health = { 48, 22, 67, 9 }, power = { 48, 33, 67, 6 }, name = { 49, 10, 55 } },
     classic = { w = 128, h = 53, artW = 128, artH = 64, artX = 0, artY = 2,
         portrait = { 7, 6, 37 }, health = { 47, 12, 70, 8 }, power = { 47, 21, 70, 8 }, name = { 47, 0, 70 } },
 }
@@ -163,8 +165,8 @@ function Styles.SetArt(texture, key)
         texture:SetTexture("Interface\\TargetingFrame\\UI-PartyFrame")
         texture:SetTexCoord(0, 1, 0, 1)
     elseif key == "forever" then
-        texture:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\forever_unitframe.tga")
-        texture:SetTexCoord(1 / 256, 121 / 256, 457 / 512, 506 / 512)
+        texture:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\forever_frames.tga")
+        texture:SetTexCoord(0, 120 / 256, 72 / 128, 121 / 128)
     else
         -- Explicit Retail sheet: Forever remaps this atlas name to bronze artwork.
         texture:SetTexture(4681512)
@@ -184,7 +186,7 @@ end
 local function BarMask(bar, host, key, s, isPower)
     local fill = bar:GetStatusBarTexture()
     local mask = bar._pfNativeMask
-    if key == "classic" then
+    if key == "classic" or key == "forever" then
         if mask then
             if fill and fill.RemoveMaskTexture then fill:RemoveMaskTexture(mask) end
             if bar.bg and bar.bg.RemoveMaskTexture then bar.bg:RemoveMaskTexture(mask) end
@@ -522,6 +524,12 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     -- clips its children, so the frame itself grows to the opening (same centre).
     local pad = size * 0.095
     local shift = size * 0.03 -- the opening sits slightly right of the slot centre
+    if key == "forever" then
+        -- The ring hole is exactly the slot and centred in it; the circle mask
+        -- and the class art leave a margin, so the picture overscans the hole
+        -- (the ring is drawn above and hides the excess).
+        pad, shift = size * 0.20, 0
+    end
     frame._pfNativePad, frame._pfNativeShift = pad, shift
     Box(frame.portraitFrame, host, p[1] + (tonumber(cfg.portraitX) or 0) / s - pad / s + shift / s,
         p[2] - (tonumber(cfg.portraitY) or 0) / s - pad / s, (size + 2 * pad) / s, (size + 2 * pad) / s, s)
@@ -577,8 +585,14 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
     end
     if frame.roleIcon then
         frame.roleIcon:ClearAllPoints()
-        frame.roleIcon:SetPoint("TOPRIGHT", host, "TOPRIGHT", -3 * s, -3 * s)
-        frame.roleIcon:SetSize(10 * s, 10 * s)
+        if key == "forever" then
+            -- Inside the name tab (rows 10-18 of the card), right end.
+            frame.roleIcon:SetPoint("TOPRIGHT", host, "TOPRIGHT", -7 * s, -10 * s)
+            frame.roleIcon:SetSize(8 * s, 8 * s)
+        else
+            frame.roleIcon:SetPoint("TOPRIGHT", host, "TOPRIGHT", -3 * s, -3 * s)
+            frame.roleIcon:SetSize(10 * s, 10 * s)
+        end
     end
     if frame.levelText and (not Mod.db or not Mod.db.levelAnchor or Mod.db.levelAnchor == "AUTO") then
         frame.levelText:ClearAllPoints()
@@ -601,6 +615,14 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
         ns.PF_UpdateAuraContainers(frame, cfg)
     end
     Styles.UpdatePowerText(frame, cfg, preview)
+    if key == "forever" then
+        -- Icons centred on the health band must fit it (CC, missing buff), not spill
+        -- over the name tab and the power band.
+        local fit = math.max(8, g.health[4] * s)
+        for _, icon in ipairs({ frame.ccIcon, frame.missingBuffIcon }) do
+            if icon then icon:SetSize(fit, fit) end
+        end
+    end
     if preview then Styles.PreviewIconLayers(frame) end
 end
 -- Generic portrait refreshes must not replace native AUTO badge anchors.

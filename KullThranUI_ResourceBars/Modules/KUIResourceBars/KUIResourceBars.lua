@@ -888,6 +888,26 @@ end
 
 local function SetStatusBarValueSafe(bar, value)
     if not bar then return end
+    -- Native StatusBar interpolation (the engine eases the fill, zero per-frame
+    -- Lua). The first paint after a build lands at once so a rebuilt bar does
+    -- not sweep up from empty.
+    local interp = bar._ktSmooth
+    if interp and bar._ktSmoothPrimed then
+        -- Only gains ease in. Spending (or taking damage) lands at once so the
+        -- bar never shows more resource than the player really has.
+        local smooth = true
+        if type(value) == "number" and not IsSecret(value) then
+            local last = bar._ktLastValue
+            if last and value < last then smooth = false end
+            bar._ktLastValue = value
+        else
+            bar._ktLastValue = nil
+        end
+        if smooth and pcall(bar.SetValue, bar, value, interp) then return end
+    elseif type(value) == "number" and not IsSecret(value) then
+        bar._ktLastValue = value
+    end
+    bar._ktSmoothPrimed = true
     if pcall(bar.SetValue, bar, value) then
         return
     end
@@ -1859,6 +1879,27 @@ function KRB:BuildBars()
     local texSec     = LSM and LSM:Fetch("statusbar", db.secondary.texture) or "Interface\\Buttons\\WHITE8x8"
     local texPri     = LSM and LSM:Fetch("statusbar", db.primary.texture) or "Interface\\Buttons\\WHITE8x8"
     local texHea     = LSM and LSM:Fetch("statusbar", db.health.texture) or "Interface\\Buttons\\WHITE8x8"
+    local texSecBar  = texSec   -- pips are plain textures and keep the file texture
+    -- Retail/Forever: the bars wear Blizzard's own untinted unit-frame bar art
+    -- (tinted by the usual vertex colour) while the texture is still the theme's
+    -- seeded default; a texture picked by hand is respected.
+    do
+        local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+        local seeded = theme == "retail" and "Blizzard Raid Bar" or theme == "forever" and "Melli Dark" or nil
+        local function NativeBar(section, kind, fallback)
+            if not (seeded and section and section.texture == seeded and C_Texture and C_Texture.GetAtlasInfo) then
+                return fallback
+            end
+            for _, owner in ipairs({ "Player", "Party" }) do
+                local atlas = "UI-HUD-UnitFrame-" .. owner .. "-PortraitOn-Bar-" .. kind .. "-Status"
+                if C_Texture.GetAtlasInfo(atlas) then return atlas end
+            end
+            return fallback
+        end
+        texPri = NativeBar(db.primary, "Mana", texPri)
+        texSecBar = NativeBar(db.secondary, "Mana", texSec)
+        texHea = NativeBar(db.health, "Health", texHea)
+    end
 
     local anchorFrame = EnsureResourceAnchor(refWidth, 1, baseAnchor, gap, xOff, db.general.strata or "MEDIUM")
     local lastAnchorFrame
@@ -1898,7 +1939,7 @@ function KRB:BuildBars()
             secondaryBar:ClearAllPoints()
             secondaryBar:SetPoint("CENTER", secondaryFrame, "CENTER")
             
-            secondaryBar:SetStatusBarTexture(texSec)
+            secondaryBar:SetStatusBarTexture(texSecBar)
             secondaryBar._bg:SetColorTexture(0.07, 0.07, 0.07, db.general.bgA)
             
             if sec.kind == "stagger" and NormalizeColorMode(db.secondary.colorMode, db.secondary.classColor) == "power" then
@@ -2058,6 +2099,14 @@ function KRB:BuildBars()
 
     _G.KUI_ResourceBarsTop = lastAnchorFrame
 
+    do
+        local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
+        local smooth = interp and db.general.smoothBars ~= false and interp or nil
+        for _, bar in ipairs({ healthBar or false, primaryBar or false, secondaryBar or false }) do
+            if bar then bar._ktSmooth = smooth end
+        end
+    end
+
     self:UpdateBars()
     UpdateCombatVisibility()
 end
@@ -2085,12 +2134,14 @@ function KRB:UpdateBars(event, unit)
         or event == "RUNE_POWER_UPDATE" or event == "RUNE_TYPE_UPDATE"
         or event == "UNIT_ABSORB_AMOUNT_CHANGED" or event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED"
         or event == "UNIT_AURA"
+        or (event == "UNIT_HEALTH" and self._ktSecStagger)   -- stagger derives from health
     local secondaryMarkerConfig = (updatePrimary or updateSecondary)
         and (self._cachedMarkerConfig or GetActiveMarkerConfig(db)) or nil
     local ppTypeNow = updatePrimary and GetPrimaryPowerType() or nil
     local hidePrimaryMana = updatePrimary
         and (IsManaHiddenForCurrentSpec(db) and ppTypeNow == PT.MANA)
     local sec = (updatePrimary or updateSecondary) and GetSecondaryResource() or nil
+    if sec ~= nil or updateSecondary then self._ktSecStagger = sec and sec.kind == "stagger" or false end
     local roundResourcePips = ResourcePipsAreRound(db)
     local comboResourcePips = IsComboSecondaryResource(sec)
     local profiler = _G.KT and _G.KT.CombatProfiler
@@ -2462,6 +2513,10 @@ function KRB:OnEnable()
     self:RegisterEvent("UNIT_AURA",                     "OnUnitAura")
     self:RegisterEvent("PLAYER_ENTERING_WORLD",         "OnEnteringWorld")
     self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", "BuildBars")
+    -- A talent can add or remove a class resource; a burst of node events
+    -- coalesces into one rebuild.
+    self:RegisterEvent("TRAIT_CONFIG_UPDATED", "OnTalentChange")
+    self:RegisterEvent("PLAYER_TALENT_UPDATE", "OnTalentChange")
     
     self:RegisterEvent("PLAYER_REGEN_DISABLED",         "HandleCombatState")
     self:RegisterEvent("PLAYER_REGEN_ENABLED",          "HandleCombatState")
@@ -2475,8 +2530,18 @@ function KRB:OnUnitAura(event, unit)
     end
 end
 
+function KRB:OnTalentChange()
+    if self._ktTalentPending then return end
+    self._ktTalentPending = true
+    C_Timer.After(0.2, function()
+        self._ktTalentPending = nil
+        self:BuildBars()
+    end)
+end
+
 function KRB:OnEnteringWorld()
     StartWidthPolling()
+    C_Timer.After(0, function() self:BuildBars() end)
     C_Timer.After(0.3, function() self:BuildBars() end)
     C_Timer.After(2.0, function() self:BuildBars() end)
     if InCombatLockdown() then

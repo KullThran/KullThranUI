@@ -2005,6 +2005,12 @@ function ns.AtlasFill.EnemyColor(unit)
         if c then return c.r, c.g, c.b end
     end
 end
+-- The packaged Forever plate has plain rectangular slots. The Player/Target bar atlases carry
+-- the old frame's baked edge and diagonal end, so Forever uses the rectangular Party fill.
+function ns.AtlasFill.IsForeverPlate()
+    local vt = KT.VisualThemes
+    return vt and vt.GetRenderedTheme and vt:GetRenderedTheme() == "forever" or false
+end
 function ns.AtlasFill.Apply(health, power, unitKey, settings)
     local AtlasExists, SeatForeverMask, KeepWhite, POWER_ATLAS_SUFFIX = ns.AtlasFill.Exists, ns.AtlasFill.SeatMask, ns.AtlasFill.KeepWhite, ns.AtlasFill.POWER
     local side = (unitKey == "target") and "Target" or "Player"
@@ -2014,7 +2020,8 @@ function ns.AtlasFill.Apply(health, power, unitKey, settings)
         and math.abs((c.b or 0) - 0.235) < 0.02
     local hAtlas = "UI-HUD-UnitFrame-" .. side .. "-PortraitOn-Bar-Health"
     if health then
-        if defaultColor and not health._kuiEnemyTint and AtlasExists(hAtlas) then
+        if defaultColor and not health._kuiEnemyTint and AtlasExists(hAtlas)
+            and not ns.AtlasFill.IsForeverPlate() then
             health:SetStatusBarTexture(hAtlas)
             health._kuiAtlasFill = true
             KeepWhite(health)
@@ -2023,12 +2030,45 @@ function ns.AtlasFill.Apply(health, power, unitKey, settings)
             if f then f:SetVertexColor(1, 1, 1, 1) end
         else
             health._kuiAtlasFill = nil
+            -- Class / custom / hostile colours: Blizzard's own untinted "Status"
+            -- art, coloured through the bar colour exactly like the stock frame.
+            ns.AtlasFill.ApplyTinted(health, side, "Health")
         end
     end
-    -- Power uses the configured shared status-bar texture and oUF's resource
-    -- tint. Decorative pre-coloured atlases must not force this bar white or
-    -- freeze its texture to the resource of a previously selected target.
-    if power then power._kuiAtlasFill = nil end
+    -- Power: the resource colour changes per unit, so it uses the untinted
+    -- Status art and oUF's resource tint rather than a pre-coloured atlas
+    -- that would freeze to a previously selected target's resource.
+    if power then
+        power._kuiAtlasFill = nil
+        ns.AtlasFill.ApplyTinted(power, side, "Mana")
+    end
+end
+-- Blizzard's untinted bar art; the Party atlas is the fallback when the client
+-- has no Player/Target variant. Falls back to the flat fill when neither exists.
+function ns.AtlasFill.ApplyTinted(bar, side, kind)
+    bar._kuiAtlasTint = nil
+    local name
+    local owners = ns.AtlasFill.IsForeverPlate() and { "Party" } or { side, "Party" }
+    -- Party's Mana-Status art fades dark at its left end and Target's ends in a diagonal;
+    -- both are hidden by the native ring on stock frames but show here, so every
+    -- Blizzard-style resource bar reuses Party's rectangular Health fill.
+    if kind == "Mana" then kind = "Health"; owners = { "Party" } end
+    for _, owner in ipairs(owners) do
+        local candidate = "UI-HUD-UnitFrame-" .. owner .. "-PortraitOn-Bar-" .. kind .. "-Status"
+        if ns.AtlasFill.Exists(candidate) then name = candidate; break end
+    end
+    if not name then return end
+    local r, g, b, a = bar:GetStatusBarColor()
+    bar:SetStatusBarTexture(name)
+    bar._kuiAtlasTint = true
+    ns.AtlasFill.SeatMask(bar)
+    if r then bar:SetStatusBarColor(r, g, b, a) end
+end
+
+-- Keys the visual themes seed (or the module default) as "no texture chosen":
+-- only these hand the bar over to Blizzard's own art in the Retail/Forever styles.
+function ns.IsThemeDefaultBarTexture(key)
+    return key == "none" or key == "Melli Reforged" or key == "Blizzard Raid Bar" or key == "Blizzard"
 end
 
 local function ApplyHealthBarTexture(health, unitKey)
@@ -2042,7 +2082,7 @@ local function ApplyHealthBarTexture(health, unitKey)
     -- highlight (KUI_BarGloss), not the patterned default LSM texture. Only
     -- when the user kept the default texture.
     if (unitKey == "player" or unitKey == "target")
-        and (texKey == "Melli Reforged" or texKey == "none")
+        and ns.IsThemeDefaultBarTexture(texKey)
         and ns.BarGloss and ns.BarGloss.IsBlizzardStyle and ns.BarGloss.IsBlizzardStyle() then
         path = nil
     end
@@ -2078,12 +2118,14 @@ local function ApplyHealthBarTexture(health, unitKey)
     end
 
     if (unitKey == "player" or unitKey == "target")
-        and (texKey == "Melli Reforged" or texKey == "none")
+        and ns.IsThemeDefaultBarTexture(texKey)
         and ns.BarGloss and ns.BarGloss.IsBlizzardStyle and ns.BarGloss.IsBlizzardStyle() then
         pcall(ns.AtlasFill.Apply, health, power, unitKey, s)
+        if ns.BarGloss and ns.BarGloss.Update then ns.BarGloss:Update() end   -- drop the overlay shade over Blizzard art
     else
         health._kuiAtlasFill = nil
-        if power then power._kuiAtlasFill = nil end
+        health._kuiAtlasTint = nil
+        if power then power._kuiAtlasFill = nil; power._kuiAtlasTint = nil end
     end
 end
 
@@ -2746,11 +2788,16 @@ function KT:GetStyledDebuffLift()
     return (th == "classic" or th == "forever" or th == "retail") and 4 or 0
 end
 
-function KT:GetKUIStyleBuffYOffset(unit)
+function KT:GetKUIStyleBuffYOffset(unit, anchor)
     if unit ~= "player" and unit ~= "target" then return 0 end
+    -- Rows below the bar must not be lifted onto it.
+    if anchor and not tostring(anchor):find("^top") then return 0 end
     local VT = self.VisualThemes
     local renderedTheme = VT and VT.GetRenderedTheme and VT:GetRenderedTheme()
-    -- KUI Style keeps the Retail aura position (no extra lift).
+    -- KUI Style: the duration text ("52m", "4d") hangs under each icon and used
+    -- to overlap the health bar. Lift the row so it clears the bar; the stock-art
+    -- styles already have their own name tab to clear.
+    if renderedTheme == nil or renderedTheme == "kui" then return 23 end
     return 0
 end
 
@@ -2790,15 +2837,17 @@ function KT:ResolveUFAuraBarGeometry(frame)
 end
 
 function KT:ApplyLegacyUFAuraBarGeometry(container, frame, framePoint, initialAnchor,
-        growthX, growthY, offsetX, offsetY)
+        growthX, growthY, offsetX, offsetY, extraY)
     if not (container and frame) then return end
     local bar, width, auraSize, gap, perRow = KT:ResolveUFAuraBarGeometry(frame)
     container:ClearAllPoints()
     container:SetPoint(initialAnchor, bar, framePoint,
-        (offsetX or 0) * gap, (offsetY or 0) * gap)
+        (offsetX or 0) * gap, (offsetY or 0) * gap + (extraY or 0))
     container:SetSize(width, auraSize)
     container.size = auraSize
     container.spacing = gap
+    container.spacingX = gap
+    container.spacingY = gap
     container["size-x"] = perRow
     container.initialAnchor = initialAnchor
     container.growthX = growthX
@@ -2920,6 +2969,25 @@ local function GetDefaultPortraitFacing(unit)
     return "normal"
 end
 
+-- Forms whose capture keeps the humanoid orientation, so the portrait must not
+-- flip: Bear (5), Moonkin (31). Verified in game; Cat (1) and any other form still
+-- flips until it is reported otherwise.
+ns.DRUID_FORMS_KEEPING_ORIENTATION = { [5] = true, [31] = true }
+ns.DruidFormFlipsPortrait = function()
+    if type(GetShapeshiftForm) ~= "function" or select(3, pcall(UnitClass, "player")) ~= "DRUID" then
+        return false
+    end
+    local ok, form = pcall(GetShapeshiftForm)
+    if not ok or type(form) ~= "number" or form <= 0 then return false end
+    if type(GetShapeshiftFormID) == "function" then
+        local readable, id = pcall(GetShapeshiftFormID)
+        if readable and type(id) == "number" and not (issecretvalue and issecretvalue(id)) and ns.DRUID_FORMS_KEEPING_ORIENTATION[id] then
+            return false
+        end
+    end
+    return true
+end
+
 local function GetPortraitFacing(unit, settings)
     -- Explicit per-unit choice (Unit Frames > Portrait Facing), valid in every
     -- style. "auto"/nil keeps the style-specific automatic behaviour below.
@@ -2960,12 +3028,7 @@ local function GetPortraitFacing(unit, settings)
         else
             -- Player, NOT shapeshifted: the normal 3D portrait (humanoid face
             -- facing inward) needs no override flip.
-            local shapeshifted = false
-            if type(GetShapeshiftForm) == "function"
-                and select(3, pcall(UnitClass, "player")) == "DRUID" then
-                local ok, form = pcall(GetShapeshiftForm)
-                shapeshifted = ok and type(form) == "number" and form > 0
-            end
+            local shapeshifted = ns.DruidFormFlipsPortrait()
             if shapeshifted then
                 -- Player, shapeshifted: a side-by-side comparison (same
                 -- build, same "normal" value) showed the humanoid case
@@ -2990,12 +3053,7 @@ local function GetPortraitFacing(unit, settings)
     -- but only when the user hasn't picked an explicit facing of their own
     -- (settings.portraitFacing), since that deliberate choice always wins.
     if unit == "player" and not (settings and settings.portraitFacing) then
-        local shapeshifted = false
-        if type(GetShapeshiftForm) == "function"
-                and select(3, pcall(UnitClass, "player")) == "DRUID" then
-            local ok, form = pcall(GetShapeshiftForm)
-            shapeshifted = ok and type(form) == "number" and form > 0
-        end
+        local shapeshifted = ns.DruidFormFlipsPortrait()
         return shapeshifted and "flipped" or "normal"
     end
 
@@ -3169,6 +3227,22 @@ local function ApplyPortraitFacing(tex, unit, settings, fullTexture)
     if not tex then return end
 
     local facing = GetPortraitFacing(unit, settings)
+    -- Class icons are static art (weapons, emblems) with a direction of their own:
+    -- they ignore the shapeshift/theme rules of live portraits and only follow the
+    -- side the portrait sits on, so they always look toward the bars (left side keeps
+    -- the sheet's orientation, right side is mirrored). An explicit choice still wins.
+    if fullTexture and tex._classCoords then
+        local chosen = settings and settings.portraitFacingMode
+        if chosen == "normal" or chosen == "flipped" then
+            facing = chosen
+        else
+            local side = settings and settings.portraitSide
+            if side ~= "left" and side ~= "right" then
+                side = (unit == "target" or unit == "focus" or unit == "targettarget") and "right" or "left"
+            end
+            facing = (side == "right") and "flipped" or "normal"
+        end
+    end
     -- Native creature captures and humanoid captures have different facing.
     -- Resolve the actual target model instead of treating every NPC as the
     -- player's mirror. A hidden model is only an ID probe; it never renders
@@ -4735,6 +4809,19 @@ local function CreatePortrait(frame, side, frameHeight, unit)
             self._camUnit = updatedUnit
             if KT.Portrait3DDebug then KT.Portrait3DDebug.Record(self, "PostUpdate", updatedUnit) end
             applyLook(self, updatedUnit)
+            -- The facing depends on the model file ID, which can still be the
+            -- previous target's (or unset) right after SetUnit, and a model
+            -- that is already cached does not fire OnModelLoaded. Re-evaluate
+            -- shortly after so an NPC never stays turned the wrong way.
+            self._ktLookToken = (self._ktLookToken or 0) + 1
+            local token = self._ktLookToken
+            for _, delay in ipairs({ 0.1, 0.35, 1.0 }) do
+                C_Timer.After(delay, function()
+                    if self._ktLookToken == token and self._camUnit == updatedUnit then
+                        applyLook(self, updatedUnit)
+                    end
+                end)
+            end
         end
         model3D:SetScript("OnModelLoaded", function(self)
             if KT.Portrait3DDebug then KT.Portrait3DDebug.Record(self, "OnModelLoaded", self._camUnit) end
@@ -5952,7 +6039,8 @@ function KT:RefreshTargetUFAuraBarGeometry(frame)
             buffOffset = -castHeight
         end
         KT:ApplyLegacyUFAuraBarGeometry(frame.Buffs, frame, bfp, bia,
-            bgx, bgy, box, boy + buffOffset)
+            bgx, bgy, box, boy + buffOffset, nil,
+            KT:GetKUIStyleBuffYOffset(frame.unit or "target", buffAnchor))
         if frame.Buffs.ForceUpdate then frame.Buffs:ForceUpdate() end
     end
 
@@ -6036,10 +6124,13 @@ local function CreateTargetAuras(frame, unit)
     if bAnc == "bottomleft" or bAnc == "bottomright" then
         buffCbOff = cbOffset
     end
-    buffs:SetPoint(bia, auraAnchor, bfp, box * gap, boy * gap + buffCbOff)
+    buffs:SetPoint(bia, auraAnchor, bfp, box * gap,
+        boy * gap + buffCbOff + KT:GetKUIStyleBuffYOffset(unit or "target", bAnc))
     buffs:SetSize(containerWidth, auraSize)
     buffs.size = auraSize
     buffs.spacing = gap
+    buffs.spacingX = gap
+    buffs.spacingY = gap
     buffs.num = (settings and settings.maxBuffs) or 20
     buffs["size-x"] = perRow
     buffs.initialAnchor = bia
@@ -6112,6 +6203,7 @@ local function CreateTargetAuras(frame, unit)
     local AK = _G.KTAuraKit
     if AK then
         AK.styles["kuiuf:target-debuffs"] = {
+            stackFontSize = 8, stackX = 1, stackY = -1, durationFontSize = 7, durationPoint = "CENTER", durationRelPoint = "CENTER", durationY = 0,
             width = auraSize, height = auraSize,
             texCoord = { 0.07, 0.93, 0.07, 0.93 },
             border = { 0, 0, 0, 1, size = 1 },
@@ -6155,6 +6247,8 @@ local function CreateTargetAuras(frame, unit)
         debuffs:SetSize(containerWidth, auraSize)
         debuffs.size = auraSize
         debuffs.spacing = gap
+        debuffs.spacingX = gap
+        debuffs.spacingY = gap
         debuffs.num = maxDebuffs
         debuffs["size-x"] = perRow
         debuffs.initialAnchor = dia
@@ -7367,10 +7461,12 @@ local function StyleFullFrame(frame, unit)
             end
             local buffs = CreateFrame("Frame", nil, frame)
             buffs:SetPoint(bia, auraAnchor, bfp, box * gap,
-                boy * gap + buffCbOffset + KT:GetKUIStyleBuffYOffset("player"))
+                boy * gap + buffCbOffset + KT:GetKUIStyleBuffYOffset("player", settings.buffAnchor or "topleft"))
             buffs:SetSize(auraWidth, auraSize)
             buffs.size = auraSize
             buffs.spacing = gap
+            buffs.spacingX = gap
+            buffs.spacingY = gap
             buffs.num = settings.maxBuffs or 4
             buffs["size-x"] = perRow
             buffs.initialAnchor = bia
@@ -7410,7 +7506,7 @@ local function StyleFullFrame(frame, unit)
                 end
                 KT:ApplyLegacyUFAuraBarGeometry(frame.Buffs, frame, bfp2, bia2,
                     bgx2, bgy2, box2,
-                    boy2 + liveOffset + KT:GetKUIStyleBuffYOffset("player"))
+                    boy2 + liveOffset + KT:GetKUIStyleBuffYOffset("player", current.buffAnchor or "topleft"))
                 if frame.Buffs.ForceUpdate then frame.Buffs:ForceUpdate() end
             end
             CreateUnitDispelSlots(frame, unit)
@@ -9725,7 +9821,7 @@ local function ReloadFrames()
                                 buffCbOff = -cbH
                             end
                             -- Only reanchor + ForceUpdate when layout actually changed
-                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("player")
+                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("player", settings.buffAnchor or "topleft")
                             local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. buffCbOff .. kuiBuffYOffset .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 4)
                             if frame.Buffs._lastBuffKey ~= buffKey then
                                 frame.Buffs._lastBuffKey = buffKey
@@ -10103,7 +10199,7 @@ local function ReloadFrames()
                                     liveCbOff = -cbH
                                 end
                             end
-                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("target")
+                            local kuiBuffYOffset = KT:GetKUIStyleBuffYOffset("target", settings.buffAnchor or "topleft")
                             local buffKey = (bia or "") .. (bfp or "") .. (box or 0) .. (boy or 0) .. (bgx or 0) .. (bgy or 0) .. (settings.maxBuffs or 20) .. liveCbOff .. kuiBuffYOffset
                             if frame.Buffs._lastBuffKey ~= buffKey then
                                 frame.Buffs._lastBuffKey = buffKey

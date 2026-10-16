@@ -405,6 +405,21 @@ local function ResolveStatusbarTexture(value)
     return TEXTURE_FILL
 end
 
+-- Retail/Forever raid frames wear Blizzard's own untinted unit-frame bar art
+-- (the same Status atlas as party frames, resource bars and unit frames) while
+-- the texture is still the theme's seeded default; a texture picked by hand
+-- is respected. Everything else keeps the shared-media texture.
+function ns.ResolveRaidBarTexture(frame, value, kind)
+    local path = ResolveStatusbarTexture(value)
+    if not (frame and (frame.mode == "raid" or frame.mode == "raid40")) then return path end
+    local vt = KT and KT.VisualThemes
+    local theme = vt and vt.GetRenderedTheme and vt:GetRenderedTheme()
+    local seeded = theme == "retail" and "Blizzard Raid Bar" or theme == "forever" and "Melli Dark" or nil
+    if not (seeded and value == seeded and C_Texture and C_Texture.GetAtlasInfo) then return path end
+    local atlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-" .. kind .. "-Status"
+    return C_Texture.GetAtlasInfo(atlas) and atlas or path
+end
+
 local AURA_DEFAULTS = {
     showAuras = true,
     showBuffs = false,
@@ -4556,8 +4571,14 @@ local function LayoutFrameAuras(frame, db, mode)
     local missingX = tonumber(db.missingBuffOffsetX) or 0
     local missingY = tonumber(db.missingBuffOffsetY) or 0
 
+    -- Forever card: icons centred on the health band must fit it (see PF_Styles).
+    local bandFit
+    if not isRaidMode and frame._pfNativeStyle == "forever" and frame._pfNativeGeometry and frame._pfNativeScale then
+        bandFit = math.max(8, frame._pfNativeGeometry.health[4] * frame._pfNativeScale)
+    end
+    local ccSize = bandFit or (isRaidMode and math.max(size, 16) or math.max(size + 2, 18))
     frame.ccIcon:ClearAllPoints()
-    frame.ccIcon:SetSize(isRaidMode and math.max(size, 16) or math.max(size + 2, 18), isRaidMode and math.max(size, 16) or math.max(size + 2, 18))
+    frame.ccIcon:SetSize(ccSize, ccSize)
     frame.ccIcon:SetPoint("CENTER", frame.health, "CENTER", auraX, auraY)
 
     if frame.trinketIcon then
@@ -4599,7 +4620,7 @@ local function LayoutFrameAuras(frame, db, mode)
         frame.missingBuffIcon:SetSize(missingSize, missingSize)
         frame.missingBuffIcon:SetPoint("CENTER", frame.health, "CENTER", missingX, missingY)
     else
-        local partyMissingSize = math.min(missingSize, 29)
+        local partyMissingSize = bandFit or math.min(missingSize, 29)
         frame.missingBuffIcon:SetSize(partyMissingSize, partyMissingSize)
         frame.missingBuffIcon:SetPoint("CENTER", frame.health, "CENTER", missingX, missingY)
     end
@@ -4634,6 +4655,11 @@ local function LayoutCenteredAuraIcons(frame, db, buffCount, debuffCount)
         local halfBuffs = buffOnlyW / 2
         local shift = math.max(0, (debuffCount - 1) * stepD) / 2
         LayoutAuraIconSet(frame.debuffIcons, nativeHost, "TOP", "BOTTOM", debuffX - shift, debuffY - 2, debuffSize, spacing, "RIGHT")
+        if frame._pfNativeStyle == "forever" then
+            -- Beside the plate, like the live frame, so the thin health band stays clear.
+            LayoutAuraIconSet(frame.buffIcons, nativeHost, "LEFT", "RIGHT", 3 + buffX, buffY, buffSize, spacing, "RIGHT")
+            return
+        end
         LayoutAuraIconSet(frame.buffIcons, frame.health, "CENTER", "CENTER", halfBuffs - math.max(0, (buffCount - 1) * stepB) - buffSize / 2 + buffX, buffY, buffSize, spacing, "LEFT")
         return
     end
@@ -6363,7 +6389,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         end
         local power = math.max(0, math.min(1, (data.power or 0.7) + (math.sin((phase * math.pi * 2) + (index * 0.6)) * 0.10)))
         frame.health:SetMinMaxValues(0, 100)
-        frame.health:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.health:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Health"))
         frame.health:SetValue(health * 100)
         local cr, cg, cb
         if db.colorByClass ~= false then
@@ -6383,7 +6409,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         end
         ns.PF_Portrait.UpdateBorder(frame, db, data)
         frame.power:SetMinMaxValues(0, 100)
-        frame.power:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.power:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Mana"))
         frame.power:SetValue(power * 100)
         if data.status == "Offline" then
             frame.power:SetStatusBarColor(OFFLINE_POWER_COLOR.r, OFFLINE_POWER_COLOR.g, OFFLINE_POWER_COLOR.b, OFFLINE_POWER_COLOR.a)
@@ -6516,7 +6542,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     local pr, pg, pb = GetPowerColor()
 
     frame.health:SetMinMaxValues(0, 100)
-    frame.health:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+    frame.health:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Health"))
     local hpPercent = UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
     frame.health:SetValue(hpPercent)
     SetHealthText(frame.valueText, unit, db, hpPercent)
@@ -6540,7 +6566,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     if db.showPowerBar == false or IsSecretValue(power) or IsSecretValue(maxPower) or type(power) ~= "number" or type(maxPower) ~= "number" then
         frame.power:Hide()
     else
-        frame.power:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.power:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Mana"))
         frame.power:SetMinMaxValues(0, maxPower)
         frame.power:SetValue(power)
         frame.power:Show()

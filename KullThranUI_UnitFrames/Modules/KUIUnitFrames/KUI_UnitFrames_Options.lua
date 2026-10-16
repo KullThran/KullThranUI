@@ -119,11 +119,42 @@ local PREVIEW_STOCK_GEOMETRY = {
 }
 -- Focus uses Target's stock frame; ToT / Focus Target use the native mini
 -- frame. These aliases only select artwork, never a live unit or its settings.
+-- Retail keeps the geometry calibrated on Retail's art; Forever has its own,
+-- measured on the current Forever plate (same numbers as ThemeClientAssets).
+PREVIEW_STOCK_GEOMETRY.retail = PREVIEW_STOCK_GEOMETRY.forever
+PREVIEW_STOCK_GEOMETRY.forever = {
+    player = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        portrait = { point = "TOPLEFT", x = 24, y = -19, size = 60 },
+        health = { x = 91, y = 46.5, w = 120, h = 13 },
+        power = { x = 91, y = 62.5, w = 120, h = 8 },
+        name = { x = 93, y = -28.5, w = 114, h = 14 },
+        strip = { x = 91, y = 28.5, w = 120, h = 14 },
+    },
+    target = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        mirror = true,
+        portrait = { point = "TOPRIGHT", x = -24, y = -19, size = 60 },
+        health = { x = 21, y = 46.5, w = 120, h = 13 },
+        power = { x = 21, y = 62.5, w = 120, h = 8 },
+        name = { x = 25, y = -28.5, w = 114, h = 14 },
+        strip = { x = 21, y = 28.5, w = 120, h = 14 },
+    },
+    pet = {
+        w = 120, h = 49,
+        art = "UI-HUD-UnitFrame-TargetofTarget-PortraitOn",
+        portrait = { point = "TOPLEFT", x = 6, y = -8, size = 33 },
+        health = { x = 47, y = 20, w = 67, h = 9 },
+        power = { x = 47, y = 31, w = 67, h = 6 },
+        name = { x = 48, y = -8, w = 65, h = 9 },
+    },
+}
 for _, kit in pairs(PREVIEW_STOCK_GEOMETRY) do
     kit.focus = kit.target
     kit.totPet, kit.focustarget = kit.pet, kit.pet
 end
-PREVIEW_STOCK_GEOMETRY.retail = PREVIEW_STOCK_GEOMETRY.forever
 
 -- Forward declarations. ApplyStockPreviewColors (below) needs these two, but
 -- they are defined much further down this file. They MUST be declared local
@@ -245,8 +276,7 @@ local function ApplyStockArtTexture(tex, atlasName, mirror)
     if not (tex and atlasName) then return false end
 
     local vt = KT.VisualThemes
-    local foreverInfo = ActiveVisualTheme() == "forever" and _G.WOW_PROJECT_MAINLINE
-        and _G.WOW_PROJECT_ID == _G.WOW_PROJECT_MAINLINE and vt and vt.GetForeverAtlasPixels
+    local foreverInfo = ActiveVisualTheme() == "forever" and vt and vt.GetForeverAtlasPixels
         and vt:GetForeverAtlasPixels(atlasName)
     local info = foreverInfo or (type(KT.ResolveRetailAtlasOverride) == "function" and KT.ResolveRetailAtlasOverride(atlasName)) or nil
     if info and (info.file or info.filename) and info.leftTexCoord and info.rightTexCoord
@@ -514,8 +544,13 @@ local function ApplyStockLayoutToPreview(frame, unitKey, settings)
         frame.name:SetJustifyH("CENTER")
     else
         frame.name:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
-        frame.name:SetWidth(0)
-        frame.name:SetJustifyH("LEFT")
+        if geom.name.justify then
+            frame.name:SetWidth(geom.name.w * scale)
+            frame.name:SetJustifyH(geom.name.justify)
+        else
+            frame.name:SetWidth(0)
+            frame.name:SetJustifyH("LEFT")
+        end
     end
     frame.value:ClearAllPoints()
     frame.value:SetPoint("TOPRIGHT", frame, "TOPRIGHT",
@@ -2294,25 +2329,43 @@ local function CreateUnitFramesLivePreview(parent, options)
 
         -- Compact layout: Player/Target on top; the small frames share one
         -- row below them (Pet + Focus left, ToT + Focus Target right).
-        local top, rowGap, sideGap = 26, 8, 10
+        -- The stock-art styles size their boxes by the real frame scale (132%),
+        -- which is wider than the preview: shrink every frame by one common
+        -- factor so no two boxes overlap and nothing leaves the panel.
+        local top, rowGap, sideGap, edge = 26, 8, 10, 14
+        local frames = { playerPreview, targetPreview, focusPreview, petPreview,
+            targetTargetPreview, focusTargetPreview }
+        for _, unitFrame in ipairs(frames) do unitFrame:SetScale(1) end
+        local availW = previewWidth - edge * 2
+        local topNeed = (playerPreview:GetWidth() or 0) + (targetPreview:GetWidth() or 0) + sideGap
+        local rowNeed = (petPreview:GetWidth() or 0) + (focusPreview:GetWidth() or 0)
+            + (targetTargetPreview:GetWidth() or 0) + (focusTargetPreview:GetWidth() or 0) + sideGap * 3
+        local fit = 1
+        if availW > 0 then
+            if topNeed > availW then fit = math.min(fit, availW / topNeed) end
+            if rowNeed > availW then fit = math.min(fit, availW / rowNeed) end
+        end
+        for _, unitFrame in ipairs(frames) do unitFrame:SetScale(fit) end
+        local function at(x) return x / fit end   -- offsets are in the frame's own scale
+
         playerPreview:ClearAllPoints()
-        playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 14, -top)
+        playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", at(edge), -at(top))
         targetPreview:ClearAllPoints()
-        targetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -14, -top)
-        local mainH = math.max(playerPreview:GetHeight() or 0, targetPreview:GetHeight() or 0)
-        local rowY = -(top + mainH + rowGap)
+        targetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -at(edge), -at(top))
+        local mainH = math.max(playerPreview:GetHeight() or 0, targetPreview:GetHeight() or 0) * fit
+        local rowY = -at(top + mainH + rowGap)
         petPreview:ClearAllPoints()
-        petPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", 14, rowY)
+        petPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", at(edge), rowY)
         focusPreview:ClearAllPoints()
         focusPreview:SetPoint("TOPLEFT", petPreview, "TOPRIGHT", sideGap, 0)
         focusTargetPreview:ClearAllPoints()
-        focusTargetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -14, rowY)
+        focusTargetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -at(edge), rowY)
         targetTargetPreview:ClearAllPoints()
         targetTargetPreview:SetPoint("TOPRIGHT", focusTargetPreview, "TOPLEFT", -sideGap, 0)
 
         if previewWidth > 0 then
             local rowH = math.max(petPreview:GetHeight() or 0, focusPreview:GetHeight() or 0,
-                targetTargetPreview:GetHeight() or 0, focusTargetPreview:GetHeight() or 0)
+                targetTargetPreview:GetHeight() or 0, focusTargetPreview:GetHeight() or 0) * fit
             preview:SetHeight(top + mainH + rowGap + rowH + 12)
         end
     end

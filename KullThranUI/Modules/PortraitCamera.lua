@@ -107,9 +107,20 @@ function KT.Portrait3DYaw(unit, side, facingMode, invert, rotation, model)
         yaw, viewShift = 0, 0
     elseif model and model.GetModelFileID then
         local ok, id = pcall(model.GetModelFileID, model)
-        if not ok or (issecretvalue and issecretvalue(id)) or not KT.IsPortraitMirrorModel(id) then
-            yaw, viewShift = 0, 0
+        local readable = ok and type(id) == "number" and id > 0 and not (issecretvalue and issecretvalue(id))
+        local mirror = readable and KT.IsPortraitMirrorModel(id)
+        if readable and not mirror then
+            -- Your own humanoid model is mirrored from the very first frame
+            -- (a self-target shares it): waiting for the background probe to
+            -- learn the file ID left the portrait turned the wrong way for
+            -- a few seconds after every login or model change.
+            local own = unit == "player" or (UnitIsUnit and select(2, pcall(UnitIsUnit, unit, "player")) == true)
+            if own and PlayerWearsOwnModel() then
+                KT.PortraitLearnedMirrorModels[id] = true
+                mirror = true
+            end
         end
+        if not mirror then yaw, viewShift = 0, 0 end
     end
     return yaw + math.rad(tonumber(rotation) or 0), (unit == "player" or unit == "target") and 1.288 or 1, 0, viewShift
 end

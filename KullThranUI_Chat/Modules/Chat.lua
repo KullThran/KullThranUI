@@ -228,7 +228,14 @@ end
 
 local function KT_GetNonEmptyAccessibleString(value, fallback)
     local text = KT_GetAccessibleString(value, fallback)
-    if type(text) ~= "string" or text == "" then
+    if type(text) ~= "string" then
+        return fallback
+    end
+    -- A secret string cannot be compared: the fallback may itself be the secret value.
+    if not KT_CanAccessValue(text) then
+        return nil
+    end
+    if text == "" then
         return fallback
     end
 
@@ -6474,13 +6481,29 @@ function Mod:HookBlizzardMessageMirror()
 
         local pendingRendered = Mod.pendingRenderedMirrors or 0
         local pendingSecret = Mod.pendingSecretMirrors or 0
-        if pendingRendered <= 0 and pendingSecret <= 0 then
-            return
-        end
+        -- Nothing pending: the line did not come from a chat event KUI tracks
+        -- (print(), /dump, addon output, debug commands). It used to be dropped
+        -- here, so it only existed in the hidden Blizzard frame and showed up
+        -- in the copy window. Show it unless it repeats a recent entry.
+        local orphan = pendingRendered <= 0 and pendingSecret <= 0
 
         local rendered = KT_GetNonEmptyAccessibleString(text)
         if not rendered then
             return
+        end
+
+        if orphan then
+            -- Drawing the entry can write to ChatFrame1 again (native frame): never recurse.
+            if Mod._orphanMirrorBusy then return end
+            local history = Mod.history or {}
+            for index = #history, math.max(1, #history - 7), -1 do
+                local seen = history[index]
+                if seen and (seen.message == rendered or seen.renderedMessage == rendered
+                    or (seen.preformatted and KT_IsRenderedTextDuplicate(seen.message, rendered))
+                    or (not seen.preformatted and KT_IsRenderedMirrorDuplicate(rendered, seen))) then
+                    return
+                end
+            end
         end
 
         local lastEntry = Mod.history and Mod.history[#Mod.history]
@@ -6539,12 +6562,17 @@ function Mod:HookBlizzardMessageMirror()
             }),
         }
 
-        Mod:RecordChatActivity()
-        Mod:PushHistory(entry)
-        Mod:ShowWindowForActivity(false)
-        Mod:AddEntryToFrames(entry)
-        Mod:ScheduleWindowFade()
-        Mod:UpdateScrollButtonVisibility()
+        if orphan then Mod._orphanMirrorBusy = true end
+        local shown, failure = pcall(function()
+            Mod:RecordChatActivity()
+            Mod:PushHistory(entry)
+            Mod:ShowWindowForActivity(false)
+            Mod:AddEntryToFrames(entry)
+            Mod:ScheduleWindowFade()
+            Mod:UpdateScrollButtonVisibility()
+        end)
+        if orphan then Mod._orphanMirrorBusy = nil end
+        if not shown and geterrorhandler then geterrorhandler()(failure) end
     end)
 end
 
