@@ -20,7 +20,7 @@ KT.VisualThemes:RegisterModule("damagemeter", {
     getOwnedPaths = function()
         return { "barTexture", "showBackground", "visualStyle" }
     end,
-    -- retail/forever share the Blizzard style bar texture; classic wears Recount's.
+    -- retail/forever share the Blizzard style bar texture; classic wears its own BantoBar.
     -- The header/border recolor (gold for classic/retail, bronze for forever)
     -- lives in ThemeEngine:GetDamageMeterAccentColor, not in the seed, so
     -- class colors and any user texture choice under kui stay untouched.

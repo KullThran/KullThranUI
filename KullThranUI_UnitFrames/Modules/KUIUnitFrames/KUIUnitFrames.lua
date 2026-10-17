@@ -2948,8 +2948,11 @@ local function ApplyClassIconTexture(tex, classToken, style)
     local coords = CLASS_FULL_COORDS[classToken]
     if not coords then return false end
     tex:SetTexture(BLIZZ_CLASS_ICON_TEXTURE)
-    tex._classCoords = { coords[1], coords[2], coords[3], coords[4] }
-    tex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    -- every cell of the sheet carries its own square frame: trim it so the art fills a round portrait
+    local insetU, insetV = (coords[2] - coords[1]) * 0.09, (coords[4] - coords[3]) * 0.09
+    local l, r, tp, b = coords[1] + insetU, coords[2] - insetU, coords[3] + insetV, coords[4] - insetV
+    tex._classCoords = { l, r, tp, b }
+    tex:SetTexCoord(l, r, tp, b)
     return true
 end
 
@@ -2973,6 +2976,16 @@ end
 -- flip: Bear (5), Moonkin (31). Verified in game; Cat (1) and any other form still
 -- flips until it is reported otherwise.
 ns.DRUID_FORMS_KEEPING_ORIENTATION = { [5] = true, [31] = true }
+-- The Forever client's Bear capture looks the other way (Bear 5 / Dire Bear 8 must flip
+-- like the other forms); Moonkin keeps the humanoid orientation there too.
+ns.DRUID_FORMS_KEEPING_ORIENTATION_FOREVER = { [31] = true }
+ns.KeepingOrientationForms = function()
+    local vt = KT.VisualThemes
+    if vt and vt.GetClientFlavor and vt:GetClientFlavor() == "forever" then
+        return ns.DRUID_FORMS_KEEPING_ORIENTATION_FOREVER
+    end
+    return ns.DRUID_FORMS_KEEPING_ORIENTATION
+end
 ns.DruidFormFlipsPortrait = function()
     if type(GetShapeshiftForm) ~= "function" or select(3, pcall(UnitClass, "player")) ~= "DRUID" then
         return false
@@ -2981,7 +2994,7 @@ ns.DruidFormFlipsPortrait = function()
     if not ok or type(form) ~= "number" or form <= 0 then return false end
     if type(GetShapeshiftFormID) == "function" then
         local readable, id = pcall(GetShapeshiftFormID)
-        if readable and type(id) == "number" and not (issecretvalue and issecretvalue(id)) and ns.DRUID_FORMS_KEEPING_ORIENTATION[id] then
+        if readable and type(id) == "number" and not (issecretvalue and issecretvalue(id)) and ns.KeepingOrientationForms()[id] then
             return false
         end
     end
@@ -6712,7 +6725,7 @@ local function SetupUnitIndicators(frame, unit)
             -- issue (the two anchors are identical). Nudge the TEXT only,
             -- same absolute screen direction for both units, so it lands
             -- visually centered inside the (unmoved) circle.
-            local levelTextXNudge = 1 * classicScale
+            local levelTextXNudge = (renderedTheme == "classic" and 0 or 1) * classicScale
             -- Pulls the level inward toward the portrait on whichever side
             -- each unit anchors from, applied to BOTH units symmetrically
             -- (same magnitude): the underlying 60/33 base otherwise sits too
@@ -6886,7 +6899,11 @@ local function SetupUnitIndicators(frame, unit)
                 if borderChoice == "nativerare" then nativeKind = "rare"
                 elseif borderChoice == "nativeelite" then nativeKind = "elite" end
             elseif u == "target" and showClassification and profile
-                and profile.targetClassificationArt == "native" then
+                and (profile.targetClassificationArt == "native"
+                    -- Retail's own style default is Blizzard's Rare/Elite overlay;
+                    -- the other styles keep their rings unless "native" is chosen.
+                    or (renderedTheme == "retail" and (profile.targetClassificationArt == nil
+                        or profile.targetClassificationArt == "auto"))) then
                 nativeKind = ns.NativeClassificationKind(SafeUnitClassification(u))
             end
             if nativeKind and not ns.HasNativeClassificationArt(nativeKind) then nativeKind = nil end
@@ -9743,7 +9760,7 @@ local function ReloadFrames()
                                 local anchorFrame = pBtbVisible and frame.BottomTextBar or (ppIsAtt and frame.Power) or frame.Health
                                 local pCbXOff = pBtbVisible and 0 or castBarOffset
                                 -- Player castbar is always locked to frame ? no x/y offsets
-                                castbarBg:SetPoint("TOP", anchorFrame, "BOTTOM", pCbXOff, 0)
+                                castbarBg:SetPoint("TOP", anchorFrame, "BOTTOM", pCbXOff, (usingStockHeight and not pBtbVisible) and -4 or 0)
                                 if frame.Castbar._syncInactiveVisibility then
                                     frame.Castbar._syncInactiveVisibility()
                                 end
@@ -10146,7 +10163,7 @@ local function ReloadFrames()
                                 local btbVisible = (settings.bottomTextBar and tBtbPos == "bottom" and frame.BottomTextBar and frame.BottomTextBar:IsShown())
                                 local cbAnchor = btbVisible and frame.BottomTextBar or tPpBtbAnchor
                                 local cbXOff = btbVisible and 0 or castBarOffset
-                                castbarBg:SetPoint("TOP", cbAnchor, "BOTTOM", cbXOff, 0)
+                                castbarBg:SetPoint("TOP", cbAnchor, "BOTTOM", cbXOff, (targetUsingStockHeight and not btbVisible) and -4 or 0)
                                 if frame.Castbar._syncInactiveVisibility then
                                     frame.Castbar._syncInactiveVisibility()
                                 end

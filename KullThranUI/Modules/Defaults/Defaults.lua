@@ -267,7 +267,7 @@ function KT:GenerateDefaults()
                 width = 567,
                 height = 24,
                 x = -0.9999198317527771,
-                y = 15.00151443481445,
+                y = 70,   -- raised: sits above the stock action bar art instead of overlapping it
                 point = "BOTTOM",
                 xOffset = 0,
                 yOffset = -20,

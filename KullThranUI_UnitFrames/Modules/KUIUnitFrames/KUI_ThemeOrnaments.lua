@@ -171,6 +171,7 @@ function O.ApplyLevelCircle(frame)
         textHost:SetAllPoints(owner)
         textHost:SetFrameStrata(owner:GetFrameStrata())
         textHost:SetFrameLevel(owner:GetFrameLevel() + 2)
+        frame._kuiLevelTextHost = textHost
         if frame._kuiLevelText and frame._kuiLevelText.SetParent then
             frame._kuiLevelText:SetParent(textHost)
         end
@@ -178,6 +179,13 @@ function O.ApplyLevelCircle(frame)
         Unsnap(art)
         art:Hide()
         frame._kuiLevelThemeCircle = art
+    end
+    -- Callers (the options live preview) may re-parent the number between passes; it must
+    -- stay on the host above the ring art or the opaque ring covers it.
+    local textHost = frame._kuiLevelTextHost
+    if textHost and frame._kuiLevelText and frame._kuiLevelText.GetParent
+        and frame._kuiLevelText:GetParent() ~= textHost then
+        frame._kuiLevelText:SetParent(textHost)
     end
     local theme = RenderedTheme()
     if theme == "classic" then

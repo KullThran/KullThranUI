@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Armory
 ## Notes: KullThranUI module: Armory
 ## Author: KullThran
-## Version: 5.1.7
+## Version: 5.1.8
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 

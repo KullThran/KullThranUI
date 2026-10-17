@@ -35,7 +35,7 @@ local function region(parent)
     return r
 end
 local chosen="kui"
-local styles={ tabs={{id="kui",label="KUI"},{id="retail",label="Retail"},{id="forever",label="Forever"},{id="classic",label="Classic"}},
+local styles={ tabs={{id="kui",label="KUI"},{id="forever",label="Forever"},{id="retail",label="Retail"},{id="classic",label="Classic"}},
     Current=function() return chosen end, Select=function(key) chosen=key;return true end }
 local accent={0.2,0.6,0.9}
 local colors={}

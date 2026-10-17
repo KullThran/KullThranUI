@@ -657,6 +657,43 @@ function KT.VisualThemes:ApplyAll(targetTheme)
     RestoreUnitFramePlacement(placement)
     self:ResetComboDefaults()
 
+    -- Every module that keeps its own "style" choice follows the general style as well
+    -- (a theme's saved slot may remember a different pick made earlier).
+    local chatDb = profile.chat
+    if type(chatDb) == "table" and type(chatDb.styleByTheme) == "table" then chatDb.styleByTheme[targetTheme] = nil end
+    pcall(function()
+        local dm = registry.damagemeter and registry.damagemeter.getProfile and registry.damagemeter.getProfile()
+        if dm then
+            dm.visualStyle = targetTheme
+            dm.showBackground = true  -- every style draws its panel / frame (the old default was off)
+            -- the extra windows wear the same look as the main one
+            for _, win in ipairs(dm.windows or {}) do
+                if type(win) == "table" then
+                    win.barTexture, win.showBackground = dm.barTexture, dm.showBackground
+                    win._ktDamageMeterThemeSlots, win._ktDamageMeterTheme = nil, targetTheme
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local cb = registry.castbar and registry.castbar.getProfile and registry.castbar.getProfile()
+        local S = KT.CastBarStyles
+        if cb and S and S.labels[targetTheme] and cb.castbarStyle ~= targetTheme then S:Select(cb, targetTheme) end
+    end)
+    pcall(function()
+        local mm = registry.minimap and registry.minimap.getProfile and registry.minimap.getProfile()
+        if mm then mm.ringStyle = nil end
+    end)
+    pcall(function()
+        for _, tbl in ipairs({ _G.KullThranUINameplatesDB, _G.KullThranUINameplatesDB_Forever }) do
+            if type(tbl) == "table" then tbl.nameplateStyle = nil end
+        end
+    end)
+    pcall(function()
+        local pf = KT.GetModule and KT:GetModule("PartyFrames", true)
+        if pf and pf.db then pf.db.partyFrameStyle = nil end
+    end)
+
     -- The Installer resumes on its Visual Style page after this reload.
     local installer = KT.GetModule and KT:GetModule("Installer", true)
     if installer and installer.PrepareStyleReload then installer:PrepareStyleReload() end

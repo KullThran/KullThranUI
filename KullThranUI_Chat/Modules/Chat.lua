@@ -78,6 +78,7 @@ local CHAT_EVENTS = {
     "CHAT_MSG_SAY",
     "CHAT_MSG_YELL",
     "CHAT_MSG_EMOTE",
+    "CHAT_MSG_TEXT_EMOTE",
     "CHAT_MSG_GUILD",
     "CHAT_MSG_OFFICER",
     "CHAT_MSG_PARTY",
@@ -96,6 +97,29 @@ local CHAT_EVENTS = {
     "CHAT_MSG_LOOT",
     "CHAT_MSG_MONEY",
     "CHAT_MSG_CURRENCY",
+    "CHAT_MSG_ACHIEVEMENT",
+    "CHAT_MSG_GUILD_ACHIEVEMENT",
+    "CHAT_MSG_AFK",
+    "CHAT_MSG_DND",
+    "CHAT_MSG_IGNORED",
+    "CHAT_MSG_MONSTER_SAY",
+    "CHAT_MSG_MONSTER_YELL",
+    "CHAT_MSG_MONSTER_EMOTE",
+    "CHAT_MSG_MONSTER_WHISPER",
+    "CHAT_MSG_MONSTER_PARTY",
+    "CHAT_MSG_RAID_BOSS_EMOTE",
+    "CHAT_MSG_RAID_BOSS_WHISPER",
+    "CHAT_MSG_COMBAT_XP_GAIN",
+    "CHAT_MSG_COMBAT_HONOR_GAIN",
+    "CHAT_MSG_COMBAT_FACTION_CHANGE",
+    "CHAT_MSG_COMBAT_MISC_INFO",
+    "CHAT_MSG_SKILL",
+    "CHAT_MSG_TRADESKILLS",
+    "CHAT_MSG_PET_INFO",
+    "CHAT_MSG_BG_SYSTEM_NEUTRAL",
+    "CHAT_MSG_BG_SYSTEM_ALLIANCE",
+    "CHAT_MSG_BG_SYSTEM_HORDE",
+    "CHAT_MSG_TARGETICONS",
 }
 
 local CHAT_EVENT_LOOKUP = {}
@@ -103,11 +127,47 @@ for i = 1, #CHAT_EVENTS do
     CHAT_EVENT_LOOKUP[CHAT_EVENTS[i]] = true
 end
 
+-- WHISPER inside the name also appears in MONSTER_WHISPER / RAID_BOSS_WHISPER, which are not
+-- player whispers and must never reach the whisper tabs.
+local function KT_IsPlayerWhisperType(chatType)
+    chatType = tostring(chatType or "")
+    return chatType:find("WHISPER", 1, true) ~= nil
+        and chatType:find("^MONSTER_") == nil and chatType:find("^RAID_BOSS_") == nil
+end
+
+local KT_SYSTEM_TYPES = { SYSTEM = true, MONEY = true, CURRENCY = true,
+    ACHIEVEMENT = true,
+    AFK = true,
+    DND = true,
+    IGNORED = true,
+    COMBAT_XP_GAIN = true,
+    COMBAT_HONOR_GAIN = true,
+    COMBAT_FACTION_CHANGE = true,
+    COMBAT_MISC_INFO = true,
+    SKILL = true,
+    TRADESKILLS = true,
+    PET_INFO = true,
+    BG_SYSTEM_NEUTRAL = true,
+    BG_SYSTEM_ALLIANCE = true,
+    BG_SYSTEM_HORDE = true,
+    TARGETICONS = true,
+}
+local KT_SAY_TYPES = { SAY = true, YELL = true, EMOTE = true, TEXT_EMOTE = true,
+    MONSTER_SAY = true,
+    MONSTER_YELL = true,
+    MONSTER_EMOTE = true,
+    MONSTER_WHISPER = true,
+    MONSTER_PARTY = true,
+    RAID_BOSS_EMOTE = true,
+    RAID_BOSS_WHISPER = true,
+}
+
 local CHAT_LABELS = {
     SYSTEM = "System",
     SAY = "Say",
     YELL = "Yell",
     EMOTE = "Emote",
+    TEXT_EMOTE = "Emote",
     GUILD = "Guild",
     OFFICER = "Officer",
     PARTY = "Party",
@@ -127,6 +187,29 @@ local CHAT_LABELS = {
     MONEY = "Money",
     CURRENCY = "Currency",
     ADDON = "Addon",
+    ACHIEVEMENT = "Achievement",
+    GUILD_ACHIEVEMENT = "Achievement",
+    AFK = "AFK",
+    DND = "DND",
+    IGNORED = "Ignored",
+    MONSTER_SAY = "Say",
+    MONSTER_YELL = "Yell",
+    MONSTER_EMOTE = "Emote",
+    MONSTER_WHISPER = "Say",
+    MONSTER_PARTY = "Say",
+    RAID_BOSS_EMOTE = "Emote",
+    RAID_BOSS_WHISPER = "Emote",
+    COMBAT_XP_GAIN = "System",
+    COMBAT_HONOR_GAIN = "System",
+    COMBAT_FACTION_CHANGE = "System",
+    COMBAT_MISC_INFO = "System",
+    SKILL = "System",
+    TRADESKILLS = "System",
+    PET_INFO = "System",
+    BG_SYSTEM_NEUTRAL = "System",
+    BG_SYSTEM_ALLIANCE = "System",
+    BG_SYSTEM_HORDE = "System",
+    TARGETICONS = "System",
 }
 
 local COPY_SUBSTITUTIONS = {
@@ -3183,7 +3266,7 @@ function Mod:IsPrivateChatEntry(entry)
     end
 
     local chatType = tostring(entry.chatType or "")
-    return chatType:find("WHISPER", 1, true) ~= nil
+    return KT_IsPlayerWhisperType(chatType)
         or entry.whisperTarget ~= nil
         or entry.whisperThreadKey ~= nil
 end
@@ -3423,7 +3506,7 @@ function Mod:BuildTabFilter(config)
     elseif mode == "WHISPER" then
         return function(entry)
             local chatType = tostring(entry.chatType or "")
-            local isWhisperEntry = chatType:find("WHISPER") ~= nil
+            local isWhisperEntry = KT_IsPlayerWhisperType(chatType)
 
             if not isWhisperEntry then
                 return false
@@ -3456,7 +3539,7 @@ function Mod:BuildTabFilter(config)
         end
     elseif mode == "SYSTEM" then
         return function(entry)
-            return entry.chatType == "SYSTEM" or entry.chatType == "MONEY" or entry.chatType == "CURRENCY"
+            return KT_SYSTEM_TYPES[entry.chatType] == true
         end
     elseif mode == "LOOT" then
         return function(entry)
@@ -3464,7 +3547,7 @@ function Mod:BuildTabFilter(config)
         end
     elseif mode == "SAY" then
         return function(entry)
-            return entry.chatType == "SAY" or entry.chatType == "YELL" or entry.chatType == "EMOTE"
+            return entry.chatType == "SAY" or KT_SAY_TYPES[entry.chatType] == true
         end
     end
 
@@ -4750,7 +4833,7 @@ function Mod:GetTabIndexForLiveChatType(chatType)
             if filterMode == "COMBAT" then
                 return index
             end
-        elseif normalized == "SAY" or normalized == "EMOTE" or normalized == "YELL" or normalized == "GENERAL" then
+        elseif normalized == "SAY" or normalized == "EMOTE" or normalized == "TEXT_EMOTE" or normalized == "YELL" or normalized == "GENERAL" then
             if filterMode == "GENERAL" then
                 return index
             end
@@ -5568,6 +5651,25 @@ function Mod:HookBlizzardHyperlinkClicks()
     end
 end
 
+-- Shift + left click on a player name asks /who for them (level, race, class, guild, zone).
+-- Blizzard only does that when no edit box takes the name; KUI's edit box always does.
+function Mod:WhoFromShiftClick(link, button)
+    if button ~= "LeftButton" or not IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown() then return end
+    local name = type(link) == "string" and link:match("^player:([^:]+)")
+    if not name or name == "" then return end
+    -- the default UI already sends /who itself when it could not insert the name anywhere
+    if not (_G.ChatEdit_GetActiveWindow and _G.ChatEdit_GetActiveWindow()) then return end
+    local now = GetTime and GetTime() or 0
+    if self.lastShiftWho and now - self.lastShiftWho < 0.5 then return end
+    self.lastShiftWho = now
+    local tag = _G.WHO_TAG_EXACT or "x-"
+    if C_FriendList and C_FriendList.SendWho then
+        C_FriendList.SendWho(tag .. name)
+    elseif _G.SendWho then
+        _G.SendWho(tag .. name)
+    end
+end
+
 function Mod:HookItemRefWhisperLinks()
     if self.itemRefWhisperHooked then
         return
@@ -5577,6 +5679,7 @@ function Mod:HookItemRefWhisperLinks()
 
     hooksecurefunc("SetItemRef", function(link, _, button)
         if Mod and Mod.itemRefWhisperBypass then return end
+        if Mod and Mod.IsEnabled and Mod:IsEnabled() then pcall(Mod.WhoFromShiftClick, Mod, link, button) end
         if KT_ShouldSkipHookedHyperlink(link, button) then
             return
         end
@@ -6376,6 +6479,10 @@ function Mod:RegisterChatEvents()
     -- protected chat-frame state.
     self.chatEventsRegistered = true
 
+    for _, nameEvent in ipairs({ "CHAT_MSG_TRADESKILLS", "CHAT_MSG_TEXT_EMOTE", "CHAT_MSG_SKILL" }) do
+        pcall(self.RegisterEvent, self, nameEvent, "OnNameColorEvent")
+    end
+
     if KT_IsSecureChatSafeMode() then
         -- Capture whisper events directly as well as Battle.net inline/toast
         -- events. The native frame is still left in charge of rendering, but
@@ -6468,6 +6575,108 @@ function Mod:RegisterChatEvents()
     end
 end
 
+-- Crafting / emote lines ("X creates Y.") carry no class colour in Blizzard's text. The event
+-- gives the sender's GUID, so the class colour of each name is remembered here and applied to
+-- the start of the matching mirrored line.
+Mod.nameColorCache = Mod.nameColorCache or {}
+Mod.nameColorCount = Mod.nameColorCount or 0
+
+function Mod:OnNameColorEvent(event, ...)
+    local text, sender, _, _, _, _, _, _, _, _, _, guid = ...
+    sender = KT_GetNonEmptyAccessibleString(sender)
+    guid = KT_GetNonEmptyAccessibleString(guid)
+    if not sender or not guid or not guid:match("^Player") then return end
+    local ok, short = pcall(Ambiguate, sender, "short")
+    short = ok and KT_GetNonEmptyAccessibleString(short) or sender
+    if not short or self.nameColorCache[short] then return end
+    local okInfo, _, classTag = pcall(GetPlayerInfoByGUID, guid)
+    local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+    local color = okInfo and classTag and classColors and classColors[classTag]
+    if not color then return end
+    if self.nameColorCount >= 300 then
+        wipe(self.nameColorCache)
+        self.nameColorCount = 0
+    end
+    self.nameColorCount = self.nameColorCount + 1
+    self.nameColorCache[short] = format("|cff%02x%02x%02x", floor((color.r or 1) * 255 + 0.5),
+        floor((color.g or 1) * 255 + 0.5), floor((color.b or 1) * 255 + 0.5))
+end
+
+-- Crafting lines have no sender in their event, so the name comes from the text and its class
+-- from whoever is around: nameplates, then the group.
+local function KT_ClassColourFor(name)
+    local classColors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+    if not classColors then return nil end
+    local function fromUnit(unit)
+        local ok, unitName = pcall(UnitName, unit)
+        if not ok or unitName ~= name then return nil end
+        local okClass, _, classTag = pcall(UnitClass, unit)
+        local color = okClass and classTag and classColors[classTag]
+        if not color then return nil end
+        return format("|cff%02x%02x%02x", floor((color.r or 1) * 255 + 0.5),
+            floor((color.g or 1) * 255 + 0.5), floor((color.b or 1) * 255 + 0.5))
+    end
+    local found
+    for _, unit in ipairs({ "target", "focus", "mouseover", "player" }) do
+        found = found or fromUnit(unit)
+    end
+    if not found and C_NamePlate and C_NamePlate.GetNamePlates then
+        for _, plate in ipairs(C_NamePlate.GetNamePlates() or {}) do
+            local unit = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+            if unit then found = found or fromUnit(unit) end
+            if found then break end
+        end
+    end
+    if not found then
+        for i = 1, 4 do found = found or fromUnit("party" .. i) end
+    end
+    if not found and IsInRaid and IsInRaid() then
+        for i = 1, 40 do
+            found = found or fromUnit("raid" .. i)
+            if found then break end
+        end
+    end
+    return found
+end
+
+local KT_CRAFT_PATTERN
+local function KT_CraftSenderName(text)
+    if KT_CRAFT_PATTERN == nil then
+        local template = _G.TRADESKILL_LOG_THIRDPERSON or "%s creates %s."
+        KT_CRAFT_PATTERN = "^" .. template:gsub("[%^%$%(%)%.%[%]%*%+%-%?]", "%%%0"):gsub("%%s", "(.-)") .. "$"
+    end
+    return text:match(KT_CRAFT_PATTERN)
+end
+
+function Mod:ApplyNameColors(text)
+    if type(text) ~= "string" then return text end
+    if next(self.nameColorCache) == nil and not KT_CraftSenderName(text:gsub("^%[%d%d:%d%d[:%d]*%]%s*", "")) then
+        return text
+    end
+    local prefix, rest = text:match("^(%[%d%d:%d%d[:%d]*%]%s*)(.*)$")
+    if not prefix then prefix, rest = "", text end
+    if rest:find("^|[cH]") then return text end  -- already coloured / a link
+    local craftName = KT_CraftSenderName(rest)
+    if craftName and not self.nameColorCache[craftName] then
+        local colour = KT_ClassColourFor(craftName)
+        if colour then
+            if self.nameColorCount >= 300 then wipe(self.nameColorCache); self.nameColorCount = 0 end
+            self.nameColorCount = self.nameColorCount + 1
+            self.nameColorCache[craftName] = colour
+        end
+    end
+    for name, colour in pairs(self.nameColorCache) do
+        local len = #name
+        if rest:sub(1, len) == name then
+            local nextChar = rest:sub(len + 1, len + 1)
+            if nextChar == "" or nextChar == " " or nextChar == "'" then
+                return prefix .. colour .. name .. "|r" .. rest:sub(len + 1)
+            end
+        end
+    end
+    return text
+end
+
 function Mod:HookBlizzardMessageMirror()
     if self.blizzardMessageMirrorHooked or not _G.ChatFrame1 or not hooksecurefunc then
         return
@@ -6488,6 +6697,7 @@ function Mod:HookBlizzardMessageMirror()
         local orphan = pendingRendered <= 0 and pendingSecret <= 0
 
         local rendered = KT_GetNonEmptyAccessibleString(text)
+        if rendered then rendered = Mod:ApplyNameColors(rendered) end
         if not rendered then
             return
         end
@@ -6882,7 +7092,7 @@ function Mod:GetEntryMessage(entry, includeTimestamp)
     local label = KT_GetAccessibleString(entry.label, nil)
     local author = KT_GetAccessibleString(entry.author, KT_GetAccessibleString(entry.authorRaw, nil))
     local authorLink = nil
-    if KT_SafeString(entry.chatType, ""):find("WHISPER", 1, true) then
+    if KT_IsPlayerWhisperType(KT_SafeString(entry.chatType, "")) then
         authorLink = KT_BuildWhisperDisplayLink(entry)
     end
     if type(authorLink) == "string" and authorLink ~= "" then
@@ -7701,6 +7911,24 @@ function Mod:EnsureCombatLogFrame(parent)
     local frame = _G.ChatFrame2
     if not frame then
         return self.combatLogChatFrame
+    end
+
+    -- Blizzard's combat log frame also subscribes to non-combat groups (pet info, loot, system...),
+    -- which is how "X's pet begins eating..." ended up in Combat. Keep only the real combat log:
+    -- its lines come from COMBAT_LOG_EVENT_UNFILTERED, not from these chat message groups.
+    -- Never touch the lists while chat is locked / secret (see the native tab setup above).
+    if not frame.KT_CombatGroupsCleared
+        and not KT_IsSecureChatSafeMode()
+        and not (InCombatLockdown and InCombatLockdown())
+        and not KT_IsChatMessagingLocked() then
+        if _G.ChatFrame_RemoveAllMessageGroups then
+            pcall(_G.ChatFrame_RemoveAllMessageGroups, frame)
+        end
+        if _G.ChatFrame_RemoveAllChannels then
+            pcall(_G.ChatFrame_RemoveAllChannels, frame)
+        end
+        self:ClearNativeChatFrameContent(frame)
+        frame.KT_CombatGroupsCleared = true
     end
 
     self:ApplyNativeChatFrameLayout(frame, parent, -18, 72)

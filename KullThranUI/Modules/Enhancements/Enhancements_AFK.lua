@@ -150,11 +150,25 @@ end
 -- ----------------------------------------------------------------------------
 -- Camera factor for the player's current form: druid forms are far larger than a
 -- humanoid, so the camera moves back by 2.5x for them.
+-- Only the huge travel / flight forms need the camera far back; the rest of the druid forms
+-- are close to humanoid size (keyed by GetShapeshiftFormID).
+local FORM_FIT = {
+    [1] = 0.75,   -- cat
+    [2] = 0.6,    -- tree of life
+    [3] = 0.4,    -- travel
+    [4] = 0.55,   -- aquatic
+    [5] = 0.6,    -- bear
+    [27] = 0.4,   -- swift flight form
+    [29] = 0.4,   -- flight form
+    [31] = 0.65,  -- moonkin
+    [36] = 0.65,  -- treant
+}
 local function FormFitFactor()
     local _, class = UnitClass("player")
     local form = GetShapeshiftForm and GetShapeshiftForm() or 0
-    if class == "DRUID" and form and form > 0 then return 0.4 end
-    return 1
+    if class ~= "DRUID" or not form or form <= 0 then return 1 end
+    local id = GetShapeshiftFormID and GetShapeshiftFormID()
+    return FORM_FIT[id] or 0.7
 end
 
 -- Model animation loop: wave on entry, then the chosen emote with idle pauses

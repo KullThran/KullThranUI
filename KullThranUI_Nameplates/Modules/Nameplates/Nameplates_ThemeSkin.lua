@@ -69,7 +69,7 @@ local function Build(plate, bar, key)
         if horizontal then t:SetHeight(1) else t:SetWidth(1) end
         c[#c + 1] = t
     end
-    local BLACK, GOLD = { 0.02, 0.02, 0.02 }, { 0.80, 0.66, 0.38 }
+    local BLACK, GOLD = { 0.02, 0.02, 0.02 }, { 0.56, 0.51, 0.40 }   -- the real rim is a muted tan, not bright gold
     -- lineas (acortadas para dejar sitio a la curva)
     Line(BLACK, "TOPLEFT", 4, 2, "TOPRIGHT", -4, 2, true)
     Line(BLACK, "BOTTOMLEFT", 4, -2, "BOTTOMRIGHT", -4, -2, true)
@@ -92,10 +92,8 @@ local function Build(plate, bar, key)
     Gradient(cg, "VERTICAL", 1, 1, 1, 0, 1, 1, 1, 0)       -- Classic original: sin brillo extra
     c.gloss = cg
     local cs = Solid(f, "OVERLAY", 3, 0, 0, 0, 1)
-    cs:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
-    cs:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    cs:SetHeight(math.max(2, math.floor((bar:GetHeight() or 10) * 0.4)))
-    Gradient(cs, "VERTICAL", 0, 0, 0, 0, 0, 0, 0, 0)
+    cs:SetAllPoints(bar)
+    Gradient(cs, "VERTICAL", 0, 0, 0, 0.18, 0, 0, 0, 0.18)   -- the real fill is a bit darker than the stock texture
     c.shade = cs
 
     -- ===== RETAIL / FOREVER: look Blizzard (borde claro fino, rojo glossy) =====
@@ -377,8 +375,8 @@ end
 local CIRCLE_MASK = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\circle_mask.tga"
 local PILL_LAYERS = {
     { 0, 0.02, 0.02, 0.02, -4 },
-    { 1, 0.88, 0.74, 0.36, -3 },
-    { 2, 0.58, 0.46, 0.15, -2 },
+    { 1, 0.62, 0.52, 0.24, -3 },
+    { 2, 0.40, 0.33, 0.10, -2 },
 }
 local function BuildClassicPill(plate)
     local box = CreateFrame("Frame", nil, plate)
@@ -475,7 +473,7 @@ function ns.ApplyThemeLevel(plate)
     end
     badge:SetFrameLevel(health:GetFrameLevel() + 8)
     local barH = health:GetHeight() or 10
-    local h = math.floor(barH + 5)
+    local h = math.floor(barH + 3)
     local size = math.max(9, math.min(13, math.floor(barH * 0.95)))
     local okT, txt = pcall(level.GetText, level)
     if not okT then txt = nil end

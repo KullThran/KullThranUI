@@ -16,6 +16,29 @@ local function SkinCategoryButton(button)
     button.isSkinned = true
 end
 
+-- StripTextures removes Blizzard's SelectedTexture, so the chosen category/sub-category
+-- has no mark any more. Draw our own from the list's selection (the same indices
+-- AuctionHouseFilterButton_SetUp compares) and refresh it on every list update.
+local function UpdateCategorySelection(list)
+    local category, subCategory, subSubCategory = list:GetSelectedCategory()
+    list.ScrollBox:ForEachFrame(function(button)
+        local selected = (button.type == "category" and button.categoryIndex == category)
+            or (button.type == "subCategory" and button.subCategoryIndex == subCategory)
+            or (button.type == "subSubCategory" and button.subSubCategoryIndex == subSubCategory)
+        if not button.ktSelected then
+            button.ktSelected = button:CreateTexture(nil, "ARTWORK", nil, 2)
+            button.ktSelected:SetTexture("Interface\\Buttons\\WHITE8x8")
+            button.ktSelected:SetAllPoints(button)
+        end
+        local bc = S:GetAccentColor()
+        button.ktSelected:SetVertexColor(bc[1], bc[2], bc[3], 0.3)
+        button.ktSelected:SetShown(selected and true or false)
+        if button.Text and button.Text.SetTextColor then
+            if selected then button.Text:SetTextColor(bc[1], bc[2], bc[3]) else button.Text:SetTextColor(1, 1, 1) end
+        end
+    end)
+end
+
 local function SkinResultRow(row)
     if not row then return end
     if row.cells then
@@ -88,7 +111,11 @@ S.SkinFuncs["Blizzard_AuctionHouseUI"] = function()
     Categories.backdrop:SetBackdropBorderColor(0, 0, 0, 1) -- FORZAR NEGRO
     S:HandleScrollBar(Categories.ScrollBar)
     if Categories.ScrollBox then
-        hooksecurefunc(Categories.ScrollBox, "Update", function(self) if not self:GetView() then return end self:ForEachFrame(SkinCategoryButton) end)
+        hooksecurefunc(Categories.ScrollBox, "Update", function(self)
+            if not self:GetView() then return end
+            self:ForEachFrame(SkinCategoryButton)
+            UpdateCategorySelection(Categories)
+        end)
     end
     
     -- Resultados (Contenedor interno -> borde negro)

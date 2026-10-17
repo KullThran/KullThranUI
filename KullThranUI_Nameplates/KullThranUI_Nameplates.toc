@@ -2,13 +2,14 @@
 ## Title: KullThranUI - Nameplates
 ## Notes: KullThranUI module: Nameplates
 ## Author: KullThran
-## Version: 5.1.7
+## Version: 5.1.8
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
 Init.lua
 Modules\Nameplates\Nameplates.lua
 Modules\Nameplates\Nameplates_ThemeSkin.lua
+Modules\Nameplates\Nameplates_Range.lua
 Modules\Nameplates\Nameplates_AuraContainers.lua
 Modules\Nameplates\Nameplates_Friendly.lua
 Modules\Nameplates\Nameplates_Options.lua

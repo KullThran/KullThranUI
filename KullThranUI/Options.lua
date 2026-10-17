@@ -958,10 +958,33 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.7"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.8"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
+    ["5.1.8"] = {
+        version = "5.1.8",
+        published = "2026-10-18",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "Chat: four chat styles (KUI Style, Forever, Retail and Classic), each with its own frame, tabs, buttons and input bar. Every Visual Style remembers its own choice and whispers keep their colours.",
+            "Chat: the Combat tab shows only the combat log (no pet, loot or system messages) and its My actions / What happened to me? buttons follow the chat style.",
+            "Raid Check (Enhancements): after a ready check it lists who is missing food, flask, augment rune or pre-pot and lets you report it to the group. Open it with /ktraidcheck.",
+            "Premade Groups: a bar under the search box with an icon per dungeon of the current season to toggle it in the filter, a reset button and a friends-only filter, and search results show each member's specialization icon.",
+            "Bulk Buy (Enhancements): Shift-click a stackable vendor item to buy a whole quantity in one go.",
+            "Nameplates: optional distance over enemy nameplates, shown as range brackets, with format, colour and scope options.",
+            "Unit Frames: new Portrait Auras tab. The most important aura of Player, Target, Focus, Pet, Target of Target and Focus Target shows on its portrait (crowd control, disarms, defensives, important spells), with a live preview. A CC Catalog lists the crowd control spells of your game with search and a switch per spell, and raid and arena frames can show the same auras.",
+            "Unit Frames: Druid alternate mana bar under the Player frame while in cat, bear or moonkin form (off by default on the Retail client). The cast bar sits below it and no longer overlaps the power bar.",
+            "Unit Frames: Forever Portrait Frame option (bronze ornament or plain ring), Forever combo points, and the style cards can be folded away.",
+            "Cast Bar: Retail and Forever use Blizzard-style art with the spell name on a plate, identical on both clients.",
+            "Portraits: Druid forms are framed correctly (cat, bear, moonkin, travel and flight).",
+            "Damage Meter: native styles keep their panel and header, and the meter drops below the maximized world map.",
+            "Unlock Mode: the right-click menu has a Scale slider for each element.",
+            "Skins: the Auction House marks the selected category again.",
+            "Minimap: the zone name shows even when it loads late.",
+        },
+    },
     ["5.1.7"] = {
         version = "5.1.7",
         published = "2026-10-17",

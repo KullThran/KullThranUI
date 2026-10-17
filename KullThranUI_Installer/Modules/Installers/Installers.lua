@@ -1755,7 +1755,7 @@ local METER_PREVIEW_SKINS = {
         barTexture = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga" },
     classic = { panel = { 0.06, 0.04, 0.03, 0.96 }, edge = { 0, 0, 0, 1 }, header = { 0.60, 0.06, 0.05, 1 },
         title = { 1, 0.9, 0.45 }, rowBg = { 0.05, 0.03, 0.02, 0.7 },
-        -- Recount's own bar texture (BantoBar), same file as the live Classic meter.
+        -- The Classic meter's bar texture (BantoBar), same file as the live Classic meter.
         barTexture = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga" },
     retail = { panel = { 0.03, 0.035, 0.045, 0.94 }, edge = { 0.12, 0.12, 0.14, 1 }, title = { 1, 0.82, 0.1 },
         rowBg = { 0.02, 0.02, 0.03, 0.9 }, barTexture = "Interface\\TargetingFrame\\UI-StatusBar" },

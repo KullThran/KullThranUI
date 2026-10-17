@@ -2560,6 +2560,7 @@ initFrame:SetScript("OnEvent", function(self)
                             else
                                 pip:SetColorTexture(cpEmptyCol.r, cpEmptyCol.g, cpEmptyCol.b, cpEmptyCol.a)
                             end
+                            if ns.StyleForeverComboPip then ns.StyleForeverComboPip(pip, i <= cpCur) end
                             UnsnapTex(pip)
                             pip:Show()
                         else
@@ -3815,6 +3816,35 @@ initFrame:SetScript("OnEvent", function(self)
                 end,
                 tooltip = LText("Scales enemy nameplates while they are casting. 100% = no change.")
             }); y = y - h
+
+        -- Distance over enemy nameplates (LibRangeCheck brackets, not exact yards)
+        _, h = W:SectionHeader(parent, "DISTANCE", y); y = y - h
+        local function RangeRefresh() if ns.PlateRange and ns.PlateRange.Refresh then ns.PlateRange.Refresh() end end
+        _, h = W:Toggle(parent, "Show Distance over Enemy Nameplates", y,
+            function() return DBVal("rangeEnabled") == true end,
+            function(v) DB().rangeEnabled = v and true or false; RangeRefresh() end); y = y - h
+        _, h = W:Dropdown(parent, "Distance Format", y,
+            { max = "Up to (max yards)", span = "Range (min-max)" },
+            function() return DBVal("rangeFormat") or "max" end,
+            function(v) DB().rangeFormat = v end,
+            { "max", "span" }); y = y - h
+        _, h = W:Dropdown(parent, "Distance Color", y,
+            { bands = "By distance (green to grey)", white = "White" },
+            function() return DBVal("rangeColor") or "bands" end,
+            function(v) DB().rangeColor = v end,
+            { "bands", "white" }); y = y - h
+        _, h = W:Dropdown(parent, "Distance Shown On", y,
+            { all = "All enemy nameplates", target = "Current target only" },
+            function() return DBVal("rangeScope") or "all" end,
+            function(v) DB().rangeScope = v end,
+            { "all", "target" }); y = y - h
+        _, h = W:Slider(parent, "Distance Text Size", y,
+            function() return DBVal("rangeSize") or 11 end,
+            function(v) DB().rangeSize = v end, 7, 24, 1, "%d"); y = y - h
+        _, h = W:Slider(parent, "Hide Beyond (yards)", y,
+            function() return DBVal("rangeMax") or 60 end,
+            function(v) DB().rangeMax = v end, 10, 100, 5, "%d"); y = y - h
+        _, h = W:Label(parent, "Distances are brackets from the spells and items your class can use, not exact yards.", y, 10); y = y - h
 
         -- Helper: pandemic glow is off when style is "None"
         local function pandemicOff()

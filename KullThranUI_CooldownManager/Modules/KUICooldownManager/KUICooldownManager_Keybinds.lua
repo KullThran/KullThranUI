@@ -554,7 +554,7 @@ ns.CDM_RebuildKeybindCache_Impl = function()
         end
     end
 
-    -- Dominos
+    -- Extra action bar buttons
     if _G["DominosActionButton1"] then
         for i = 1, 180 do
             ProcessUniqueButton(_G["DominosActionButton" .. i])

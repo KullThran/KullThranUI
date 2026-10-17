@@ -908,7 +908,7 @@ function Mod:SnapToTop()
             xOffset = (self.db.iconPosition == "RIGHT") and -shift or shift
         end
         self.bar:ClearAllPoints()
-        self.bar:SetPoint("BOTTOM", anchor, "TOP", xOffset, 5)
+        self.bar:SetPoint("BOTTOM", anchor, "TOP", xOffset, 5 + Styles:PlateExtent(self.db, self.bar))
     end
 end
 
@@ -1103,6 +1103,12 @@ function Mod:ApplySettings()
     end
 
     Styles:Apply(bar, db)
+    -- the text plate of Retail / Forever hangs below the bar: sit above the resource bars by its height
+    local extent = Styles:PlateExtent(db, bar)
+    if bar._ktPlateExtent ~= extent then
+        bar._ktPlateExtent = extent
+        if self.SnapToTop then self:SnapToTop() end
+    end
 end
 
 -- ============================================================================

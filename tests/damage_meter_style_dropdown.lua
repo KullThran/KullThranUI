@@ -33,7 +33,7 @@ local uiEnv=setmetatable({Mod=Mod,LText=function(v) return v end,
 chunk=assert(loadstring(options:sub(a,b-1)..'\nend\nreturn BuildDamageMeterBlock'))
 setfenv(chunk,uiEnv);local build=chunk();build({},W,{damageMeter=cfg})
 local style=assert(dropdowns["Visual Style"])
-for i,key in ipairs({"kui","retail","forever","classic"}) do assert(style.order[i]==key and style.values[key]) end
+for i,key in ipairs({"kui","forever","retail","classic"}) do assert(style.order[i]==key and style.values[key]) end
 style.set("forever");assert(style.get()=="forever" and rebuilds==1 and Mod.refreshes==5)
 assert(dropdowns["Configure Window"], "existing window controls remain available")
 -- Renderer uses the module style even when the global theme differs.

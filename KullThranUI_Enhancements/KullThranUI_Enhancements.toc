@@ -2,7 +2,7 @@
 ## Title: KullThranUI - Enhancements
 ## Notes: KullThranUI module: Enhancements
 ## Author: KullThran
-## Version: 5.1.7
+## Version: 5.1.8
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
@@ -21,6 +21,9 @@ Init.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_LootDebug.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_DamageMeter.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_QOL.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_BulkBuy.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_RaidCheck.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_LFGBar.lua
 ..\KullThranUI\Modules\Enhancements\EnhancedFriendList.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusCombatTimer.lua
 ..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistory.lua

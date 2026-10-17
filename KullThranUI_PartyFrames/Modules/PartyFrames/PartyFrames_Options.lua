@@ -280,6 +280,10 @@ local function RandomizePartyMemberColors()
     for i = 1, 40 do
         memberColorOverrides[i] = shuffledClasses[((i - 1) % #classOrderForRandomization) + 1]
     end
+    -- Names come from the same roll: heroes carry their own class, so colour and name agree.
+    if ns.PF_RollTestHeroes then
+        memberColorOverrides, ns.PF_TestNameOverrides = ns.PF_RollTestHeroes(classOrderForRandomization)
+    end
     ns.PF_TestClassOverrides = memberColorOverrides
 end
 
@@ -464,6 +468,7 @@ local function GetPreviewUnit(index, count, mode, includePlayer)
     local randomized = {}
     for key, value in pairs(sample) do randomized[key] = value end
     randomized.class = (ns.PF_TestClassOverrides and ns.PF_TestClassOverrides[index]) or memberColorOverrides[index] or sample.class
+    randomized.name = (ns.PF_TestNameOverrides and ns.PF_TestNameOverrides[index]) or sample.name
     sample = randomized
     local statusOverrides = ns.PF_TestStatusOverrides
     if statusOverrides then
@@ -1840,7 +1845,7 @@ local function CreateStyleCards(parent, y)
     if not ns.PF_Styles then return nil, 0 end
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -y)
-    frame:SetSize(parent:GetWidth() - 20, 132)
+    frame:SetSize(parent:GetWidth() - 20, 106)
         frame.styleCards = {}
         local function PaintStyleCard(card)
             local r, g, b = KT.C_R or 1, KT.C_G or 0.5, KT.C_B or 0.3
@@ -1854,12 +1859,12 @@ local function CreateStyleCards(parent, y)
             for index, card in ipairs(frame.styleCards) do
                 card:ClearAllPoints()
                 card:SetPoint("TOPLEFT", frame, "TOPLEFT", 12 + (index - 1) * (width + 4), -4)
-                card:SetSize(width, 88)
+                card:SetSize(width, 68)
                 if card.preview then card.preview:SetWidth(width - 8); card.preview:Refresh() end
                 if card.label then card.label:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, 10, "OUTLINE"); card.label:SetTextColor(1, 1, 1, 1) end
                 if card.colorSelector then
-                    card.colorSelector:SetSize(width, 28)
-                    for _, button in ipairs(card.colorButtons) do button:SetSize((width - 4) / 2, 28) end
+                    card.colorSelector:SetSize(width, 22)
+                    for _, button in ipairs(card.colorButtons) do button:SetSize((width - 4) / 2, 22) end
                     card.PaintColors()
                 end
                 PaintStyleCard(card)
@@ -1868,7 +1873,7 @@ local function CreateStyleCards(parent, y)
         for _, style in ipairs(ns.PF_Styles.tabs) do
             local card = CreateFrame("Button", nil, frame)
             card.key = style.id
-            card:SetSize((frame:GetWidth() - 36) / 4, 88)
+            card:SetSize((frame:GetWidth() - 36) / 4, 68)
             AddSimpleBorder(card, 0.9)
             card.hoverGlow = card:CreateTexture(nil, "BACKGROUND", nil, 2)
             card.hoverGlow:SetPoint("TOPLEFT", 1, -1)
@@ -1885,7 +1890,7 @@ local function CreateStyleCards(parent, y)
             label:SetPoint("TOP", card, "TOP", 0, -5); label:SetText(LText(style.label))
             card.label = label
             local sample = CreateLivePreview(card, 22, {
-                x = 4, width = card:GetWidth() - 8, height = 60, modeOverride = "party",
+                x = 4, width = card:GetWidth() - 8, height = 42, modeOverride = "party",
                 countOverride = 1, directionOverride = "HORIZONTAL", frameWidthOverride = 160,
                 frameHeightOverride = style.id == "kui" and 46 or 70, frameScaleOverride = 1,
                 controls = false, cards = false, styleOverride = style.id, cardSample = true,
@@ -1970,7 +1975,7 @@ local function CreateStyleCards(parent, y)
         frame.LayoutStyleCards = LayoutStyleCards
         LayoutStyleCards()
     frame:SetScript("OnSizeChanged", frame.LayoutStyleCards)
-    return frame, 140
+    return frame, 114
 end
 
 _G.KullThranUI_PartyFramesOptions = _G.KullThranUI_PartyFramesOptions or {}
@@ -3570,10 +3575,23 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
     local previewMode = activeMode == "manage" and rosterMode or activeMode
     local oldActiveMode = activeMode
     activeMode = previewMode
-    _, h = CreateLivePreview(sc, y); y = y + h
+    _, h = CreateLivePreview(sc, y, { height = 235 }); y = y + h
     activeMode = oldActiveMode
 
-    _, h = CreateStyleCards(sc, y); y = y + h
+    -- The style cards can be folded away to give the options more room.
+    ns.PF_OptionsState = ns.PF_OptionsState or {}
+    if ns.PF_OptionsState.hideStyleCards then
+        _, h = W:Button(sc, "Show Style Cards", -y, function()
+            ns.PF_OptionsState.hideStyleCards = false
+            RefreshPage()
+        end); y = y + h
+    else
+        _, h = CreateStyleCards(sc, y); y = y + h
+        _, h = W:Button(sc, "Hide Style Cards", -y, function()
+            ns.PF_OptionsState.hideStyleCards = true
+            RefreshPage()
+        end); y = y + h
+    end
 
     _, h = W:SectionHeader(sc, "Party Frames", -y); y = y + h
 
@@ -3596,6 +3614,14 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
             end
             RefreshPage()
         end); y = y + h
+    end
+
+    -- Arena content is minimal on the Forever client: say so, the frames stay editable.
+    if activeMode == "arena" or activeMode == "arenaEnemy" then
+        local vt = KT.VisualThemes
+        if vt and vt.GetClientFlavor and vt:GetClientFlavor() == "forever" then
+            _, h = W:Label(sc, "Arena frames have little use on the Forever client (arena content is limited there). You can still edit them.", -y, 11, { r = 1, g = 0.82, b = 0.2 }); y = y + h
+        end
     end
 
     _, h = W:Button(sc, "Restore Defaults", -y, function()

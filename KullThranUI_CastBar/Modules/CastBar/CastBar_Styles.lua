@@ -16,6 +16,60 @@ local function AtlasName(name, fallback)
     return name
 end
 
+-- Retail / Forever draw the native cast bar from packaged art (cropped from each client's own
+-- atlases), so both look the same on either client. rects = { x, y, w, h } in sheet pixels.
+local PACK_DIR = [[Interface\AddOns\KullThranUI\Libraries\texture\media\castbar\]]
+local PACKS = {
+    forever = { file = PACK_DIR .. "castbar_forever.tga", w = 512, h = 128, rects = {
+        frame = { 1, 1, 213, 15 }, background = { 216, 1, 211, 13 }, textbox = { 1, 18, 210, 29 }, pip = { 213, 18, 6, 30 } } },
+    retail = { file = PACK_DIR .. "castbar_retail.tga", w = 512, h = 128, rects = {
+        frame = { 1, 1, 214, 16 }, background = { 217, 1, 209, 11 }, textbox = { 1, 19, 210, 28 }, pip = { 213, 19, 6, 30 } } },
+}
+
+local function Pack(texture, style, key)
+    local pack, r = PACKS[style], PACKS[style] and PACKS[style].rects[key]
+    if not r then return false end
+    texture:SetTexture(pack.file)
+    texture:SetTexCoord(r[1] / pack.w, (r[1] + r[3]) / pack.w, r[2] / pack.h, (r[2] + r[4]) / pack.h)
+    texture:SetVertexColor(1, 1, 1, 1)
+    return true
+end
+
+-- Draws one packaged piece as left cap / stretched middle / right cap around `bar`, so rounded
+-- corners keep their shape at any width. `field` is art.<field> (the middle piece).
+local function Slice3(art, field, style, key, bar, x, y, cap)
+    local pack = PACKS[style]
+    local r = pack and pack.rects[key]
+    if not r then return end
+    local mid = art[field]
+    local layer, sub = mid:GetDrawLayer()
+    local pieces = { mid, art[field .. "L"], art[field .. "R"] }
+    for i = 2, 3 do
+        if not pieces[i] then
+            pieces[i] = bar:CreateTexture(nil, layer, nil, sub)
+            art[field .. (i == 2 and "L" or "R")] = pieces[i]
+        else
+            pieces[i]:SetDrawLayer(layer, sub)
+        end
+    end
+    local regionH = bar:GetHeight() + 2 * y
+    local capW = cap * regionH / r[4]
+    local function setup(tex, x0, x1)
+        tex:SetTexture(pack.file)
+        tex:SetTexCoord(x0 / pack.w, x1 / pack.w, r[2] / pack.h, (r[2] + r[4]) / pack.h)
+        tex:SetVertexColor(1, 1, 1, 1)
+        tex:ClearAllPoints()
+    end
+    local left, right = pieces[2], pieces[3]
+    setup(left, r[1], r[1] + cap)
+    setup(right, r[1] + r[3] - cap, r[1] + r[3])
+    setup(mid, r[1] + cap, r[1] + r[3] - cap)
+    left:SetPoint("TOPLEFT", bar, "TOPLEFT", -x, y); left:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", -x, -y); left:SetWidth(capW)
+    right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", x, y); right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", x, -y); right:SetWidth(capW)
+    mid:SetPoint("TOPLEFT", left, "TOPRIGHT"); mid:SetPoint("BOTTOMRIGHT", right, "BOTTOMLEFT")
+    left:Show(); right:Show(); mid:Show()
+end
+
 function S:IconMetrics(db)
     local style = self:GetStyle(db)
     if style == "classic" then return math.min(db.height or 13, 18), 4, 0 end
@@ -65,6 +119,21 @@ local function Rect(tex, bar, x, y)
     tex:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", x, -y)
 end
 
+-- How far the text plate hangs below the bar (0 when the style has none).
+-- The plate is as wide as the bar's frame (bar + 4), keeping its native proportions.
+function S:PlateScale(barWidth)
+    return math.min(2, math.max(0.6, ((tonumber(barWidth) or 209) + 4) / 210))
+end
+
+function S:PlateExtent(db, bar)
+    local style = self:GetStyle(db)
+    local pack = PACKS[style]
+    if not pack then return 0 end
+    local width = (bar and bar:GetWidth()) or (db and db.width) or 209
+    local scale = self:PlateScale(width)
+    return math.max(0, math.floor(pack.rects.textbox[4] * scale - 4 * scale + 0.5))
+end
+
 function S:Apply(bar, db)
     local style = self:GetStyle(db)
     local KT = _G.KT
@@ -78,6 +147,12 @@ function S:Apply(bar, db)
         bar._ktCastStyleArt = art
     end
     art.background:Hide(); art.border:Hide()
+    for _, name in ipairs({ "backgroundL", "backgroundR", "borderL", "borderR" }) do
+        if art[name] then art[name]:Hide() end
+    end
+    if art.textbox then art.textbox:Hide() end
+    if art.textboxBack then art.textboxBack:Hide() end
+    for _, extra in ipairs(art.textboxExtra or {}) do extra:Hide() end
     if bar.PreviewBackground then bar.PreviewBackground:SetShown(style == "kui") end
     if bar.SetBackdropColor then
         bar:SetBackdropColor(0, 0, 0, style == "kui" and 0.5 or 0)
@@ -99,6 +174,36 @@ function S:Apply(bar, db)
     else
         bar.Text:SetShadowOffset(0, 0)
         bar.Time:SetShadowOffset(0, 0)
+    end
+    -- Retail / Forever: Blizzard's text plate under the bar, with the spell name centred on it
+    if PACKS[style] then
+        if not art.textbox then art.textbox = bar:CreateTexture(nil, "BACKGROUND", nil, -2) end
+        local r = PACKS[style].rects.textbox
+        local scale = S:PlateScale(bar:GetWidth())
+        Pack(art.textbox, style, "textbox")
+        art.textbox:ClearAllPoints()
+        art.textbox:SetPoint("TOP", bar, "BOTTOM", 0, 4 * scale)
+        art.textbox:SetSize(r[3] * scale, r[4] * scale)
+        art.textbox:Show()
+        -- Retail's own plate is a nearly transparent dark panel: stack the same rounded art a
+        -- few times so it has a body without losing its rounded border
+        if style == "retail" then
+            art.textboxExtra = art.textboxExtra or {}
+            for i = 1, 2 do
+                local extra = art.textboxExtra[i]
+                if not extra then
+                    extra = bar:CreateTexture(nil, "BACKGROUND", nil, -2)
+                    art.textboxExtra[i] = extra
+                end
+                Pack(extra, style, "textbox")
+                extra:ClearAllPoints()
+                extra:SetAllPoints(art.textbox)
+                extra:Show()
+            end
+        end
+        bar.Text:ClearAllPoints()
+        bar.Text:SetPoint("CENTER", art.textbox, "CENTER", 0, -2 * scale)
+        bar.Text:SetJustifyH("CENTER")
     end
     bar.Text:SetDrawLayer("OVERLAY", 7)
     bar.Time:SetDrawLayer("OVERLAY", 7)
@@ -126,32 +231,24 @@ function S:Apply(bar, db)
         art.border:SetPoint("TOP", bar, "TOP", 0, 28 * verticalRatio)
         bar.Spark:SetTexture(CLASSIC_SPARK)
         bar.Spark:SetSize(32, 32)
-    elseif style == "forever" then
-        -- Match the Damage Meter's Forever rows: a dark warm interior and the
-        -- swing frame's bronze ornaments outside the bar. Keep cast/channel
-        -- fills independent from this decoration so progress stays readable.
-        art.background:SetColorTexture(0.075, 0.055, 0.040, 0.90)
-        Rect(art.background, bar, 0, 0)
-        art.border:SetDrawLayer("OVERLAY", 2)
-        if not (KT.VisualThemes.ApplyStyleAtlas and KT.VisualThemes:ApplyStyleAtlas(art.border, "ui-swingtimerbar-frame")) then
-            art.border:SetAtlas(AtlasName("ui-swingtimerbar-frame", "ui-castingbar-frame"), false)
-        end
-        art.border:SetVertexColor(1, 1, 1, 1)
-        Rect(art.border, bar, 4, 1)
-        if not (KT.VisualThemes.ApplyStyleAtlas and KT.VisualThemes:ApplyStyleAtlas(bar.Spark, "ui-swingtimerbar-pip")) then
-            bar.Spark:SetAtlas(AtlasName("ui-swingtimerbar-pip", "ui-castingbar-pip"), false)
-        end
-        bar.Spark:SetSize(8, bar:GetHeight() + 4)
     else
-        art.background:SetAtlas(AtlasName("ui-castingbar-background"), false)
-        art.background:SetVertexColor(1, 1, 1, 1)
-        Rect(art.background, bar, 1, 1)
-        art.border:SetDrawLayer("ARTWORK", 2)
-        art.border:SetAtlas(AtlasName("ui-castingbar-frame"), false)
-        art.border:SetVertexColor(1, 1, 1, 1)
-        Rect(art.border, bar, 2, 2)
-        bar.Spark:SetAtlas(AtlasName("ui-castingbar-pip"), false)
-        bar.Spark:SetSize(8, 20)
+        if PACKS[style] then
+            Slice3(art, "background", style, "background", bar, 1, 1, 5)
+            art.border:SetDrawLayer("ARTWORK", 2)
+            Slice3(art, "border", style, "frame", bar, 2, 2, 8)
+            Pack(bar.Spark, style, "pip")
+            bar.Spark:SetSize(8, 20)
+        else
+            art.background:SetAtlas(AtlasName("ui-castingbar-background"), false)
+            art.background:SetVertexColor(1, 1, 1, 1)
+            Rect(art.background, bar, 1, 1)
+            art.border:SetDrawLayer("ARTWORK", 2)
+            art.border:SetAtlas(AtlasName("ui-castingbar-frame"), false)
+            art.border:SetVertexColor(1, 1, 1, 1)
+            Rect(art.border, bar, 2, 2)
+            bar.Spark:SetAtlas(AtlasName("ui-castingbar-pip"), false)
+            bar.Spark:SetSize(8, 20)
+        end
     end
     if style ~= "kui" then
         art.background:Show(); art.border:Show()

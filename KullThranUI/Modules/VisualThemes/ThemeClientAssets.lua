@@ -528,7 +528,7 @@ local function SeatStockCastbar(frame, geom, scale)
     if not (bg and bg.SetWidth and bg.SetPoint and geom.power) then return end
     if frame.Power then
         bg:ClearAllPoints()
-        bg:SetPoint("TOPLEFT", frame.Power, "BOTTOMLEFT", 0, 0)
+        bg:SetPoint("TOPLEFT", frame.Power, "BOTTOMLEFT", 0, -4)  -- clear of the plate's lower rim
     end
     bg:SetWidth(geom.power.w * scale)
     -- KUI's generic castbarHeight (14+) is disproportionate against the real
@@ -1542,12 +1542,20 @@ end
 -- forever_frames.tga (256x128) holds the player/target box at (0,0,198,71) and the
 -- small ToT/Pet/Focus-target box at (0,72,120,49).
 local FOREVER_FRAMES_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_frames.tga]]
+-- Same sheet and layout, but the player/target box carries the Forever client's own plain
+-- circular ring (no bronze corner ornament). Chosen with unitFrames.foreverPortraitFrame.
+local FOREVER_FRAMES_RING_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_frames_ring.tga]]
+function KT.VisualThemes:UsesForeverRingPortrait()
+    local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    return uf ~= nil and uf.foreverPortraitFrame == "ring"
+end
 function KT.VisualThemes:GetForeverAtlasPixels(atlasName)
     if type(atlasName) ~= "string" then return nil end
     local name = atlasName:lower()
     if name == "ui-hud-unitframe-player-portraiton" then
         return {
-            file = FOREVER_FRAMES_FILE, width = 198, height = 71,
+            file = self:UsesForeverRingPortrait() and FOREVER_FRAMES_RING_FILE or FOREVER_FRAMES_FILE,
+            width = 198, height = 71,
             leftTexCoord = 0, rightTexCoord = 198 / 256,
             topTexCoord = 0, bottomTexCoord = 71 / 128,
         }
@@ -1656,6 +1664,9 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
 
     local renderedTheme = self.GetRenderedTheme and self:GetRenderedTheme()
     local isRetailTheme = renderedTheme == "retail"
+    -- Plain-ring plate: the opening is a true circle (~56px) instead of the dome, so the
+    -- portrait mask and the black backing disc must shrink to fit inside it.
+    local ringPortrait = renderedTheme == "forever" and self:UsesForeverRingPortrait()
     local geom = unit and ((renderedTheme == "forever" and FOREVER_PACKED_GEOMETRY[unit])
         or FOREVER_FRAME_GEOMETRY[unit])
     if not geom then
@@ -1794,7 +1805,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- there. A circle can't fit both without distortion; the corners are
     -- handled separately below with their own small square patches instead
     -- of stretching this one.
-    local fillMargin = 6 * scale
+    local fillMargin = (ringPortrait and not circularPortrait and -1 or 6) * scale
     fillMask:SetPoint("TOPLEFT", unitRegion, "TOPLEFT", -fillMargin, fillMargin)
     fillMask:SetPoint("BOTTOMRIGHT", unitRegion, "BOTTOMRIGHT", fillMargin, -fillMargin)
     if fill.RemoveMaskTexture then pcall(fill.RemoveMaskTexture, fill, fillMask) end
@@ -1822,6 +1833,8 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     local cornerScale = 1.25
     local cornerW, cornerH = DOME_CORNER_MASK_W * scale * cornerScale, DOME_CORNER_MASK_H * scale * cornerScale
     local leftIsActive = geom.mirror and true or false
+    -- The plain ring has no flat bottom corner to back with a black patch.
+    local showCornerPatch = showBasePortraitArt and not ringPortrait
 
     local cornerPatch = frame._ktForeverPortraitCornerPatch
     if not cornerPatch then
@@ -1829,7 +1842,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
         UnsnapTexture(cornerPatch)
         frame._ktForeverPortraitCornerPatch = cornerPatch
     end
-    if leftIsActive and showBasePortraitArt then
+    if leftIsActive and showCornerPatch then
         cornerPatch:SetColorTexture(0, 0, 0, 1)
         cornerPatch:ClearAllPoints()
         cornerPatch:SetPoint("BOTTOMLEFT", unitRegion, "BOTTOMLEFT", -cornerOverlap, -cornerOverlap)
@@ -1855,7 +1868,7 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
         UnsnapTexture(cornerPatch2)
         frame._ktForeverPortraitCornerPatch2 = cornerPatch2
     end
-    if not leftIsActive and showBasePortraitArt then
+    if not leftIsActive and showCornerPatch then
         cornerPatch2:SetColorTexture(0, 0, 0, 1)
         cornerPatch2:ClearAllPoints()
         cornerPatch2:SetPoint("BOTTOMRIGHT", unitRegion, "BOTTOMRIGHT", cornerOverlap, -cornerOverlap)
@@ -1943,7 +1956,8 @@ function KT.VisualThemes:ApplyForeverUnitFrameArt(frame, unitRegion, unit)
     -- shown): plain round shape instead of Retail's drop-shaped stock mask, so
     -- it needs the normal mask-padding compensation (nil) instead of 0.
     SeatStockPortrait(unitRegion, frame, portrait, scale,
-        (nativeClassification or (isRetailTheme and not circularPortrait)) and 0 or nil)
+        (nativeClassification or (isRetailTheme and not circularPortrait)) and 0
+            or (ringPortrait and not circularPortrait and -1.5 or nil))
 
     local health = frame.Health
     if geom.health and type(health) == "table" and health.ClearAllPoints then

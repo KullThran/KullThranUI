@@ -52,7 +52,7 @@ local DAMAGE_METER_FONT_PATHS = {
 local function DAMAGE_METER_RESOLVED_FONT()
     return (KT and KT.ResolveStoredFontPath and KT:ResolveStoredFontPath(DAMAGE_METER_FONT)) or DAMAGE_METER_FONT
 end
--- Recount's own default bar texture (BantoBar), the Classic style's real look.
+-- The Classic style's bar texture (BantoBar), its real look.
 local RECOUNT_BAR_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga"
 local DAMAGE_METER_TEXTURE_PATHS = {
     [BAR_TEXTURE] = true,
@@ -229,7 +229,7 @@ end
 -- Each Visual Style re-skins the meter's chrome (panel, header, rows, icon
 -- frames) to match a reference look; the data, layout metrics and class
 -- colors are untouched. kui has no entry and keeps its own flat look.
---   classic: Recount-style red title bar on a dark brown panel.
+--   classic: red title bar on a dark brown panel.
 --   retail:  Blizzard's own Damage Meter: rounded dark panel, gold title,
 --            black-outlined bars and gold-framed class icons.
 --   forever: retail's structure and native bar art recolored to bronze,
@@ -398,8 +398,21 @@ local function GetConfig()
         end
         db.damageMeter.layoutVersion = 7
     end
-    -- Classic used to seed Blizzard's UI-StatusBar; its real look is Recount's
-    -- bar. Move only the old seeded value, never a texture the user picked.
+    if layoutVersion < 8 then
+        -- A native style (Forever / Retail / Classic) IS its panel and header: repair the hidden
+        -- background that older versions left behind (separate profile per client).
+        local vt = KT.VisualThemes
+        local style = rawget(db.damageMeter, "visualStyle") or (vt and vt.GetRenderedTheme and vt:GetRenderedTheme())
+        if style and style ~= "kui" then
+            db.damageMeter.showBackground = true
+            for _, windowConfig in ipairs(db.damageMeter.windows or {}) do
+                if type(windowConfig) == "table" then windowConfig.showBackground = true end
+            end
+        end
+        db.damageMeter.layoutVersion = 8
+    end
+    -- Classic used to seed Blizzard's UI-StatusBar; its real look is the
+    -- BantoBar texture. Move only the old seeded value, never a texture the user picked.
     if not rawget(db.damageMeter, "_ktRecountTextureV1") then
         db.damageMeter._ktRecountTextureV1 = true
         local old = "Interface\\TargetingFrame\\UI-StatusBar"
@@ -4038,13 +4051,54 @@ function Mod:RegisterDamageMeterDirectDrag(frame)
     frame.damageMeterDirectDragRegistered = true
 end
 
+-- Meters sit above the world map in DIALOG strata, which hid the maximized map
+-- behind them. While the map is open and maximized they drop below it.
+function Mod:GetMeterStrata()
+    local map = _G.WorldMapFrame
+    if map and map:IsShown() and (not map.IsMaximized or map:IsMaximized()) then
+        return "MEDIUM"
+    end
+    return "DIALOG"
+end
+
+function Mod:RefreshMeterStrata()
+    local strata = self:GetMeterStrata()
+    for frame in pairs(self._meterFrames or {}) do
+        if frame:GetFrameStrata() ~= strata then frame:SetFrameStrata(strata) end
+    end
+end
+
+function Mod:HookWorldMapStrata()
+    local map = _G.WorldMapFrame
+    if not map or self._worldMapStrataHooked then return end
+    self._worldMapStrataHooked = true
+    local function refresh() Mod:RefreshMeterStrata() end
+    map:HookScript("OnShow", refresh)
+    map:HookScript("OnHide", refresh)
+    for _, method in ipairs({ "Maximize", "Minimize", "SynchronizeDisplayState" }) do
+        if type(map[method]) == "function" then hooksecurefunc(map, method, refresh) end
+    end
+end
+
 local function CreateDamageMeterFrame(self, frameName, damageMeterConfig)
     local frame = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
+    self._meterFrames = self._meterFrames or setmetatable({}, { __mode = "k" })
+    self._meterFrames[frame] = true
+    self:HookWorldMapStrata()
+    if not self._worldMapStrataWatcher then
+        -- WorldMapFrame is load-on-demand on some clients: hook it when it appears.
+        local watcher = CreateFrame("Frame")
+        watcher:RegisterEvent("ADDON_LOADED")
+        watcher:SetScript("OnEvent", function(_, _, name)
+            if name == "Blizzard_WorldMap" then Mod:HookWorldMapStrata(); Mod:RefreshMeterStrata() end
+        end)
+        self._worldMapStrataWatcher = watcher
+    end
     frame.damageMeterConfig = damageMeterConfig
     frame.selectedSessionID = damageMeterConfig.selectedSessionID
     frame.selectedSessionLabel = damageMeterConfig.selectedSessionLabel
     frame.selectedHistoryKey = damageMeterConfig.selectedHistoryKey
-    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameStrata(self:GetMeterStrata())
     frame:SetFrameLevel(100)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
@@ -4054,7 +4108,7 @@ local function CreateDamageMeterFrame(self, frameName, damageMeterConfig)
         HideDropdown(activeDropdown)
     end)
     frame:HookScript("OnShow", function(self)
-        self:SetFrameStrata("DIALOG")
+        self:SetFrameStrata(Mod:GetMeterStrata())
         self:SetFrameLevel(100)
         if self.Raise then self:Raise() end
     end)

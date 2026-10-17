@@ -59,6 +59,9 @@ local function ResetModuleDefaults()
     for key, value in pairs(Mod:GetDefaults() or {}) do
         db[key] = CopyValue(value)
     end
+    -- The defaults carry the newest layoutVersion; clear it so GetConfig re-runs the
+    -- Damage Meter migrations (native styles need their panel background on).
+    if type(db.damageMeter) == 'table' then db.damageMeter.layoutVersion = nil end
 end
 
 local function Refresh(opts)
@@ -1628,12 +1631,12 @@ local function BuildDamageMeterBlock(container, W, db)
     y = y + h
 
     _, h = W:Dropdown(container, LText("Visual Style"), -y,
-        { kui = "KUI", retail = "Retail", forever = "Forever", classic = "Classic" },
+        { kui = "KUI", forever = "Forever", retail = "Retail", classic = "Classic" },
         function() return Mod:GetDamageMeterStyle() end,
         function(v)
             if Mod:SetDamageMeterStyle(v) then Refresh({ rebuild = true }) end
         end,
-        { "kui", "retail", "forever", "classic" })
+        { "kui", "forever", "retail", "classic" })
     y = y + h
 
     _, h = W:Dropdown(container, LText("Configure Window"), -y,
@@ -2455,6 +2458,34 @@ CATEGORY_SECTIONS.interface[#CATEGORY_SECTIONS.interface + 1] = {
     column = 'left',
     title = LText('LFG Visuals'),
     build = BuildLFGVisualsBlock,
+}
+
+CATEGORY_SECTIONS.automation[#CATEGORY_SECTIONS.automation + 1] = {
+    column = "left",
+    title = LText("Raid Check"),
+    build = function(container, W, db)
+        local cfg = Mod.RaidCheck and Mod.RaidCheck.Config() or {}
+        local y, h = AddToggleList(container, W, {
+            { label = "Enable Raid Check", get = function() return cfg.enable ~= false end, set = function(v) cfg.enable = v and true or false end },
+            { label = "Show on ready check", get = function() return cfg.onReadyCheck ~= false end, set = function(v) cfg.onReadyCheck = v and true or false end },
+            { label = "Group leader only (off: assistants too)", get = function() return cfg.leaderOnly ~= false end, set = function(v) cfg.leaderOnly = v and true or false end },
+            { label = "Track food", get = function() return cfg.checkFood ~= false end, set = function(v) cfg.checkFood = v and true or false end },
+            { label = "Track flask", get = function() return cfg.checkFlask ~= false end, set = function(v) cfg.checkFlask = v and true or false end },
+            { label = "Track augment rune", get = function() return cfg.checkRune ~= false end, set = function(v) cfg.checkRune = v and true or false end },
+            { label = "Track pre-pot", get = function() return cfg.checkPrePot ~= false end, set = function(v) cfg.checkPrePot = v and true or false end },
+            { label = "Require pre-pot from healers", get = function() return cfg.prePotHealers == true end, set = function(v) cfg.prePotHealers = v and true or false end },
+            { label = "Require pre-pot from tanks", get = function() return cfg.prePotTanks == true end, set = function(v) cfg.prePotTanks = v and true or false end },
+            { label = "Mythic raid: only groups 1-4", get = function() return cfg.firstFourGroups ~= false end, set = function(v) cfg.firstFourGroups = v and true or false end },
+        })
+        _, h = W:Slider(container, LText("Hide after ready check (seconds)"), -y,
+            function() return cfg.autoHide or 15 end,
+            function(v) cfg.autoHide = v end, 3, 60, 1)
+        y = y + h
+        _, h = W:Button(container, LText("Open Raid Check (/ktraidcheck)"), -y, function()
+            if Mod.RaidCheck then Mod.RaidCheck.Toggle() end
+        end, "FULL")
+        return y + h
+    end,
 }
 
 local function BuildActiveCategory(parent, W, db)

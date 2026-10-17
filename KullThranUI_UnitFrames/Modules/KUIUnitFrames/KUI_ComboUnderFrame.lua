@@ -211,6 +211,9 @@ end
 -- client (Retail's own uf-roguecp atlases have a gold rim). 64x32 sheet: ring (0,0,22x22),
 -- unlit ring (24,0), red gem (48,0,14x14).
 local FOREVER_COMBO_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_combo.tga]]
+-- The gem on its own 16x16 file (14px gem + 1px margin): a StatusBar rewrites its fill
+-- texture's coords on every SetValue, so a sub-rect of the sheet cannot be used as the fill.
+local FOREVER_GEM_FILE = [[Interface\AddOns\KullThranUI\Libraries\texture\media\portraits\forever_combo_gem.tga]]
 function CUF.UsesForeverArt(style)
     if style ~= "modern" then return false end
     local vt = KT.VisualThemes
@@ -224,9 +227,7 @@ local function ApplyPipArt(p, style, gem)
         p.empty:SetTexture(FOREVER_COMBO_FILE)
         p.empty:SetTexCoord(0, 22 / 64, 0, 22 / 32)
         p.empty:SetVertexColor(1, 1, 1, 1)
-        p.bar:SetStatusBarTexture(FOREVER_COMBO_FILE)
-        local t = p.bar:GetStatusBarTexture()
-        if t then t:SetTexCoord(48 / 64, 62 / 64, 0, 14 / 32) end
+        p.bar:SetStatusBarTexture(FOREVER_GEM_FILE)
         p.bar:SetStatusBarColor(1, 1, 1, 1)
         return
     end
@@ -468,9 +469,9 @@ function Widget:Layout()
                 p:SetPoint("LEFT", f, "LEFT", (i - 1) * (S + gap), 0)
                 p.bar:ClearAllPoints()
                 if p._foreverArt then
-                    -- the gem is 14px inside the 22px ring
+                    -- the gem is 14px inside the 22px ring; its file adds a 1px margin (16px)
                     p.bar:SetPoint("CENTER", p, "CENTER", 0, 0)
-                    p.bar:SetSize(S * 14 / 22, S * 14 / 22)
+                    p.bar:SetSize(S * 16 / 22, S * 16 / 22)
                 else
                     p.bar:SetAllPoints()
                 end
@@ -539,6 +540,10 @@ function CUF:UpdateUnit(unit)
     local anchor = AnchorFor(unit, frame)
     obj:SetStyle(style, gem)
     local pos, px, py = CUF.GetPlacement(unit)
+    -- the druid's alternate mana bar sits right under the power bar: slide below it
+    if unit == "player" and pos ~= "above" and ns.AltMana and ns.AltMana.Extent then
+        py = (py or 0) - ns.AltMana.Extent(style == "classic")
+    end
     obj:Place(anchor, style, frame.Health and frame.Health:GetWidth(), pos, px, py, frame)
 
     local powerType = resourceType or ComboPowerType()
@@ -648,6 +653,10 @@ function CUF.ApplyPreview(frame, unitKey)
     local anchor = (frame.power and frame.power:IsShown()) and frame.power or frame.health or frame
     obj:SetStyle(style)
     local pos, px, py = CUF.GetPlacement(unitKey)
+    -- the alternate mana bar (druid) sits under the power bar: the combo points slide below it
+    if unitKey == "player" and pos ~= "above" and ns.AltMana and ns.AltMana.PreviewExtent then
+        py = (py or 0) - ns.AltMana.PreviewExtent(frame, style == "classic")
+    end
     obj:Place(anchor, style, anchor:GetWidth(), pos, px, py, frame)
     -- the preview is laid out a frame later: re-place once the name / bars have real positions
     if C_Timer and C_Timer.After then

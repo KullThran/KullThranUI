@@ -2404,6 +2404,10 @@ function Mod:UpdateZone()
     if txtLocation then
         txtLocation:SetText(zone)
     end
+
+    -- The zone name can still be empty at PLAYER_ENTERING_WORLD (Refresh hides the
+    -- empty label): re-evaluate once the text arrives.
+    self:UpdateOverlayVisibility()
 end
 
 function Mod:UpdateCoords()

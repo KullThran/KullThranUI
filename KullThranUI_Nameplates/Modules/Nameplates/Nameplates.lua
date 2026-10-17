@@ -3507,6 +3507,32 @@ local function CPCircleBorderColor()
     end
     return 1, 0.82, 0.08
 end
+-- Forever draws its round combo points with the same bronze orb and red gem as the
+-- combo points under the Player frame (KUI_ComboUnderFrame): the ring sheet's first
+-- 22x22 cell is an opaque orb with a dark socket, the gem file is 16x16 (14px + margin).
+-- Kept in ns: this file is at Lua's 200-local limit.
+ns._ForeverOrb = {
+    ORB = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\forever_combo.tga",
+    GEM = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\forever_combo_gem.tga",
+}
+
+-- Paints a round Forever pip as lit (gem) or empty (bare socket). Returns false for
+-- every other look so the caller keeps its flat colours.
+function ns.StyleForeverComboPip(pip, lit)
+    if not (pip and pip._foreverOrb) then return false end
+    if pip._bg then pip._bg:Hide() end
+    if lit then
+        pip:SetTexture(ns._ForeverOrb.GEM, "CLAMP", "CLAMP")
+        -- the 16px gem file covers the middle 16/22 of the orb: widen the coords so the
+        -- clamped (transparent) margin fills the rest
+        local m = 3 / 16
+        pip:SetTexCoord(-m, 1 + m, -m, 1 + m)
+        pip:SetVertexColor(1, 1, 1, 1)
+    else
+        pip:SetColorTexture(0, 0, 0, 0)
+    end
+    return true
+end
 
 -- Per-class filled pip colors (official WoW class colors)
 local CP_CLASS_COLORS = {
@@ -3588,12 +3614,25 @@ local function ApplyClassPowerPipShape(pip, round)
         end
         if not pip._circleBorder then
             pip._circleBorder = pip:GetParent():CreateTexture(nil, "OVERLAY", nil, 4)
-            pip._circleBorder:SetTexture(CP_CIRCLE_BORDER)
             pip._circleBorder:SetAllPoints(pip)
         end
-        local br, bg, bb = CPCircleBorderColor()
-        pip._circleBorder:SetVertexColor(br, bg, bb, 1)
-        pip._circleBorder:Show()
+        local ring = pip._circleBorder
+        pip._foreverOrb = ns.NameplateStyle and ns.NameplateStyle() == "forever" or false
+        if pip._foreverOrb then
+            -- the orb is opaque: it sits under the gem instead of over the fill
+            ring:SetTexture(ns._ForeverOrb.ORB)
+            ring:SetTexCoord(0, 22 / 64, 0, 22 / 32)
+            ring:SetDrawLayer("OVERLAY", 1)
+            ring:SetVertexColor(1, 1, 1, 1)
+        else
+            ring:SetTexture(CP_CIRCLE_BORDER)
+            ring:SetTexCoord(0, 1, 0, 1)
+            ring:SetDrawLayer("OVERLAY", 4)
+            local br, bg, bb = CPCircleBorderColor()
+            ring:SetVertexColor(br, bg, bb, 1)
+            pip:SetTexCoord(0, 1, 0, 1)
+        end
+        ring:Show()
         SetPipDecor(pip, false)
     else
         if mask then
@@ -3606,6 +3645,8 @@ local function ApplyClassPowerPipShape(pip, round)
             end
         end
         if pip._circleBorder then pip._circleBorder:Hide() end
+        pip._foreverOrb = nil
+        pip:SetTexCoord(0, 1, 0, 1)
         -- KUI Style keeps its flat pips (no border/shadow); the decor is for
         -- the Classic/Forever/Retail looks only.
         local style = ns.NameplateStyle and ns.NameplateStyle()
@@ -3944,6 +3985,7 @@ local function UpdateClassPowerOnPlate(plate)
                 else
                     pip:SetColorTexture(comboPips and 0.22 or emptyCol.r, comboPips and 0.02 or emptyCol.g, comboPips and 0.02 or emptyCol.b, emptyCol.a)
                 end
+                ns.StyleForeverComboPip(pip, i <= cur)
             end
             pip:Show()
         end

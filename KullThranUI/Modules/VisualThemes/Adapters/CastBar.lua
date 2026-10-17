@@ -6,7 +6,7 @@ KT.VisualThemes = KT.VisualThemes or {}
 -- The shared live/preview renderer lives in that module.
 local S = {}
 KT.CastBarStyles = S
-S.order = { "kui", "classic", "forever", "retail" }
+S.order = { "kui", "forever", "retail", "classic" }
 S.labels = { kui = "KUI Style", classic = "Classic", forever = "Forever", retail = "Retail" }
 S.styleIcons = {
     kui = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUILogoCuadrado.png",

@@ -5,8 +5,8 @@ if not Mod then return end
 local Styles = {}
 ns.PF_Styles = Styles
 Styles.tabs = {
-    { id = "kui", label = "KUI" }, { id = "retail", label = "Retail" },
-    { id = "forever", label = "Forever" }, { id = "classic", label = "Classic" },
+    { id = "kui", label = "KUI" }, { id = "forever", label = "Forever" },
+    { id = "retail", label = "Retail" }, { id = "classic", label = "Classic" },
 }
 local valid = { kui = true, retail = true, forever = true, classic = true }
 -- Blizzard PartyFrameTemplates.xml and Mainline PartyMemberFrame.lua.

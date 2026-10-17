@@ -275,7 +275,7 @@ ns.PF_RosterUnitEvents = {
     "UNIT_AURA", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_FREQUENT",
     "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER", "UNIT_CONNECTION", "UNIT_FLAGS",
     "UNIT_NAME_UPDATE", "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE",
-    "UNIT_ABSORB_AMOUNT_CHANGED",
+    "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
 }
 
 -- Power events are registered separately (Mod:SyncPowerEvents): they are the
@@ -590,6 +590,67 @@ local TEST_UNITS = {
     { name = "Alexandros", class = "MAGE", role = "DAMAGER", health = 0, power = 0, maxHealth = 75000, absorb = 0, status = "Dead" },
     { name = "Xx", class = "ROGUE", role = "DAMAGER", health = 0.34, power = 0.55, maxHealth = 70000, absorb = 0.12, status = "Offline" },
 }
+
+-- Famous WoW heroes for the test / preview parties: each carries the class it plays, so
+-- name, class colour and icon always agree. Rolled again every time a test is started.
+ns.PF_HERO_POOL = {
+    -- WARRIOR
+    { "Varian", "WARRIOR" }, { "Garrosh", "WARRIOR" }, { "Grommash", "WARRIOR" }, { "Orgrim", "WARRIOR" },
+    { "Muradin", "WARRIOR" }, { "Saurfang", "WARRIOR" }, { "Cairne", "WARRIOR" }, { "Lothar", "WARRIOR" },
+    -- PALADIN
+    { "Uther", "PALADIN" }, { "Tirion", "PALADIN" }, { "Turalyon", "PALADIN" }, { "Liadrin", "PALADIN" },
+    { "Bolvar", "PALADIN" }, { "Alexandros", "PALADIN" }, { "Arator", "PALADIN" }, { "Saidan", "PALADIN" },
+    -- MAGE
+    { "Jaina", "MAGE" }, { "Khadgar", "MAGE" }, { "Medivh", "MAGE" }, { "Kael'thas", "MAGE" },
+    { "Rhonin", "MAGE" }, { "Antonidas", "MAGE" }, { "Aegwynn", "MAGE" }, { "Modera", "MAGE" },
+    -- WARLOCK
+    { "Gul'dan", "WARLOCK" }, { "Neeru", "WARLOCK" }, { "Kanrethad", "WARLOCK" }, { "Fizzlebang", "WARLOCK" },
+    { "Cho'gall", "WARLOCK" },
+    -- PRIEST
+    { "Anduin", "PRIEST" }, { "Tyrande", "PRIEST" }, { "Velen", "PRIEST" }, { "Moira", "PRIEST" },
+    { "Benedictus", "PRIEST" }, { "Faol", "PRIEST" }, { "Whitemane", "PRIEST" }, { "Alonsus", "PRIEST" },
+    -- ROGUE
+    { "Valeera", "ROGUE" }, { "Garona", "ROGUE" }, { "VanCleef", "ROGUE" }, { "Mathias", "ROGUE" },
+    { "Vanessa", "ROGUE" }, { "Maiev", "ROGUE" }, { "Shaw", "ROGUE" },
+    -- HUNTER
+    { "Sylvanas", "HUNTER" }, { "Rexxar", "HUNTER" }, { "Alleria", "HUNTER" }, { "Vereesa", "HUNTER" },
+    { "Halduron", "HUNTER" }, { "Hemet", "HUNTER" }, { "Nathanos", "HUNTER" },
+    -- SHAMAN
+    { "Thrall", "SHAMAN" }, { "Nobundo", "SHAMAN" }, { "Rehgar", "SHAMAN" }, { "Durotan", "SHAMAN" },
+    { "Drek'Thar", "SHAMAN" }, { "Baine", "SHAMAN" },
+    -- DRUID
+    { "Malfurion", "DRUID" }, { "Hamuul", "DRUID" }, { "Cenarius", "DRUID" }, { "Fandral", "DRUID" },
+    { "Broll", "DRUID" }, { "Naralex", "DRUID" }, { "Ysera", "DRUID" },
+    -- DEATHKNIGHT
+    { "Arthas", "DEATHKNIGHT" }, { "Darion", "DEATHKNIGHT" }, { "Thassarian", "DEATHKNIGHT" }, { "Koltira", "DEATHKNIGHT" },
+    -- DEMONHUNTER
+    { "Illidan", "DEMONHUNTER" }, { "Kayn", "DEMONHUNTER" }, { "Altruis", "DEMONHUNTER" }, { "Jace", "DEMONHUNTER" },
+    -- MONK
+    { "Chen", "MONK" }, { "Li Li", "MONK" }, { "Taran Zhu", "MONK" }, { "Aysa", "MONK" },
+    -- EVOKER
+    { "Alexstrasza", "EVOKER" }, { "Kalecgos", "EVOKER" }, { "Wrathion", "EVOKER" }, { "Vyranoth", "EVOKER" },
+}
+
+-- allowed: list of class tokens the client supports. Returns classes[1..40], names[1..40]
+-- (distinct heroes while the pool lasts).
+function ns.PF_RollTestHeroes(allowed)
+    local ok = {}
+    for _, class in ipairs(allowed) do ok[class] = true end
+    local pool = {}
+    for _, hero in ipairs(ns.PF_HERO_POOL) do
+        if ok[hero[2]] then pool[#pool + 1] = hero end
+    end
+    for index = #pool, 2, -1 do
+        local other = math.random(1, index)
+        pool[index], pool[other] = pool[other], pool[index]
+    end
+    local classes, names = {}, {}
+    for index = 1, 40 do
+        local hero = pool[((index - 1) % #pool) + 1]
+        classes[index], names[index] = hero[2], hero[1]
+    end
+    return classes, names
+end
 
 local TEST_AURA_DEBUFFS = {
     { icon = 136071, spellID = 118, dispelType = "Magic" },
@@ -1851,7 +1912,8 @@ local function GetTestUnitData(fakeUnit, mode)
     for key, value in pairs(data) do
         result[key] = value
     end
-    result.name = fakeUnit.isPlayer and "Player" or data.name
+    result.name = fakeUnit.isPlayer and "Player"
+        or (ns.PF_TestNameOverrides and ns.PF_TestNameOverrides[index]) or data.name
     result.isPlayer = fakeUnit.isPlayer == true
     result.role = fakeUnit.isPlayer and "DAMAGER" or result.role
     local testStatusOverrides = ns.PF_TestStatusOverrides
@@ -3213,7 +3275,7 @@ ns.PF_Portrait.SetMask = function(button, style)
         end
     end
 end
-function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
+function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel, isRetry)
     local portraitFrame = frame and frame.portraitFrame
     if not portraitFrame then return end
     local metrics = ns.PF_Portrait.GetMetrics(db, frame._layoutHeight)
@@ -3281,6 +3343,19 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
         ns.PF_Portrait.Point(classTexture, "BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", -classInset, classInset)
     end
     if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Sync(frame, db, portraitFrame:IsShown()) end
+
+    -- NPC companions (follower dungeons) report their portrait late and the 2D texture stays
+    -- empty until then: look again a few times.
+    if not isRetry then frame._portraitRetries = 0 end
+    if unit and not fakeData and (frame._portraitRetries or 0) < 4 and _G.UnitIsPlayer
+        and not ns.PF_Portrait.SafeUnitFlag(_G.UnitIsPlayer, unit) and C_Timer and C_Timer.After then
+        frame._portraitRetries = (frame._portraitRetries or 0) + 1
+        C_Timer.After(1, function()
+            if frame:IsShown() and frame.unit == unit then
+                Mod:UpdatePartyPortrait(frame, Mod:GetModeDB(frame.mode or "party"), nil, true, true)
+            end
+        end)
+    end
 end
 
 ns.PF_Portrait.SyncLevels = function(frame)
@@ -7710,12 +7785,7 @@ end
 function Mod:RandomizeTestClasses()
     local classes = IS_FOREVER_CLIENT and {"DRUID", "HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR"}
         or {"HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR", "DRUID", "DEATHKNIGHT", "MONK", "DEMONHUNTER", "EVOKER"}
-    for index = #classes, 2, -1 do
-        local other = math.random(1, index)
-        classes[index], classes[other] = classes[other], classes[index]
-    end
-    ns.PF_TestClassOverrides = {}
-    for index = 1, 40 do ns.PF_TestClassOverrides[index] = classes[((index - 1) % #classes) + 1] end
+    ns.PF_TestClassOverrides, ns.PF_TestNameOverrides = ns.PF_RollTestHeroes(classes)
 end
 function Mod:SetTestMode(mode, enabled)
     mode = NormalizeMode(mode)
