@@ -242,8 +242,24 @@ local function LayoutRestGlow(frame, g)
     local backdrop = frame.Portrait and frame.Portrait.backdrop
     if not (g.resting and backdrop and backdrop:IsShown()) then
         if g.restGlow then g.restGlow:Hide() end
+        if g.restClones and g.restClones[1] then g.restClones[1]:Hide() end
         if g.restHeaderClip then g.restHeaderClip:Hide() end
         return false
+    end
+    -- Forever plate: the client's Status atlas is a plain ring and misses the bronze corner,
+    -- so the glow is a gold copy of the plate art itself (same rule as the aggro glow).
+    local plateArt = Theme() == "forever" and frame._ktForeverPortraitArt
+    if plateArt and plateArt.IsShown and plateArt:IsShown() and plateArt._ktGlowTextureFile then
+        g.restClones = g.restClones or {}
+        if CloneTexture(g, 1, plateArt, g.restClones, g.clip) then
+            local copy = g.restClones[1]
+            copy:SetBlendMode("ADD")
+            copy:SetVertexColor(1, 0.82, 0.25, 0.8)
+            if g.restGlow then g.restGlow:Hide() end
+            return true
+        end
+    elseif g.restClones and g.restClones[1] then
+        g.restClones[1]:Hide()
     end
     local atlas = "UI-HUD-UnitFrame-Player-PortraitOn-Status"
     local classic = Theme() == "classic"

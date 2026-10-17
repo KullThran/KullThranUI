@@ -971,6 +971,7 @@ local function BuildTabBar(sc, yOff)
         { id = "player",      label = LText("Player & Pet") },
         { id = "target",      label = LText("Targeting") },
         { id = "boss",        label = LText("Boss") },
+        { id = "portraitauras", label = LText("Portrait Auras") },
     }
     local containerH = TAB_H + 6
     local container
@@ -997,6 +998,7 @@ local function BuildTabBar(sc, yOff)
         fontSize = 11,
         onSelect = function(tid)
             ufActiveTab = tid
+            if tid ~= "portraitauras" and ns.PortraitAuras then ns.PortraitAuras.SetPreview(false) end
             if KT.RefreshPage then KT:RefreshPage(true) end
         end,
     })
@@ -1666,6 +1668,7 @@ do
     ns.ApplyPreviewUnit = function(frame, unitKey, ...)
         rawApplyPreviewUnit(frame, unitKey, ...)
         if ns.ComboUnderFrame then ns.ComboUnderFrame.ApplyPreview(frame, unitKey) end
+        if ns.PortraitAuras and ns.PortraitAuras.ApplyPreview then ns.PortraitAuras.ApplyPreview(frame, unitKey) end
     end
 end
 
@@ -2828,6 +2831,186 @@ KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
                 function(v) SetAndRefresh(function() db.bossSpacing = v end) end, 20, 120, 1); by = by + h
             return by
         end, 'boss')
+    end
+
+    if ufActiveTab == 'portraitauras' then
+        local PA = ns.PortraitAuras
+        local function ApplyPA()
+            if PA then
+                PA.RefreshAll()
+                if PA.IsPreviewOn() then PA.SetPreview(true) end
+            end
+            if previewRefresh then previewRefresh() end
+        end
+        AddBlock('left', 'Portrait Auras', function(container)
+            local by = 0
+            _, h = W:Label(container, 'Shows crowd control, defensives and other important auras on the portrait. One icon is shown, the highest priority one: Crowd Control, Disarm, Big Defensive, External Defensive, Important.', -by, 11); by = by + h
+            _, h = W:Toggle(container, 'Enabled', -by,
+                function() return PA and PA.IsEnabled() end,
+                function(v) if PA then PA.SetOption('enabled', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Toggle(container, 'Preview on the portraits', -by,
+                function() return PA and PA.IsPreviewOn() end,
+                function(v)
+                    if PA then PA.SetPreview(v and true or false) end
+                    if previewRefresh then previewRefresh() end
+                end); by = by + h
+            _, h = W:Toggle(container, 'Reverse swipe', -by,
+                function() return not PA or PA.GetOption('reverseSwipe') ~= false end,
+                function(v) if PA then PA.SetOption('reverseSwipe', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Toggle(container, 'Show numbers', -by,
+                function() return not PA or PA.GetOption('showNumbers') ~= false end,
+                function(v) if PA then PA.SetOption('showNumbers', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Slider(container, 'Font Scale', -by,
+                function() return PA and PA.GetOption('fontScale') or 1 end,
+                function(v) if PA then PA.SetOption('fontScale', v); ApplyPA() end end, 0.5, 2, 0.05, '%.2f'); by = by + h
+            return by
+        end, 'portraitAurasMain')
+        AddBlock('left', 'CC Catalog', function(container)
+            local by = 0
+            local C = PA and PA.Catalog
+            if not (C and C.GetClasses and C.GetClassEntries) then return by end
+            local function ClassLabel(token)
+                if token == 'OTHER' then return LText('Other') end
+                return (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[token]) or token
+            end
+            -- kind of crowd control: one dropdown (legible, and it scales to any number of kinds)
+            local kinds = C.GetKinds()
+            if #kinds == 0 then return by end
+            local group = ns.PA_catalogGroup
+            local valid = false
+            for _, k in ipairs(kinds) do if k == group then valid = true end end
+            if not valid then group = kinds[1] end
+            ns.PA_catalogGroup = group
+            local labels = {}
+            for _, k in ipairs(kinds) do labels[k] = C.KIND_LABELS[k] end
+            _, h = W:Dropdown(container, 'Type of crowd control', -by, labels,
+                function() return ns.PA_catalogGroup end,
+                function(v)
+                    ns.PA_catalogGroup = v
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end, kinds); by = by + h
+            _, h = W:Input(container, 'Search spells', -by,
+                function() return ns.PA_catalogSearch or '' end,
+                function(v)
+                    ns.PA_catalogSearch = v or ''
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end); by = by + h
+            local search = ns.PA_catalogSearch or ''
+            local searching = search ~= ''
+            local entries = searching and C.Search(search) or C.GetEntries(group)
+            -- Enable all / Disable all: two compact buttons on one row
+            local bar = CreateFrame('Frame', nil, container)
+            bar:SetPoint('TOPLEFT', 10, -by)
+            bar:SetPoint('TOPRIGHT', -10, -by)
+            bar:SetHeight(34)
+            local half = math.floor(((container:GetWidth() or 400) - 20 - 8) / 2)
+            for idx, spec in ipairs({ { 'Enable all', true }, { 'Disable all', false } }) do
+                local btn = CreateFrame('Button', nil, bar)
+                btn:SetSize(half, 26)
+                btn:SetPoint('LEFT', (idx - 1) * (half + 8), 0)
+                if KT.NavTabs and KT.NavTabs.StyleButton then
+                    KT.NavTabs.StyleButton(btn, { label = LText(spec[1]), fontSize = 12, variant = 'short' })
+                end
+                btn:SetScript('OnClick', function()
+                    if PA then PA.SetEntriesEnabled(entries, spec[2]); ApplyPA() end
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end)
+            end
+            by = by + 38
+            if #entries == 0 then
+                _, h = W:Label(container, 'No spells match.', -by, 11); by = by + h
+                return by
+            end
+            local rowH = 24
+            local function Paint(row, entry)
+                local on = PA.IsEntryEnabled(entry)
+                row.icon:SetDesaturated(not on)
+                row.icon:SetAlpha(on and 1 or 0.35)
+                row.name:SetAlpha(on and 1 or 0.45)
+                if on then row.check:SetColorTexture(0.25, 0.75, 0.35, 1) else row.check:SetColorTexture(0.55, 0.15, 0.15, 1) end
+            end
+            for i, entry in ipairs(entries) do
+                local row = CreateFrame('Button', nil, container)
+                row:SetHeight(rowH)
+                row:SetPoint('TOPLEFT', 10, -(by + (i - 1) * rowH))
+                row:SetPoint('TOPRIGHT', -10, -(by + (i - 1) * rowH))
+                row.bg = row:CreateTexture(nil, 'BACKGROUND')
+                row.bg:SetAllPoints(row)
+                row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.05 or 0)
+                row.icon = row:CreateTexture(nil, 'ARTWORK')
+                row.icon:SetSize(20, 20)
+                row.icon:SetPoint('LEFT', 4, 0)
+                row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                row.icon:SetTexture(entry.icon)
+                row.check = row:CreateTexture(nil, 'OVERLAY')
+                row.check:SetSize(12, 12)
+                row.check:SetPoint('RIGHT', -8, 0)
+                row.kind = row:CreateFontString(nil, 'OVERLAY')
+                row.kind:SetFont(KT.FONT_PATH, 10, '')
+                row.kind:SetPoint('RIGHT', row.check, 'LEFT', -10, 0)
+                row.kind:SetJustifyH('RIGHT')
+                row.kind:SetTextColor(0.62, 0.62, 0.68, 1)
+                -- the class when the game data names one, the kind while searching
+                local kindText = entry.class ~= 'OTHER' and ClassLabel(entry.class) or ''
+                if searching then kindText = LText(C.KIND_LABELS[entry.kind] or 'Other') end
+                row.kind:SetText(kindText)
+                row.name = row:CreateFontString(nil, 'OVERLAY')
+                row.name:SetFont(KT.FONT_PATH, 11, '')
+                row.name:SetPoint('LEFT', row.icon, 'RIGHT', 8, 0)
+                row.name:SetPoint('RIGHT', row.kind, 'LEFT', -8, 0)
+                row.name:SetJustifyH('LEFT')
+                row.name:SetWordWrap(false)
+                row.name:SetText(entry.name)
+                Paint(row, entry)
+                row:SetScript('OnClick', function()
+                    PA.SetEntryEnabled(entry, not PA.IsEntryEnabled(entry))
+                    Paint(row, entry)
+                    ApplyPA()
+                end)
+                row:SetScript('OnEnter', function(self)
+                    self.bg:SetColorTexture(1, 1, 1, 0.12)
+                    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+                    GameTooltip:SetText(entry.name)
+                    GameTooltip:AddLine((entry.class ~= 'OTHER' and (ClassLabel(entry.class) .. ' - ') or '') .. LText(C.KIND_LABELS[entry.kind] or 'Other'), 0.8, 0.8, 0.85)
+                    GameTooltip:AddLine(LText('Spell IDs') .. ': ' .. table.concat(entry.ids, ', '), 0.7, 0.7, 0.7)
+                    GameTooltip:AddLine(LText(PA.IsEntryEnabled(entry) and 'Click to switch this spell off.' or 'Click to switch this spell on.'), 1, 0.82, 0)
+                    GameTooltip:Show()
+                end)
+                row:SetScript('OnLeave', function(self)
+                    self.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.05 or 0)
+                    GameTooltip:Hide()
+                end)
+            end
+            by = by + #entries * rowH + 6
+            return by
+        end, 'portraitAurasCatalog')
+        AddBlock('right', 'Units', function(container)
+            local by = 0
+            for _, entry in ipairs({ { 'player', 'Player' }, { 'target', 'Target' }, { 'focus', 'Focus' }, { 'pet', 'Pet' },
+                { 'targettarget', 'Target of Target' }, { 'focustarget', 'Focus Target' } }) do
+                _, h = W:Toggle(container, entry[2], -by,
+                    function() return PA and PA.GetSub('units', entry[1]) == true end,
+                    function(v) if PA then PA.SetSub('units', entry[1], v and true or false); ApplyPA() end end); by = by + h
+            end
+            return by
+        end, 'portraitAurasUnits')
+        AddBlock('right', 'Categories', function(container)
+            local by = 0
+            for _, entry in ipairs({
+                { 'crowdControl', 'Crowd Control' }, { 'disarm', 'Disarms' },
+                { 'bigDefensive', 'Big Defensives' }, { 'externalDefensive', 'External Defensives' },
+                { 'important', 'Important Spells' } }) do
+                _, h = W:Toggle(container, entry[2], -by,
+                    function() return PA and PA.GetSub('categories', entry[1]) == true end,
+                    function(v) if PA then PA.SetSub('categories', entry[1], v and true or false); ApplyPA() end end); by = by + h
+            end
+            _, h = W:Input(container, 'Extra crowd control spell IDs', -by,
+                function() return PA and PA.GetOption('customSpells') or '' end,
+                function(v) if PA then PA.SetOption('customSpells', v or ''); ApplyPA() end end); by = by + h
+            _, h = W:Label(container, 'Spell IDs separated by commas. They only show on enemies.', -by, 10); by = by + h
+            _, h = W:Label(container, 'Disarms only show on enemies. Categories use the flags the game puts on each aura, so they keep working in instances.', -by, 10); by = by + h
+            return by
+        end, 'portraitAurasCategories')
     end
 
     BindPreviewClick(preview.playerPreview, 'Player Preview', 'player', function() return optionBlocks.player end)

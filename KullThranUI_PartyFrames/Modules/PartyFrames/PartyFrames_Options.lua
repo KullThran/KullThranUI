@@ -2603,6 +2603,49 @@ local PORTRAIT_SIDES = {
     left = "Left",
     right = "Right",
 }
+local function AddPortraitAuraControls(container, W, mode)
+    local PA = ns.PF_PortraitAuras
+    local defaults = PA and PA.DEFAULTS or {}
+    local enemyArena = mode == "arenaEnemy"
+    local by = 0
+    local _, h
+    local function Bool(key)
+        return function() return GetValue(mode, key, defaults[key] == true) == true end
+    end
+    local function SetBool(key)
+        return function(v) ApplyValue(mode, key, v and true or false) end
+    end
+    _, h = W:Label(container, "Shown over the portrait of each frame. Test frames show a sample icon.", -by, 11); by = by + h
+    _, h = W:Label(container, "Needs Show Portrait to be turned on.", -by, 10); by = by + h
+    _, h = W:Toggle(container, "Enabled", -by, Bool("portraitAurasEnabled"), SetBool("portraitAurasEnabled")); by = by + h
+    _, h = W:Toggle(container, "Reverse swipe", -by,
+        function() return GetValue(mode, "portraitAurasReverse", true) ~= false end,
+        SetBool("portraitAurasReverse")); by = by + h
+    _, h = W:Toggle(container, "Show numbers", -by,
+        function() return GetValue(mode, "portraitAurasNumbers", true) ~= false end,
+        SetBool("portraitAurasNumbers")); by = by + h
+    _, h = W:Slider(container, "Font Scale", -by,
+        function() return GetValue(mode, "portraitAurasFontScale", 1) end,
+        function(v) ApplyValue(mode, "portraitAurasFontScale", v) end,
+        0.5, 2, 0.05, "%.2f"); by = by + h
+    _, h = W:Toggle(container, "Crowd Control", -by, Bool("portraitAurasCC"), SetBool("portraitAurasCC")); by = by + h
+    -- Disarms and extra spell ids only match units you cannot assist.
+    if enemyArena then
+        _, h = W:Toggle(container, "Disarms", -by, Bool("portraitAurasDisarm"), SetBool("portraitAurasDisarm")); by = by + h
+    end
+    _, h = W:Toggle(container, "Big Defensives", -by, Bool("portraitAurasBigDef"), SetBool("portraitAurasBigDef")); by = by + h
+    _, h = W:Toggle(container, "External Defensives", -by, Bool("portraitAurasExtDef"), SetBool("portraitAurasExtDef")); by = by + h
+    _, h = W:Toggle(container, "Important Spells", -by, Bool("portraitAurasImportant"), SetBool("portraitAurasImportant")); by = by + h
+    if enemyArena then
+        _, h = W:Input(container, "Extra crowd control spell IDs", -by,
+            function() return GetValue(mode, "portraitAurasSpells", "") end,
+            function(v) ApplyValue(mode, "portraitAurasSpells", v or "") end); by = by + h
+        _, h = W:Label(container, "Spell IDs separated by commas. They only show on enemies.", -by, 10); by = by + h
+        _, h = W:Label(container, "Disarms only show on enemies. Categories use the flags the game puts on each aura, so they keep working in instances.", -by, 10); by = by + h
+    end
+    return by
+end
+
 local function AddFrameLayoutControls(container, W, mode)
     local configMode = mode
     local by = 0
@@ -3605,6 +3648,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "raid")
         end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "raid")
+        end)
         AddOptionBlock(cols, "right", "Sorting", function(container)
             return AddSortingControls(container, W, "raid")
         end)
@@ -3638,6 +3684,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "raid40")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "raid40")
         end)
         AddOptionBlock(cols, "right", "Sorting", function(container)
             return AddSortingControls(container, W, "raid40")
@@ -3675,6 +3724,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, arenaMode)
         end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, arenaMode)
+        end)
 
     elseif activeMode == "boss" then
         AddOptionBlock(cols, "left", "Boss Layout", function(container)
@@ -3703,6 +3755,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "boss")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "boss")
         end)
 
     else
@@ -3735,6 +3790,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "party")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "party")
         end)
         AddOptionBlock(cols, "right", "Quick Actions", function(container)
             return AddQuickActions(container, W)

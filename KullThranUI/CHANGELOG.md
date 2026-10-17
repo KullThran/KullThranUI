@@ -1,9 +1,15 @@
 # KullThranUI Changelog
 
-Current addon version: **5.1.7**
+Current addon version: **5.1.8**
 
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
+
+## 5.1.8 (2026-10-17)
+- Unit Frames: new Portrait Auras tab. The most important aura of Player, Target, Focus, Pet, Target of Target and Focus Target shows on its portrait: crowd control, disarms, big and external defensives and important spells, one icon at a time by priority. It has a live preview and options for numbers, swipe direction and font size.
+- Portrait Auras: a visual CC Catalog lists over a thousand crowd control spells by type with icon, name and class, with search, and lets you switch each one off. Retail and Forever each list the spells their own game has, and you can add your own spell IDs.
+- Party Frames: raid and arena frames can show the same portrait auras, with their own switches.
+- Forever style: the resting glow around the portrait now follows the whole plate art, including the bronze corner.
 
 ## 5.1.7 (2026-10-17)
 - Forever style reworked for the new Forever art: Player, Target, Focus, Target of Target, Pet, Focus Target and Party Frames fit the new three-band plate (bars, names, icons and portraits) and keep the round portrait ring. It looks the same on the Retail and Forever clients.

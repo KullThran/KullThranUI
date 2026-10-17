@@ -215,6 +215,10 @@ end
 
 function ns.PF_BindAuraContainers(frame, unit)
     local b = frame and frame.ktAuraContainers
+    -- The portrait aura host follows the unit even before the aura bundle exists.
+    if frame and ns.PF_PortraitAuras and not (b and frame._ktAuraContainerUnit == unit) then
+        ns.PF_PortraitAuras.Bind(frame, unit)
+    end
     if not b then return end
     if frame._ktAuraContainerUnit == unit then return end
     Bind(b.buffs, unit)
@@ -231,6 +235,7 @@ end
 -- on out-of-sight raid frames).
 function ns.PF_UnbindAuraContainers(frame)
     local b = frame and frame.ktAuraContainers
+    if frame and ns.PF_PortraitAuras then ns.PF_PortraitAuras.Unbind(frame) end
     if not b then return end
     b.buffs:SetUnit("none")
     b.debuffs:SetUnit("none")

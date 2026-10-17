@@ -3222,6 +3222,7 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
         portraitFrame:Hide()
         if frame.portraitModel then frame.portraitModel:Hide() end
         frame._portraitModelActive = nil
+        if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Sync(frame, db, false) end
         return
     end
 
@@ -3279,6 +3280,7 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
         ns.PF_Portrait.Point(classTexture, "TOPLEFT", portraitFrame, "TOPLEFT", classInset, -classInset)
         ns.PF_Portrait.Point(classTexture, "BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", -classInset, classInset)
     end
+    if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Sync(frame, db, portraitFrame:IsShown()) end
 end
 
 ns.PF_Portrait.SyncLevels = function(frame)
@@ -3292,12 +3294,16 @@ ns.PF_Portrait.SyncLevels = function(frame)
     local strata = health:GetFrameStrata()
     portrait:SetFrameStrata(strata)
     local top
+    -- The portrait auras need a level per tier between the model and the ring.
+    local auras = ns.PF_PortraitAuras
+    local gap = auras and auras.LevelGap(frame) or 0
     if ns.PF_Portrait.IsBelowHealth() then
         local root = (frame:GetFrameLevel() or 0) + 1
         portrait:SetFrameLevel(root)
         if frame.portraitModel then frame.portraitModel:SetFrameLevel(root + 1) end
-        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(root + 2) end
-        local healthLevel = math.max(health:GetFrameLevel() or 0, root + 3)
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(root + 2 + gap) end
+        if gap > 0 then auras.Raise(frame, root + 2) end
+        local healthLevel = math.max(health:GetFrameLevel() or 0, root + 3 + gap)
         health:SetFrameLevel(healthLevel)
         if frame.absorb then frame.absorb:SetFrameLevel(healthLevel + 2) end
         top = healthLevel + 2
@@ -3308,8 +3314,9 @@ ns.PF_Portrait.SyncLevels = function(frame)
         end
         portrait:SetFrameLevel(base + 4)
         if frame.portraitModel then frame.portraitModel:SetFrameLevel(base + 5) end
-        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7) end
-        top = base + 7
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7 + gap) end
+        if gap > 0 then auras.Raise(frame, base + 6) end
+        top = base + 7 + gap
     end
     if frame.overlayFrame then
         frame.overlayFrame:SetFrameStrata(strata)
