@@ -3787,50 +3787,131 @@ initFrame:SetScript("OnEvent", function(self)
         _, h = W:Spacer(parent, y, 20); y = y - h
 
         -----------------------------------------------------------------------
-        --  DOT DAMAGE (health your bleeds and DoTs will still take)
+        --  EXECUTE RANGE (health bar painted under a health percent)
         -----------------------------------------------------------------------
-        _, h = W:SectionHeader(parent, "DOT DAMAGE", y); y = y - h
+        _, h = W:SectionHeader(parent, "EXECUTE RANGE", y); y = y - h
 
         do
-            local function RefreshDotDamage()
-                if ns.RefreshDotDamage then ns.RefreshDotDamage() end
+            local function RefreshExecute()
+                if ns.RefreshExecute then ns.RefreshExecute() end
             end
 
             _, h = W:DualRow(parent, y,
                 {
                     type = "toggle",
-                    text = LText("Show Pending DoT Damage"),
-                    getValue = function() return DBVal("dotDamageEnabled") == true end,
+                    text = LText("Show Execute Range"),
+                    getValue = function() return DBVal("executeEnabled") == true end,
                     setValue = function(v)
-                        DB().dotDamageEnabled = v
-                        RefreshDotDamage()
+                        DB().executeEnabled = v
+                        RefreshExecute()
                     end,
-                    tooltip = LText("Paints over the health bar of enemies the health your bleeds and DoTs will still take before they expire.")
+                    tooltip = LText("Paints the health bar of enemies in the execute color when their health drops under the chosen percent.")
                 },
                 {
-                    type = "colorpicker",
-                    text = LText("DoT Damage Color"),
-                    hasAlpha = true,
+                    type = "slider",
+                    text = LText("Execute Threshold"),
+                    trackWidth = 110,
+                    min = 5,
+                    max = 90,
+                    step = 1,
                     getValue = function()
-                        if ns.GetDotDamageColor then return ns.GetDotDamageColor() end
-                        return 0.90, 0.10, 0.10, 0.85
+                        return tonumber(DBVal("executeThreshold")) or ns.EXECUTE_DEFAULT_THRESHOLD or 20
                     end,
-                    setValue = function(r, g, b, a)
-                        DB().dotDamageColor = { r = r, g = g, b = b, a = a or 1 }
-                        RefreshDotDamage()
+                    setValue = function(v)
+                        DB().executeThreshold = v
+                        RefreshExecute()
                     end
                 }); y = y - h
 
             _, h = W:DualRow(parent, y,
                 {
-                    type = "toggle",
-                    text = LText("Skull When DoTs Will Kill"),
-                    getValue = function() return DBVal("dotDamageSkull") ~= false end,
-                    setValue = function(v)
-                        DB().dotDamageSkull = v
-                        RefreshDotDamage()
+                    type = "colorpicker",
+                    text = LText("Execute Color"),
+                    hasAlpha = true,
+                    getValue = function()
+                        if ns.GetExecuteColor then return ns.GetExecuteColor() end
+                        return 0.85, 0.05, 0.05, 1
                     end,
-                    tooltip = LText("Shows a skull next to the nameplate when your bleeds and DoTs will deal more damage than the health it has left.")
+                    setValue = function(r, g, b, a)
+                        DB().executeColor = { r = r, g = g, b = b, a = a or 1 }
+                        RefreshExecute()
+                    end
+                },
+                {
+                    type = "toggle",
+                    text = LText("Execute Mark"),
+                    getValue = function() return DBVal("executeMark") ~= false end,
+                    setValue = function(v)
+                        DB().executeMark = v
+                        RefreshExecute()
+                    end,
+                    tooltip = LText("Draws a mark on the health bar at the execute percent.")
+                }); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Execute Skull"),
+                    getValue = function() return DBVal("executeSkull") ~= false end,
+                    setValue = function(v)
+                        DB().executeSkull = v
+                        RefreshExecute()
+                    end,
+                    tooltip = LText("Shows a skull next to the nameplate while the enemy is in execute range.")
+                },
+                nil); y = y - h
+        end
+
+        _, h = W:Spacer(parent, y, 20); y = y - h
+
+        -----------------------------------------------------------------------
+        --  FRIENDLY CLASS ICONS (big round class / spec / healer icon)
+        -----------------------------------------------------------------------
+        _, h = W:SectionHeader(parent, "FRIENDLY CLASS ICONS", y); y = y - h
+
+        do
+            local function RefreshClassIcons()
+                if ns.RefreshClassIcons then ns.RefreshClassIcons() end
+            end
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Class Icons on Friendly Players"),
+                    getValue = function() return DBVal("friendlyClassIcons") == true end,
+                    setValue = function(v)
+                        DB().friendlyClassIcons = v
+                        RefreshClassIcons()
+                    end,
+                    tooltip = LText("Shows a big round icon over friendly players: the healer cross for healers, otherwise their spec or class icon.")
+                },
+                {
+                    type = "slider",
+                    text = LText("Class Icon Size"),
+                    min = 16,
+                    max = 64,
+                    step = 1,
+                    getValue = function()
+                        return tonumber(DBVal("friendlyClassIconSize")) or ns.CLASS_ICON_DEFAULT_SIZE or 34
+                    end,
+                    setValue = function(v)
+                        DB().friendlyClassIconSize = v
+                        RefreshClassIcons()
+                    end
+                }); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "slider",
+                    text = LText("Class Icon Height"),
+                    min = -40,
+                    max = 60,
+                    step = 1,
+                    getValue = function() return tonumber(DBVal("friendlyClassIconYOffset")) or 0 end,
+                    setValue = function(v)
+                        DB().friendlyClassIconYOffset = v
+                        RefreshClassIcons()
+                    end
                 },
                 nil); y = y - h
         end
