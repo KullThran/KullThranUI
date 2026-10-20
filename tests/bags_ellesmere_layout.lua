@@ -221,7 +221,16 @@ assert(Mod.selectedBagID == 3, "click without a bag still filters")
 
 -- Dragging the header outside Unlock Mode saves the position for /reload.
 window.GetPoint = function() return "TOPLEFT", nil, "BOTTOMLEFT", 120, 480 end
+local unlockSaved
+KT.GetModule = function(_, name)
+    if name == "UnlockMode" then
+        return { SaveElementPosition = function(_, key, pos) unlockSaved = { key = key, pos = pos } end }
+    end
+end
 window.KT_Header.scripts.OnDragStop(window.KT_Header)
+-- Forever restores Unlock Mode's own copy on reload, so the drag must reach it.
+assert(unlockSaved and unlockSaved.key == "kullthran_bags_window" and unlockSaved.pos.x == 120 and unlockSaved.pos.y == 480, "header drag saves through Unlock Mode")
+KT.GetModule = nil
 local saved = KT.db.profile.editMode.frames.kullthran_bags_window
 assert(saved and saved.point == "TOPLEFT" and saved.relativePoint == "BOTTOMLEFT" and saved.x == 120 and saved.y == 480, "header drag saves position")
 window.points = {}

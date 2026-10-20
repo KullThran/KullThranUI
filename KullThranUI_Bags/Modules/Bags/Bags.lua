@@ -5651,16 +5651,31 @@ function Mod:SaveWindowPosition(window)
         return
     end
 
-    local profile = KT.db.profile
-    profile.editMode = profile.editMode or {}
-    profile.editMode.frames = profile.editMode.frames or {}
-    profile.editMode.frames[KT_BAGS_DB_KEY] = {
+    local pos = {
         point = point,
         relativePoint = relativePoint or point,
         x = x or 0,
         y = y or 0,
         scale = window.GetScale and window:GetScale() or 1,
     }
+    local profile = KT.db.profile
+    profile.editMode = profile.editMode or {}
+    profile.editMode.frames = profile.editMode.frames or {}
+    profile.editMode.frames[KT_BAGS_DB_KEY] = pos
+
+    -- Save through Unlock Mode too: on Forever it keeps an account-wide copy
+    -- of every position that wins over the profile on reload, so a drag saved
+    -- only in the profile would snap back to the last Unlock Mode position.
+    local unlockMode = KT.GetModule and KT:GetModule("UnlockMode", true)
+    if unlockMode and unlockMode.SaveElementPosition then
+        pcall(unlockMode.SaveElementPosition, unlockMode, KT_BAGS_DB_KEY, {
+            point = pos.point,
+            relativePoint = pos.relativePoint,
+            x = pos.x,
+            y = pos.y,
+            scale = pos.scale,
+        })
+    end
 end
 
 --- Anchor the window at its saved position, if there is one.
