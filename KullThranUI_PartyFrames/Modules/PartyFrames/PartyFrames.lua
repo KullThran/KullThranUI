@@ -3239,6 +3239,7 @@ ns.PF_Portrait.SetMask = function(button, style)
     if useMask then
         local maskName = style == "circular" and "circle_mask.tga" or "portrait_mask.tga"
         local maskPath = ns.PF_Portrait.media .. maskName
+        button._portraitMaskPath = maskPath
 
         -- Unit Frames inset the masks by one pixel so portrait art cannot leak
         -- through the transparent edge of the border.
@@ -3262,6 +3263,7 @@ ns.PF_Portrait.SetMask = function(button, style)
             button._portraitClassMaskAdded = true
         end
     else
+        button._portraitMaskPath = nil
         if button._portraitMaskAdded and button.portrait.RemoveMaskTexture then
             button.portrait:RemoveMaskTexture(button.portraitMask)
             if button.portraitBG and button.portraitBG.RemoveMaskTexture then

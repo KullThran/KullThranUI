@@ -475,7 +475,10 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
         elseif frame.auraFrame then frame.auraFrame:SetFrameLevel(portraitLevel + 6) end
     end
     if mode ~= "party" or key == "kui" or cfg.showPortrait ~= true or cfg.portraitStyle == "none" then
-        if frame._pfNativeStyle then Styles.Clear(frame) end
+        if frame._pfNativeStyle then
+            Styles.Clear(frame)
+            if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Place(frame) end
+        end
         return
     end
     local g, s, x, y = Styles.Geometry(key, frame:GetWidth(), frame:GetHeight())
@@ -615,6 +618,8 @@ function Styles.Apply(frame, cfg, mode, preview, allowCreate, styleOverride)
         ns.PF_UpdateAuraContainers(frame, cfg)
     end
     Styles.UpdatePowerText(frame, cfg, preview)
+    -- The portrait auras follow the portrait into the ring hole.
+    if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Place(frame) end
     if key == "forever" then
         -- Icons centred on the health band must fit it (CC, missing buff), not spill
         -- over the name tab and the power band.
