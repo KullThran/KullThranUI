@@ -2238,6 +2238,7 @@ function Mod:CreateNativeWindow()
     window:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -24, 160)
     window:SetMovable(true)
     window:SetClampedToScreen(true)
+    self:ApplySavedWindowPosition(window)
     -- Keep the bags window above minimap/overlay widgets.
     window:SetFrameStrata("FULLSCREEN_DIALOG")
     window:SetFrameLevel(500)
@@ -2300,6 +2301,7 @@ function Mod:CreateNativeWindow()
         if window and window.StopMovingOrSizing then
             pcall(window.StopMovingOrSizing, window)
         end
+        self:SaveWindowPosition(window)
     end)
     KT_Bags_ApplyAccentSurface(header, {
         topAlpha = 0.065,
@@ -5634,6 +5636,51 @@ function Mod:RegisterWithEditMode()
     self.editModeRegistered = true
 end
 
+--- Save the window anchor in the slot Unlock Mode uses, so dragging the
+-- header outside Unlock Mode also survives /reload.
+-- @param window Frame|nil
+-- @return nil
+function Mod:SaveWindowPosition(window)
+    window = window or _G.KT_BagsWindow
+    if not (window and window.GetPoint and KT.db and KT.db.profile) then
+        return
+    end
+
+    local ok, point, _, relativePoint, x, y = pcall(window.GetPoint, window, 1)
+    if not ok or not point then
+        return
+    end
+
+    local profile = KT.db.profile
+    profile.editMode = profile.editMode or {}
+    profile.editMode.frames = profile.editMode.frames or {}
+    profile.editMode.frames[KT_BAGS_DB_KEY] = {
+        point = point,
+        relativePoint = relativePoint or point,
+        x = x or 0,
+        y = y or 0,
+        scale = window.GetScale and window:GetScale() or 1,
+    }
+end
+
+--- Anchor the window at its saved position, if there is one.
+-- @param window Frame|nil
+-- @return nil
+function Mod:ApplySavedWindowPosition(window)
+    window = window or _G.KT_BagsWindow
+    local saved = window
+        and KT.db and KT.db.profile
+        and KT.db.profile.editMode
+        and KT.db.profile.editMode.frames
+        and KT.db.profile.editMode.frames[KT_BAGS_DB_KEY]
+    if not (saved and saved.point) then
+        return
+    end
+
+    window:ClearAllPoints()
+    window:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
+end
+
 --- Register the native bags window with KullThranUI Unlock Mode.
 -- @return nil
 function Mod:RegisterWithUnlockMode()
@@ -5675,13 +5722,7 @@ function Mod:RegisterWithUnlockMode()
             }
         end,
         applyPosition = function()
-            local saved = KT.db.profile.editMode
-                and KT.db.profile.editMode.frames
-                and KT.db.profile.editMode.frames[KT_BAGS_DB_KEY]
-            if saved and saved.point then
-                _G.KT_BagsWindow:ClearAllPoints()
-                _G.KT_BagsWindow:SetPoint(saved.point, UIParent, saved.relativePoint, saved.x, saved.y)
-            end
+            self:ApplySavedWindowPosition(_G.KT_BagsWindow)
         end,
         unlockClose = function()
             if _G.KT_BagsWindow and _G.KT_BagsWindow.Hide then

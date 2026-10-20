@@ -219,4 +219,14 @@ assert(calls[3] == "put:33" and Mod.selectedBagID == nil, "click drops the carri
 holders[3].scripts.OnClick(holders[3])
 assert(Mod.selectedBagID == 3, "click without a bag still filters")
 
-print("PASS: bags sized like EllesmereUI, free slots, OneBag sections and bag swapping (" .. (forever and "forever" or "retail") .. ")")
+-- Dragging the header outside Unlock Mode saves the position for /reload.
+window.GetPoint = function() return "TOPLEFT", nil, "BOTTOMLEFT", 120, 480 end
+window.KT_Header.scripts.OnDragStop(window.KT_Header)
+local saved = KT.db.profile.editMode.frames.kullthran_bags_window
+assert(saved and saved.point == "TOPLEFT" and saved.relativePoint == "BOTTOMLEFT" and saved.x == 120 and saved.y == 480, "header drag saves position")
+window.points = {}
+Mod:ApplySavedWindowPosition(window)
+local p = window.points[#window.points]
+assert(p and p[1] == "TOPLEFT" and p[3] == "BOTTOMLEFT" and p[4] == 120 and p[5] == 480, "saved position is restored")
+
+print("PASS: bags sized like EllesmereUI, free slots, OneBag sections, bag swapping and drag position (" .. (forever and "forever" or "retail") .. ")")
