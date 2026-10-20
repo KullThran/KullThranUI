@@ -565,7 +565,17 @@ local function SkinProfessionsBook()
     if not ProfessionsBookFrame then return end
     if not ProfessionsBookFrame._ktBookSurfaceOnShow then
         ProfessionsBookFrame._ktBookSurfaceOnShow = true
-        ProfessionsBookFrame:HookScript("OnShow", SkinProfessionsBook)
+        -- Region sizes only resolve once the frame has been laid out, which
+        -- happens after OnShow. The first pass cannot tell which Blizzard
+        -- backgrounds are large, so repeat it on the next frame.
+        ProfessionsBookFrame:HookScript("OnShow", function(self)
+            SkinProfessionsBook()
+            if C_Timer then
+                C_Timer.After(0, function()
+                    if self:IsShown() then SkinProfessionsBook() end
+                end)
+            end
+        end)
     end
     local portrait = ProfessionsBookFrame.Portrait or ProfessionsBookFrame.portrait or _G.ProfessionsBookFramePortrait
     local portraitTexture = portrait and portrait.GetTexture and portrait:GetTexture()
@@ -593,6 +603,10 @@ local function SkinProfessionsBook()
                 local drawLayer = r:GetDrawLayer()
                 if drawLayer == "BACKGROUND" or drawLayer == "BORDER" or drawLayer == "ARTWORK" then
                     local w, h = r:GetWidth(), r:GetHeight()
+                    if (not w or w <= 0) and (not h or h <= 0) and r.GetNumPoints and r:GetNumPoints() >= 2 then
+                        -- Not laid out yet: a texture pinned by two anchors fills its parent.
+                        w, h = 1000, 1000
+                    end
                     local texPath = r.GetTexture and r:GetTexture() or ""
                     local atlas = r.GetAtlas and r:GetAtlas() or ""
                     local name = (type(texPath) == "string" and texPath:lower() or "") .. (type(atlas) == "string" and atlas:lower() or "")
