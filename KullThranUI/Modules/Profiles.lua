@@ -1086,11 +1086,18 @@ function Mod:OnInitialize()
         if event == "PLAYER_LOGIN" then
             Mod:RegisterProfileCallbacks()
             Mod:InitializeProfileBridge()
+        elseif event == "PLAYER_LOGOUT" then
+            -- Keep the active profile's snapshot of the external settings (nameplates, aura reminders,
+            -- spell durations) current. A profile-changed callback at the next login restores that
+            -- snapshot, which would otherwise undo every setting changed since it was taken.
+            local profileName = KT and KT.db and KT.db:GetCurrentProfile()
+            if profileName then SaveExternalProfileSnapshot(profileName) end
         else
             Mod:HandleSpecChange()
         end
     end)
     self.specWatcher:RegisterEvent("PLAYER_LOGIN")
+    self.specWatcher:RegisterEvent("PLAYER_LOGOUT")
 
     self:RegisterProfileCallbacks()
     C_Timer.After(0, function()
