@@ -3,20 +3,14 @@ if KT_CLIENT_BLOCKED then return end
 local _, ns = ...
 
 -- Pending DoT damage: paints over the enemy health bar the health your own bleeds
--- and DoTs will still take before they expire. The combat log is a protected event
--- on these clients, so everything comes from your auras on the unit: the damage per
--- tick is the aura's first effect value, and periodic auras tick on a grid that ends
--- at their expiration, so the ticks still to come are ceil(remaining / interval).
--- While the client keeps auras secret, reading them raises an error, so the overlay
--- stays hidden until they can be read again.
+-- and DoTs will still take before they expire. The damage comes from the DoT
+-- tracker (Nameplates_DotTracker.lua), which works from your casts and the damage
+-- the units take, since auras and the combat log are out of reach in combat.
 
 local DEFAULT_COLOR = { r = 0.90, g = 0.10, b = 0.10, a = 0.85 }
-local TICK_INTERVAL = 3
 
-local GetTime = GetTime
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
-local ceil = math.ceil
 
 local function Profile()
     return _G.KullThranUINameplatesDB or {}
@@ -39,35 +33,9 @@ function ns.GetDotDamageColor()
     return c.r or DEFAULT_COLOR.r, c.g or DEFAULT_COLOR.g, c.b or DEFAULT_COLOR.b, c.a or DEFAULT_COLOR.a
 end
 
-local function AurasSecret()
-    return C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() == true
-end
-
-local function TickAmount(aura)
-    local points = aura.points
-    if type(points) ~= "table" or IsSecret(points) then return nil end
-    for i = 1, #points do
-        local value = points[i]
-        if Readable(value) and type(value) == "number" and value > 0 then return value end
-    end
-    return nil
-end
-
 local function PendingDamage(unit)
-    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) or AurasSecret() then return 0 end
-    local total, now = 0, GetTime()
-    for i = 1, 40 do
-        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HARMFUL|PLAYER")
-        if not ok or not aura then break end
-        local expiration, duration = aura.expirationTime, aura.duration
-        if Readable(expiration) and Readable(duration) and duration > 0 and expiration > now then
-            local amount = TickAmount(aura)
-            if amount then
-                total = total + ceil((expiration - now) / TICK_INTERVAL - 0.01) * amount
-            end
-        end
-    end
-    return total
+    if not ns.DotDamageForUnit then return 0 end
+    return (ns.DotDamageForUnit(unit))
 end
 
 -- Every plate that ever got an overlay. Plates are pooled and reused for other
@@ -156,27 +124,11 @@ local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("PLAYER_LOGIN")
 watcher:SetScript("OnEvent", RefreshAll)
 
--- /kuidot: prints what the client exposes for your debuffs on the target, so the
--- estimate can be checked in and out of combat.
+-- /kuidot: prints what the tracker counts on the target, to check the estimate.
 SLASH_KUIDOT1 = "/kuidot"
 SlashCmdList.KUIDOT = function()
-    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
     local function Show(value) return Readable(value) and tostring(value) or "secret" end
-    if AurasSecret() then
-        print(SLASH_KUIDOT1, "C_Secrets.ShouldAurasBeSecret", true)
-        return
-    end
-    local now = GetTime()
-    print(SLASH_KUIDOT1, Show(UnitHealth("target")), Show(UnitHealthMax("target")), PendingDamage("target"))
-    for i = 1, 40 do
-        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "target", i, "HARMFUL|PLAYER")
-        if not ok or not aura then break end
-        local points = {}
-        if type(aura.points) == "table" and not IsSecret(aura.points) then
-            for j = 1, #aura.points do points[j] = Show(aura.points[j]) end
-        end
-        local remaining = Readable(aura.expirationTime) and string.format("%.1f", aura.expirationTime - now)
-        print(" ", Show(aura.name), Show(aura.spellId), Show(aura.duration), remaining or "secret",
-            table.concat(points, ","))
-    end
+    local pending, count = 0, 0
+    if ns.DotDamageForUnit then pending, count = ns.DotDamageForUnit("target") end
+    print(SLASH_KUIDOT1, Show(UnitHealth("target")), Show(UnitHealthMax("target")), pending, count)
 end
