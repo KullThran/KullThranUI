@@ -14,6 +14,7 @@ local HandleProfessionSpellButton
 local C_Timer = _G.C_Timer
 local tostring = tostring
 local string_format = string.format
+local PROFESSION_BAR_FILL = "Interface\\Spellbook\\Professions-Progress-Fill"
 
 local function SetNativeArtwork(texture, alpha, brightness, desaturation)
     if not texture or S:IsKuiSurfaceRegion(texture) then return end
@@ -243,9 +244,12 @@ local function SkinProfessionEntry(prof)
         S:StripTextures(prof.statusBar)
         S:HandleStatusBar(prof.statusBar)
         prof.statusBar:SetHeight(14)
-        prof.statusBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
-        local c = S:GetAccentColor()
-        prof.statusBar:SetStatusBarColor(c[1], c[2], c[3], 0.9)
+        -- Keep Blizzard's own profession fill (the template sets no BarColor),
+        -- not the accent color: StripTextures also faded the bar texture.
+        prof.statusBar:SetStatusBarTexture(PROFESSION_BAR_FILL)
+        prof.statusBar:SetStatusBarColor(1, 1, 1, 1)
+        local fill = prof.statusBar:GetStatusBarTexture()
+        if fill then fill:SetAlpha(1) end
         S:CreateBackdrop(prof.statusBar)
 
         local a, b, c, _, e = prof.statusBar:GetPoint()
@@ -332,26 +336,6 @@ local function SkinProfessionEntry(prof)
     end
 
     ProfessionsUpdateButtons(prof)
-end
-
-local function FormatProfessionHook(frame, id)
-    if frame then
-        if frame.missingHeader then frame.missingHeader:SetTextColor(1, 1, 1) end
-        if frame.missingText then frame.missingText:SetTextColor(1, 1, 1) end
-    end
-    if not (id and frame and frame.icon) or not GetProfessionInfo then
-        if frame then
-            SkinProfessionEntry(frame)
-        end
-        return
-    end
-
-    local _, texture = GetProfessionInfo(id)
-    if texture then
-        frame.icon:SetTexture(texture)
-    end
-
-    SkinProfessionEntry(frame)
 end
 
 local function ProfessionButtonUpdate(button)
@@ -634,6 +618,11 @@ local function SkinProfessionsBook()
     end
     
     DarkenBackgrounds(ProfessionsBookFrame)
+    -- The leather pages are the book's own background: keep them visible on
+    -- every pass instead of fading them to near black with the other art.
+    for _, page in ipairs({ _G.ProfessionsBookPage1, _G.ProfessionsBookPage2 }) do
+        SetNativeArtwork(page, 1, 0.74, 0.10)
+    end
     if _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.ProfessionsFrame then
         local professionsPanel = _G.PlayerSpellsFrame.ProfessionsFrame
         DarkenBackgrounds(professionsPanel)
@@ -671,11 +660,9 @@ local function SkinProfessionsBook()
         end
     end
 
-    if _G.FormatProfession and not ProfessionsBookFrame._ktFormatProfessionHooked then
-        hooksecurefunc("FormatProfession", FormatProfessionHook)
-        ProfessionsBookFrame._ktFormatProfessionHooked = true
-    end
-
+    -- Hook the whole update, never FormatProfession: an error in a
+    -- FormatProfession post-hook aborts ProfessionsBookFrame_Update and leaves
+    -- the following entries with their template text and a 0/0 bar.
     if _G.ProfessionsBookFrame_Update and not ProfessionsBookFrame._ktUpdateHooked then
         hooksecurefunc("ProfessionsBookFrame_Update", ProfessionsBookFrameUpdate)
         ProfessionsBookFrame._ktUpdateHooked = true
@@ -724,14 +711,6 @@ local function HookProfessionsBookOpen()
             if C_Timer then C_Timer.After(0.1, TrySkinProfessionsBook) else TrySkinProfessionsBook() end
         end)
     end
-
-    if _G.FormatProfession and not hooked.format then
-        hooked.format = true
-        hooksecurefunc("FormatProfession", function()
-            TrySkinProfessionsBook()
-        end)
-    end
-
 end
 
 local function RegisterProfessionsDebugSlash()
