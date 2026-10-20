@@ -27,15 +27,24 @@ end
 local KT_MODULE_NAME = "KullThranUI"
 local KT_BAGS_DB_KEY = "kullthran_bags_window"
 local KT_BAGS_WINDOW_WIDTH = 780
-local KT_BAGS_WINDOW_HEIGHT = 540
-local KT_BAGS_COLUMNS = 10
-local KT_ITEM_SIZE = 40
+local KT_BAGS_WINDOW_HEIGHT = 640
+-- The window width follows the column count (EllesmereUI sizes its bags the
+-- same way) instead of the column count following a fixed width.
+local KT_BAGS_COLUMNS = 12
+local KT_BAGS_COLUMNS_MIN = 8
+local KT_BAGS_COLUMNS_MAX = 24
+local KT_ITEM_SIZE = 36
 local KT_ITEM_SPACING = 3
 local KT_ITEM_SIZE_MIN = 30
 local KT_ITEM_SIZE_MAX = 52
 local KT_BAGS_SIDEBAR_WIDTH = 196
 local KT_BAGS_SIDEBAR_ROW_HEIGHT = 42
 local KT_BAGS_SIDEBAR_ICON_SIZE = 32
+-- Small category buttons use EllesmereUI's sidebar metrics.
+local KT_BAGS_SIDEBAR_SMALL = { width = 160, rowHeight = 26, iconSize = 18, labelFont = 11, countFont = 10 }
+local KT_BAGS_SIDEBAR_LARGE = { width = KT_BAGS_SIDEBAR_WIDTH, rowHeight = KT_BAGS_SIDEBAR_ROW_HEIGHT, iconSize = KT_BAGS_SIDEBAR_ICON_SIZE, labelFont = 12, countFont = 11 }
+local KT_BAGS_TOOLBAR_HEIGHT = 40
+local KT_BAGS_FOOTER_HEIGHT = 36
 local KT_EQUIPPED_BAG_ICON_SIZE = 28
 local KT_EQUIPPED_BAG_ICON_SPACING = 4
 local KT_FOOTER_CURRENCY_ICON_SIZE = 18
@@ -53,6 +62,11 @@ local KT_BAGS_DEFAULT_PANEL_COLOR = { r = 0.2, g = 0.0980392157, b = 0.0, a = 0.
 local KT_BAGS_WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 local KT_BAGS_BACKGROUND_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\BagsBackground.png"
 local KT_BAGS_KUI_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\KUISettingsSurface.png"
+-- Dark wash over the KUI texture. 0.60 leaves the texture 5% more visible
+-- than the old 0.62 wash (0.40 / 0.38).
+local KT_BAGS_SURFACE_WASH = 0.60
+-- Grid panel background art, 5% above the old 0.42.
+local KT_BAGS_GRID_ART_ALPHA = 0.44
 
 local function KT_Bags_ApplyKuiSurface(frame, washAlpha)
     if not (frame and frame.CreateTexture) then
@@ -565,51 +579,55 @@ local KT_BAGS_CATEGORY_ICONS = {
     onebag = "Interface\\Icons\\INV_Misc_Bag_08",
     watched = { atlas = "friendslist-recentallies-Pin-yellow" },
     default_auto_recents = { atlas = "auctionhouse-icon-clock" },
+    -- Category art follows EllesmereUI's file IDs, which it also ships on
+    -- WoW Forever (Housing only exists on Retail).
     default_auto_equipment_sets = 4871338,
     default_hearthstone = 134414,
     default_keystone = 525134,
     default_potion = 134730,
     default_food = 133971,
-    default_consumable = 4620673,
+    default_consumable = 7548911,
     default_questitem = { atlas = "Crosshair_Quest_64" },
-    default_weapon = 135349,
-    default_armor = 132716,
-    default_reagent = 134071,
+    default_weapon = 3751725,
+    default_armor = 4382688,
+    default_reagent = 3622222,
     default_tradegoods = 132996,
-    default_profession = 4620671,
+    default_profession = 7548925,
     default_recipe = 134939,
-    default_housing = 134453,
-    default_gem = 134071,
-    default_itemenhancement = 463531,
+    default_housing = 7726459,
+    default_gem = 7549094,
+    default_itemenhancement = 7549094,
     default_container = "Interface\\Icons\\INV_Misc_Bag_10",
     default_key = 134237,
-    default_miscellaneous = 134400,
+    default_miscellaneous = 5524917,
     default_battlepet = 656579,
     default_toy = 454046,
-    default_other = 134400,
-    default_junk = 133724,
+    default_other = 5524917,
+    -- The game's own junk marker is the gold coin it badges grey items with.
+    default_junk = 133784,
     default_special_empty = "Interface\\PaperDoll\\UI-Backpack-EmptySlot",
 }
 
-local function KT_Bags_SetIconTexture(texture, icon)
+local function KT_Bags_SetIconTexture(texture, icon, size)
     if not texture then
         return
     end
 
-    texture:SetSize(KT_BAGS_SIDEBAR_ICON_SIZE, KT_BAGS_SIDEBAR_ICON_SIZE)
+    size = size or KT_BAGS_SIDEBAR_ICON_SIZE
+    texture:SetSize(size, size)
     texture:SetVertexColor(1, 1, 1, 1)
 
     if type(icon) == "table" and icon.atlas and texture.SetAtlas then
         local ok = pcall(texture.SetAtlas, texture, icon.atlas, false)
         if ok then
-            texture:SetSize(KT_BAGS_SIDEBAR_ICON_SIZE, KT_BAGS_SIDEBAR_ICON_SIZE)
+            texture:SetSize(size, size)
             return
         end
     end
 
     texture:SetTexture(icon or KT_BAGS_ICON_TEXTURE)
     texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    texture:SetSize(KT_BAGS_SIDEBAR_ICON_SIZE, KT_BAGS_SIDEBAR_ICON_SIZE)
+    texture:SetSize(size, size)
 end
 
 local function KT_Bags_AddDefaultCategory(map, spec)
@@ -781,7 +799,7 @@ local function KT_Bags_BuildDefaultSourceToCategory()
     })
     KT_Bags_AddDefaultCategory(sourceToCategory, {
         key = "special_empty",
-        name = EMPTY or LText("BAGS_CATEGORY_EMPTY", "Empty"),
+        name = LText("BAGS_FREE_SLOTS", "Free Slots"),
         emptySlots = true,
     })
 
@@ -1101,7 +1119,7 @@ local function KT_Bags_ComposeCategories(everything, location, categoryData, equ
                     priority = 0,
                     auto = true,
                     emptySlots = true,
-                    label = EMPTY or "Empty",
+                    label = LText("BAGS_FREE_SLOTS", "Free Slots"),
                 }
             else
                 allDetails[#allDetails + 1] = {
@@ -1739,6 +1757,8 @@ function Mod:EnsureDB()
         lockPosition = false,
         showItemLevel = true,
         itemSize = KT_ITEM_SIZE,
+        columns = KT_BAGS_COLUMNS,
+        smallCategories = false,
         itemLevelColorByRarity = true,
         showEquippedBags = false,
         bagIconStyle = "modern",
@@ -1765,6 +1785,7 @@ function Mod:EnsureDB()
             migratedLayoutV6 = true,
             migratedLayoutV7 = true,
             migratedLayoutV8 = true,
+            migratedLayoutV9 = true,
         },
     }
 
@@ -1776,6 +1797,8 @@ function Mod:EnsureDB()
     if KT.db.profile.bags.lockPosition == nil then KT.db.profile.bags.lockPosition = false end
     if KT.db.profile.bags.showItemLevel == nil then KT.db.profile.bags.showItemLevel = true end
     KT.db.profile.bags.itemSize = KT.db.profile.bags.itemSize or KT_ITEM_SIZE
+    KT.db.profile.bags.columns = KT.db.profile.bags.columns or KT_BAGS_COLUMNS
+    if KT.db.profile.bags.smallCategories == nil then KT.db.profile.bags.smallCategories = false end
     if KT.db.profile.bags.itemLevelColorByRarity == nil then KT.db.profile.bags.itemLevelColorByRarity = true end
     if KT.db.profile.bags.showEquippedBags == nil then KT.db.profile.bags.showEquippedBags = false end
     KT.db.profile.bags.bagIconStyle = KT.db.profile.bags.bagIconStyle or "modern"
@@ -1804,6 +1827,18 @@ function Mod:EnsureDB()
         local height = tonumber(KT.db.profile.bags.window.height) or 420
         KT.db.profile.bags.window.height = math.max(320, math.floor((height * 0.85) + 0.5))
         KT.db.profile.bags.window.migratedLayoutV7 = true
+    end
+    if KT.db.profile.bags.window.migratedLayoutV9 ~= true then
+        -- Width now follows the column count and the height no longer grows
+        -- with the content, as in EllesmereUI. Move the old defaults (40 px
+        -- icons, 540 px minimum height) to the new, smaller ones.
+        if (tonumber(KT.db.profile.bags.itemSize) or 40) == 40 then
+            KT.db.profile.bags.itemSize = KT_ITEM_SIZE
+        end
+        if (tonumber(KT.db.profile.bags.window.height) or 540) == 540 then
+            KT.db.profile.bags.window.height = KT_BAGS_WINDOW_HEIGHT
+        end
+        KT.db.profile.bags.window.migratedLayoutV9 = true
     end
     if KT.db.profile.bags.window.migratedLayoutV8 ~= true then
         local width = tonumber(KT.db.profile.bags.window.width) or KT_BAGS_WINDOW_WIDTH
@@ -1943,7 +1978,7 @@ function Mod:OnProfileUpdate()
     end
 
     if _G.KT_BagsWindow then
-        _G.KT_BagsWindow:SetSize(self.db.window.width, self.db.window.height)
+        _G.KT_BagsWindow:SetSize(self:GetWindowWidth(), self.db.window.height)
         self:ApplyWindowLockState(_G.KT_BagsWindow)
         if self.db.window.visible then
             _G.KT_BagsWindow:Show()
@@ -2062,6 +2097,136 @@ end
 
 --- Create the native KullThranUI backpack window.
 -- @return Frame Native bags window.
+function Mod:GetColumns()
+    local columns = math.floor((tonumber(self.db and self.db.columns) or KT_BAGS_COLUMNS) + 0.5)
+    return math.max(KT_BAGS_COLUMNS_MIN, math.min(KT_BAGS_COLUMNS_MAX, columns))
+end
+
+function Mod:GetSidebarMetrics()
+    if self.db and self.db.smallCategories then
+        return KT_BAGS_SIDEBAR_SMALL
+    end
+    return KT_BAGS_SIDEBAR_LARGE
+end
+
+function Mod:GetGridWidth(columns)
+    local itemSize = KT_Bags_GetConfiguredItemSize(self)
+    return math.max(1, (columns * (itemSize + KT_ITEM_SPACING)) - KT_ITEM_SPACING + (KT_GRID_PADDING * 2))
+end
+
+-- Window width = sidebar + item columns + the fixed insets around them, the
+-- way EllesmereUI sizes its bags: the columns decide the width.
+function Mod:GetWindowWidth()
+    -- 6 + 6 window insets, 8 sidebar gap, 8 grid inset, 22 scroll bar lane.
+    return 6 + self:GetSidebarMetrics().width + 8 + 8 + self:GetGridWidth(self:GetColumns()) + 22 + 6
+end
+
+-- Window height not taken by the grid viewport: header, toolbar, footer and
+-- the gaps and insets between them.
+function Mod:GetGridLayoutOverhead()
+    -- header 6 + 34, gap 6, toolbar, gap 8, grid title 30, grid bottom 8,
+    -- footer + 8 below the content.
+    return 6 + 34 + 6 + KT_BAGS_TOOLBAR_HEIGHT + 8 + 30 + 8 + KT_BAGS_FOOTER_HEIGHT + 8
+end
+
+function Mod:GetBagInventoryID(bagID)
+    if not (bagID and C_Container and C_Container.ContainerIDToInventoryID) then
+        return nil
+    end
+    local ok, invID = pcall(C_Container.ContainerIDToInventoryID, bagID)
+    return ok and invID or nil
+end
+
+function Mod:PickupEquippedBag(bagID)
+    if InCombatLockdown and InCombatLockdown() then
+        return
+    end
+    local invID = self:GetBagInventoryID(bagID)
+    if invID and PickupBagFromSlot and GetInventoryItemTexture("player", invID) then
+        PickupBagFromSlot(invID)
+    end
+end
+
+--- Drop the bag on the cursor into an equipped bag slot. A bag picked up from
+-- another slot swaps places with the one already there.
+-- @return boolean True when an item on the cursor was handed to the slot.
+function Mod:PutCursorBagInSlot(bagID)
+    if GetCursorInfo() ~= "item" then
+        return false
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return true
+    end
+    local invID = self:GetBagInventoryID(bagID)
+    if invID and PutItemInBag then
+        PutItemInBag(invID)
+    end
+    return true
+end
+
+local function KT_Bags_GetReagentBagID()
+    return (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or _G.REAGENTBAG_CONTAINER
+end
+
+--- Name of the OneBag section a bag belongs to. Regular bags share "Main
+-- Bags"; the reagent bag and profession or ammo bags get their own section,
+-- as in EllesmereUI.
+-- @return string|nil Section label for a special bag, nil for a regular one.
+function Mod:GetSpecialBagLabel(bagID)
+    if not bagID or bagID <= (BACKPACK_START or 0) then
+        return nil
+    end
+    if bagID == KT_Bags_GetReagentBagID() then
+        return LText("BAGS_REAGENT_BAG", "Reagent Bag")
+    end
+    local family = 0
+    if C_Container and C_Container.GetContainerNumFreeSlots then
+        local _, bagFamily = C_Container.GetContainerNumFreeSlots(bagID)
+        family = tonumber(bagFamily) or 0
+    end
+    if family == 0 then
+        return nil
+    end
+    local name = C_Container and C_Container.GetBagName and C_Container.GetBagName(bagID)
+    if (not name or name == "") and _G.GetBagName then
+        name = _G.GetBagName(bagID)
+    end
+    return (name and name ~= "") and name or (BAGSLOT or LText("Bag", "Bag"))
+end
+
+--- Split slots into OneBag sections: Main Bags first, then each special bag.
+-- @return table List of { label, slots, used, total } in bag order.
+function Mod:BuildBagSections(slots)
+    local sections, byBag = {}, {}
+    local main = { slots = {}, used = 0, total = 0 }
+    sections[1] = main
+    for _, slotData in ipairs(slots) do
+        local section = main
+        local special = self:GetSpecialBagLabel(slotData.bagID)
+        if special then
+            section = byBag[slotData.bagID]
+            if not section then
+                section = { name = special, slots = {}, used = 0, total = 0 }
+                byBag[slotData.bagID] = section
+                sections[#sections + 1] = section
+            end
+        end
+        section.slots[#section.slots + 1] = slotData
+        section.total = section.total + 1
+        if slotData.itemInfo or slotData.itemLink then
+            section.used = section.used + 1
+        end
+    end
+    main.name = LText("BAGS_MAIN_BAGS", "Main Bags")
+    for _, section in ipairs(sections) do
+        section.label = format("%s (%d / %d)", section.name, section.used, section.total)
+    end
+    if main.total == 0 then
+        table.remove(sections, 1)
+    end
+    return sections
+end
+
 function Mod:CreateNativeWindow()
     local window = _G.KT_BagsWindow
     if window then
@@ -2069,7 +2234,7 @@ function Mod:CreateNativeWindow()
     end
 
     window = CreateFrame("Frame", "KT_BagsWindow", UIParent, "BackdropTemplate")
-    window:SetSize(self.db.window.width, self.db.window.height)
+    window:SetSize(self:GetWindowWidth(), self.db.window.height)
     window:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -24, 160)
     window:SetMovable(true)
     window:SetClampedToScreen(true)
@@ -2080,7 +2245,7 @@ function Mod:CreateNativeWindow()
     window:SetAlpha(1)
 
     KT:AddBackdrop(window, 0.05, 0.07, 0.09, 0.94)
-    KT_Bags_ApplyKuiSurface(window, 0.62)
+    KT_Bags_ApplyKuiSurface(window, KT_BAGS_SURFACE_WASH)
     KT:AddBorder(window, 0.10, 0.10, 0.10, 1)
     KT_Bags_ApplyAccentSurface(window, {
         topAlpha = 0.03,
@@ -2103,7 +2268,7 @@ function Mod:CreateNativeWindow()
     })
     header:SetBackdropColor(0.08, 0.08, 0.09, 0.95)
     header:SetBackdropBorderColor(0.16, 0.16, 0.16, 1)
-    KT_Bags_ApplyKuiSurface(header, 0.62)
+    KT_Bags_ApplyKuiSurface(header, KT_BAGS_SURFACE_WASH)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
@@ -2247,7 +2412,7 @@ function Mod:CreateNativeWindow()
     local toolbar = CreateFrame("Frame", nil, window, "BackdropTemplate")
     toolbar:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -6)
     toolbar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -6)
-    toolbar:SetHeight(58)
+    toolbar:SetHeight(KT_BAGS_TOOLBAR_HEIGHT)
     toolbar:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -2255,7 +2420,7 @@ function Mod:CreateNativeWindow()
     })
     toolbar:SetBackdropColor(0.05, 0.05, 0.06, 0.94)
     toolbar:SetBackdropBorderColor(0.14, 0.14, 0.14, 1)
-    KT_Bags_ApplyKuiSurface(toolbar, 0.62)
+    KT_Bags_ApplyKuiSurface(toolbar, KT_BAGS_SURFACE_WASH)
     KT_Bags_ApplyAccentSurface(toolbar, {
         topAlpha = 0.038,
         leftAlpha = 0.02,
@@ -2269,8 +2434,8 @@ function Mod:CreateNativeWindow()
     searchBox:SetPoint("TOPLEFT", toolbar, "TOPLEFT", 8, -10)
     searchBox:SetPoint("BOTTOMRIGHT", toolbar, "BOTTOMRIGHT", -320, 12)
     searchBox:SetAutoFocus(false)
-    searchBox:SetFont(KT_DEFAULT_FONT, 15, "OUTLINE")
-    searchBox:SetTextInsets(40, 12, 0, 0)
+    searchBox:SetFont(KT_DEFAULT_FONT, 13, "OUTLINE")
+    searchBox:SetTextInsets(30, 10, 0, 0)
     searchBox:SetTextColor(1, 1, 1, 1)
     searchBox:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -2291,8 +2456,8 @@ function Mod:CreateNativeWindow()
         leftCoverage = 0.2,
     })
     local searchIcon = searchBox:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(28, 28)
-    searchIcon:SetPoint("LEFT", searchBox, "LEFT", 12, 0)
+    searchIcon:SetSize(18, 18)
+    searchIcon:SetPoint("LEFT", searchBox, "LEFT", 8, 0)
     searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
     do
         local ar, ag, ab = KT_Bags_GetAccentTextColor(0.9, 0.18)
@@ -2529,8 +2694,20 @@ function Mod:CreateNativeWindow()
         icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_08")
         icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         holder.KT_BagID = index
+        holder:RegisterForDrag("LeftButton")
+        -- Same as Blizzard's bag bar: drag an equipped bag onto another slot
+        -- and the two swap; dropping a bag from the inventory equips it.
+        holder:SetScript("OnDragStart", function(button)
+            self:PickupEquippedBag(button.KT_BagID)
+        end)
+        holder:SetScript("OnReceiveDrag", function(button)
+            self:PutCursorBagInSlot(button.KT_BagID)
+        end)
         holder:SetScript("OnClick", function(button)
             local bagID = button.KT_BagID
+            if self:PutCursorBagInSlot(bagID) then
+                return
+            end
             self.selectedBagID = self.selectedBagID == bagID and nil or bagID
             self.selectedSpecialView = nil
             self.selectedCategorySource = nil
@@ -2543,6 +2720,7 @@ function Mod:CreateNativeWindow()
             if not (invID and GameTooltip:SetInventoryItem("player", invID)) then
                 GameTooltip:SetText(BAGSLOT or LText("Bag", "Bag"), 1, 1, 1)
             end
+            GameTooltip:AddLine(LText("BAGS_SWAP_HINT", "Drag onto another bag to swap them"), 0.75, 0.75, 0.78, true)
             local ar, ag, ab = KT_Bags_GetAccentColor()
             button:SetBackdropBorderColor(ar, ag, ab, 1)
             GameTooltip:Show()
@@ -2560,11 +2738,11 @@ function Mod:CreateNativeWindow()
     searchBox:ClearAllPoints()
     searchBox:SetPoint("TOPLEFT", toolbar, "TOPLEFT", 8, -6)
     searchBox:SetPoint("TOPRIGHT", watchedBadge, "LEFT", -8, -6)
-    searchBox:SetHeight(46)
+    searchBox:SetHeight(KT_BAGS_TOOLBAR_HEIGHT - 12)
 
     local content = CreateFrame("Frame", nil, window)
     content:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -8)
-    content:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -6, 56)
+    content:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -6, KT_BAGS_FOOTER_HEIGHT + 8)
     content:SetClipsChildren(true)
     window.KT_Content = content
 
@@ -2579,7 +2757,7 @@ function Mod:CreateNativeWindow()
     })
     sidebar:SetBackdropColor(0.018, 0.018, 0.022, 0.95)
     sidebar:SetBackdropBorderColor(0.12, 0.12, 0.12, 1)
-    KT_Bags_ApplyKuiSurface(sidebar, 0.62)
+    KT_Bags_ApplyKuiSurface(sidebar, KT_BAGS_SURFACE_WASH)
     KT_Bags_ApplyAccentSurface(sidebar, {
         topAlpha = 0.026,
         leftAlpha = 0.018,
@@ -2599,6 +2777,30 @@ function Mod:CreateNativeWindow()
         sidebarTitle:SetTextColor(ar, ag, ab, 0.85)
     end
     window.KT_SidebarTitle = sidebarTitle
+
+    -- Quick switch between the large category buttons and EllesmereUI-sized
+    -- small ones. The choice is saved in the bags options.
+    local sizeToggle = CreateFrame("Button", nil, sidebar)
+    sizeToggle:SetSize(16, 16)
+    sizeToggle:SetPoint("LEFT", sidebarTitle, "RIGHT", 6, 0)
+    sizeToggle.Icon = sizeToggle:CreateTexture(nil, "ARTWORK")
+    sizeToggle.Icon:SetAllPoints()
+    sizeToggle:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+    sizeToggle:SetScript("OnClick", function()
+        self.db.smallCategories = not self.db.smallCategories
+        self:RefreshBagSlots()
+    end)
+    sizeToggle:SetScript("OnEnter", function(widget)
+        GameTooltip:SetOwner(widget, "ANCHOR_RIGHT")
+        local text = self.db.smallCategories and LText("BAGS_LARGE_CATEGORIES", "Large category buttons")
+            or LText("BAGS_SMALL_CATEGORIES", "Small category buttons")
+        GameTooltip:SetText(text, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    sizeToggle:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    window.KT_SidebarSizeToggle = sizeToggle
 
     local sidebarScrollFrame = CreateFrame("ScrollFrame", nil, sidebar)
     sidebarScrollFrame:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 0, -30)
@@ -2642,13 +2844,13 @@ function Mod:CreateNativeWindow()
     })
     gridPanel:SetBackdropColor(0.012, 0.012, 0.016, 0.94)
     gridPanel:SetBackdropBorderColor(0.12, 0.12, 0.12, 1)
-    KT_Bags_ApplyKuiSurface(gridPanel, 0.62)
+    KT_Bags_ApplyKuiSurface(gridPanel, KT_BAGS_SURFACE_WASH)
     KT_Bags_ApplyAmbientGradient(gridPanel, {
         fillAlpha = 0.16,
         fillEndAlpha = 0.06,
         shadeTopAlpha = 0.10,
         shadeBottomAlpha = 0.02,
-        artAlpha = 0.42,
+        artAlpha = KT_BAGS_GRID_ART_ALPHA,
     })
     KT_Bags_ApplyAccentSurface(gridPanel, {
         topAlpha = 0.03,
@@ -2707,7 +2909,7 @@ function Mod:CreateNativeWindow()
     local footer = CreateFrame("Frame", nil, window, "BackdropTemplate")
     footer:SetPoint("BOTTOMLEFT", window, "BOTTOMLEFT", 6, 6)
     footer:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -6, 6)
-    footer:SetHeight(48)
+    footer:SetHeight(KT_BAGS_FOOTER_HEIGHT)
     footer:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -2715,7 +2917,7 @@ function Mod:CreateNativeWindow()
     })
     footer:SetBackdropColor(0.06, 0.06, 0.07, 0.95)
     footer:SetBackdropBorderColor(0.14, 0.14, 0.14, 1)
-    KT_Bags_ApplyKuiSurface(footer, 0.62)
+    KT_Bags_ApplyKuiSurface(footer, KT_BAGS_SURFACE_WASH)
     KT_Bags_ApplyAccentSurface(footer, {
         topAlpha = 0.032,
         leftAlpha = 0.016,
@@ -2726,7 +2928,7 @@ function Mod:CreateNativeWindow()
     window.KT_Footer = footer
 
     local selectedIconFrame = CreateFrame("Frame", nil, footer, "BackdropTemplate")
-    selectedIconFrame:SetSize(30, 30)
+    selectedIconFrame:SetSize(26, 26)
     selectedIconFrame:SetPoint("LEFT", footer, "LEFT", 6, 0)
     selectedIconFrame:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -2753,7 +2955,7 @@ function Mod:CreateNativeWindow()
 
     local status = footer:CreateFontString(nil, "OVERLAY")
     status:SetFont(KT_DEFAULT_FONT, 12, "OUTLINE")
-    status:SetPoint("TOPLEFT", selectedIconFrame, "TOPRIGHT", 8, -5)
+    status:SetPoint("TOPLEFT", selectedIconFrame, "TOPRIGHT", 8, -1)
     status:SetWidth(170)
     status:SetJustifyH("LEFT")
     status:SetTextColor(0.95, 0.95, 0.98, 1)
@@ -2761,7 +2963,7 @@ function Mod:CreateNativeWindow()
 
     local summary = footer:CreateFontString(nil, "OVERLAY")
     summary:SetFont(KT_DEFAULT_FONT, 11, "OUTLINE")
-    summary:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -2)
+    summary:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -1)
     summary:SetWidth(170)
     summary:SetJustifyH("LEFT")
     summary:SetTextColor(0.84, 0.84, 0.88, 1)
@@ -2898,7 +3100,7 @@ function Mod:ApplyPanelColor()
             fillEndAlpha = 0.06,
             shadeTopAlpha = 0.10,
             shadeBottomAlpha = 0.02,
-            artAlpha = 0.42,
+            artAlpha = KT_BAGS_GRID_ART_ALPHA,
         })
         KT_Bags_ApplyAccentSurface(window.KT_GridPanel, {
             topAlpha = 0.03,
@@ -4035,7 +4237,7 @@ function Mod:RefreshEquippedBagIcons()
         else
             window.KT_SearchBox:SetPoint("TOPRIGHT", window.KT_WatchedBadge, "LEFT", -8, -6)
         end
-        window.KT_SearchBox:SetHeight(46)
+        window.KT_SearchBox:SetHeight(KT_BAGS_TOOLBAR_HEIGHT - 12)
     end
 end
 
@@ -4622,6 +4824,14 @@ function Mod:RefreshCategorySidebar(window, composed, visibleSlots, used, total)
         return
     end
 
+    local metrics = self:GetSidebarMetrics()
+    window.KT_Sidebar:SetWidth(metrics.width)
+    if window.KT_SidebarSizeToggle and window.KT_SidebarSizeToggle.Icon then
+        window.KT_SidebarSizeToggle.Icon:SetTexture(self.db.smallCategories
+            and "Interface\\Buttons\\UI-PlusButton-Up"
+            or "Interface\\Buttons\\UI-MinusButton-Up")
+    end
+
     local rows = {}
     local watchedCount = 0
     for _, slotData in ipairs(visibleSlots or {}) do
@@ -4738,24 +4948,28 @@ function Mod:RefreshCategorySidebar(window, composed, visibleSlots, used, total)
             if row.KT_Left then row.KT_Left:SetColorTexture(0, 0, 0, 0) end
             y = y + 18
         else
-            row:SetHeight(KT_BAGS_SIDEBAR_ROW_HEIGHT)
+            local small = metrics ~= KT_BAGS_SIDEBAR_LARGE
+            row:SetHeight(metrics.rowHeight)
             row:EnableMouse(true)
             row.KT_Icon:Show()
+            row.KT_Icon:ClearAllPoints()
+            row.KT_Icon:SetPoint("LEFT", row, "LEFT", small and 5 or 7, 0)
             row.KT_Label:ClearAllPoints()
-            row.KT_Label:SetPoint("LEFT", row.KT_Icon, "RIGHT", 8, 0)
-            row.KT_Label:SetPoint("RIGHT", row, "RIGHT", -38, 0)
-            row.KT_Label:SetFont(KT_DEFAULT_FONT, 12, "OUTLINE")
+            row.KT_Label:SetPoint("LEFT", row.KT_Icon, "RIGHT", small and 6 or 8, 0)
+            row.KT_Label:SetPoint("RIGHT", row, "RIGHT", small and -30 or -38, 0)
+            row.KT_Label:SetFont(KT_DEFAULT_FONT, metrics.labelFont, "OUTLINE")
+            row.KT_Count:SetFont(KT_DEFAULT_FONT, metrics.countFont, "OUTLINE")
             if row.KT_Label.SetWordWrap then row.KT_Label:SetWordWrap(false) end
             if row.KT_Label.SetNonSpaceWrap then row.KT_Label:SetNonSpaceWrap(false) end
             if row.KT_Label.SetMaxLines then row.KT_Label:SetMaxLines(1) end
             row.KT_Label:SetText(data.label)
             row.KT_Count:SetText(tostring(data.count or 0))
-            KT_Bags_SetIconTexture(row.KT_Icon, data.icon)
+            KT_Bags_SetIconTexture(row.KT_Icon, data.icon, metrics.iconSize)
             row.KT_Click = function()
                 self:SetSidebarSelection(data.kind, data.source)
             end
             self:ApplySidebarRowVisual(row, data.active == true, false)
-            y = y + KT_BAGS_SIDEBAR_ROW_HEIGHT + 2
+            y = y + metrics.rowHeight + (small and 1 or 2)
         end
 
         row:Show()
@@ -4767,11 +4981,11 @@ function Mod:RefreshCategorySidebar(window, composed, visibleSlots, used, total)
     end
 
     if window.KT_SidebarContent then
-        local contentWidth = window.KT_SidebarScrollFrame and window.KT_SidebarScrollFrame:GetWidth() or (KT_BAGS_SIDEBAR_WIDTH - 18)
-        if contentWidth < 40 then
-            contentWidth = KT_BAGS_SIDEBAR_WIDTH - 18
-        end
+        -- The scroll frame follows the sidebar width on the next layout pass,
+        -- so size the rows from the metrics rather than its current width.
+        local contentWidth = metrics.width - 18
         window.KT_SidebarContent:SetSize(math.max(1, contentWidth), math.max(1, y + 4))
+        window.KT_SidebarContentHeight = y + 4
         KT_Bags_UpdateScrollBar(window.KT_SidebarScrollFrame, window.KT_SidebarScrollBar, window.KT_SidebarContent)
     end
 end
@@ -4801,29 +5015,29 @@ end
 function Mod:ApplyNativeViewLayout(window, isCompact)
     if not (window and window.KT_Content and window.KT_GridPanel) then return end
 
+    -- OneBag keeps the category list beside it, as in EllesmereUI, so
+    -- switching views never changes the window width.
     if window.KT_Sidebar then
-        window.KT_Sidebar:SetShown(not isCompact)
+        window.KT_Sidebar:Show()
     end
 
     window.KT_GridPanel:ClearAllPoints()
-    if isCompact then
-        window.KT_GridPanel:SetPoint("TOPLEFT", window.KT_Content, "TOPLEFT", 0, 0)
-    else
-        window.KT_GridPanel:SetPoint("TOPLEFT", window.KT_Sidebar, "TOPRIGHT", 8, 0)
-    end
+    window.KT_GridPanel:SetPoint("TOPLEFT", window.KT_Sidebar, "TOPRIGHT", 8, 0)
     window.KT_GridPanel:SetPoint("BOTTOMRIGHT", window.KT_Content, "BOTTOMRIGHT", 0, 0)
 
     if window.KT_GridScrollFrame then
         window.KT_GridScrollFrame:ClearAllPoints()
         window.KT_GridScrollFrame:SetPoint("TOPLEFT", window.KT_GridPanel, "TOPLEFT", 8, -30)
-        window.KT_GridScrollFrame:SetPoint("BOTTOMRIGHT", window.KT_GridPanel, "BOTTOMRIGHT", isCompact and -8 or -22, 8)
-        if isCompact then
+        window.KT_GridScrollFrame:SetPoint("BOTTOMRIGHT", window.KT_GridPanel, "BOTTOMRIGHT", -22, 8)
+    end
+    if window.KT_LastViewCompact ~= isCompact then
+        window.KT_LastViewCompact = isCompact
+        if window.KT_GridScrollBar then
+            window.KT_GridScrollBar:SetValue(0)
+        end
+        if window.KT_GridScrollFrame then
             window.KT_GridScrollFrame:SetVerticalScroll(0)
         end
-    end
-    if isCompact and window.KT_GridScrollBar then
-        window.KT_GridScrollBar:SetValue(0)
-        window.KT_GridScrollBar:Hide()
     end
 end
 
@@ -4839,32 +5053,26 @@ function Mod:FinalizeBagLayout(window, visibleSlots, columns, gridWidth, buttonI
         end
     end
 
-    local totalRows = math.max(1, math.ceil(#visibleSlots / columns))
-    local itemSize = KT_Bags_GetConfiguredItemSize(self)
-    local contentHeight = offsetY
-    if not isCategoryView then
-        contentHeight = totalRows * (itemSize + KT_ITEM_SPACING)
-    end
-    local paddedHeight = contentHeight + (KT_GRID_PADDING * 2)
+    local paddedHeight = offsetY + (KT_GRID_PADDING * 2)
     window.KT_Grid:SetSize(gridWidth, math.max(paddedHeight, 1))
 
-    local minWindowHeight = self.db.window.height or KT_BAGS_WINDOW_HEIGHT
-    local requiredHeight = math.ceil(paddedHeight + 162)
-    local maxWindowHeight = math.max(minWindowHeight, math.floor(UIParent:GetHeight() * (isCategoryView and 0.72 or 0.92)))
-    if isCategoryView then
-        window:SetHeight(math.min(maxWindowHeight, math.max(minWindowHeight, requiredHeight)))
-    else
-        window:SetHeight(math.min(maxWindowHeight, math.max(310, requiredHeight)))
+    -- EllesmereUI keeps one fixed height and scrolls the content instead of
+    -- growing the window towards the screen edge. On WoW Forever it fits the
+    -- content (bags there hold far fewer slots), never shorter than the
+    -- category list and never taller than the normal height.
+    local height = self.db.window.height or KT_BAGS_WINDOW_HEIGHT
+    if KT.IsForever and KT:IsForever() then
+        local overhead = self:GetGridLayoutOverhead()
+        local fitHeight = math.ceil(paddedHeight + overhead)
+        -- The sidebar list starts 30 px below the content top and ends 6 px
+        -- above its bottom; the content excludes the grid's 38 px of insets.
+        local sidebarHeight = (window.KT_SidebarContentHeight or 0) + 36 + overhead - 38
+        height = math.min(height, math.max(fitHeight, sidebarHeight))
     end
+    window:SetWidth(self:GetWindowWidth())
+    window:SetHeight(math.max(300, height))
 
     KT_Bags_UpdateScrollBar(window.KT_GridScrollFrame, window.KT_GridScrollBar, window.KT_Grid)
-    if not isCategoryView and window.KT_GridScrollBar then
-        -- Compact mode is a combined-backpack grid, not a scrolling category
-        -- browser. Its frame grows to the rows it needs.
-        window.KT_GridScrollBar:SetValue(0)
-        window.KT_GridScrollBar:Hide()
-        window.KT_GridScrollFrame:SetVerticalScroll(0)
-    end
 
     if self.searchText ~= "" then
         window.KT_GridHeader:SetText(format(LText("BAGS_BACKPACK_MATCHES", "Backpack (%d matches)"), #visibleSlots))
@@ -4954,9 +5162,18 @@ function Mod:RenderCategoryLayout(window, composed, visibleSlots, columns, gridW
             local group = details.results or {}
             if #group > 0 and (not selectedSource or details.source == selectedSource) then
                 ApplyPendingDivider()
-                sort(group, function(a, b)
-                    return (a.itemName or a.itemLink or "") < (b.itemName or b.itemLink or "")
-                end)
+                if details.emptySlots then
+                    sort(group, function(a, b)
+                        if a.bagID ~= b.bagID then
+                            return a.bagID < b.bagID
+                        end
+                        return a.slotID < b.slotID
+                    end)
+                else
+                    sort(group, function(a, b)
+                        return (a.itemName or a.itemLink or "") < (b.itemName or b.itemLink or "")
+                    end)
+                end
 
                 local header = self.categoryHeaders[headerIndex]
                 if not header then
@@ -5114,40 +5331,101 @@ function Mod:RenderFallbackCategoryLayout(window, visibleSlots, columns, gridWid
     self:FinalizeBagLayout(window, visibleSlots, columns, gridWidth, buttonIndex, offsetY, used, free, total, true)
 end
 
-function Mod:RenderCompactLayout(window, visibleSlots, columns, gridWidth, used, free, total)
-    self:RefreshCategorySidebar(window, nil, visibleSlots, used, total)
+function Mod:EnsureCategoryHeader(window, index)
+    local header = self.categoryHeaders[index]
+    if not header then
+        header = window.KT_Grid:CreateFontString(nil, "OVERLAY")
+        self.categoryHeaders[index] = header
+    end
+    local ar, ag, ab = KT_Bags_GetAccentTextColor(1, 0.22)
+    header:SetTextColor(ar, ag, ab, 1)
+    header:SetFont(KT_DEFAULT_FONT, 14, "OUTLINE")
+    return header
+end
 
-    local buttonIndex = 1
+--- OneBag view: every slot, empty ones included, in bag order. As in
+-- EllesmereUI, regular bags share a "Main Bags (used / total)" section and the
+-- reagent bag or a profession / ammo bag gets one of its own. While a search
+-- is active only the matches are shown, without sections.
+function Mod:RenderCompactLayout(window, visibleSlots, columns, gridWidth, used, free, total, composed, sidebarSlots)
+    self:RefreshCategorySidebar(window, composed, sidebarSlots or visibleSlots, used, total)
+
     local pad = KT_GRID_PADDING
     local itemSize = KT_Bags_GetConfiguredItemSize(self)
-    for index, slotData in ipairs(visibleSlots) do
-        local button = self:EnsureItemButton(index)
-        local anchor = button.KT_Holder or button
-        local row = math.floor((index - 1) / columns)
-        local column = (index - 1) % columns
+    local pitch = itemSize + KT_ITEM_SPACING
+    local buttonIndex = 1
+    local offsetY = 0
+    local usedHeaders = 0
 
-        anchor:ClearAllPoints()
-        anchor:SetPoint(
-            "TOPLEFT",
-            window.KT_Grid,
-            "TOPLEFT",
-            pad + (column * (itemSize + KT_ITEM_SPACING)),
-            -(pad + (row * (itemSize + KT_ITEM_SPACING)))
-        )
-        anchor:Show()
-        button:Show()
-        self:UpdateItemButton(button, slotData)
-        buttonIndex = index + 1
+    local sections
+    if self:ShouldShowCompactEmptySlots() then
+        sections = self:BuildBagSections(visibleSlots)
+    else
+        sections = { { slots = visibleSlots } }
     end
 
-    for _, header in ipairs(self.categoryHeaders) do
-        header:Hide()
-    end
-    for _, line in ipairs(self.categoryHeaderLines or {}) do
-        line:Hide()
+    for _, section in ipairs(sections) do
+        if section.label then
+            usedHeaders = usedHeaders + 1
+            local header = self:EnsureCategoryHeader(window, usedHeaders)
+            header:ClearAllPoints()
+            header:SetPoint("TOPLEFT", window.KT_Grid, "TOPLEFT", pad, -(offsetY + pad))
+            header:SetText(section.label)
+            header:Show()
+            self:PlaceCategoryHeaderLine(window, usedHeaders, header, pad, offsetY, 0.24)
+            offsetY = offsetY + 22
+        end
+
+        for index, slotData in ipairs(section.slots) do
+            local button = self:EnsureItemButton(buttonIndex)
+            local anchor = button.KT_Holder or button
+            local row = math.floor((index - 1) / columns)
+            local column = (index - 1) % columns
+            anchor:ClearAllPoints()
+            anchor:SetPoint(
+                "TOPLEFT",
+                window.KT_Grid,
+                "TOPLEFT",
+                pad + (column * pitch),
+                -(offsetY + pad + (row * pitch))
+            )
+            anchor:Show()
+            button:Show()
+            self:UpdateItemButton(button, slotData)
+            buttonIndex = buttonIndex + 1
+        end
+
+        offsetY = offsetY + (math.ceil(#section.slots / columns) * pitch)
+        if section.label then
+            offsetY = offsetY + 10
+        end
     end
 
-    self:FinalizeBagLayout(window, visibleSlots, columns, gridWidth, buttonIndex, 0, used, free, total, false)
+    for index = usedHeaders + 1, #self.categoryHeaders do
+        self.categoryHeaders[index]:Hide()
+    end
+    for index = usedHeaders + 1, #(self.categoryHeaderLines or {}) do
+        self.categoryHeaderLines[index]:Hide()
+    end
+
+    self:FinalizeBagLayout(window, visibleSlots, columns, gridWidth, buttonIndex, offsetY, used, free, total, false)
+end
+
+--- Put the real free slots in the "Free Slots" category, so the category
+-- view shows how much room is left (and they accept dropped items).
+local function KT_Bags_FillFreeSlotCategory(composed, emptySlots)
+    if not (composed and composed.details) then
+        return
+    end
+    for _, details in ipairs(composed.details) do
+        if details.type == "category" and details.emptySlots then
+            local results = {}
+            for index, slotData in ipairs(emptySlots) do
+                results[index] = slotData
+            end
+            details.results = results
+        end
+    end
 end
 
 --- Refresh the native backpack grid from live container contents.
@@ -5166,7 +5444,6 @@ function Mod:RefreshBagSlots()
     local isCompact = self.db.viewMode == "compact"
     self:ApplyNativeViewLayout(window, isCompact)
     local slots, used, free, total = self:CollectBagSlots()
-    local visibleSlots = {}
     local selectedBagID = self.selectedBagID
     if selectedBagID then
         used, free, total = 0, 0, 0
@@ -5182,27 +5459,28 @@ function Mod:RefreshBagSlots()
         end
     end
     self.categoryLayoutRequestID = (self.categoryLayoutRequestID or 0) + 1
-    local requestID = self.categoryLayoutRequestID
-    local viewWidth = 0
-    if window.KT_GridScrollFrame then
-        viewWidth = math.floor(window.KT_GridScrollFrame:GetWidth() or 0)
-    end
-    if viewWidth <= 0 and window.KT_GridPanel then
-        viewWidth = math.floor((window.KT_GridPanel:GetWidth() or 0) - 36)
-    end
-    viewWidth = math.max(viewWidth, 360)
-    local itemSize = KT_Bags_GetConfiguredItemSize(self)
-    local columns = math.max(6, math.floor((viewWidth + KT_ITEM_SPACING) / (itemSize + KT_ITEM_SPACING)))
-    if isCompact then
-        columns = math.max(columns, 12)
-    end
-    local gridWidth = math.max(1, (columns * (itemSize + KT_ITEM_SPACING)) - KT_ITEM_SPACING + (KT_GRID_PADDING * 2))
+
+    -- Columns come from the options and the window width follows them.
+    local columns = self:GetColumns()
+    local gridWidth = self:GetGridWidth(columns)
+    window:SetWidth(self:GetWindowWidth())
 
     self.categoryHeaders = self.categoryHeaders or {}
 
+    local searching = self.searchText ~= nil and self.searchText ~= ""
+    local visibleSlots, itemSlots, emptySlots = {}, {}, {}
     for _, slotData in ipairs(slots) do
-        if (not selectedBagID or slotData.bagID == selectedBagID) and self:ShouldDisplaySlot(slotData) then
-            tinsert(visibleSlots, slotData)
+        if not selectedBagID or slotData.bagID == selectedBagID then
+            if slotData.itemInfo ~= nil or slotData.itemLink ~= nil then
+                if self:SlotMatchesSearch(slotData) then
+                    itemSlots[#itemSlots + 1] = slotData
+                end
+            elseif not searching then
+                emptySlots[#emptySlots + 1] = slotData
+            end
+            if self:ShouldDisplaySlot(slotData) then
+                tinsert(visibleSlots, slotData)
+            end
         end
     end
 
@@ -5214,34 +5492,28 @@ function Mod:RefreshBagSlots()
             end
         end
         visibleSlots = watchedSlots
-    end
-
-    if isCompact and #visibleSlots > 0 then
-        local availableHeight = math.max(1, math.floor(UIParent:GetHeight() * 0.92) - 162 - (KT_GRID_PADDING * 2))
-        local maxRows = math.max(1, math.floor(availableHeight / (itemSize + KT_ITEM_SPACING)))
-        columns = math.max(columns, math.ceil(#visibleSlots / maxRows))
-        gridWidth = math.max(1, (columns * (itemSize + KT_ITEM_SPACING)) - KT_ITEM_SPACING + (KT_GRID_PADDING * 2))
+        emptySlots = {}
     end
 
     self:RefreshBackgroundDropTarget()
 
-    if self.db.viewMode == "category" then
+    if not isCompact then
         local composed = self:BuildCategoryLayout(visibleSlots)
         if composed then
-            local function render()
-                if self.categoryLayoutRequestID ~= requestID then
-                    return
-                end
-                self:RenderCategoryLayout(window, composed, visibleSlots, columns, gridWidth, used, free, total)
-            end
-
             KT_Bags_ApplyCategorySearches(composed, visibleSlots)
-            render()
+            KT_Bags_FillFreeSlotCategory(composed, emptySlots)
+            self:RenderCategoryLayout(window, composed, visibleSlots, columns, gridWidth, used, free, total)
         else
             self:RenderFallbackCategoryLayout(window, visibleSlots, columns, gridWidth, used, free, total)
         end
     else
-        self:RenderCompactLayout(window, visibleSlots, columns, gridWidth, used, free, total)
+        -- The sidebar keeps listing the categories while OneBag is open.
+        local composed = self:BuildCategoryLayout(itemSlots)
+        if composed then
+            KT_Bags_ApplyCategorySearches(composed, itemSlots)
+            KT_Bags_FillFreeSlotCategory(composed, emptySlots)
+        end
+        self:RenderCompactLayout(window, visibleSlots, columns, gridWidth, used, free, total, composed, itemSlots)
     end
 end
 
