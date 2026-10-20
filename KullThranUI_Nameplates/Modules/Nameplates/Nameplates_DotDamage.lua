@@ -3,16 +3,15 @@ if KT_CLIENT_BLOCKED then return end
 local _, ns = ...
 
 -- Pending DoT damage: paints over the enemy health bar the health your own bleeds
--- and DoTs will still take before they expire, and can mark the plate with a skull
--- when that is enough to kill it. The combat log is a protected event on these
--- clients, so everything comes from your auras on the unit: the damage per tick is
--- the aura's first effect value, and periodic auras tick on a grid that ends at
--- their expiration, so the ticks still to come are ceil(remaining / interval). Any
--- secret value (combat restrictions) simply leaves the overlay hidden.
+-- and DoTs will still take before they expire. The combat log is a protected event
+-- on these clients, so everything comes from your auras on the unit: the damage per
+-- tick is the aura's first effect value, and periodic auras tick on a grid that ends
+-- at their expiration, so the ticks still to come are ceil(remaining / interval).
+-- While the client keeps auras secret, reading them raises an error, so the overlay
+-- stays hidden until they can be read again.
 
 local DEFAULT_COLOR = { r = 0.90, g = 0.10, b = 0.10, a = 0.85 }
 local TICK_INTERVAL = 3
-local SKULL_TEXTURE = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 
 local GetTime = GetTime
 local UnitHealth = UnitHealth
@@ -40,6 +39,10 @@ function ns.GetDotDamageColor()
     return c.r or DEFAULT_COLOR.r, c.g or DEFAULT_COLOR.g, c.b or DEFAULT_COLOR.b, c.a or DEFAULT_COLOR.a
 end
 
+local function AurasSecret()
+    return C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() == true
+end
+
 local function TickAmount(aura)
     local points = aura.points
     if type(points) ~= "table" or IsSecret(points) then return nil end
@@ -51,11 +54,11 @@ local function TickAmount(aura)
 end
 
 local function PendingDamage(unit)
-    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return 0 end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) or AurasSecret() then return 0 end
     local total, now = 0, GetTime()
     for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex(unit, i, "HARMFUL|PLAYER")
-        if not aura then break end
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HARMFUL|PLAYER")
+        if not ok or not aura then break end
         local expiration, duration = aura.expirationTime, aura.duration
         if Readable(expiration) and Readable(duration) and duration > 0 and expiration > now then
             local amount = TickAmount(aura)
@@ -88,12 +91,7 @@ local function EnsureOverlay(plate)
     bar:SetPoint("TOPRIGHT", health:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
     bar:SetPoint("BOTTOMRIGHT", health:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
     bar:SetFrameLevel(health:GetFrameLevel())
-    local skull = health:CreateTexture(nil, "OVERLAY", nil, 7)
-    skull:SetTexture(SKULL_TEXTURE)
-    skull:SetSize(16, 16)
-    skull:SetPoint("RIGHT", health, "LEFT", -4, 0)
-    skull:Hide()
-    plate.ktDotDamage = { clip = clip, bar = bar, skull = skull }
+    plate.ktDotDamage = { clip = clip, bar = bar }
     overlays[plate] = true
     clip:Hide()
     return plate.ktDotDamage
@@ -103,7 +101,6 @@ local function HideOverlay(plate)
     local o = plate.ktDotDamage
     if not o then return end
     o.clip:Hide()
-    o.skull:Hide()
 end
 
 local function HideAll()
@@ -136,7 +133,6 @@ local function RefreshPlate(plate)
     o.bar:SetValue((known and pending > health) and health or pending)
     o.bar:SetStatusBarColor(ns.GetDotDamageColor())
     o.clip:Show()
-    o.skull:SetShown(known and Profile().dotDamageSkull ~= false and pending >= health)
 end
 
 -- Ticks, health changes and aura refreshes all move the overlay, so a light
@@ -166,11 +162,15 @@ SLASH_KUIDOT1 = "/kuidot"
 SlashCmdList.KUIDOT = function()
     if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
     local function Show(value) return Readable(value) and tostring(value) or "secret" end
+    if AurasSecret() then
+        print(SLASH_KUIDOT1, "C_Secrets.ShouldAurasBeSecret", true)
+        return
+    end
     local now = GetTime()
     print(SLASH_KUIDOT1, Show(UnitHealth("target")), Show(UnitHealthMax("target")), PendingDamage("target"))
     for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL|PLAYER")
-        if not aura then break end
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "target", i, "HARMFUL|PLAYER")
+        if not ok or not aura then break end
         local points = {}
         if type(aura.points) == "table" and not IsSecret(aura.points) then
             for j = 1, #aura.points do points[j] = Show(aura.points[j]) end

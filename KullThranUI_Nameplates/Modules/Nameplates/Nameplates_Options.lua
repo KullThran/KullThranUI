@@ -3820,19 +3820,6 @@ initFrame:SetScript("OnEvent", function(self)
                         RefreshDotDamage()
                     end
                 }); y = y - h
-
-            _, h = W:DualRow(parent, y,
-                {
-                    type = "toggle",
-                    text = LText("Skull When DoTs Will Kill"),
-                    getValue = function() return DBVal("dotDamageSkull") ~= false end,
-                    setValue = function(v)
-                        DB().dotDamageSkull = v
-                        RefreshDotDamage()
-                    end,
-                    tooltip = LText("Shows a skull next to the nameplate when your bleeds and DoTs will deal more damage than the health it has left.")
-                },
-                nil); y = y - h
         end
 
         _, h = W:Spacer(parent, y, 20); y = y - h
