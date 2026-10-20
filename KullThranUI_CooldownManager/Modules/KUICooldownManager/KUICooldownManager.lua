@@ -1380,6 +1380,13 @@ ns.CDMGetActiveSyntheticItemCooldownState = function(group)
         return nil
     end
 
+    -- A click or key press only guesses that the item was used. If no cast or
+    -- bag change confirmed it shortly after, the press failed: no cooldown.
+    if state.pending and (now - state.startTime) > 1.5 then
+        _syntheticItemCooldownGroups[group] = nil
+        return nil
+    end
+
     return state
 end
 
@@ -1402,7 +1409,7 @@ local function GetActiveSyntheticItemCooldown(itemID)
     return state.startTime, state.duration
 end
 
-local function StartSyntheticItemCooldown(itemID, duration, startTime)
+local function StartSyntheticItemCooldown(itemID, duration, startTime, pending)
     local normalizedItemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
     local group = GetSyntheticItemCooldownGroup(normalizedItemID)
     if not group or not duration or duration <= 1.5 then
@@ -1416,25 +1423,58 @@ local function StartSyntheticItemCooldown(itemID, duration, startTime)
     local current = _syntheticItemCooldownGroups[group]
     if current and current.startTime and current.duration
         and (current.startTime + current.duration) > GetTime()
-        and current.itemID and current.itemID ~= normalizedItemID
     then
-        return false
+        -- A real cast confirms the click that is waiting for it. Keep the item
+        -- that was clicked: the cast may resolve to another rank of the potion.
+        if current.pending and not pending then
+            current.pending = nil
+            current.startTime = startTime or GetTime()
+            current.duration = duration
+            return true
+        end
+        if current.itemID and current.itemID ~= normalizedItemID then
+            return false
+        end
     end
 
     _syntheticItemCooldownGroups[group] = {
         startTime = startTime or GetTime(),
         duration = duration,
         itemID = normalizedItemID,
+        pending = pending and true or nil,
     }
     return true
 end
 
+-- The bag count of the clicked item changed: the item was really used.
+ns.CDMConfirmPendingSyntheticItemCooldown = function(itemID)
+    itemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
+    local group = itemID and GetSyntheticItemCooldownGroup(itemID)
+    local state = group and _syntheticItemCooldownGroups[group]
+    if state and state.pending and state.itemID == itemID then
+        state.pending = nil
+        state.startTime = GetTime()
+    end
+end
+
+-- The real item cooldown reads ready, so a leftover own timer is stale.
+ns.CDMDropSyntheticItemCooldown = function(itemID)
+    itemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
+    local group = itemID and GetSyntheticItemCooldownGroup(itemID)
+    local state = group and _syntheticItemCooldownGroups[group]
+    if state and state.itemID == itemID then
+        _syntheticItemCooldownGroups[group] = nil
+        return true
+    end
+    return false
+end
+
 -- Potion cooldowns end with the boss encounter (kill or wipe): drop the tracker's
 -- own timers so a reset does not leave the icon on cooldown. Healthstones keep theirs.
-ns.CDMResetSyntheticPotionCooldowns = function()
+ns.CDMResetSyntheticPotionCooldowns = function(includeHealthstone)
     local cleared = false
     for group in pairs(_syntheticItemCooldownGroups) do
-        if group ~= "healthstone" then
+        if includeHealthstone or group ~= "healthstone" then
             _syntheticItemCooldownGroups[group] = nil
             cleared = true
         end
@@ -1446,10 +1486,14 @@ end
 do
     local encounterFrame = CreateFrame("Frame")
     encounterFrame:RegisterEvent("ENCOUNTER_END")
-    encounterFrame:SetScript("OnEvent", function()
+    -- Starting a Mythic+ key resets every item cooldown, healthstones included.
+    pcall(encounterFrame.RegisterEvent, encounterFrame, "CHALLENGE_MODE_START")
+    encounterFrame:SetScript("OnEvent", function(_, event)
         -- The client resets the real cooldown a moment after the event.
         C_Timer.After(0.5, function()
-            if ns.CDMResetSyntheticPotionCooldowns then ns.CDMResetSyntheticPotionCooldowns() end
+            if ns.CDMResetSyntheticPotionCooldowns then
+                ns.CDMResetSyntheticPotionCooldowns(event == "CHALLENGE_MODE_START")
+            end
         end)
     end)
 end
@@ -1475,7 +1519,7 @@ ns.TriggerImmediateSyntheticItemCooldown = function(itemID)
         return false
     end
 
-    return StartSyntheticItemCooldown(normalizedItemID, duration)
+    return StartSyntheticItemCooldown(normalizedItemID, duration, nil, true)
 end
 
 local function RefreshSyntheticItemCooldownsFromBags()
@@ -1678,6 +1722,7 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
     end
 
     local start, dur, enable
+    local realReadable = false
     if C_Item and C_Item.GetItemCooldown then
         local rawCooldown, rawDuration, rawEnable = C_Item.GetItemCooldown(itemID)
         if type(rawCooldown) == "table" then
@@ -1693,6 +1738,10 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
     elseif GetItemCooldown then
         start, dur, enable = GetItemCooldown(itemID)
     end
+    -- Only a plain number is a reading. A secret or missing value is "unknown",
+    -- not "ready", and must never clear the tracker's own timer.
+    realReadable = type(start) == "number" and type(dur) == "number"
+        and not (issecretvalue and (issecretvalue(start) or issecretvalue(dur)))
     start = SafeCooldownNumber(start, 0)
     dur = SafeCooldownNumber(dur, 0)
     enable = SafeCooldownEnabled(enable, start, dur)
@@ -1713,11 +1762,27 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
             if scdStart > 0 and scdDuration > 0.001 and (scdEnabled or scdIsNonGCD) then
                 return scdStart, scdDuration, 1
             end
+            if realReadable and (type(scd.startTime) ~= "number" or type(scd.duration) ~= "number"
+                or (issecretvalue and (issecretvalue(scd.startTime) or issecretvalue(scd.duration)))) then
+                realReadable = false
+            end
         end
     end
 
     local syntheticStart, syntheticDuration = GetActiveSyntheticItemCooldown(itemID)
     if syntheticStart and syntheticDuration then
+        -- Outside combat, encounters and keys the client reports item cooldowns
+        -- truthfully. If it says ready, a timer that survived (failed key press,
+        -- boss reset, missed event) is stale: drop it instead of showing a
+        -- cooldown for an item that was never used.
+        local restricted = (InCombatLockdown and InCombatLockdown())
+            or (IsEncounterInProgress and IsEncounterInProgress())
+            or (C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive
+                and C_ChallengeMode.IsChallengeModeActive())
+        if realReadable and not restricted and (GetTime() - syntheticStart) > 2
+            and ns.CDMDropSyntheticItemCooldown and ns.CDMDropSyntheticItemCooldown(itemID) then
+            return start, dur, 0
+        end
         return syntheticStart, syntheticDuration, 1
     end
 
@@ -13696,6 +13761,11 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
         or event == "ITEM_PUSH"
     then
         if event == 'ITEM_COUNT_CHANGED' or event == 'ITEM_PUSH' then
+            if event == 'ITEM_COUNT_CHANGED' and type(unit) == 'number'
+                and not (issecretvalue and issecretvalue(unit))
+                and ns.CDMConfirmPendingSyntheticItemCooldown then
+                ns.CDMConfirmPendingSyntheticItemCooldown(unit)
+            end
             if ns.RequestPotionTrackerHealthstoneRefresh then
                 ns.RequestPotionTrackerHealthstoneRefresh()
             end
