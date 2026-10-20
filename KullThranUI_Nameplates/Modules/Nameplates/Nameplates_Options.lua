@@ -3795,6 +3795,64 @@ initFrame:SetScript("OnEvent", function(self)
             local function RefreshDotDamage()
                 if ns.RefreshDotDamage then ns.RefreshDotDamage() end
             end
+            local lists = ns.DOT_DAMAGE_LISTS or {}
+            local defaults = ns.DOT_DAMAGE_DEFAULTS or {}
+            local function Values(list)
+                local values, order = {}, {}
+                for _, entry in ipairs(list or {}) do
+                    local key = tostring(entry[1])
+                    values[key] = entry[2]
+                    order[#order + 1] = key
+                end
+                return values, order
+            end
+            local function Setting(key)
+                local value = DBVal(key)
+                if value == nil then return defaults[key] end
+                return value
+            end
+            local function Dropdown(text, key, list, numeric)
+                local values, order = Values(list)
+                return {
+                    type = "dropdown",
+                    text = LText(text),
+                    values = values,
+                    order = order,
+                    getValue = function() return tostring(Setting(key)) end,
+                    setValue = function(v)
+                        DB()[key] = numeric and tonumber(v) or v
+                        RefreshDotDamage()
+                    end
+                }
+            end
+            local function Slider(text, key, min, max, step)
+                return {
+                    type = "slider",
+                    text = LText(text),
+                    min = min,
+                    max = max,
+                    step = step,
+                    getValue = function() return tonumber(Setting(key)) or 0 end,
+                    setValue = function(v)
+                        DB()[key] = v
+                        RefreshDotDamage()
+                    end
+                }
+            end
+            local function Color(text, key, getter)
+                return {
+                    type = "colorpicker",
+                    text = LText(text),
+                    getValue = function()
+                        if getter then return getter() end
+                        return 1, 1, 1
+                    end,
+                    setValue = function(r, g, b)
+                        DB()[key] = { r = r, g = g, b = b }
+                        RefreshDotDamage()
+                    end
+                }
+            end
 
             _, h = W:DualRow(parent, y,
                 {
@@ -3805,23 +3863,57 @@ initFrame:SetScript("OnEvent", function(self)
                         DB().dotDamageEnabled = v
                         RefreshDotDamage()
                     end,
-                    tooltip = LText("Paints over the health bar of enemies the health your bleeds and DoTs will still take before they expire.")
+                    tooltip = LText("Draws a marker on every enemy nameplate with your DoTs on it, for the damage they still have to deal. If the health ends inside the marker, the DoTs will kill it.")
                 },
+                Dropdown("Wait for First Tick", "dotDamageWaitFirstTick", lists.waitModes)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Dropdown("DoT Colors", "dotDamageColors", lists.dotColors),
+                Dropdown("Fill Style", "dotDamageFill", lists.fills)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Color("Fill Color", "dotDamageColor", ns.GetDotDamageColor),
+                Slider("Fill Opacity", "dotDamageFillOpacity", 0, 100, 5)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Dropdown("Outline", "dotDamageOutline", lists.outlines),
+                Dropdown("Dash Length", "dotDamageDashLength", lists.dashLengths, true)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Outline Thickness", "dotDamageOutlineThickness", 1, 3, 1),
+                Color("Outline Color", "dotDamageOutlineColor", ns.GetDotDamageOutlineColor)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Outline Opacity", "dotDamageOutlineOpacity", 10, 100, 5),
                 {
-                    type = "colorpicker",
-                    text = LText("DoT Damage Color"),
-                    hasAlpha = true,
-                    getValue = function()
-                        if ns.GetDotDamageColor then return ns.GetDotDamageColor() end
-                        return 0.90, 0.10, 0.10, 0.85
-                    end,
-                    setValue = function(r, g, b, a)
-                        DB().dotDamageColor = { r = r, g = g, b = b, a = a or 1 }
-                        RefreshDotDamage()
+                    type = "button",
+                    text = LText("Forget Learned Tick Sizes"),
+                    onClick = function()
+                        if ns.ResetDotTicks then ns.ResetDotTicks() end
                     end
                 }); y = y - h
-        end
 
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Kill Icon"),
+                    getValue = function() return Setting("dotDamageKillIcon") == true end,
+                    setValue = function(v)
+                        DB().dotDamageKillIcon = v
+                        RefreshDotDamage()
+                    end,
+                    tooltip = LText("Shows an icon next to the nameplate when your DoTs will kill it.")
+                },
+                Dropdown("Kill Icon", "dotDamageIcon", lists.icons)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Kill Icon Size", "dotDamageIconSize", 12, 32, 1),
+                Dropdown("Kill Icon Position", "dotDamageIconPosition", lists.iconPositions)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Icon Horizontal Offset", "dotDamageIconOffsetX", -40, 40, 1),
+                Slider("Icon Vertical Offset", "dotDamageIconOffsetY", -40, 40, 1)); y = y - h
+        end
         _, h = W:Spacer(parent, y, 20); y = y - h
 
         -----------------------------------------------------------------------

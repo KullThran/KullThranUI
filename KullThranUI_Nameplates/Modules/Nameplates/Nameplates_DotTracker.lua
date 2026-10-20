@@ -74,13 +74,46 @@ local SCHOOL_MASKS = {
     Frostfire = 4 + 16, -- Forever's Frostfire Bolt: combined schools report as the OR of their masks
 }
 
--- Learned tick sizes persist in the nameplate profile; DoTs count from the cast, without waiting for
--- their first tick.
+-- The tables above are keyed by English spell names. The same spells are also listed by spell ID, so
+-- other client languages get their own names added at load (an ID the client lacks is skipped).
+local SPELL_IDS = {
+    ["Insect Swarm"] = 5570, ["Curse of Agony"] = 980, ["Fireball"] = 133, ["Holy Fire"] = 14914,
+    ["Rip"] = 1079, ["Rupture"] = 1943, ["Serpent Sting"] = 1978, ["Pyroblast"] = 11366,
+    ["Frostfire Bolt"] = 44614, ["Siphon Life"] = 18265,
+    ["Rain of Fire"] = 5740, ["Hellfire"] = 1949, ["Blizzard"] = 10, ["Flamestrike"] = 2120,
+    ["Consecration"] = 26573, ["Hurricane"] = 16914, ["Volley"] = 1510, ["Drain Life"] = 689,
+    ["Drain Soul"] = 1120, ["Drain Mana"] = 5138, ["Health Funnel"] = 755, ["Mind Flay"] = 15407,
+    ["Arcane Missiles"] = 5143, ["Starshards"] = 10797, ["Immolation Trap"] = 13795,
+    ["Explosive Trap"] = 13813, ["Wyvern Sting"] = 19386,
+}
+
+local function addLocalizedNames()
+    local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
+    if not getName then return end
+    for _, list in ipairs({ KNOWN_TICK_INTERVALS, TICK_SHAPES, SCHOOL_BY_NAME, IGNORED_SPELLS, PROJECTILE_DOTS }) do
+        local added = {}
+        for englishName, value in pairs(list) do
+            local id = SPELL_IDS[englishName]
+            local ok, name = pcall(getName, id or 0)
+            if id and ok and type(name) == "string" and name ~= "" and list[name] == nil then added[name] = value end
+        end
+        for name, value in pairs(added) do list[name] = value end
+    end
+end
+
+-- Learned tick sizes persist in the nameplate profile; DoTs count from the cast unless the profile says to
+-- wait for their first tick.
 local db = { ticks = {}, waitFirstTick = "off" }
 local dotsByTarget = {}     -- targetKey -> { [spellName] = dot }
 local warnedSecretGuid = false
 
-local function trace() end
+-- Recent tracker events, kept in memory for /kuidot.
+local MAX_TRACE_LINES = 40
+local traceLines = {}
+local function trace(msg)
+    table.insert(traceLines, string.format("%.1f %s", GetTime(), msg))
+    if #traceLines > MAX_TRACE_LINES then table.remove(traceLines, 1) end
+end
 
 local function isSecret(v)
     if type(issecretvalue) ~= "function" then return false end
@@ -102,6 +135,41 @@ local function unitKey(unit)
     return "target"
 end
 
+-- The parsing below reads English descriptions. On a Spanish client the description is first rewritten
+-- into the same English phrases ("25 p. de daño de Fuego durante 15 s" -> "25 Fire damage over 15 sec").
+local SPANISH_SCHOOLS = {
+    { "[Ff]\195\173sic[oa]", "Physical" }, { "[Ss]agrad[oa]", "Holy" }, { "[Ff]uego", "Fire" },
+    { "[Nn]aturaleza", "Nature" }, { "[Ee]scarcha", "Frost" }, { "[Ss]ombras?", "Shadow" },
+    { "[Aa]rcan[oa]", "Arcane" },
+}
+
+local function normalizeSpanish(desc)
+    desc = desc:gsub("(%d)%.(%d%d%d)", "%1%2")               -- 1.234 -> 1234
+    desc = desc:gsub("(%d),(%d)", "%1.%2")                    -- 1,5 -> 1.5
+    desc = desc:gsub("[Mm]ovimiento final", "Finishing move")
+    desc = desc:gsub("[Oo]torga (%d+) puntos? de combo", "Awards %1 combo point")
+    desc = desc:gsub("^[Rr]ecubre", "Coats a weapon")
+    desc = desc:gsub("^[Ss]ana", "Heals"):gsub("^[Cc]ura", "Heals")
+    for _, school in ipairs(SPANISH_SCHOOLS) do desc = desc:gsub(school[1], school[2]) end
+    desc = desc:gsub("p%. de ", ""):gsub("pts%. de ", "")
+    local damageWord = "da" .. string.char(195, 177) .. "o"
+    desc = desc:gsub("de " .. damageWord, "damage"):gsub(damageWord, "damage")
+    desc = desc:gsub("de salud", "health"):gsub("salud", "health")
+    desc = desc:gsub("damage de (%a+)", "%1 damage"):gsub("damage (%u%a+)", "%1 damage")
+    desc = desc:gsub("(%d+) puntos?%s*:", "%1 points:")
+    desc = desc:gsub("durante ", "over "):gsub("a lo largo de ", "over "):gsub("damage en (%d)", "damage over %1")
+    desc = desc:gsub("cada ", "every "):gsub("[Dd]ura ", "Lasts ")
+    desc = desc:gsub("(%d+%.?%d*) seg%a*%.?", "%1 sec."):gsub("(%d+%.?%d*) s%f[^%a]", "%1 sec")
+    return desc
+end
+
+local function normalizeDescription(desc)
+    if type(desc) ~= "string" or isSecret(desc) then return desc end
+    local locale = GetLocale and GetLocale() or "enUS"
+    if locale == "esES" or locale == "esMX" then return normalizeSpanish(desc) end
+    return desc
+end
+
 local function spellNameAndDescription(spellID)
     local name, desc
     if C_Spell and C_Spell.GetSpellName then
@@ -111,7 +179,7 @@ local function spellNameAndDescription(spellID)
     end
     local descFn = (C_Spell and C_Spell.GetSpellDescription) or GetSpellDescription
     if descFn then desc = descFn(spellID) end
-    return name, desc
+    return name, normalizeDescription(desc)
 end
 
 local function schoolFromWords(words)
@@ -145,7 +213,7 @@ end
 --   "Transfers 15 health from the target to the caster every 3 sec. Lasts 30 sec."  (Siphon Life)
 -- comboPoints is only used for finishers. (Rake/Garrote merely award a combo point, so finishers are
 -- recognised by "Finishing move", not "combo point".)
-local function parseDot(desc, comboPoints)
+local function parseEnglishDot(desc, comboPoints)
     if type(desc) ~= "string" or isSecret(desc) then return nil end
     if desc:find("Finishing move") then return parseFinisher(desc, comboPoints or 5) end
     -- Weapon enchants (rogue poisons) describe a proc DoT but aren't cast on the target. Match the enchant
@@ -172,6 +240,179 @@ local function parseDot(desc, comboPoints)
             return tonumber(amount) * math.floor(lasts / every + 0.5), schoolFromWords(words), lasts, every
         end
     end
+end
+
+---------------------------------------------------------------------------
+-- Language-independent parsing
+---------------------------------------------------------------------------
+
+-- Other client languages word DoT descriptions differently, so when the English phrases above don't match,
+-- the description is read by its numbers: in a sentence that names damage, a number followed by a time unit
+-- is the duration (a second, smaller one is the tick interval) and the number closest to the damage word is
+-- the damage. Finishers list "N <points>: damage ... duration" once per combo point count. The school is
+-- left unknown unless the description names it in English, and is taken from the first tick instead.
+local DAMAGE_WORDS = {
+    "damage",
+    "Damage",
+    "da" .. string.char(195, 177) .. "o",
+    "Da" .. string.char(195, 177) .. "o",
+    "Schaden",
+    "schaden",
+    "d" .. string.char(195, 169) .. "g" .. string.char(195, 162) .. "ts",
+    "D" .. string.char(195, 169) .. "g" .. string.char(195, 162) .. "ts",
+    "danni",
+    "danno",
+    "dano",
+    string.char(209, 131) .. string.char(209, 128) .. string.char(208, 190) .. string.char(208, 189),
+    string.char(208, 163) .. string.char(209, 128) .. string.char(208, 190) .. string.char(208, 189),
+    string.char(237, 148, 188) .. string.char(237, 149, 180),
+    string.char(228, 188, 164) .. string.char(229, 174, 179),
+    string.char(229, 130, 183) .. string.char(229, 174, 179),
+}
+local TIME_UNITS = {
+    "seconds",
+    "second",
+    "secs",
+    "sec",
+    "segundos",
+    "seg",
+    "Sekunden",
+    "Sek",
+    "sek",
+    "secondes",
+    "seconde",
+    "secondi",
+    string.char(209, 129) .. string.char(208, 181) .. string.char(208, 186) .. string.char(209, 131) .. string.char(208, 189) .. string.char(208, 180),
+    string.char(209, 129) .. string.char(208, 181) .. string.char(208, 186),
+    string.char(236, 180, 136),
+    string.char(231, 167, 146),
+    "s",
+}
+local NBSP = string.char(194, 160)
+local CJK_STOP = string.char(227, 128, 130) -- the ideographic full stop
+
+local function normalizeNumbers(desc)
+    local previous
+    repeat
+        previous = desc
+        desc = desc:gsub("(%d)[%.,' ](%d%d%d)(%f[%D])", "%1%2%3"):gsub("(%d)" .. NBSP .. "(%d%d%d)", "%1%2")
+    until desc == previous
+    return (desc:gsub("(%d),(%d)", "%1.%2"))
+end
+
+local function isTimeUnit(rest)
+    rest = rest:gsub("^[%s]+", ""):gsub("^" .. NBSP, "")
+    for _, unit in ipairs(TIME_UNITS) do
+        if rest:sub(1, #unit) == unit then
+            local after = rest:sub(#unit + 1, #unit + 1)
+            if unit:byte(1) > 127 or after == "" or not after:find("^%a") then return true end
+        end
+    end
+    return false
+end
+
+-- Numbers in the description with their sentence, position and what follows them.
+local function tokenize(desc)
+    -- A sentence ends at a full stop followed by a capital letter: "15 Sek. 60 Schaden" is one sentence.
+    local text = normalizeNumbers(desc):gsub("%.%s+(%u)", "\n%1"):gsub(CJK_STOP, "\n")
+    local tokens, sentences = {}, {}
+    local index = 0
+    for sentence in text:gmatch("[^\n]+") do
+        index = index + 1
+        sentences[index] = sentence
+        for start, number, stop in sentence:gmatch("()(%d+%.?%d*)()") do
+            local rest = sentence:sub(stop)
+            local between = rest:match("^([^%d]-)[:" .. string.char(239, 188, 154) .. "]")
+            table.insert(tokens, {
+                value = tonumber(number), sentence = index, at = start,
+                percent = rest:find("^%s*%%") ~= nil,
+                time = isTimeUnit(rest),
+                colon = between ~= nil and #between <= 16,
+            })
+        end
+    end
+    return tokens, sentences
+end
+
+local function damageWordAt(sentence)
+    for _, word in ipairs(DAMAGE_WORDS) do
+        local at = sentence:find(word, 1, true)
+        if at then return at end
+    end
+end
+
+local function englishSchool(desc)
+    for word, mask in pairs(SCHOOL_MASKS) do
+        if desc:find("%f[%a]" .. word .. "%f[%A]") then return mask end
+    end
+end
+
+-- Per combo point entries: { [points] = { total, duration } }, or nil if the description has fewer than two.
+local function genericFinisher(tokens)
+    local byPoints, count, highest = {}, 0, 0
+    for i, token in ipairs(tokens) do
+        local amount, duration = tokens[i + 1], tokens[i + 2]
+        if token.colon and token.value >= 1 and token.value <= 5 and token.value % 1 == 0
+            and amount and not amount.time and duration and duration.time then
+            byPoints[token.value] = { total = amount.value, duration = duration.value }
+            count, highest = count + 1, math.max(highest, token.value)
+        end
+    end
+    if count < 2 then return nil end
+    return byPoints, highest
+end
+
+local function parseGeneric(desc, comboPoints)
+    local tokens, sentences = tokenize(desc)
+    local school = englishSchool(desc)
+    local byPoints, highest = genericFinisher(tokens)
+    if byPoints then
+        local entry = byPoints[math.max(1, math.min(comboPoints or 1, highest))] or byPoints[highest]
+        return entry.total, school or SCHOOL_MASKS.Physical, entry.duration
+    end
+    local found
+    for index, sentence in ipairs(sentences) do
+        local damageAt = damageWordAt(sentence)
+        if damageAt then
+            local amount, times = nil, {}
+            for _, token in ipairs(tokens) do
+                if token.sentence == index and not token.percent then
+                    if token.time then
+                        table.insert(times, token.value)
+                    elseif not amount or math.abs(token.at - damageAt) < math.abs(amount.at - damageAt) then
+                        amount = token
+                    end
+                end
+            end
+            if amount and #times > 0 then found = { amount = amount.value, times = times, sentence = index } end
+        end
+    end
+    if not found then return nil end
+    local times = found.times
+    if #times == 1 then
+        -- "every 3 sec. Lasts 30 sec.": the duration is in a later sentence.
+        for _, token in ipairs(tokens) do
+            if token.sentence > found.sentence and token.time and token.value > times[1] then
+                times[2] = token.value
+                break
+            end
+        end
+    end
+    if #times >= 2 then
+        local every, lasts = math.min(times[1], times[2]), math.max(times[1], times[2])
+        if every <= 0 then return nil end
+        return found.amount * math.floor(lasts / every + 0.5), school, lasts, every
+    end
+    if times[1] <= 0 then return nil end
+    return found.amount, school, times[1]
+end
+
+local function parseDot(desc, comboPoints)
+    if type(desc) ~= "string" or isSecret(desc) then return nil end
+    local total, school, duration, interval = parseEnglishDot(desc, comboPoints)
+    if total then return total, school, duration, interval end
+    if desc:find("Finishing move") or desc:find("[Cc]oats a weapon") or desc:find("^Heals") then return nil end
+    return parseGeneric(desc, comboPoints)
 end
 
 ---------------------------------------------------------------------------
@@ -266,7 +507,8 @@ local function rememberComboPoints()
 end
 
 local function isFinisherDescription(desc)
-    return type(desc) == "string" and not isSecret(desc) and desc:find("Finishing move") ~= nil
+    if type(desc) ~= "string" or isSecret(desc) then return false end
+    return desc:find("Finishing move") ~= nil or genericFinisher((tokenize(desc))) ~= nil
 end
 
 local function onCastSent(spellID, castGUID)
@@ -398,7 +640,10 @@ end
 local function onPlayerCast(spellID, castGUID)
     local key = castTargetKey(castGUID)
     local ok, name, desc = pcall(spellNameAndDescription, spellID)
-    if not ok or not name or isSecret(name) then return end
+    if not ok or not name or isSecret(name) then
+        trace("CAST spell " .. (isSecret(spellID) and "secret" or tostring(spellID)) .. ": name not readable")
+        return
+    end
     if type(desc) == "string" and not isSecret(desc) then
         local awarded = tonumber(desc:match("Awards (%d+) combo point"))
         if awarded then onBuilderCast(key, awarded) end
@@ -409,7 +654,11 @@ local function onPlayerCast(spellID, castGUID)
     if isFinisher then comboPoints, comboSource = comboPointsForCast() end
     -- Unknown points: parse the lowest entry (errs low), and don't use or teach learned tick sizes.
     local total, school, duration, statedInterval = parseDot(desc, comboPoints or 1)
-    if not total then return end
+    if not total then
+        local text = (type(desc) == "string" and not isSecret(desc)) and desc:sub(1, 90) or "unreadable"
+        trace("SKIP " .. name .. ": no DoT found in: " .. text)
+        return
+    end
     -- A finisher's tick size depends on the points spent, so learned sizes are kept per point count.
     local tickKey = spellID
     if isFinisher then tickKey = comboPoints and (spellID .. "x" .. comboPoints) or nil end
@@ -445,9 +694,9 @@ local function onPlayerCast(spellID, castGUID)
     -- The starting estimate is shaky without a learned tick size (description numbers leave out spell power
     -- and attack power) or, for finishers, without knowing the combo points.
     dot.unsure = not learned
-    trace(string.format("CAST %s (id %d)%s: %d dmg over %ss, school %d, tick every %ss, per-tick %s%s%s", name, spellID,
+    trace(string.format("CAST %s (id %d)%s: %d dmg over %ss, school %s, tick every %ss, per-tick %s%s%s", name, spellID,
         isFinisher and string.format(" %s combo points (%s)", comboPoints or "?", comboSource) or "",
-        total, duration, school, interval, learned and ("learned " .. learned) or "from description",
+        total, duration, tostring(school or "unknown"), interval, learned and ("learned " .. learned) or "from description",
         isWaiting(dot) and ", waiting for first tick" or "",
         key ~= unitKey("target") and (" on " .. tostring(key) .. ", the target when sent") or ""))
     local avoided = avoidJustBefore(key)
@@ -593,7 +842,8 @@ local function onUnitCombat(unit, action, flag, amount, school)
 
     local best, bestName, bestDistance, bestIndex
     for name, dot in pairs(dots) do
-        if dot.school == school and plausibleTickAmount(dot, amount, isCrit, tickNumberAt(dot, now)) then
+        -- A DoT read from a description without a school takes the school of its first tick.
+        if (dot.school == school or dot.school == nil) and plausibleTickAmount(dot, amount, isCrit, tickNumberAt(dot, now)) then
             local distance, index = distanceToExpectedTick(dot, now)
             local window = dot.firstTickAt and TICK_MATCH_WINDOW_ANCHORED or TICK_MATCH_WINDOW
             -- Each tick slot takes one hit: a second hit near an already-matched tick is someone else's.
@@ -606,7 +856,7 @@ local function onUnitCombat(unit, action, flag, amount, school)
     if not best then
         -- Not a tick as things stand; it may still correct one (same-slot swap, or a wrong learned size).
         for name, dot in pairs(dots) do
-            if dot.school == school then
+            if dot.school == school or dot.school == nil then
                 local distance, index = distanceToExpectedTick(dot, now)
                 local wasWaiting = isWaiting(dot)
                 if trySwapSameSlot(dot, name, amount, isCrit, now) then return end
@@ -621,6 +871,7 @@ local function onUnitCombat(unit, action, flag, amount, school)
     end
 
     local wasWaiting = isWaiting(best)
+    best.school = best.school or school
     local factor = tickShape(best, tickNumberAt(best, now))
     best.ticksSeen = best.ticksSeen + 1
     best.lastTickAmount, best.lastTickShape, best.lastTickCrit = amount, factor, isCrit
@@ -709,7 +960,7 @@ end
 local lastHousekeep = 0
 
 -- What your DoTs on the mob behind `unit` will still deal, and how many DoTs count toward it.
-function ns.DotDamageForUnit(unit)
+function ns.DotBreakdownForUnit(unit)
     local now = GetTime()
     if now ~= lastHousekeep then
         lastHousekeep = now
@@ -718,6 +969,19 @@ function ns.DotDamageForUnit(unit)
     local list = dotBreakdown(unitKey(unit))
     local total = 0
     for _, entry in ipairs(list) do total = total + entry.damage end
+    return list, total
+end
+
+function ns.DotTrackerLog()
+    return traceLines
+end
+
+function ns.ResetDotTicks()
+    wipe(db.ticks)
+end
+
+function ns.DotDamageForUnit(unit)
+    local list, total = ns.DotBreakdownForUnit(unit)
     return math.floor(total + 0.5), #list
 end
 
@@ -732,6 +996,7 @@ frame:RegisterEvent("UNIT_COMBAT")
 
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_LOGIN" then
+        addLocalizedNames()
         local profile = _G.KullThranUINameplatesDB
         if type(profile) == "table" then
             profile.dotDamageTicks = profile.dotDamageTicks or {}
@@ -740,6 +1005,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if not IsEnabled() then return end
+    db.waitFirstTick = _G.KullThranUINameplatesDB.dotDamageWaitFirstTick or "off"
     if event == "PLAYER_TARGET_CHANGED" then
         dotsByTarget.target = nil -- only used when the target's GUID is secret
         resetComboCount() -- combo points belong to the target they were built on
