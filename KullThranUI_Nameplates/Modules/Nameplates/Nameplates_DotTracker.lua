@@ -750,6 +750,8 @@ end
 local function saveLearnedTick(dot)
     if dot.tickKey and dot.normalTicks > 0 then
         db.ticks[dot.tickKey] = math.floor(dot.tickSum / dot.normalTicks * 10 + 0.5) / 10
+        local profile = _G.KullThranUINameplatesDB
+        if type(profile) == "table" and profile.dotDamageTicks == nil then profile.dotDamageTicks = db.ticks end
     end
 end
 
@@ -997,14 +999,13 @@ frame:RegisterEvent("UNIT_COMBAT")
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_LOGIN" then
         addLocalizedNames()
-        local profile = _G.KullThranUINameplatesDB
-        if type(profile) == "table" then
-            profile.dotDamageTicks = profile.dotDamageTicks or {}
-            db.ticks = profile.dotDamageTicks
-        end
         return
     end
     if not IsEnabled() then return end
+    -- Learned tick sizes are read from the profile, never written at login: on Forever the nameplate module
+    -- only adopts the saved profile if the table is still empty when it initializes.
+    local profile = _G.KullThranUINameplatesDB
+    if type(profile) == "table" and type(profile.dotDamageTicks) == "table" then db.ticks = profile.dotDamageTicks end
     db.waitFirstTick = _G.KullThranUINameplatesDB.dotDamageWaitFirstTick or "off"
     if event == "PLAYER_TARGET_CHANGED" then
         dotsByTarget.target = nil -- only used when the target's GUID is secret
