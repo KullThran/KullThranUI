@@ -3787,6 +3787,88 @@ initFrame:SetScript("OnEvent", function(self)
         _, h = W:Spacer(parent, y, 20); y = y - h
 
         -----------------------------------------------------------------------
+        --  DEBUFF TYPE BORDERS (your bleeds, DoTs... framed by type)
+        -----------------------------------------------------------------------
+        _, h = W:SectionHeader(parent, "DEBUFF TYPE BORDERS", y); y = y - h
+
+        do
+            local function RefreshDebuffBorders()
+                if not ns.NPC_ApplyVisualSettings then return end
+                for _, plate in pairs(plates) do
+                    if plate.unit then ns.NPC_ApplyVisualSettings(plate) end
+                end
+            end
+            local function bordersOff()
+                return DBVal("debuffTypeBorders") ~= true
+            end
+            local colorLabels = {
+                Bleed = LText("Bleed Color"),
+                Magic = LText("Magic Color"),
+                Poison = LText("Poison Color"),
+                Curse = LText("Curse Color"),
+                Disease = LText("Disease Color"),
+                Other = LText("Other Debuffs Color"),
+            }
+            local function ColorEntry(def)
+                if not def then return nil end
+                return {
+                    type = "colorpicker",
+                    text = colorLabels[def[1]] or def[1],
+                    getValue = function()
+                        local r, g, b = ns.GetDebuffBorderColor(def, DB())
+                        return r, g, b, 1
+                    end,
+                    setValue = function(r, g, b)
+                        DB()[def[2]] = { r = r, g = g, b = b }
+                        RefreshDebuffBorders()
+                    end,
+                }
+            end
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Color Debuff Borders by Type"),
+                    getValue = function() return DBVal("debuffTypeBorders") == true end,
+                    setValue = function(v)
+                        DB().debuffTypeBorders = v
+                        RefreshDebuffBorders()
+                        C_Timer.After(0, function() KT:RefreshPage(true) end)
+                    end,
+                    tooltip = LText("Frames your debuffs on enemy nameplates with the color of their type: bleed, magic, poison, curse or disease.")
+                },
+                {
+                    type = "slider",
+                    text = LText("Debuff Border Thickness"),
+                    trackWidth = 110,
+                    min = 1,
+                    max = 4,
+                    step = 1,
+                    getValue = function() return tonumber(DBVal("debuffTypeBorderSize")) or 2 end,
+                    setValue = function(v)
+                        DB().debuffTypeBorderSize = v
+                        RefreshDebuffBorders()
+                    end
+                }); y = y - h
+
+            local defs = {}
+            for i, def in ipairs(ns.NP_DEBUFF_BORDER_TYPES or {}) do defs[i] = def end
+            defs[#defs + 1] = ns.NP_DEBUFF_BORDER_OTHER
+            local colorRows = {}
+            for i = 1, #defs, 2 do
+                local row
+                row, h = W:DualRow(parent, y, ColorEntry(defs[i]), ColorEntry(defs[i + 1])); y = y - h
+                colorRows[#colorRows + 1] = row
+            end
+            KT_RegisterWidgetRefresh(function()
+                local off = bordersOff()
+                for _, row in ipairs(colorRows) do row:SetAlpha(off and 0.4 or 1) end
+            end)
+        end
+
+        _, h = W:Spacer(parent, y, 20); y = y - h
+
+        -----------------------------------------------------------------------
         --  EXTRAS
         -----------------------------------------------------------------------
         _, h = W:SectionHeader(parent, SECTION_MISC, y); y = y - h

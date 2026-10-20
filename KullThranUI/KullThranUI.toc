@@ -109,6 +109,7 @@ Locales\Modules\OptionsGaps.lua
 Locales\Modules\MinimapIcons.lua
 Locales\Modules\PortraitAuras.lua
 Locales\Modules\PartyPortraitAuras.lua
+Locales\Modules\NameplateDebuffBorders.lua
 Locales\Modules\AFKScreen.lua
 Locales\Modules\VisualStyles.lua
 Locales\Modules\CooldownManager.lua

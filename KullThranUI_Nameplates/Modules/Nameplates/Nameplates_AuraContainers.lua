@@ -54,15 +54,58 @@ local function GetDurationPosition(kind, profile)
     return position, anchor
 end
 
+-- Debuff type borders: your debuffs on enemy plates get a frame tinted by their
+-- type (bleed, magic, poison...). Per-aura dispel data is secret, so the tint is
+-- an engine decision fed by this palette; "Other" colors the static border.
+local DEBUFF_BORDER_TYPES = {
+    { "Bleed", "debuffBorderColorBleed", 0.80, 0.00, 0.00 },
+    { "Magic", "debuffBorderColorMagic", 0.20, 0.60, 1.00 },
+    { "Poison", "debuffBorderColorPoison", 0.00, 0.60, 0.00 },
+    { "Curse", "debuffBorderColorCurse", 0.60, 0.00, 1.00 },
+    { "Disease", "debuffBorderColorDisease", 0.60, 0.40, 0.00 },
+}
+local DEBUFF_BORDER_OTHER = { "Other", "debuffBorderColorOther", 0.00, 0.00, 0.00 }
+ns.NP_DEBUFF_BORDER_TYPES = DEBUFF_BORDER_TYPES
+ns.NP_DEBUFF_BORDER_OTHER = DEBUFF_BORDER_OTHER
+
+function ns.GetDebuffBorderColor(def, profile)
+    local c = (profile or Profile())[def[2]]
+    return (c and c.r) or def[3], (c and c.g) or def[4], (c and c.b) or def[5]
+end
+
+local function BuildDebuffBorderColorMap(p)
+    local map, fp = {}, {}
+    for i = 1, #DEBUFF_BORDER_TYPES do
+        local def = DEBUFF_BORDER_TYPES[i]
+        local r, g, b = ns.GetDebuffBorderColor(def, p)
+        map[def[1]] = CreateColor and CreateColor(r, g, b, 1) or { r = r, g = g, b = b, a = 1 }
+        fp[#fp + 1] = string.format("%.3f,%.3f,%.3f", r, g, b)
+    end
+    return map, table.concat(fp, ";")
+end
+
 local function BuildStyle(kind)
     local p = Profile()
     local size = kind == "debuffs" and ns.GetDebuffIconSize()
         or kind == "buffs" and ns.GetBuffIconSize() or ns.GetCCIconSize()
     local durationPosition, durationAnchor = GetDurationPosition(kind, p)
+    local border = { 0, 0, 0, 1, size = 1 }
+    local typeBorders = kind == "debuffs" and p.debuffTypeBorders == true
+    local dispelColorMap, dispelColorFP, borderPx
+    if typeBorders then
+        borderPx = math.max(1, math.min(4, tonumber(p.debuffTypeBorderSize) or 2))
+        local r, g, b = ns.GetDebuffBorderColor(DEBUFF_BORDER_OTHER, p)
+        border = { r, g, b, 1, size = borderPx }
+        dispelColorMap, dispelColorFP = BuildDebuffBorderColorMap(p)
+    end
     return {
+        dispelBorder = typeBorders or nil,
+        dispelBorderPx = borderPx,
+        dispelColorMap = dispelColorMap,
+        dispelColorFP = dispelColorFP,
         width = size, height = size,
         texCoord = { 0.08, 0.92, 0.08, 0.92 },
-        border = { 0, 0, 0, 1, size = 1 },
+        border = border,
         cooldownReverse = true,
         noTooltips = true,
         durationFontSize = p.auraDurationTextSize or 15,
