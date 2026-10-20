@@ -3787,77 +3787,50 @@ initFrame:SetScript("OnEvent", function(self)
         _, h = W:Spacer(parent, y, 20); y = y - h
 
         -----------------------------------------------------------------------
-        --  EXECUTE RANGE (health bar painted under a health percent)
+        --  DOT DAMAGE (health your bleeds and DoTs will still take)
         -----------------------------------------------------------------------
-        _, h = W:SectionHeader(parent, "EXECUTE RANGE", y); y = y - h
+        _, h = W:SectionHeader(parent, "DOT DAMAGE", y); y = y - h
 
         do
-            local function RefreshExecute()
-                if ns.RefreshExecute then ns.RefreshExecute() end
+            local function RefreshDotDamage()
+                if ns.RefreshDotDamage then ns.RefreshDotDamage() end
             end
 
             _, h = W:DualRow(parent, y,
                 {
                     type = "toggle",
-                    text = LText("Show Execute Range"),
-                    getValue = function() return DBVal("executeEnabled") == true end,
+                    text = LText("Show Pending DoT Damage"),
+                    getValue = function() return DBVal("dotDamageEnabled") == true end,
                     setValue = function(v)
-                        DB().executeEnabled = v
-                        RefreshExecute()
+                        DB().dotDamageEnabled = v
+                        RefreshDotDamage()
                     end,
-                    tooltip = LText("Paints the health bar of enemies in the execute color when their health drops under the chosen percent.")
+                    tooltip = LText("Paints over the health bar of enemies the health your bleeds and DoTs will still take before they expire.")
                 },
-                {
-                    type = "slider",
-                    text = LText("Execute Threshold"),
-                    trackWidth = 110,
-                    min = 5,
-                    max = 90,
-                    step = 1,
-                    getValue = function()
-                        return tonumber(DBVal("executeThreshold")) or ns.EXECUTE_DEFAULT_THRESHOLD or 20
-                    end,
-                    setValue = function(v)
-                        DB().executeThreshold = v
-                        RefreshExecute()
-                    end
-                }); y = y - h
-
-            _, h = W:DualRow(parent, y,
                 {
                     type = "colorpicker",
-                    text = LText("Execute Color"),
+                    text = LText("DoT Damage Color"),
                     hasAlpha = true,
                     getValue = function()
-                        if ns.GetExecuteColor then return ns.GetExecuteColor() end
-                        return 0.85, 0.05, 0.05, 1
+                        if ns.GetDotDamageColor then return ns.GetDotDamageColor() end
+                        return 0.90, 0.10, 0.10, 0.85
                     end,
                     setValue = function(r, g, b, a)
-                        DB().executeColor = { r = r, g = g, b = b, a = a or 1 }
-                        RefreshExecute()
+                        DB().dotDamageColor = { r = r, g = g, b = b, a = a or 1 }
+                        RefreshDotDamage()
                     end
-                },
-                {
-                    type = "toggle",
-                    text = LText("Execute Mark"),
-                    getValue = function() return DBVal("executeMark") ~= false end,
-                    setValue = function(v)
-                        DB().executeMark = v
-                        RefreshExecute()
-                    end,
-                    tooltip = LText("Draws a mark on the health bar at the execute percent.")
                 }); y = y - h
 
             _, h = W:DualRow(parent, y,
                 {
                     type = "toggle",
-                    text = LText("Execute Skull"),
-                    getValue = function() return DBVal("executeSkull") ~= false end,
+                    text = LText("Skull When DoTs Will Kill"),
+                    getValue = function() return DBVal("dotDamageSkull") ~= false end,
                     setValue = function(v)
-                        DB().executeSkull = v
-                        RefreshExecute()
+                        DB().dotDamageSkull = v
+                        RefreshDotDamage()
                     end,
-                    tooltip = LText("Shows a skull next to the nameplate while the enemy is in execute range.")
+                    tooltip = LText("Shows a skull next to the nameplate when your bleeds and DoTs will deal more damage than the health it has left.")
                 },
                 nil); y = y - h
         end

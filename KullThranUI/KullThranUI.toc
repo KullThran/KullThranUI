@@ -109,7 +109,7 @@ Locales\Modules\OptionsGaps.lua
 Locales\Modules\MinimapIcons.lua
 Locales\Modules\PortraitAuras.lua
 Locales\Modules\PartyPortraitAuras.lua
-Locales\Modules\NameplateExecute.lua
+Locales\Modules\NameplateDotDamage.lua
 Locales\Modules\NameplateClassIcons.lua
 Locales\Modules\AFKScreen.lua
 Locales\Modules\VisualStyles.lua
