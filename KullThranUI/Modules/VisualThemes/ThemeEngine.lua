@@ -470,6 +470,14 @@ function KT.VisualThemes:ResetComboDefaults()
         local MM = KT.GetModule and KT:GetModule("Minimap", true)
         if MM and MM.Refresh then pcall(MM.Refresh, MM) end
     end
+    -- Party Frames: selecting a theme drops a style picked on the Party
+    -- Frames page, so the frames follow the chosen Visual Style again.
+    local pf = KT.db and KT.db.profile and KT.db.profile.partyFrames
+    if type(pf) == "table" and pf.partyFrameStyle ~= nil then
+        pf.partyFrameStyle = nil
+        local PF = KT.GetModule and KT:GetModule("PartyFrames", true)
+        if PF and PF.RefreshAll and not (InCombatLockdown and InCombatLockdown()) then pcall(PF.RefreshAll, PF) end
+    end
     local uf = KT.db and KT.db.profile and KT.db.profile.unitFrames
     if type(uf) ~= "table" then return end
     uf.comboUnderFrame = nil
@@ -547,11 +555,12 @@ local function RestoreUnitFramePlacement(snapshot)
         local settings = type(uf[key]) == "table" and uf[key] or nil
         local newScale = ((settings and settings.frameScale) or 100) / 100
         if newScale > 0 and math.abs(newScale - old.scale) > 0.0001 then
-            -- Keep the frame's centre on the same screen spot:
-            -- centre = scale * (offset + anchorFactor * size).
-            local ax, ay = AnchorFactors(old.point)
-            local nx = (old.x + ax * old.w) * old.scale / newScale - ax * old.w
-            local ny = (old.y + ay * old.h) * old.scale / newScale - ay * old.h
+            -- Keep the anchored point (the corner or edge the player placed, e.g. the
+            -- TOPLEFT of the focus frame under the player's auras) on the same screen
+            -- spot. Keeping the centre instead made a frame whose size changes with
+            -- the style slide sideways: screen position = scale * offset.
+            local nx = old.x * old.scale / newScale
+            local ny = old.y * old.scale / newScale
             local pos = uf.positions[key]
             if type(pos) == "table" then
                 pos.x, pos.y = nx, ny
@@ -647,6 +656,43 @@ function KT.VisualThemes:ApplyAll(targetTheme)
     state.schemaVersion = self.SCHEMA_VERSION
     RestoreUnitFramePlacement(placement)
     self:ResetComboDefaults()
+
+    -- Every module that keeps its own "style" choice follows the general style as well
+    -- (a theme's saved slot may remember a different pick made earlier).
+    local chatDb = profile.chat
+    if type(chatDb) == "table" and type(chatDb.styleByTheme) == "table" then chatDb.styleByTheme[targetTheme] = nil end
+    pcall(function()
+        local dm = registry.damagemeter and registry.damagemeter.getProfile and registry.damagemeter.getProfile()
+        if dm then
+            dm.visualStyle = targetTheme
+            dm.showBackground = true  -- every style draws its panel / frame (the old default was off)
+            -- the extra windows wear the same look as the main one
+            for _, win in ipairs(dm.windows or {}) do
+                if type(win) == "table" then
+                    win.barTexture, win.showBackground = dm.barTexture, dm.showBackground
+                    win._ktDamageMeterThemeSlots, win._ktDamageMeterTheme = nil, targetTheme
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local cb = registry.castbar and registry.castbar.getProfile and registry.castbar.getProfile()
+        local S = KT.CastBarStyles
+        if cb and S and S.labels[targetTheme] and cb.castbarStyle ~= targetTheme then S:Select(cb, targetTheme) end
+    end)
+    pcall(function()
+        local mm = registry.minimap and registry.minimap.getProfile and registry.minimap.getProfile()
+        if mm then mm.ringStyle = nil end
+    end)
+    pcall(function()
+        for _, tbl in ipairs({ _G.KullThranUINameplatesDB, _G.KullThranUINameplatesDB_Forever }) do
+            if type(tbl) == "table" then tbl.nameplateStyle = nil end
+        end
+    end)
+    pcall(function()
+        local pf = KT.GetModule and KT:GetModule("PartyFrames", true)
+        if pf and pf.db then pf.db.partyFrameStyle = nil end
+    end)
 
     -- The Installer resumes on its Visual Style page after this reload.
     local installer = KT.GetModule and KT:GetModule("Installer", true)

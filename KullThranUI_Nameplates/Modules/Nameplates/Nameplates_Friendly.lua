@@ -1109,10 +1109,20 @@ UpdateStableOverlayContent = function(overlay)
     end
 end
 
+local function RegisterOverlayUnitEvents(overlay, unit)
+    overlay:UnregisterAllEvents()
+    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_NAME_UPDATE", unit)
+    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_GUILD_UPDATE", unit)
+    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_CLASSIFICATION_CHANGED", unit)
+    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_LEVEL", unit)
+end
+
 local function ShowNPCOverlay(nameplate, unit)
     if not (nameplate and unit) then return end
     local existing = npcOverlays[nameplate]
     if existing then
+        -- A recycled nameplate keeps its overlay: follow the new unit's events.
+        if existing.unit ~= unit then RegisterOverlayUnitEvents(existing, unit) end
         existing.unit = unit
         existing.nameplate = nameplate
         UpdateStableOverlayContent(existing)
@@ -1128,11 +1138,7 @@ local function ShowNPCOverlay(nameplate, unit)
     overlay:SetFrameLevel(nameplate:GetFrameLevel() + 5)
     overlay:Show()
 
-    overlay:UnregisterAllEvents()
-    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_NAME_UPDATE", unit)
-    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_GUILD_UPDATE", unit)
-    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_CLASSIFICATION_CHANGED", unit)
-    pcall(overlay.RegisterUnitEvent, overlay, "UNIT_LEVEL", unit)
+    RegisterOverlayUnitEvents(overlay, unit)
 
     UpdateStableOverlayContent(overlay)
     overlay._ktApplyingLayout = true
@@ -1412,7 +1418,10 @@ end
 local nameOnlyNPCSuppressed = {} -- nameplate → true
 
 local function SuppressNPCNameplate(nameplate, unit)
-    if nameOnlyNPCSuppressed[nameplate] then return end
+    -- Already done for this unit. A nameplate recycled for another unit must
+    -- not keep showing the previous unit's name.
+    local current = npcOverlays[nameplate]
+    if nameOnlyNPCSuppressed[nameplate] and current and current.unit == unit then return end
     -- Mostrar primero el overlay propio para que el jugador nunca vea un hueco
     ShowNPCOverlay(nameplate, unit)
     SuppressBlizzardUF(unit, nameplate)
@@ -1474,8 +1483,14 @@ end)
 hooksecurefunc(NamePlateDriverFrame, "OnNamePlateRemoved", function(_, unit)
     -- Guard: Blizzard settings panel can fire this with "preview" which is not a valid unit
     if not unit or not unit:find("^nameplate") then return end
-    -- Clean up NPC overlay if present
+    -- Clean up NPC overlay if present. The plate lookup can fail here (e.g.
+    -- restricted plates), so fall back to the overlay that shows this unit.
     local nameplate = C_NamePlate.GetNamePlateForUnit(unit)
+    if not nameplate then
+        for plate, overlay in pairs(npcOverlays) do
+            if overlay.unit == unit then nameplate = plate; break end
+        end
+    end
     if nameplate then
         HideNPCOverlay(nameplate)
         nameOnlyNPCSuppressed[nameplate] = nil
@@ -2209,9 +2224,31 @@ function FriendlyFrame:RefreshPixelPerfectLayout()
     self:UpdatePvPMarker()
     self:UpdateHealthMarkers()
 end
+-- Called from the nameplate manager tick. The full relayout (ClearAllPoints,
+-- SetPoint, sizes, text anchors, level/PvP/health markers) used to run for
+-- EVERY friendly plate on EVERY tick. Now it only runs when the plate's
+-- effective scale, unit, or the global layout inputs changed, plus a 1 s
+-- safety pass for anything that changes layout without touching those.
+local friendlyTickCount = 0
+local friendlyTickYOff, friendlyTickW, friendlyTickH
 function ns.RefreshFriendlyPixelPerfectLayout()
+    local db = KullThranUINameplatesDB
+    local yOff = db and db.friendlyPlateYOffset or 0
+    local w, h = GetFriendlyHealthBarWidth(), GetFriendlyHealthBarHeight()
+    friendlyTickCount = friendlyTickCount + 1
+    local force = friendlyTickCount >= 10
+        or friendlyTickYOff ~= yOff or friendlyTickW ~= w or friendlyTickH ~= h
+    if friendlyTickCount >= 10 then friendlyTickCount = 0 end
+    friendlyTickYOff, friendlyTickW, friendlyTickH = yOff, w, h
     for _, plate in pairs(friendlyPlates) do
-        plate:RefreshPixelPerfectLayout()
+        local scale = plate.GetEffectiveScale and plate:GetEffectiveScale()
+        local last = plate._ktFriendlyTickScale
+        if force or plate._ktFriendlyTickUnit ~= plate.unit
+            or type(scale) ~= "number" or not last or math.abs(last - scale) >= 0.003 then
+            plate._ktFriendlyTickScale = scale
+            plate._ktFriendlyTickUnit = plate.unit
+            plate:RefreshPixelPerfectLayout()
+        end
     end
 end
 

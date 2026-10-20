@@ -63,7 +63,7 @@ assert(texture.coords[1]==0.2 and texture.coords[2]==0.4 and texture.coords[3]==
 print("humanoid, self-target, NPC and druid-form portrait facing checks passed across all styles")
 -- Model capture conventions differ: humanoids need mirroring, creature
 -- captures already face left. Resolve fresh model data across retargets.
-env.KT.PortraitMirrorModels={[101]=true}
+env.KT.PortraitMirrorModels={[101]=true};env.KT.IsPortraitMirrorModel=function(id) return env.KT.PortraitMirrorModels[id]==true end
 local guid, pendingID="humanoid",101
 local probe, captures
 captures=0

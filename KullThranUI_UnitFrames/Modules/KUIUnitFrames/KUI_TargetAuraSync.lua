@@ -9,6 +9,7 @@ function ns.InstallNativeTargetBuffs(frame, unit)
     AK.styles[key] = {
         width = size, height = size, texCoord = {0.07, 0.93, 0.07, 0.93},
         border = {0, 0, 0, 1, size = 1}, cooldownReverse = true,
+        stackFontSize = 8, stackX = 1, stackY = -1, durationFontSize = 7, durationPoint = "CENTER", durationRelPoint = "CENTER", durationY = 0,
     }
     local container = AK.CreateContainer(host, unit, {
         point = {host.initialAnchor or "BOTTOMLEFT", host, host.initialAnchor or "BOTTOMLEFT"},

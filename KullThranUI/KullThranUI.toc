@@ -1,13 +1,13 @@
-## Interface: 120100, 120007, 120005, 120001, 120000
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
 ## Title: KullThranUI
 ## Notes: UI Replacement Logic
 ## Author: KullThran
-## Version: 5.1.5
+## Version: 5.1.8
 ## X-Curse-Project-ID: 1448826
 ## X-Wago-ID: rNkye4Ka
 ## SavedVariables: KullThranDB, KullThranUINameplatesDB, KUIAuraRemindersDB, KUISpellDurationDB
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
-## OptionalDeps: Blizzard_DamageMeter, Masque, Grid2, Grid2Options, UnhaltedUnitFrames, Chattynator
+## OptionalDeps: Blizzard_DamageMeter, TomTom
 
 # =============================================================================
 # 1. LIBRARIES (Foundation)
@@ -81,6 +81,9 @@ SearchInput.lua
 Options.lua
 Core.lua
 Modules\PortraitCamera.lua
+Modules\PortraitAuraCatalogData.lua
+Modules\PortraitAuraCatalog.lua
+Modules\PortraitAuraShared.lua
 Locales\Core.lua
 Locales\Languages\enUS.lua
 Locales\Languages\esES.lua
@@ -104,10 +107,14 @@ Locales\Modules\OptionsCoverage.lua
 Locales\Modules\FontsColors.lua
 Locales\Modules\OptionsGaps.lua
 Locales\Modules\MinimapIcons.lua
+Locales\Modules\PortraitAuras.lua
+Locales\Modules\PartyPortraitAuras.lua
+Locales\Modules\AFKScreen.lua
 Locales\Modules\VisualStyles.lua
 Locales\Modules\CooldownManager.lua
 Locales\Modules\AuraReminders.lua
 Locales\Generated.lua
+Locales\Modules\PerfMonitor.lua
 Locales\Modules\Completion.lua
 Modules\Defaults\Defaults.lua
 
@@ -155,6 +162,7 @@ Modules\Profilehandlers\Profilehandlers.lua
 Modules\Profilehandlers\Profiledata.lua
 Modules\Profiler.lua
 Modules\CombatCPUProfiler.lua
+Modules\PerfMonitor.lua
 
 # --- EXTERNAL INTEGRATION ---
 # Modules\Grid2Integration.lua

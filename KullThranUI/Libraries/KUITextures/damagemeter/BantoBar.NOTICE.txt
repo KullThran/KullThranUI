@@ -1,0 +1,3 @@
+BantoBar.tga is Recount's default statusbar texture, taken unmodified from the
+public Recount repository (https://github.com/Resike/Recount, textures/statusbar/BantoBar.tga).
+Used for the Classic Damage Meter style so its bars match Recount's.

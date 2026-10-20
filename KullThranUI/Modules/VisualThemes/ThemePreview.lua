@@ -124,6 +124,15 @@ local GEO = {
     },
 }
 
+-- Forever's current plate (ThemeClientAssets FOREVER_PACKED_GEOMETRY.player): plain
+-- rectangles inside the bands, no Retail masks.
+GEO.hudForever = {
+    portrait = { point = "TOPLEFT", x = 24, y = -19, size = 60 },
+    health = { x = 91, y = 46.5, w = 120, h = 13 },
+    power = { x = 91, y = 62.5, w = 120, h = 8 },
+    name = { point = "TOPLEFT", x = 93, y = -28.5, w = 114 },
+}
+
 -- KullThranUI's own flat layout: no stock box, so the scene gets its own
 -- proportions that fit the same space.
 local FLAT_GEO = {
@@ -162,8 +171,7 @@ end
 -- (caller falls back to its plain shape).
 local function ApplyArt(tex, atlasName, useRetail, scale)
     local vt = KT.VisualThemes
-    local foreverPixels = not useRetail and _G.WOW_PROJECT_MAINLINE
-        and _G.WOW_PROJECT_ID == _G.WOW_PROJECT_MAINLINE and vt and vt.GetForeverAtlasPixels
+    local foreverPixels = not useRetail and vt and vt.GetForeverAtlasPixels
         and vt:GetForeverAtlasPixels(atlasName)
     local pixels = (useRetail and RetailPixels(atlasName)) or foreverPixels
     if pixels then
@@ -209,12 +217,21 @@ end
 -- End caps are faction-dependent on the live action bar, so the preview
 -- picks the same pair the addon does rather than always drawing the
 -- Alliance one.
-local function ActionBarCapAtlases()
+local function ActionBarCapAtlases(useForeverArt)
     local faction = UnitFactionGroup and UnitFactionGroup("player")
+    local left, right = ATLAS_CAP_LEFT, ATLAS_CAP_RIGHT
     if faction == "Horde" then
-        return "ui-hud-actionbar-wyvern-left", "ui-hud-actionbar-wyvern-right"
+        left, right = "ui-hud-actionbar-wyvern-left", "ui-hud-actionbar-wyvern-right"
     end
-    return ATLAS_CAP_LEFT, ATLAS_CAP_RIGHT
+    -- Forever's own end caps are the "-c60" atlases of its client data; the
+    -- plain names draw the Retail gryphon/wyvern.
+    if useForeverArt then
+        local getInfo = C_Texture and C_Texture.GetAtlasInfo
+        if getInfo and getInfo(left .. "-c60") and getInfo(right .. "-c60") then
+            return left .. "-c60", right .. "-c60"
+        end
+    end
+    return left, right
 end
 
 -- The decorative action-bar end-cap art (not real icon art -- kui has no
@@ -304,7 +321,7 @@ local function AddEndCapArt(card, kit, stage, y, capHeight)
             -- landing on the button beneath it.
             w, h = capHeight * 1.3, capHeight * 1.7
         else
-            local capLeft, capRight = ActionBarCapAtlases()
+            local capLeft, capRight = ActionBarCapAtlases(kit.retail == false)
             local atlasName = (side == 1) and capLeft or capRight
             -- Retail keeps its own pixel resolution: forcing
             -- useRetail=false for both made Retail's end-cap show the exact
@@ -314,6 +331,16 @@ local function AddEndCapArt(card, kit, stage, y, capHeight)
             -- exactly), which works correctly regardless of which source
             -- (RetailPixels or the plain atlas) the dimensions came from.
             local nativeW, nativeH = ApplyArt(tex, atlasName, kit.retail, 1)
+            if kit.retail == false and not atlasName:find("-c60$") and KT.GetForeverCapPixels then
+                -- Forever style on a client without the "-c60" atlases: bundled bronze caps.
+                local faction = UnitFactionGroup and UnitFactionGroup("player")
+                local px = KT.GetForeverCapPixels(faction == "Horde" and "wyvern" or "gryphon", side == 1 and "left" or "right")
+                if px then
+                    tex:SetTexture(px.file)
+                    tex:SetTexCoord(px.leftTexCoord, px.rightTexCoord, px.topTexCoord, px.bottomTexCoord)
+                    nativeW, nativeH = px.width, px.height
+                end
+            end
             if nativeW and nativeH and nativeH > 0 then
                 local targetScale = capHeight / nativeH
                 w, h = nativeW * targetScale, nativeH * targetScale
@@ -621,7 +648,7 @@ local function AddMaskedBar(box, geom, scale, color, cacheKey)
     fill:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
     Unsnap(fill)
 
-    local info = AtlasInfo(geom.mask)
+    local info = geom.mask and AtlasInfo(geom.mask)
     if not (info and info.width and info.height and box.CreateMaskTexture) then
         return fill
     end
@@ -770,7 +797,7 @@ end
 -- HUD atlas renderer, shared by the forever and retail themes: the real unit
 -- frame art atlas, the real bar track masks and the real circular portrait.
 local function DrawHudFrame(box, kit, scale, healthColor, accent)
-    local geom = GEO.hud
+    local geom = kit.retail and GEO.hud or GEO.hudForever
     AddPanel(box, kit, scale, accent)
 
     local art = box:CreateTexture(nil, "BACKGROUND", nil, 1)

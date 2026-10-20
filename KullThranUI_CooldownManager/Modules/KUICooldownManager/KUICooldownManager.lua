@@ -1267,8 +1267,10 @@ local function ItemMatchesSyntheticGroup(itemID, group)
     return GetSyntheticItemCooldownGroup(normalizedItemID) == group
 end
 
+-- Current Retail clients only expose C_Item.GetItemCount; the global is a
+-- fallback for older clients. Checked inline: this chunk is at the 200-local limit.
 local function GetTrackerOwnedItemCount(candidateItemID)
-    if not candidateItemID or not GetItemCount then
+    if not candidateItemID or not (C_Item and C_Item.GetItemCount or GetItemCount) then
         return 0
     end
 
@@ -1277,6 +1279,10 @@ local function GetTrackerOwnedItemCount(candidateItemID)
         if count ~= nil then
             return count or 0
         end
+    end
+
+    if not GetItemCount then
+        return 0
     end
 
     local count = GetItemCount(candidateItemID, false, true)
@@ -1289,7 +1295,7 @@ end
 
 local function GetTrackedItemDisplayCount(itemID)
     local normalizedItemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
-    if not normalizedItemID or not GetItemCount then
+    if not normalizedItemID or not (C_Item and C_Item.GetItemCount or GetItemCount) then
         return 0
     end
 
@@ -1421,6 +1427,31 @@ local function StartSyntheticItemCooldown(itemID, duration, startTime)
         itemID = normalizedItemID,
     }
     return true
+end
+
+-- Potion cooldowns end with the boss encounter (kill or wipe): drop the tracker's
+-- own timers so a reset does not leave the icon on cooldown. Healthstones keep theirs.
+ns.CDMResetSyntheticPotionCooldowns = function()
+    local cleared = false
+    for group in pairs(_syntheticItemCooldownGroups) do
+        if group ~= "healthstone" then
+            _syntheticItemCooldownGroups[group] = nil
+            cleared = true
+        end
+    end
+    if cleared and ns.RequestCustomCooldownUpdate then
+        pcall(ns.RequestCustomCooldownUpdate, "encounter_end")
+    end
+end
+do
+    local encounterFrame = CreateFrame("Frame")
+    encounterFrame:RegisterEvent("ENCOUNTER_END")
+    encounterFrame:SetScript("OnEvent", function()
+        -- The client resets the real cooldown a moment after the event.
+        C_Timer.After(0.5, function()
+            if ns.CDMResetSyntheticPotionCooldowns then ns.CDMResetSyntheticPotionCooldowns() end
+        end)
+    end)
 end
 
 ns.TriggerImmediateSyntheticItemCooldown = function(itemID)
@@ -4353,6 +4384,11 @@ local function _StopAllGlowsOnOverlay(target)
             ov._kuiPulse:Stop()
         end
         if ov then ov:Hide() end
+        local fillTex = icon and icon._shapeGlowFill
+        if fillTex then
+            if fillTex._kuiPulse then fillTex._kuiPulse:Stop() end
+            fillTex:Hide()
+        end
         target._kuiShapeGlowActive = false
         target._kuiShapeGlowIcon = nil
     end
@@ -4411,6 +4447,20 @@ function ns.CDMEnsureShapeGlowOverlay(icon)
     down:SetDuration(0.35)
     tex._kuiPulse = pulse
     icon._shapeGlowBorder = tex
+    -- Filled body of the glow: the shape's own mask drawn additively, a little
+    -- larger than the icon and clipped back to the silhouette, so the glow
+    -- reads as a lit shape and not only as a lit outline.
+    local fill = holder:CreateTexture(nil, "OVERLAY", nil, 19)
+    fill:Hide()
+    fill:SetBlendMode("ADD")
+    local fillPulse = fill:CreateAnimationGroup()
+    fillPulse:SetLooping("REPEAT")
+    local fillUp = fillPulse:CreateAnimation("Alpha")
+    fillUp:SetOrder(1); fillUp:SetFromAlpha(0.20); fillUp:SetToAlpha(0.50); fillUp:SetDuration(0.35)
+    local fillDown = fillPulse:CreateAnimation("Alpha")
+    fillDown:SetOrder(2); fillDown:SetFromAlpha(0.50); fillDown:SetToAlpha(0.20); fillDown:SetDuration(0.35)
+    fill._kuiPulse = fillPulse
+    icon._shapeGlowFill = fill
     return tex
 end
 
@@ -4456,6 +4506,23 @@ function ns.CDMStartShapeGlow(target, r, g, b)
     tex:Show()
     if tex._kuiPulse and not tex._kuiPulse:IsPlaying() then
         tex._kuiPulse:Play()
+    end
+    local fillTex = icon._shapeGlowFill
+    local maskPath = CDM_SHAPES.masks and CDM_SHAPES.masks[icon._shapeName]
+    if fillTex and maskPath then
+        local extend = math.min(icon:GetWidth() or 36, icon:GetHeight() or 36) * 0.10
+        fillTex:ClearAllPoints()
+        fillTex:SetPoint("TOPLEFT", icon, "TOPLEFT", -extend, extend)
+        fillTex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", extend, -extend)
+        fillTex:SetTexture(maskPath, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        fillTex:SetVertexColor(r or 1, g or 0.82, b or 0.1, 1)
+        local shapeMask = icon._shapeMask
+        if shapeMask then
+            pcall(fillTex.RemoveMaskTexture, fillTex, shapeMask)
+            pcall(fillTex.AddMaskTexture, fillTex, shapeMask)
+        end
+        fillTex:Show()
+        if fillTex._kuiPulse and not fillTex._kuiPulse:IsPlaying() then fillTex._kuiPulse:Play() end
     end
     target._kuiShapeGlowActive = true
     target._kuiShapeGlowIcon = icon
@@ -6019,7 +6086,7 @@ end
 
 local function FindOwnedTrackerItem(priorityList, filterPotionQuality)
     if type(priorityList) ~= "table" then return nil end
-    if not GetItemCount then return nil end
+    if not (C_Item and C_Item.GetItemCount or GetItemCount) then return nil end
     local preferMost = filterPotionQuality and GetPotionTrackerSelectionMode() == 'most'
     local selectedItemID, selectedCount
     for i = 1, #priorityList do
@@ -6440,7 +6507,8 @@ GetPotionTooltipClass = function(itemID, itemLink)
     local foundPotionLike = false
     local foundExcluded = false
 
-    local itemName = GetItemInfo and GetItemInfo(normalizedItemID)
+    local itemName = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(normalizedItemID))
+        or (GetItemInfo and GetItemInfo(normalizedItemID))
     if itemName then
         foundPotionLike = ContainsKeyword(itemName, ns.CDMPotionKeywordsPotionLike) or foundPotionLike
         foundExcluded = ContainsKeyword(itemName, ns.CDMPotionKeywordsExclude) or foundExcluded
@@ -9844,6 +9912,9 @@ function ns.UpdateNativeCDMBarIcons(barKey)
         if ns.SyncProcGlowIndexForIcon then ns.SyncProcGlowIndexForIcon(nativeFrame) end
     end
     container._prevVisibleCount = #icons
+    if ns._lagTrace and barKey == "buffs" then
+        ns._lagTrace("claimed:" .. #icons .. (compositionChanged and "+comp" or ""), true)
+    end
     return compositionChanged
 end
 
@@ -9852,7 +9923,50 @@ function ns.NativeCDMHostingEnabled()
     return p and p.cdmBars and p.cdmBars.enabled
 end
 
+-- Opt-in latency trace (/ktcdmlag): a timeline from the aura event to the buffs row being
+-- claimed, to tell Blizzard's delay from KUI's. Off by default; hooks only pay a nil check.
+function ns.CDMLagToggle()
+    if ns._lagTrace then
+        ns._lagTrace = nil
+        if ns._lagFrame then ns._lagFrame:UnregisterAllEvents() end
+        print("|cff00ff88[ktcdmlag]|r off")
+        return
+    end
+    local marks, t0, now = {}, nil, (GetTimePreciseSec or GetTime)
+    ns._lagTrace = function(stage, done)
+        local t = now()
+        if t0 and t - t0 > 3 then marks, t0 = {}, nil end -- stale half trace
+        if not t0 then t0 = t end
+        -- Consecutive repeats (a viewer refresh sets a cooldown ID on every icon) collapse into
+        -- "stage xN"; the closing mark is always kept, however long the trace got.
+        local last = marks[#marks]
+        if last and last.stage == stage and not done then
+            last.count = last.count + 1
+            return
+        end
+        if #marks < 24 or done then
+            marks[#marks + 1] = { stage = stage, count = 1, ms = (t - t0) * 1000 }
+        end
+        if done then
+            local out = {}
+            for i, m in ipairs(marks) do
+                out[i] = string.format("%s%s +%.0fms", m.stage, m.count > 1 and (" x" .. m.count) or "", m.ms)
+            end
+            print("|cff00ff88[ktcdmlag]|r " .. table.concat(out, "  "))
+            marks, t0 = {}, nil
+        end
+    end
+    local frame = ns._lagFrame or CreateFrame("Frame")
+    ns._lagFrame = frame
+    frame:RegisterUnitEvent("UNIT_AURA", "player")
+    frame:SetScript("OnEvent", function() ns._lagTrace("unit_aura") end)
+    print("|cff00ff88[ktcdmlag]|r on: gain a buff and read the timeline")
+end
+SLASH_KTCDMLAG1 = "/ktcdmlag"
+SlashCmdList.KTCDMLAG = function() ns.CDMLagToggle() end
+
 function ns.NativeCDMViewerChanged(reason, viewerName)
+    if ns._lagTrace then ns._lagTrace("changed:" .. tostring(reason)) end
     if not ns.NativeCDMHostingEnabled() then return end
     local barKey
     if viewerName == "EssentialCooldownViewer" then
@@ -9876,6 +9990,7 @@ function ns.NativeCDMViewerChanged(reason, viewerName)
     if ns._nativeViewerChangedPending then return end
     ns._nativeViewerChangedPending = true
     C_Timer.After(0.05, function()
+        if ns._lagTrace then ns._lagTrace("changed_timer") end
         ns._nativeViewerChangedPending = false
         -- Always consume what accumulated: a burst that keeps arriving during
         -- the window must still invalidate the snapshot when the timer fires,
@@ -9930,6 +10045,12 @@ function ns.ReassertNativeCDMViewerLayout(viewerName)
         end
         if protected then
             ns._cdmLayoutPending = true
+            -- Geometry must wait for combat end, but alpha is not a protected
+            -- operation. Blizzard can run a Layout right as combat starts and
+            -- rewrite the alpha of the hosted frames; claimed frames have no SetAlpha
+            -- guard, so without this the row stays invisible until combat ends.
+            container._kuiNativeAlpha = nil
+            ns.SyncNativeCDMBarAlpha(barKey)
             return false
         end
     end
@@ -10034,6 +10155,7 @@ function ns.SetupNativeCDMViewerHooks()
         if mixin and mixin.OnCooldownIDSet and not hookState.mixins[mixin] then
             hookState.mixins[mixin] = true
             hooksecurefunc(mixin, "OnCooldownIDSet", function(itemFrame)
+                if ns._lagTrace then ns._lagTrace("cooldown_id") end
                 local cooldownID = itemFrame and itemFrame.cooldownID
                 if itemFrame and itemFrame._kuiNativeCooldownID == cooldownID then
                     return
@@ -10064,6 +10186,7 @@ function ns.SetupNativeCDMViewerHooks()
             if itemFramePool and itemFramePool.Acquire and not hookState.pools[itemFramePool] then
                 hookState.pools[itemFramePool] = true
                 hooksecurefunc(itemFramePool, "Acquire", function()
+                    if ns._lagTrace then ns._lagTrace("pool_acquire") end
                     if isTrackedBarViewer then ns.WakeTrackedBuffBars() end
                     ns.NativeCDMViewerChanged("native_pool_acquire", sourceViewerName)
                 end)
@@ -10071,7 +10194,17 @@ function ns.SetupNativeCDMViewerHooks()
             if viewer.OnAcquireItemFrame and not hookState.acquire[viewer] then
                 hookState.acquire[viewer] = true
                 hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, itemFrame)
-                    if ns.NativeCDMHostingEnabled() and itemFrame then itemFrame:SetAlpha(0) end
+                    if ns._lagTrace then ns._lagTrace("acquire_item") end
+                    if ns.NativeCDMHostingEnabled() and itemFrame then
+                        itemFrame:SetAlpha(0)
+                        -- The claim pass restores alpha through SyncNativeCDMBarAlpha, which
+                        -- skips the work while the container alpha is unchanged. A recycled,
+                        -- already-claimed frame blanked here (pool churn at combat start) would
+                        -- then stay invisible until a periodic Layout dropped the cache.
+                        local hostedKey = GetHostedBarKeyForViewer(sourceViewerName)
+                        local hostedContainer = hostedKey and cdmBarFrames[hostedKey]
+                        if hostedContainer then hostedContainer._kuiNativeAlpha = nil end
+                    end
                     if isTrackedBarViewer then ns.WakeTrackedBuffBars() end
                     ns.NativeCDMViewerChanged("native_item_acquire", sourceViewerName)
                 end)
@@ -10079,6 +10212,7 @@ function ns.SetupNativeCDMViewerHooks()
             if viewer.Layout and not hookState.layout[viewer] then
                 hookState.layout[viewer] = true
                 hooksecurefunc(viewer, "Layout", function()
+                    if ns._lagTrace then ns._lagTrace("layout") end
                     ns.NativeCDMViewerLayoutObserved(sourceViewerName)
                 end)
             end
@@ -11324,7 +11458,7 @@ local function GetExtraSpells()
     -- Health potions
     for _, item in ipairs(HEALTH_ITEMS) do
         if not item.class or item.class == playerIdentity.class then
-            local sName = (item.spellID and C_Spell.GetSpellName(item.spellID)) or item.name or (GetItemInfo and GetItemInfo(item.itemID))
+            local sName = (item.spellID and C_Spell.GetSpellName(item.spellID)) or item.name or (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(item.itemID)) or (GetItemInfo and GetItemInfo(item.itemID))
             local sTex  = C_Item.GetItemIconByID(item.itemID)
             if sName then
                 extras[#extras + 1] = {
@@ -12123,6 +12257,9 @@ local function UpdateAllCDMBars(dt)
     end
 
     local wasDirty, viewerDirty, dirtyBars, allBarsDirty = CDMRT:ConsumeDirty()
+    if ns._lagTrace and ((dirtyBars and dirtyBars.buffs) or allBarsDirty or forceFullPass) then
+        ns._lagTrace("update_pass")
+    end
     -- Only a full pass when explicitly requested. `not next(dirtyBars)` used to
     -- make a NON-targeted dirty reason (e.g. every UNIT_SPELLCAST_SUCCEEDED and
     -- SPELL_UPDATE_COOLDOWN in combat) rebuild EVERY bar -- UpdateCDMBarIcons on
@@ -12201,7 +12338,15 @@ local function UpdateAllCDMBars(dt)
             shouldRefreshViewerSnapshot = true
         end
     end
+    -- A buffs pass must not trust a stale mirror: a buff that merely becomes shown changes neither
+    -- the pool hooks nor the pool signature, and stayed invisible until combat churned the pool.
+    if not shouldRefreshViewerSnapshot and (dirtyBars.buffs or updateAllBars) and ns.GetBuffViewerShownSignature then
+        if ns.GetBuffViewerShownSignature() ~= CDMRT.buffShownSignature then
+            shouldRefreshViewerSnapshot = true
+        end
+    end
     if shouldRefreshViewerSnapshot then
+        if ns._lagTrace then ns._lagTrace("snapshot") end
         CDMRT.viewerSnapshotElapsed = 0
         do
             local hasBlizzardBar = false
@@ -12274,6 +12419,9 @@ local function UpdateAllCDMBars(dt)
             end
         end
         CDMRT.viewerSnapshotReady = true
+        if ns.GetBuffViewerShownSignature then
+            CDMRT.buffShownSignature = ns.GetBuffViewerShownSignature()
+        end
         if probedViewerSignature ~= nil then
             CDMRT.viewerPoolSignature = probedViewerSignature
         elseif ns.GetCDMViewerPoolSignature then
@@ -12392,6 +12540,25 @@ function ns.RunCDMUpdateIfIdle(forceImmediate)
 end
 
 ns._lateCDMRefreshToken = ns._lateCDMRefreshToken or 0
+-- Which pooled frames of the buff viewer are currently shown. A buff can become active without any
+-- pool change (Blizzard already has its frame acquired), so the pool signature cannot see it;
+-- this one can. Order independent, a handful of frames, no API calls beyond IsShown.
+function ns.GetBuffViewerShownSignature()
+    local viewer = _G.BuffIconCooldownViewer
+    local pool = viewer and viewer.itemFramePool
+    if not (pool and pool.EnumerateActive) then return "" end
+    local entries = {}
+    for child in pool:EnumerateActive() do
+        if child.IsShown and child:IsShown() then
+            local cooldownID = child.cooldownID or (child.cooldownInfo and child.cooldownInfo.cooldownID)
+            local ok, value = pcall(tostring, cooldownID or child)
+            entries[#entries + 1] = ok and value or "restricted"
+        end
+    end
+    table.sort(entries)
+    return table.concat(entries, ",")
+end
+
 function ns.GetCDMViewerPoolSignature()
     local signature = {}
     for _, viewerName in ipairs(_cdmViewerNames) do
@@ -12417,6 +12584,32 @@ function ns.GetCDMViewerPoolSignature()
         signature[#signature + 1] = table.concat(entries, ",")
     end
     return table.concat(signature, "|")
+end
+
+-- On login the KUI trackers can be anchored before KullThranUI_UF_Player
+-- exists, so they dock to Blizzard's hidden player container and never get a
+-- screen position until a /reload. Re-resolve the player frame once it has
+-- settled and rebuild only the trackers whose anchor is unresolved or hidden.
+function ns.ReanchorStaleKUITrackers()
+    if InCombatLockdown and InCombatLockdown() then return end
+    local p = KUI_CDM and KUI_CDM.db and KUI_CDM.db.profile
+    local bars = p and p.cdmBars and p.cdmBars.bars
+    if not bars or not BuildCDMBar then return end
+    local stale
+    for _, bd in ipairs(bars) do
+        local frame = bd.isKUITracker and bd.enabled ~= false and cdmBarFrames[bd.key]
+        if frame and not bd._kuiTrackerFreePosition then
+            local _, rel = frame:GetPoint(1)
+            local hiddenAnchor = rel and not rel._barKey and rel.IsShown and not rel:IsShown()
+            if frame:GetCenter() == nil or hiddenAnchor then stale = true; break end
+        end
+    end
+    if not stale then return end
+    _cachedPlayerFrame = nil
+    _cachedPlayerFrameRoster = 0
+    for i, bd in ipairs(bars) do
+        if bd.isKUITracker and bd.enabled ~= false and cdmBarFrames[bd.key] then BuildCDMBar(i) end
+    end
 end
 
 function ns.ScheduleLateCDMRefreshes()
@@ -12445,6 +12638,8 @@ function ns.ScheduleLateCDMRefreshes()
                 ns.ReassertNativeCDMViewerLayout("UtilityCooldownViewer")
                 ns.ReassertNativeCDMViewerLayout("BuffIconCooldownViewer")
             end
+
+            ns.ReanchorStaleKUITrackers()
 
             local signature = ns.GetCDMViewerPoolSignature()
             local changed = signature ~= ns._lateCDMViewerSignature

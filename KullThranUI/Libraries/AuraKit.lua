@@ -59,6 +59,15 @@ function AK.Filter(...)
 end
 
 ------------------------------------------------------------------------------
+-- Aura text follows KullThranUI's global font; Blizzard's only when a style names its
+-- own font or KUI has none yet.
+function AK.DefaultFont()
+    local kt = _G.KullThranUI
+    local path = kt and kt.FONT_PATH
+    if type(path) == "string" and path ~= "" then return path end
+    return STANDARD_TEXT_FONT
+end
+
 -- Duration text formatters
 --
 -- SetDurationText accepts a NumericFormatter object evaluated engine-side against the
@@ -219,7 +228,7 @@ local function ApplyStyleToRegions(button, style)
     -- access restriction while auras are secret, and unchanged anchors must
     -- make zero button-involving calls so restyles stay live in-instance.
     if d.stack and not style.noDefaultFonts then
-        local f = style.stackFont or STANDARD_TEXT_FONT
+        local f = style.stackFont or AK.DefaultFont()
         d.stack:SetFont(f, style.stackFontSize or 12, style.stackFontFlags or "OUTLINE")
         local sp = style.stackPoint or "BOTTOMRIGHT"
         local sKey = sp .. "|" .. (style.stackX or 2) .. "|" .. (style.stackY or -2)
@@ -234,7 +243,7 @@ local function ApplyStyleToRegions(button, style)
 
     if d.duration then
         if not style.noDefaultFonts then
-            local f = style.durationFont or STANDARD_TEXT_FONT
+            local f = style.durationFont or AK.DefaultFont()
             d.duration:SetFont(f, style.durationFontSize or 11, style.durationFontFlags or "OUTLINE")
             local dp = style.durationPoint or "TOP"
             local drp = style.durationRelPoint or "BOTTOM"

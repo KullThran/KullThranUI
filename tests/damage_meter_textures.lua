@@ -37,7 +37,9 @@ chunk = assert(loadstring(read("KullThranUI/Modules/VisualThemes/Adapters/Damage
 setfenv(chunk, adapterEnv); chunk()
 for _, theme in ipairs({"classic", "retail", "forever", "kui"}) do
     local profile = {}; adapter.seed(profile, theme)
-    local expected = theme == "kui" and default or "Interface\\TargetingFrame\\UI-StatusBar"
+    local expected = theme == "kui" and default
+        or theme == "classic" and "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga"
+        or "Interface\\TargetingFrame\\UI-StatusBar"
     assert(resolve(profile) == expected)
 end
 assert(source:find("row.bar:SetStatusBarTexture(barTexture)", 1, true))

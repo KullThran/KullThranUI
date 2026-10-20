@@ -228,8 +228,22 @@ KT:RegisterPage("actionbars", "Action Bars", 16, function(sc, W)
             local CAP_MAX_W = 68   -- must fit between the card edge and the plate (card 470, plate 342)
             local function SeatCap(tex, atlas, useRetail)
                 local w, h
-                local px = useRetail and KT.GetRetailAtlasPixels and KT.GetRetailAtlasPixels(atlas) or nil
-                if px and px.file then
+                local px = useRetail == "forever" and KT.GetForeverCapPixels
+                    and KT.GetForeverCapPixels(horde and "wyvern" or "gryphon", atlas:find("left") and "left" or "right") or nil
+                local c60 = useRetail == "forever" and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas .. "-c60")
+                if c60 and tex.SetAtlas then
+                    tex:SetAtlas(atlas .. "-c60")
+                    tex:SetTexCoord(0, 1, 0, 1)
+                    w, h = c60.width, c60.height
+                elseif px and px.file then
+                    tex:SetTexture(px.file)
+                    tex:SetTexCoord(px.leftTexCoord, px.rightTexCoord, px.topTexCoord, px.bottomTexCoord)
+                    w, h = px.width, px.height
+                end
+                px = useRetail ~= "forever" and useRetail and KT.GetRetailAtlasPixels and KT.GetRetailAtlasPixels(atlas) or nil
+                if w then
+                    -- Forever art already seated above.
+                elseif px and px.file then
                     tex:SetTexture(px.file)
                     tex:SetTexCoord(px.leftTexCoord, px.rightTexCoord, px.topTexCoord, px.bottomTexCoord)
                     w, h = px.width, px.height
@@ -288,7 +302,7 @@ KT:RegisterPage("actionbars", "Action Bars", 16, function(sc, W)
             end
 
             local defs = {
-                { key = "default", label = "Forever", sub = "Forever client art", edge = { 0.72, 0.48, 0.26 } },
+                { key = "forever", label = "Forever", sub = "Forever bronze gryphon / wyvern", retail = "forever", edge = { 0.82, 0.55, 0.30 } },
                 { key = "retail",  label = "Retail",  sub = "Real Retail wyvern / gryphon", retail = true, edge = { 0.62, 0.52, 0.22 } },
                 { key = "classic", label = "Classic", sub = "Dwarf end caps", classic = true, edge = { 0.36, 0.36, 0.40 } },
             }
@@ -363,6 +377,10 @@ KT:RegisterPage("actionbars", "Action Bars", 16, function(sc, W)
             PaintCards()
             y = y + 304
         end
+        _, h = W:Dropdown(sc, "End Cap Width", -y,
+            { ["group"] = "Whole bar group (bar 1, menu and bags)", ["bar1"] = "Bar 1 only" },
+            function() return db.capSpan or "group" end,
+            function(v) db.capSpan = v; RefreshABAll() end); y = y + h
 
         _, h = W:SectionHeader(sc, "Button Content", -y); y = y + h
         _, h = W:Toggle(sc, "Hide Hotkeys", -y,

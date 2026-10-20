@@ -403,7 +403,7 @@ local DEFAULTS = {
         hideStanceBar = false,
         skipQueueConfirmation = false,
         hideMinimapIcon = false,
-        showLFGClassBars = true,
+        showLFGClassBars = false,
     },
     textSize = {
         resizeMailText = false,
@@ -541,7 +541,7 @@ local DEFAULTS = {
         backgroundColor = { r = 0.012, g = 0.014, b = 0.02, a = 0.94 },
         font = "Interface\\AddOns\\KullThranUI\\Libraries\\font\\AAA_ITC_Avant_Garde.ttf",
         barTexture = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\Melli.tga",
-        layoutVersion = 7,
+        layoutVersion = 8,
         position = { point = "RIGHT", relativePoint = "RIGHT", x = -36, y = 0 },
         windows = {},
     },

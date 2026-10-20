@@ -34,7 +34,8 @@ frame:SetPoint('CENTER',container,'CENTER',0,0)
 assert(frame.point[1]=='CENTER','released frames must keep native placement')
 ns.NativeCDMHostingEnabled=function() return true end
 ns.ApplyNativeCDMVisualState=function() visuals=visuals+1 end
-ns.SyncNativeCDMBarAlpha=function() end
+local alphaSyncs=0
+ns.SyncNativeCDMBarAlpha=function() alphaSyncs=alphaSyncs+1 end
 ns._nativeCDMFrameData[frame]=fd
 start=assert(source:find('function ns.ReassertNativeCDMViewerLayout(viewerName)',1,true))
 stop=assert(source:find('function ns.NativeCDMViewerLayoutObserved',start,true))
@@ -43,8 +44,12 @@ protected=false; ns._cdmLayoutPending=nil
 assert(ns.ReassertNativeCDMViewerLayout('EssentialCooldownViewer'))
 assert(layouts==1 and visuals==1,'arena combat must reapply native layout and appearance')
 protected=true
+container._kuiNativeAlpha=0.5
+local syncsBefore=alphaSyncs
 assert(not ns.ReassertNativeCDMViewerLayout('EssentialCooldownViewer'))
 assert(layouts==1 and ns._cdmLayoutPending)
+assert(alphaSyncs==syncsBefore+1 and container._kuiNativeAlpha==nil,
+    'protected combat must still restore hosted icon alpha (a late Blizzard Layout at combat start must not leave the row invisible)')
 combat=false
 assert(ns.ReassertNativeCDMViewerLayout('EssentialCooldownViewer') and layouts==2)
 print('PASS: arena combat layout, same-parent offsets, recursion, protected deferral and released frames')

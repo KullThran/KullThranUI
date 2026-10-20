@@ -1376,6 +1376,18 @@ function UM:GetElementRect(key)
         return left, top, max(right - left, width), max(top - bottom, height)
     end
 
+    -- A hidden element (oUF Focus / Focus Target with no unit) has no rect, so
+    -- the mover is rebuilt from data. A pending drag must win over the saved
+    -- position (otherwise the mover snaps back on every Sync while the frame
+    -- has moved), and its offsets are in the frame's own scale, not UI units.
+    local pending = self.pendingPositions and self.pendingPositions[key]
+    if pending and pending.point then
+        local scaled = CopyPosition(pending)
+        scaled.x = (pending.x or 0) * moverScale
+        scaled.y = (pending.y or 0) * moverScale
+        return BoundsFromStoredPosition(scaled, width, height)
+    end
+
     local stored = self:LoadElementPosition(key)
     if stored then
         return BoundsFromStoredPosition(stored, width, height)
@@ -2862,6 +2874,10 @@ function UM:ResetMover(key)
     local def = self:GetElementDef(key)
     local handled = false
 
+    -- Drop the pending drag first: Unit Frames skip ApplyFramePosition while a
+    -- pending position exists, so the reset would not move the frame.
+    self.pendingPositions[key] = nil
+
     -- Elements that persist into their own module store (Unit Frames) expose a
     -- resetPosition hook: it drops the user override and re-applies the shipped
     -- default. Reading loadPosition alone would just return that same override.
@@ -3027,6 +3043,36 @@ local function SliderRange(current, minimum, maximum)
     return min(minimum, current), max(maximum, current)
 end
 
+-- Scale from the right-click menu. The element keeps its top-left corner (the offsets
+-- are stored in the frame's own scale, so they are recomputed through the mover) and
+-- the result travels as a pending position, saved with the rest on exit.
+function UM:CanEditElementScale(key)
+    local def = self:GetElementDef(key)
+    local frame = self:GetElementFrame(key)
+    if not (def and frame) or def.noScale then return false end
+    return type(def.setScale) == "function" or type(frame.SetScale) == "function"
+end
+
+function UM:SetElementScale(key, scale)
+    scale = tonumber(scale)
+    local def = self:GetElementDef(key)
+    local frame = self:GetElementFrame(key)
+    local mover = self.movers and self.movers[key]
+    if not (scale and def and frame and mover and self:CanEditElementScale(key)) then return end
+    scale = max(0.3, min(3, scale))
+    if abs(scale - (self:GetElementScale(key) or 1)) < 0.001 then return end
+    local left, top = mover:GetLeft(), mover:GetTop()
+    if type(def.setScale) == "function" then
+        SafeCall(def.setScale, key, scale)
+    else
+        frame:SetScale(scale)
+    end
+    mover:Sync()
+    if left and top then SetFrameTopLeft(mover, left, top) end
+    self:ApplyMoverToElement(key, mover)
+    mover:Sync()
+end
+
 function UM:RefreshMoverMenuFields()
     local menuFrame = self.moverMenu
     if not (menuFrame and menuFrame.activeKey) then
@@ -3050,6 +3096,7 @@ function UM:RefreshMoverMenuFields()
     menuFrame.hasAnchor = offsetX ~= nil
     menuFrame.hasExtraWidth = extraWidth ~= nil
     menuFrame.hasGenericSize = self:HasGenericSizeOverride(key)
+    menuFrame.hasScale = self:CanEditElementScale(key)
 
     KT:AddBackdrop(menuFrame, MENU_BG[1], MENU_BG[2], MENU_BG[3], MENU_BG[4])
     KT:AddBorder(menuFrame, theme.accent.r, theme.accent.g, theme.accent.b, 0.85)
@@ -3073,6 +3120,12 @@ function UM:RefreshMoverMenuFields()
         menuFrame.widthRow:SetValue(width)
         menuFrame.heightRow:SetRange(SliderRange(height, 1, max(300, (height or 0) * 2)))
         menuFrame.heightRow:SetValue(height)
+    end
+
+    if menuFrame.hasScale then
+        local percent = Round((self:GetElementScale(key) or 1) * 100)
+        menuFrame.scaleRow:SetRange(SliderRange(percent, 30, max(200, percent)))
+        menuFrame.scaleRow:SetValue(percent)
     end
 
     menuFrame.xRow:SetRange(SliderRange(x, -Round(uiWidth), Round(uiWidth)))
@@ -3413,6 +3466,10 @@ function UM:OpenMoverMenu(key, anchor)
             local currentX = self:GetRelativeXY(menuFrame.activeKey)
             self:SetRelativeXY(menuFrame.activeKey, currentX, value)
         end
+        menuFrame.scaleRow = CreateValueRow("Scale (%)")
+        menuFrame.scaleRow.applyValue = function(value)
+            self:SetElementScale(menuFrame.activeKey, value / 100)
+        end
 
         menuFrame.extraDivider = CreateDivider()
         menuFrame.extraWidthRow = CreateValueRow("Extra Width")
@@ -3564,7 +3621,12 @@ function UM:OpenMoverMenu(key, anchor)
                 Place(frame.noSize, 12, 6)
             end
             Place(frame.xRow, 22, 3)
-            Place(frame.yRow, 22, 6)
+            Place(frame.yRow, 22, frame.hasScale and 3 or 6)
+            if frame.hasScale then
+                Place(frame.scaleRow, 22, 6)
+            else
+                Hide(frame.scaleRow)
+            end
 
             if frame.hasExtraWidth then
                 Place(frame.extraDivider, 1, 6)

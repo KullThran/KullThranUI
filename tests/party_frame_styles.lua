@@ -84,7 +84,7 @@ for _,key in ipairs({"retail","forever","classic"}) do
     assert(mod:UpdateFramePowerEvent(frame, "UNIT_POWER_FREQUENT") == "power" and frame._pfNativePowerText.shown)
     assert(frame.health.points[1][2] == frame._pfNativeArt)
     if key=="retail" then assert(frame._pfNativeArt.texture.texture == 4681512)
-    elseif key=="forever" then assert(frame._pfNativeArt.texture.texture:find("forever_unitframe.tga",1,true))
+    elseif key=="forever" then assert(frame._pfNativeArt.texture.texture:find("forever_frames.tga",1,true))
     else assert(frame._pfNativeArt.texture.texture == "Interface\\TargetingFrame\\UI-PartyFrame") end
     for _,size in ipairs({{120,53},{240,106},{160,90},{300,40}}) do
         local g,s,x,y=S.Geometry(key,size[1],size[2])
@@ -231,7 +231,7 @@ for _,key in ipairs({"retail","forever","classic"}) do
         mod:UpdateFrameVisual(frame)
         assert(frame.valueText.justify=="CENTER",key.." health remains centered in combat")
         assert(frame.valueText.points[1][2]==frame.health)
-        if state=="Alive" then assert(frame.valueText.w==70*frame._pfNativeScale,"status transition restores full health width") end
+        if state=="Alive" then assert(frame.valueText.w==(key=="forever" and 67 or 70)*frame._pfNativeScale,"status transition restores full health width") end
         assert(frame.health.points[1]==healthPoint and frame.power.points[1]==powerPoint)
         assert(frame.health.fill.texture==(key=="classic" and "Interface\\TargetingFrame\\UI-StatusBar" or "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Status"))
     end
@@ -271,7 +271,7 @@ for _,key in ipairs({"retail","forever","classic"}) do
         combat=false
         assert(frame.valueText.justify=="CENTER",key.." fast health event centers text")
         assert(frame.valueText.points[1][1]=="CENTER" and frame.valueText.points[1][4]==0)
-        assert(frame.valueText.w==70*frame._pfNativeScale)
+        assert(frame.valueText.w==(key=="forever" and 67 or 70)*frame._pfNativeScale)
         assert(frame.health.points[1]==healthPoint,"health event must retain bar anchors")
     end
 end

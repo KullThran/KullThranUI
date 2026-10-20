@@ -6,6 +6,16 @@ local S = KT:GetModule("Skins", true)
 if not S then return end
 
 local BAR_TEXTURE = [[Interface\AddOns\KullThranUI\Libraries\texture\Melli.tga]]
+-- Breath, fatigue and the other mirror timers get a striped bar so they read
+-- apart from cast bars. Retail colors each timer type through its atlas, so the
+-- neutral stripes are tinted with Blizzard's original MirrorTimerColors.
+local MIRROR_BAR_TEXTURE = [[Interface\AddOns\KullThranUI\Libraries\WeakAuras_SharedMedia\Textures\Statusbar_Stripes.blp]]
+local MIRROR_TIMER_COLORS = {
+    EXHAUSTION = { r = 1.00, g = 0.90, b = 0.00 },
+    BREATH = { r = 0.00, g = 0.50, b = 1.00 },
+    DEATH = { r = 1.00, g = 0.70, b = 0.00 },
+    FEIGNDEATH = { r = 1.00, g = 0.70, b = 0.00 },
+}
 local FONT = (KT.GetDefaultFontPath and KT:GetDefaultFontPath())
     or KT.DEFAULT_FONT_PATH
     or [[Interface\AddOns\KullThranUI\Libraries\font\AAA_ITC_Avant_Garde.ttf]]
@@ -65,6 +75,37 @@ local function FindTimerText(timer, bar)
     end
 end
 
+local function IsMirrorTimer(timer)
+    local name = timer and timer.GetName and timer:GetName()
+    if type(name) == "string" and name:find("^MirrorTimer%d") then return true end
+    local container = _G.MirrorTimerContainer
+    return container ~= nil and timer.GetParent ~= nil and timer:GetParent() == container
+end
+
+local function GetMirrorTimerColor(timer, bar)
+    local timerType = timer.timer
+    local colors = _G.MirrorTimerColors
+    local color = timerType and ((colors and colors[timerType]) or MIRROR_TIMER_COLORS[timerType])
+    if color then return color end
+    -- Unknown type: keep a color Blizzard already set, only replace plain white.
+    local r, g, b = bar:GetStatusBarColor()
+    if r and r > 0.95 and g > 0.95 and b > 0.95 then
+        return MIRROR_TIMER_COLORS.DEATH
+    end
+end
+
+local function ApplyBarTexture(bar)
+    local timer = bar._ktTimerOwner
+    local mirror = timer and IsMirrorTimer(timer)
+    bar._ktSettingTimerTexture = true
+    bar:SetStatusBarTexture(mirror and MIRROR_BAR_TEXTURE or BAR_TEXTURE)
+    bar._ktSettingTimerTexture = nil
+    if mirror then
+        local color = GetMirrorTimerColor(timer, bar)
+        if color then bar:SetStatusBarColor(color.r, color.g, color.b, 1) end
+    end
+end
+
 local function SkinTimer(timer)
     if not SkinEnabled() or not timer or (timer.IsForbidden and timer:IsForbidden()) then return end
     local bar = FindStatusBar(timer)
@@ -74,7 +115,8 @@ local function SkinTimer(timer)
     HideFrameTextures(timer, fill)
     HideFrameTextures(bar, fill)
 
-    bar:SetStatusBarTexture(BAR_TEXTURE)
+    bar._ktTimerOwner = timer
+    ApplyBarTexture(bar)
     fill = bar:GetStatusBarTexture()
     if fill then
         fill:SetAlpha(1)
@@ -114,13 +156,8 @@ local function SkinTimer(timer)
         bar._ktTimerTextureHooked = true
         hooksecurefunc(bar, "SetStatusBarTexture", function(self)
             if not SkinEnabled() or self._ktSettingTimerTexture then return end
-            local texture = self:GetStatusBarTexture()
-            local path = texture and texture.GetTexture and texture:GetTexture()
-            if path ~= BAR_TEXTURE then
-                self._ktSettingTimerTexture = true
-                self:SetStatusBarTexture(BAR_TEXTURE)
-                self._ktSettingTimerTexture = nil
-            end
+            -- Retail's MirrorTimer Setup swaps in a per-type atlas here.
+            ApplyBarTexture(self)
         end)
     end
 

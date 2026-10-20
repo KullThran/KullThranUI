@@ -280,6 +280,10 @@ local function RandomizePartyMemberColors()
     for i = 1, 40 do
         memberColorOverrides[i] = shuffledClasses[((i - 1) % #classOrderForRandomization) + 1]
     end
+    -- Names come from the same roll: heroes carry their own class, so colour and name agree.
+    if ns.PF_RollTestHeroes then
+        memberColorOverrides, ns.PF_TestNameOverrides = ns.PF_RollTestHeroes(classOrderForRandomization)
+    end
     ns.PF_TestClassOverrides = memberColorOverrides
 end
 
@@ -464,6 +468,7 @@ local function GetPreviewUnit(index, count, mode, includePlayer)
     local randomized = {}
     for key, value in pairs(sample) do randomized[key] = value end
     randomized.class = (ns.PF_TestClassOverrides and ns.PF_TestClassOverrides[index]) or memberColorOverrides[index] or sample.class
+    randomized.name = (ns.PF_TestNameOverrides and ns.PF_TestNameOverrides[index]) or sample.name
     sample = randomized
     local statusOverrides = ns.PF_TestStatusOverrides
     if statusOverrides then
@@ -1361,8 +1366,13 @@ local function RefreshLivePreview(preview)
             local show = canShowAuras and spellVisible and cfg.showAuras ~= false and cfg.showDebuffs ~= false and j <= maxDebuffs and j <= sampleAuraCount and not sampleCC and not sampleMissing
             RenderPreviewAuraIcon(icon, show and sampleDebuff.icon or nil, show and sampleDebuff.color or nil)
         end
+        local bandFit
+        if not isRaidMode and unit._pfNativeStyle == "forever" and unit._pfNativeGeometry and unit._pfNativeScale then
+            bandFit = math.max(8, unit._pfNativeGeometry.health[4] * unit._pfNativeScale)
+        end
+        local ccSize = bandFit or math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit))
         unit.ccIcon:ClearAllPoints()
-        unit.ccIcon:SetSize(math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)), math.max(auraSize, math.floor((isRaidMode and 16 or 18) * fit)))
+        unit.ccIcon:SetSize(ccSize, ccSize)
         unit.ccIcon:SetPoint("CENTER", unit.health, "CENTER", auraX, auraY)
         local ccVisible = not (mod and mod.IsAuraSpellVisible) or mod:IsAuraSpellVisible(configMode, 118) ~= false
         RenderPreviewAuraIcon(unit.ccIcon, canShowAuras and ccVisible and cfg.showAuras ~= false and cfg.showCrowdControl ~= false and sampleCC and 136071 or nil, { r = 1, g = 0.12, b = 0.12 })
@@ -1371,7 +1381,7 @@ local function RefreshLivePreview(preview)
             unit.missingBuffIcon:SetSize(missingSize, missingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         else
-            local partyMissingSize = math.min(missingSize, math.max(1, math.floor(29 * fit)))
+            local partyMissingSize = bandFit or math.min(missingSize, math.max(1, math.floor(29 * fit)))
             unit.missingBuffIcon:SetSize(partyMissingSize, partyMissingSize)
             unit.missingBuffIcon:SetPoint("CENTER", unit.health, "CENTER", missingX, missingY)
         end
@@ -1628,7 +1638,10 @@ local function RefreshLivePreview(preview)
     end
     if preview.controlsEnabled == false then
         for _, key in ipairs({ "partyBtn", "raidBtn", "raid40Btn", "arenaBtn", "arenaEnemyBtn", "stopBtn", "scaleDown", "scaleUp" }) do
-            if preview[key] then preview[key]:Hide() end
+            -- The installer keeps the three test buttons visible so a test can
+            -- be stopped again after it starts.
+            local keep = preview.keepTestButtons and (key == "partyBtn" or key == "raidBtn" or key == "raid40Btn")
+            if preview[key] and not keep then preview[key]:Hide() end
         end
     end
 
@@ -1646,6 +1659,7 @@ local function CreateLivePreview(parent, y, options)
     frame:SetSize(options.width or (parent:GetWidth() - 20), options.height or 285)
     AddSimpleBorder(frame, 0.88)
     frame.controlsEnabled = options.controls ~= false
+    frame.keepTestButtons = options.keepTestButtons == true
     frame.styleOverride, frame.cardSample = options.styleOverride, options.cardSample
     frame.mode = options.modeOverride or activeMode
     frame.directionOverride = options.directionOverride
@@ -1794,9 +1808,9 @@ local function CreateLivePreview(parent, y, options)
     if options.controls == false then
         canvas:EnableMouseWheel(false)
         canvas:SetScript("OnMouseWheel", nil)
-        partyBtn:Hide()
-        raidBtn:Hide()
-        raid40Btn:Hide()
+        partyBtn:SetShown(options.keepTestButtons == true)
+        raidBtn:SetShown(options.keepTestButtons == true)
+        raid40Btn:SetShown(options.keepTestButtons == true)
         arenaBtn:Hide()
         arenaEnemyBtn:Hide()
         stopBtn:Hide()
@@ -1831,7 +1845,7 @@ local function CreateStyleCards(parent, y)
     if not ns.PF_Styles then return nil, 0 end
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -y)
-    frame:SetSize(parent:GetWidth() - 20, 132)
+    frame:SetSize(parent:GetWidth() - 20, 106)
         frame.styleCards = {}
         local function PaintStyleCard(card)
             local r, g, b = KT.C_R or 1, KT.C_G or 0.5, KT.C_B or 0.3
@@ -1845,12 +1859,12 @@ local function CreateStyleCards(parent, y)
             for index, card in ipairs(frame.styleCards) do
                 card:ClearAllPoints()
                 card:SetPoint("TOPLEFT", frame, "TOPLEFT", 12 + (index - 1) * (width + 4), -4)
-                card:SetSize(width, 88)
+                card:SetSize(width, 68)
                 if card.preview then card.preview:SetWidth(width - 8); card.preview:Refresh() end
                 if card.label then card.label:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or DEFAULT_FONT_PATH, 10, "OUTLINE"); card.label:SetTextColor(1, 1, 1, 1) end
                 if card.colorSelector then
-                    card.colorSelector:SetSize(width, 28)
-                    for _, button in ipairs(card.colorButtons) do button:SetSize((width - 4) / 2, 28) end
+                    card.colorSelector:SetSize(width, 22)
+                    for _, button in ipairs(card.colorButtons) do button:SetSize((width - 4) / 2, 22) end
                     card.PaintColors()
                 end
                 PaintStyleCard(card)
@@ -1859,7 +1873,7 @@ local function CreateStyleCards(parent, y)
         for _, style in ipairs(ns.PF_Styles.tabs) do
             local card = CreateFrame("Button", nil, frame)
             card.key = style.id
-            card:SetSize((frame:GetWidth() - 36) / 4, 88)
+            card:SetSize((frame:GetWidth() - 36) / 4, 68)
             AddSimpleBorder(card, 0.9)
             card.hoverGlow = card:CreateTexture(nil, "BACKGROUND", nil, 2)
             card.hoverGlow:SetPoint("TOPLEFT", 1, -1)
@@ -1876,7 +1890,7 @@ local function CreateStyleCards(parent, y)
             label:SetPoint("TOP", card, "TOP", 0, -5); label:SetText(LText(style.label))
             card.label = label
             local sample = CreateLivePreview(card, 22, {
-                x = 4, width = card:GetWidth() - 8, height = 60, modeOverride = "party",
+                x = 4, width = card:GetWidth() - 8, height = 42, modeOverride = "party",
                 countOverride = 1, directionOverride = "HORIZONTAL", frameWidthOverride = 160,
                 frameHeightOverride = style.id == "kui" and 46 or 70, frameScaleOverride = 1,
                 controls = false, cards = false, styleOverride = style.id, cardSample = true,
@@ -1961,7 +1975,7 @@ local function CreateStyleCards(parent, y)
         frame.LayoutStyleCards = LayoutStyleCards
         LayoutStyleCards()
     frame:SetScript("OnSizeChanged", frame.LayoutStyleCards)
-    return frame, 140
+    return frame, 114
 end
 
 _G.KullThranUI_PartyFramesOptions = _G.KullThranUI_PartyFramesOptions or {}
@@ -2594,6 +2608,49 @@ local PORTRAIT_SIDES = {
     left = "Left",
     right = "Right",
 }
+local function AddPortraitAuraControls(container, W, mode)
+    local PA = ns.PF_PortraitAuras
+    local defaults = PA and PA.DEFAULTS or {}
+    local enemyArena = mode == "arenaEnemy"
+    local by = 0
+    local _, h
+    local function Bool(key)
+        return function() return GetValue(mode, key, defaults[key] == true) == true end
+    end
+    local function SetBool(key)
+        return function(v) ApplyValue(mode, key, v and true or false) end
+    end
+    _, h = W:Label(container, "Shown over the portrait of each frame. Test frames show a sample icon.", -by, 11); by = by + h
+    _, h = W:Label(container, "Needs Show Portrait to be turned on.", -by, 10); by = by + h
+    _, h = W:Toggle(container, "Enabled", -by, Bool("portraitAurasEnabled"), SetBool("portraitAurasEnabled")); by = by + h
+    _, h = W:Toggle(container, "Reverse swipe", -by,
+        function() return GetValue(mode, "portraitAurasReverse", true) ~= false end,
+        SetBool("portraitAurasReverse")); by = by + h
+    _, h = W:Toggle(container, "Show numbers", -by,
+        function() return GetValue(mode, "portraitAurasNumbers", true) ~= false end,
+        SetBool("portraitAurasNumbers")); by = by + h
+    _, h = W:Slider(container, "Font Scale", -by,
+        function() return GetValue(mode, "portraitAurasFontScale", 1) end,
+        function(v) ApplyValue(mode, "portraitAurasFontScale", v) end,
+        0.5, 2, 0.05, "%.2f"); by = by + h
+    _, h = W:Toggle(container, "Crowd Control", -by, Bool("portraitAurasCC"), SetBool("portraitAurasCC")); by = by + h
+    -- Disarms and extra spell ids only match units you cannot assist.
+    if enemyArena then
+        _, h = W:Toggle(container, "Disarms", -by, Bool("portraitAurasDisarm"), SetBool("portraitAurasDisarm")); by = by + h
+    end
+    _, h = W:Toggle(container, "Big Defensives", -by, Bool("portraitAurasBigDef"), SetBool("portraitAurasBigDef")); by = by + h
+    _, h = W:Toggle(container, "External Defensives", -by, Bool("portraitAurasExtDef"), SetBool("portraitAurasExtDef")); by = by + h
+    _, h = W:Toggle(container, "Important Spells", -by, Bool("portraitAurasImportant"), SetBool("portraitAurasImportant")); by = by + h
+    if enemyArena then
+        _, h = W:Input(container, "Extra crowd control spell IDs", -by,
+            function() return GetValue(mode, "portraitAurasSpells", "") end,
+            function(v) ApplyValue(mode, "portraitAurasSpells", v or "") end); by = by + h
+        _, h = W:Label(container, "Spell IDs separated by commas. They only show on enemies.", -by, 10); by = by + h
+        _, h = W:Label(container, "Disarms only show on enemies. Categories use the flags the game puts on each aura, so they keep working in instances.", -by, 10); by = by + h
+    end
+    return by
+end
+
 local function AddFrameLayoutControls(container, W, mode)
     local configMode = mode
     local by = 0
@@ -3518,10 +3575,23 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
     local previewMode = activeMode == "manage" and rosterMode or activeMode
     local oldActiveMode = activeMode
     activeMode = previewMode
-    _, h = CreateLivePreview(sc, y); y = y + h
+    _, h = CreateLivePreview(sc, y, { height = 235 }); y = y + h
     activeMode = oldActiveMode
 
-    _, h = CreateStyleCards(sc, y); y = y + h
+    -- The style cards can be folded away to give the options more room.
+    ns.PF_OptionsState = ns.PF_OptionsState or {}
+    if ns.PF_OptionsState.hideStyleCards then
+        _, h = W:Button(sc, "Show Style Cards", -y, function()
+            ns.PF_OptionsState.hideStyleCards = false
+            RefreshPage()
+        end); y = y + h
+    else
+        _, h = CreateStyleCards(sc, y); y = y + h
+        _, h = W:Button(sc, "Hide Style Cards", -y, function()
+            ns.PF_OptionsState.hideStyleCards = true
+            RefreshPage()
+        end); y = y + h
+    end
 
     _, h = W:SectionHeader(sc, "Party Frames", -y); y = y + h
 
@@ -3544,6 +3614,14 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
             end
             RefreshPage()
         end); y = y + h
+    end
+
+    -- Arena content is minimal on the Forever client: say so, the frames stay editable.
+    if activeMode == "arena" or activeMode == "arenaEnemy" then
+        local vt = KT.VisualThemes
+        if vt and vt.GetClientFlavor and vt:GetClientFlavor() == "forever" then
+            _, h = W:Label(sc, "Arena frames have little use on the Forever client (arena content is limited there). You can still edit them.", -y, 11, { r = 1, g = 0.82, b = 0.2 }); y = y + h
+        end
     end
 
     _, h = W:Button(sc, "Restore Defaults", -y, function()
@@ -3596,6 +3674,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "raid")
         end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "raid")
+        end)
         AddOptionBlock(cols, "right", "Sorting", function(container)
             return AddSortingControls(container, W, "raid")
         end)
@@ -3629,6 +3710,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "raid40")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "raid40")
         end)
         AddOptionBlock(cols, "right", "Sorting", function(container)
             return AddSortingControls(container, W, "raid40")
@@ -3666,6 +3750,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, arenaMode)
         end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, arenaMode)
+        end)
 
     elseif activeMode == "boss" then
         AddOptionBlock(cols, "left", "Boss Layout", function(container)
@@ -3694,6 +3781,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "boss")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "boss")
         end)
 
     else
@@ -3726,6 +3816,9 @@ KT:RegisterPage("partyframes", "Party Frames", 11.1, function(sc, W)
         end)
         AddOptionBlock(cols, "right", "Spell Visibility", function(container)
             return AddAuraSpellBlock(container, W, "party")
+        end)
+        AddOptionBlock(cols, "right", "Portrait Auras", function(container)
+            return AddPortraitAuraControls(container, W, "party")
         end)
         AddOptionBlock(cols, "right", "Quick Actions", function(container)
             return AddQuickActions(container, W)

@@ -86,7 +86,12 @@ function BG:Update()
             for _, key in ipairs({ "Health", "Power" }) do
                 local bar = frame[key]
                 if bar and bar.GetFrameLevel then
-                    if on and not bar._kuiAtlasFill then SetShown(Ensure(bar), true) elseif bar._kuiShade then SetShown(bar._kuiShade, false) end
+                    -- The packaged Forever plate already frames each band; the bevel
+                    -- shade on top darkened the bar ends and top/bottom edges and made
+                    -- the fill look short of its band.
+                    local art = frame._ktStockArtSelection
+                    local platePacked = art and art.source == "packaged-forever"
+                    if on and not platePacked and not bar._kuiAtlasFill and not bar._kuiAtlasTint then SetShown(Ensure(bar), true) elseif bar._kuiShade then SetShown(bar._kuiShade, false) end
                 end
             end
         end

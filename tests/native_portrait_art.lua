@@ -202,7 +202,7 @@ for _, theme in ipairs({"forever", "retail"}) do
         else
             expect(textRight < (178 - 36 * dragonScale * 60 / 58) * scale, true, "name clears actual target atlas head")
         end
-        near(frame.Health:GetWidth(), 124 * 230 / 232 + extension, "near-edge extension keeps outer edge")
+        near(frame.Health:GetWidth(), (theme == "forever" and 122 or 124) * 230 / 232 + extension, "near-edge extension keeps outer edge")
         if unit == "player" then
             expect(frame.Portrait.backdrop:GetFrameLevel() > frame.Power:GetFrameLevel(), true,
                 "native Player portrait covers the extended bars")
@@ -219,7 +219,7 @@ for _, theme in ipairs({"forever", "retail"}) do
         near(frame.Portrait.backdrop._3d.points[1][4], 0, "removing dragon restores model viewport")
         expect(frame.Portrait.backdrop:GetFrameLevel() < frame.Health:GetFrameLevel(), true,
             "leaving modern dragon restores ordinary portrait layering")
-        near(frame.Health:GetWidth(), 124 * 230 / 232, "ordinary unit restores bar geometry")
+        near(frame.Health:GetWidth(), (theme == "forever" and 122 or 124) * 230 / 232, "ordinary unit restores bar geometry")
     end
 end
 mockRenderedTheme = "classic"

@@ -386,6 +386,7 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
     sendButton.icon:SetTexture(KT_CHAT_SEND_ICON)
     sendButton.icon:SetSize(18, 18)
     sendButton.icon:SetPoint("CENTER")
+    sendButton.KT_Icon = sendButton.icon
 
     local scrollButton = CreateFrame("Frame", nil, contentArea, "BackdropTemplate")
     scrollButton:SetSize(26, 26)
@@ -400,6 +401,7 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
     scrollButton.icon:SetTexture(KT_CHAT_SCROLL_TEXTURE)
     scrollButton.icon:SetSize(14, 14)
     scrollButton.icon:SetPoint("CENTER")
+    scrollButton.KT_Icon = scrollButton.icon
 
     local hintText = previewWindow:CreateFontString(nil, "OVERLAY")
     hintText:SetPoint("BOTTOMRIGHT", previewWindow, "BOTTOMRIGHT", -12, 38)
@@ -427,6 +429,8 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         btn.icon:SetTexture(texturePath)
         btn.icon:SetPoint("CENTER")
         btn.icon:SetSize(18, 18)
+        btn.KT_Icon = btn.icon
+        btn.KT_Shadow = btn.shadow
         return btn
     end
 
@@ -455,6 +459,8 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         tab.text = tab:CreateFontString(nil, "OVERLAY")
         tab.text:SetPoint("LEFT", tab, "LEFT", 8, 0)
         tab.text:SetPoint("RIGHT", tab, "RIGHT", -8, 0)
+        tab.Text = tab.text
+        tab.KT_Gloss = tab.gloss
         tab.text:SetJustifyH("CENTER")
         tab.text:SetJustifyV("MIDDLE")
         if tab.text.SetWordWrap then tab.text:SetWordWrap(false) end
@@ -462,6 +468,23 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         tabs[index] = tab
         return tab
     end
+
+    -- the chat styles skin this mock window like the real one (same field names)
+    previewWindow.KT_Content = contentArea
+    previewWindow.KT_Footer = footer
+    previewWindow.KT_InputHost = inputBar
+    previewWindow.KT_Tabs = tabs
+    previewWindow.KT_ActionButtons = previewButtons
+    previewWindow.KT_ScrollButton = scrollButton
+    previewWindow.KT_SendButton = sendButton
+    previewWindow.KT_GlassTop = glassTop
+    previewWindow.KT_GlassBottom = glassBottom
+    previewWindow.KT_LeftShade = leftShade
+    previewWindow.KT_BackdropFade = backdropFade
+    previewWindow.KT_ContentTopGlow = contentTopGlow
+    previewWindow.KT_ContentBottomShade = contentBottomShade
+    previewWindow.KT_FooterGlow = footerGlow
+    previewWindow.KT_InputGlow = inputGlow
 
     local messageLines = {}
     for index = 1, 8 do
@@ -613,6 +636,17 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
                 line:Hide()
             end
         end
+
+        previewWindow.KT_PreviewSelected = activeTabIndex
+        previewWindow.KT_PreviewWhisper = function(index)
+            local info = tabsData[index]
+            local text = info and (tostring(info.id or "") .. " " .. tostring(info.label or "")):lower() or ""
+            return text:find("whisp", 1, true) ~= nil
+        end
+        local chatModule = GetChatModule()
+        if chatModule and chatModule.Styles and chatModule.Styles.ApplyPreview then
+            chatModule.Styles:ApplyPreview(previewWindow)
+        end
     end
 
     previewRefresh = UpdatePreview
@@ -633,6 +667,74 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         RestoreChatDefaults()
     end)
     y = y + h + 10
+
+    -- Style cards (like the Cast Bar): one card per chat style, with its icon.
+    do
+        local styles = GetChatModule() and GetChatModule().Styles
+        if styles then
+            local icons = (KT.CastBarStyles and KT.CastBarStyles.styleIcons) or {}
+            local title = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            title:SetPoint("TOPLEFT", sc, "TOPLEFT", 4, -y)
+            title:SetText(LText("Chat Style"))
+            y = y + 24
+
+            local function Accent(key)
+                if key == "kui" then return KT.C_R or 1, KT.C_G or 0, KT.C_B or 0.333 end
+                return styles.Accent(key)
+            end
+            local cards = {}
+            local function RefreshCards()
+                local current = styles.Resolve()
+                for key, card in pairs(cards) do
+                    local r, g, b = Accent(key)
+                    local selected = key == current
+                    local t = selected and 2 or 1
+                    card.edges[1]:SetHeight(t); card.edges[2]:SetHeight(t)
+                    card.edges[3]:SetWidth(t); card.edges[4]:SetWidth(t)
+                    for _, edge in ipairs(card.edges) do
+                        if selected then edge:SetColorTexture(r, g, b, 1) else edge:SetColorTexture(r * 0.35, g * 0.35, b * 0.35, 0.8) end
+                    end
+                    card.bg:SetColorTexture(selected and r * 0.18 or 0.05, selected and g * 0.18 or 0.05, selected and b * 0.18 or 0.06, 0.95)
+                    card.label:SetTextColor(selected and 1 or 0.7, selected and 1 or 0.7, selected and 1 or 0.7)
+                end
+            end
+            for index, key in ipairs(styles.ORDER) do
+                local card = CreateFrame("Button", nil, sc)
+                card:SetSize(128, 62)
+                card:SetPoint("TOPLEFT", sc, "TOPLEFT", 4 + (index - 1) * 138, -y)
+                card.bg = card:CreateTexture(nil, "BACKGROUND")
+                card.bg:SetAllPoints()
+                card.edges = {}
+                for i = 1, 4 do card.edges[i] = card:CreateTexture(nil, "BORDER") end
+                card.edges[1]:SetPoint("TOPLEFT"); card.edges[1]:SetPoint("TOPRIGHT")
+                card.edges[2]:SetPoint("BOTTOMLEFT"); card.edges[2]:SetPoint("BOTTOMRIGHT")
+                card.edges[3]:SetPoint("TOPLEFT"); card.edges[3]:SetPoint("BOTTOMLEFT")
+                card.edges[4]:SetPoint("TOPRIGHT"); card.edges[4]:SetPoint("BOTTOMRIGHT")
+                card.icon = card:CreateTexture(nil, "ARTWORK")
+                card.icon:SetSize(28, 28)
+                card.icon:SetPoint("TOP", 0, -7)
+                card.icon:SetTexture(icons[key] or icons.kui)
+                card.label = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                card.label:SetPoint("BOTTOM", 0, 8)
+                card.label:SetText(LText(styles.LABELS[key]))
+                card:SetScript("OnClick", function()
+                    styles:SetStyle(key)
+                    RefreshCards()
+                    previewRefresh()
+                end)
+                card:SetScript("OnEnter", function(self)
+                    if styles.Resolve() ~= key then
+                        local r, g, b = Accent(key)
+                        for _, edge in ipairs(self.edges) do edge:SetColorTexture(r * 0.7, g * 0.7, b * 0.7, 1) end
+                    end
+                end)
+                card:SetScript("OnLeave", RefreshCards)
+                cards[key] = card
+            end
+            RefreshCards()
+            y = y + 62 + 14
+        end
+    end
 
     if not (BeginOptionBlocks and AddOptionBlock and EndOptionBlocks) then
         return y

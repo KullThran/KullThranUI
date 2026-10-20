@@ -253,9 +253,9 @@ ns.PF_HealthPowerFlushDriver:SetScript("OnUpdate", function(self)
     end
     local profiler = _G.KT and _G.KT.CombatProfiler
     local profileStarted = profiler and profiler:Begin("party.healthpower.flush")
-    for unit in pairs(pending) do
+    for unit, flags in pairs(pending) do
         pending[unit] = nil
-        Mod:FlushUnitHealthPower(unit)
+        Mod:FlushUnitHealthPower(unit, flags)
     end
     if profileStarted then profiler:End("party.healthpower.flush", profileStarted) end
 end)
@@ -275,8 +275,20 @@ ns.PF_RosterUnitEvents = {
     "UNIT_AURA", "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_POWER_FREQUENT",
     "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER", "UNIT_CONNECTION", "UNIT_FLAGS",
     "UNIT_NAME_UPDATE", "UNIT_IN_RANGE_UPDATE", "UNIT_PHASE",
-    "UNIT_ABSORB_AMOUNT_CHANGED",
+    "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
 }
+
+-- Power events are registered separately (Mod:SyncPowerEvents): they are the
+-- noisiest events in a raid and are pure waste while no mode shows a power bar.
+ns.PF_RosterPowerEvents = { "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }
+ns.PF_RosterBaseEvents = {}
+do
+    local isPower = {}
+    for _, evt in ipairs(ns.PF_RosterPowerEvents) do isPower[evt] = true end
+    for _, evt in ipairs(ns.PF_RosterUnitEvents) do
+        if not isPower[evt] then ns.PF_RosterBaseEvents[#ns.PF_RosterBaseEvents + 1] = evt end
+    end
+end
 
 function Mod:GetRosterUnitFrame(unit)
     Mod._rosterFrames = Mod._rosterFrames or {}
@@ -333,11 +345,12 @@ function Mod:RebuildRosterEvents()
     for unit in pairs(newSet) do
         if not oldSet[unit] then
             local f = self:GetRosterUnitFrame(unit)
-            for _, evt in ipairs(ns.PF_RosterUnitEvents) do
+            for _, evt in ipairs(ns.PF_RosterBaseEvents) do
                 f:RegisterUnitEvent(evt, unit)
             end
         end
     end
+    self:SyncPowerEvents(true)
 end
 
 function Mod:RegisterModuleEvent(event, handler)
@@ -390,6 +403,21 @@ local function ResolveStatusbarTexture(value)
         if sharedPath then return sharedPath end
     end
     return TEXTURE_FILL
+end
+
+-- Retail/Forever raid frames wear Blizzard's own untinted unit-frame bar art
+-- (the same Status atlas as party frames, resource bars and unit frames) while
+-- the texture is still the theme's seeded default; a texture picked by hand
+-- is respected. Everything else keeps the shared-media texture.
+function ns.ResolveRaidBarTexture(frame, value, kind)
+    local path = ResolveStatusbarTexture(value)
+    if not (frame and (frame.mode == "raid" or frame.mode == "raid40")) then return path end
+    local vt = KT and KT.VisualThemes
+    local theme = vt and vt.GetRenderedTheme and vt:GetRenderedTheme()
+    local seeded = theme == "retail" and "Blizzard Raid Bar" or theme == "forever" and "Melli Dark" or nil
+    if not (seeded and value == seeded and C_Texture and C_Texture.GetAtlasInfo) then return path end
+    local atlas = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-" .. kind .. "-Status"
+    return C_Texture.GetAtlasInfo(atlas) and atlas or path
 end
 
 local AURA_DEFAULTS = {
@@ -562,6 +590,67 @@ local TEST_UNITS = {
     { name = "Alexandros", class = "MAGE", role = "DAMAGER", health = 0, power = 0, maxHealth = 75000, absorb = 0, status = "Dead" },
     { name = "Xx", class = "ROGUE", role = "DAMAGER", health = 0.34, power = 0.55, maxHealth = 70000, absorb = 0.12, status = "Offline" },
 }
+
+-- Famous WoW heroes for the test / preview parties: each carries the class it plays, so
+-- name, class colour and icon always agree. Rolled again every time a test is started.
+ns.PF_HERO_POOL = {
+    -- WARRIOR
+    { "Varian", "WARRIOR" }, { "Garrosh", "WARRIOR" }, { "Grommash", "WARRIOR" }, { "Orgrim", "WARRIOR" },
+    { "Muradin", "WARRIOR" }, { "Saurfang", "WARRIOR" }, { "Cairne", "WARRIOR" }, { "Lothar", "WARRIOR" },
+    -- PALADIN
+    { "Uther", "PALADIN" }, { "Tirion", "PALADIN" }, { "Turalyon", "PALADIN" }, { "Liadrin", "PALADIN" },
+    { "Bolvar", "PALADIN" }, { "Alexandros", "PALADIN" }, { "Arator", "PALADIN" }, { "Saidan", "PALADIN" },
+    -- MAGE
+    { "Jaina", "MAGE" }, { "Khadgar", "MAGE" }, { "Medivh", "MAGE" }, { "Kael'thas", "MAGE" },
+    { "Rhonin", "MAGE" }, { "Antonidas", "MAGE" }, { "Aegwynn", "MAGE" }, { "Modera", "MAGE" },
+    -- WARLOCK
+    { "Gul'dan", "WARLOCK" }, { "Neeru", "WARLOCK" }, { "Kanrethad", "WARLOCK" }, { "Fizzlebang", "WARLOCK" },
+    { "Cho'gall", "WARLOCK" },
+    -- PRIEST
+    { "Anduin", "PRIEST" }, { "Tyrande", "PRIEST" }, { "Velen", "PRIEST" }, { "Moira", "PRIEST" },
+    { "Benedictus", "PRIEST" }, { "Faol", "PRIEST" }, { "Whitemane", "PRIEST" }, { "Alonsus", "PRIEST" },
+    -- ROGUE
+    { "Valeera", "ROGUE" }, { "Garona", "ROGUE" }, { "VanCleef", "ROGUE" }, { "Mathias", "ROGUE" },
+    { "Vanessa", "ROGUE" }, { "Maiev", "ROGUE" }, { "Shaw", "ROGUE" },
+    -- HUNTER
+    { "Sylvanas", "HUNTER" }, { "Rexxar", "HUNTER" }, { "Alleria", "HUNTER" }, { "Vereesa", "HUNTER" },
+    { "Halduron", "HUNTER" }, { "Hemet", "HUNTER" }, { "Nathanos", "HUNTER" },
+    -- SHAMAN
+    { "Thrall", "SHAMAN" }, { "Nobundo", "SHAMAN" }, { "Rehgar", "SHAMAN" }, { "Durotan", "SHAMAN" },
+    { "Drek'Thar", "SHAMAN" }, { "Baine", "SHAMAN" },
+    -- DRUID
+    { "Malfurion", "DRUID" }, { "Hamuul", "DRUID" }, { "Cenarius", "DRUID" }, { "Fandral", "DRUID" },
+    { "Broll", "DRUID" }, { "Naralex", "DRUID" }, { "Ysera", "DRUID" },
+    -- DEATHKNIGHT
+    { "Arthas", "DEATHKNIGHT" }, { "Darion", "DEATHKNIGHT" }, { "Thassarian", "DEATHKNIGHT" }, { "Koltira", "DEATHKNIGHT" },
+    -- DEMONHUNTER
+    { "Illidan", "DEMONHUNTER" }, { "Kayn", "DEMONHUNTER" }, { "Altruis", "DEMONHUNTER" }, { "Jace", "DEMONHUNTER" },
+    -- MONK
+    { "Chen", "MONK" }, { "Li Li", "MONK" }, { "Taran Zhu", "MONK" }, { "Aysa", "MONK" },
+    -- EVOKER
+    { "Alexstrasza", "EVOKER" }, { "Kalecgos", "EVOKER" }, { "Wrathion", "EVOKER" }, { "Vyranoth", "EVOKER" },
+}
+
+-- allowed: list of class tokens the client supports. Returns classes[1..40], names[1..40]
+-- (distinct heroes while the pool lasts).
+function ns.PF_RollTestHeroes(allowed)
+    local ok = {}
+    for _, class in ipairs(allowed) do ok[class] = true end
+    local pool = {}
+    for _, hero in ipairs(ns.PF_HERO_POOL) do
+        if ok[hero[2]] then pool[#pool + 1] = hero end
+    end
+    for index = #pool, 2, -1 do
+        local other = math.random(1, index)
+        pool[index], pool[other] = pool[other], pool[index]
+    end
+    local classes, names = {}, {}
+    for index = 1, 40 do
+        local hero = pool[((index - 1) % #pool) + 1]
+        classes[index], names[index] = hero[2], hero[1]
+    end
+    return classes, names
+end
 
 local TEST_AURA_DEBUFFS = {
     { icon = 136071, spellID = 118, dispelType = "Magic" },
@@ -1823,7 +1912,8 @@ local function GetTestUnitData(fakeUnit, mode)
     for key, value in pairs(data) do
         result[key] = value
     end
-    result.name = fakeUnit.isPlayer and "Player" or data.name
+    result.name = fakeUnit.isPlayer and "Player"
+        or (ns.PF_TestNameOverrides and ns.PF_TestNameOverrides[index]) or data.name
     result.isPlayer = fakeUnit.isPlayer == true
     result.role = fakeUnit.isPlayer and "DAMAGER" or result.role
     local testStatusOverrides = ns.PF_TestStatusOverrides
@@ -3185,7 +3275,7 @@ ns.PF_Portrait.SetMask = function(button, style)
         end
     end
 end
-function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
+function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel, isRetry)
     local portraitFrame = frame and frame.portraitFrame
     if not portraitFrame then return end
     local metrics = ns.PF_Portrait.GetMetrics(db, frame._layoutHeight)
@@ -3194,6 +3284,7 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
         portraitFrame:Hide()
         if frame.portraitModel then frame.portraitModel:Hide() end
         frame._portraitModelActive = nil
+        if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Sync(frame, db, false) end
         return
     end
 
@@ -3251,6 +3342,20 @@ function Mod:UpdatePartyPortrait(frame, db, fakeData, forceModel)
         ns.PF_Portrait.Point(classTexture, "TOPLEFT", portraitFrame, "TOPLEFT", classInset, -classInset)
         ns.PF_Portrait.Point(classTexture, "BOTTOMRIGHT", portraitFrame, "BOTTOMRIGHT", -classInset, classInset)
     end
+    if ns.PF_PortraitAuras then ns.PF_PortraitAuras.Sync(frame, db, portraitFrame:IsShown()) end
+
+    -- NPC companions (follower dungeons) report their portrait late and the 2D texture stays
+    -- empty until then: look again a few times.
+    if not isRetry then frame._portraitRetries = 0 end
+    if unit and not fakeData and (frame._portraitRetries or 0) < 4 and _G.UnitIsPlayer
+        and not ns.PF_Portrait.SafeUnitFlag(_G.UnitIsPlayer, unit) and C_Timer and C_Timer.After then
+        frame._portraitRetries = (frame._portraitRetries or 0) + 1
+        C_Timer.After(1, function()
+            if frame:IsShown() and frame.unit == unit then
+                Mod:UpdatePartyPortrait(frame, Mod:GetModeDB(frame.mode or "party"), nil, true, true)
+            end
+        end)
+    end
 end
 
 ns.PF_Portrait.SyncLevels = function(frame)
@@ -3264,12 +3369,16 @@ ns.PF_Portrait.SyncLevels = function(frame)
     local strata = health:GetFrameStrata()
     portrait:SetFrameStrata(strata)
     local top
+    -- The portrait auras need a level per tier between the model and the ring.
+    local auras = ns.PF_PortraitAuras
+    local gap = auras and auras.LevelGap(frame) or 0
     if ns.PF_Portrait.IsBelowHealth() then
         local root = (frame:GetFrameLevel() or 0) + 1
         portrait:SetFrameLevel(root)
         if frame.portraitModel then frame.portraitModel:SetFrameLevel(root + 1) end
-        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(root + 2) end
-        local healthLevel = math.max(health:GetFrameLevel() or 0, root + 3)
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(root + 2 + gap) end
+        if gap > 0 then auras.Raise(frame, root + 2) end
+        local healthLevel = math.max(health:GetFrameLevel() or 0, root + 3 + gap)
         health:SetFrameLevel(healthLevel)
         if frame.absorb then frame.absorb:SetFrameLevel(healthLevel + 2) end
         top = healthLevel + 2
@@ -3280,8 +3389,9 @@ ns.PF_Portrait.SyncLevels = function(frame)
         end
         portrait:SetFrameLevel(base + 4)
         if frame.portraitModel then frame.portraitModel:SetFrameLevel(base + 5) end
-        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7) end
-        top = base + 7
+        if frame.portraitBorderFrame then frame.portraitBorderFrame:SetFrameLevel(base + 7 + gap) end
+        if gap > 0 then auras.Raise(frame, base + 6) end
+        top = base + 7 + gap
     end
     if frame.overlayFrame then
         frame.overlayFrame:SetFrameStrata(strata)
@@ -4543,8 +4653,14 @@ local function LayoutFrameAuras(frame, db, mode)
     local missingX = tonumber(db.missingBuffOffsetX) or 0
     local missingY = tonumber(db.missingBuffOffsetY) or 0
 
+    -- Forever card: icons centred on the health band must fit it (see PF_Styles).
+    local bandFit
+    if not isRaidMode and frame._pfNativeStyle == "forever" and frame._pfNativeGeometry and frame._pfNativeScale then
+        bandFit = math.max(8, frame._pfNativeGeometry.health[4] * frame._pfNativeScale)
+    end
+    local ccSize = bandFit or (isRaidMode and math.max(size, 16) or math.max(size + 2, 18))
     frame.ccIcon:ClearAllPoints()
-    frame.ccIcon:SetSize(isRaidMode and math.max(size, 16) or math.max(size + 2, 18), isRaidMode and math.max(size, 16) or math.max(size + 2, 18))
+    frame.ccIcon:SetSize(ccSize, ccSize)
     frame.ccIcon:SetPoint("CENTER", frame.health, "CENTER", auraX, auraY)
 
     if frame.trinketIcon then
@@ -4586,7 +4702,7 @@ local function LayoutFrameAuras(frame, db, mode)
         frame.missingBuffIcon:SetSize(missingSize, missingSize)
         frame.missingBuffIcon:SetPoint("CENTER", frame.health, "CENTER", missingX, missingY)
     else
-        local partyMissingSize = math.min(missingSize, 29)
+        local partyMissingSize = bandFit or math.min(missingSize, 29)
         frame.missingBuffIcon:SetSize(partyMissingSize, partyMissingSize)
         frame.missingBuffIcon:SetPoint("CENTER", frame.health, "CENTER", missingX, missingY)
     end
@@ -4621,6 +4737,11 @@ local function LayoutCenteredAuraIcons(frame, db, buffCount, debuffCount)
         local halfBuffs = buffOnlyW / 2
         local shift = math.max(0, (debuffCount - 1) * stepD) / 2
         LayoutAuraIconSet(frame.debuffIcons, nativeHost, "TOP", "BOTTOM", debuffX - shift, debuffY - 2, debuffSize, spacing, "RIGHT")
+        if frame._pfNativeStyle == "forever" then
+            -- Beside the plate, like the live frame, so the thin health band stays clear.
+            LayoutAuraIconSet(frame.buffIcons, nativeHost, "LEFT", "RIGHT", 3 + buffX, buffY, buffSize, spacing, "RIGHT")
+            return
+        end
         LayoutAuraIconSet(frame.buffIcons, frame.health, "CENTER", "CENTER", halfBuffs - math.max(0, (buffCount - 1) * stepB) - buffSize / 2 + buffX, buffY, buffSize, spacing, "LEFT")
         return
     end
@@ -6350,7 +6471,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         end
         local power = math.max(0, math.min(1, (data.power or 0.7) + (math.sin((phase * math.pi * 2) + (index * 0.6)) * 0.10)))
         frame.health:SetMinMaxValues(0, 100)
-        frame.health:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.health:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Health"))
         frame.health:SetValue(health * 100)
         local cr, cg, cb
         if db.colorByClass ~= false then
@@ -6370,7 +6491,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
         end
         ns.PF_Portrait.UpdateBorder(frame, db, data)
         frame.power:SetMinMaxValues(0, 100)
-        frame.power:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.power:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Mana"))
         frame.power:SetValue(power * 100)
         if data.status == "Offline" then
             frame.power:SetStatusBarColor(OFFLINE_POWER_COLOR.r, OFFLINE_POWER_COLOR.g, OFFLINE_POWER_COLOR.b, OFFLINE_POWER_COLOR.a)
@@ -6503,7 +6624,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     local pr, pg, pb = GetPowerColor()
 
     frame.health:SetMinMaxValues(0, 100)
-    frame.health:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+    frame.health:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Health"))
     local hpPercent = UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
     frame.health:SetValue(hpPercent)
     SetHealthText(frame.valueText, unit, db, hpPercent)
@@ -6527,7 +6648,7 @@ function Mod:UpdateFrameVisual(frame, refreshAuras)
     if db.showPowerBar == false or IsSecretValue(power) or IsSecretValue(maxPower) or type(power) ~= "number" or type(maxPower) ~= "number" then
         frame.power:Hide()
     else
-        frame.power:SetStatusBarTexture(ResolveStatusbarTexture(db.healthTexture))
+        frame.power:SetStatusBarTexture(ns.ResolveRaidBarTexture(frame, db.healthTexture, "Mana"))
         frame.power:SetMinMaxValues(0, maxPower)
         frame.power:SetValue(power)
         frame.power:Show()
@@ -7318,6 +7439,8 @@ function Mod:UpdateFrameHealthEvent(frame)
 
     local db = self:GetModeDB(frame.mode or "party")
     local hpPercent = UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
+    -- The text layout is repaired on every health event, even when the value did not
+    -- change: native frames lose their text anchors in combat (see party_frame_styles).
     if ns.PF_Styles and frame._pfNativeStyle then
         ns.PF_Styles.UpdateHealthText(frame, db)
     end
@@ -7412,9 +7535,19 @@ function Mod:OnUnitEvent(event, unit)
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH"
         or event == "UNIT_POWER_FREQUENT" or event == "UNIT_MAXPOWER"
         or event == "UNIT_DISPLAYPOWER" then
+        local flag
+        if event == "UNIT_HEALTH" then
+            flag = 1
+        elseif event == "UNIT_MAXHEALTH" then
+            flag = 5 -- health + absorb bar range (depends on max health)
+        else
+            -- Power events: nothing to paint while no mode shows a power bar.
+            if self._powerEventsWanted == false then return end
+            flag = 2
+        end
         local pending = self._pendingHealthPowerUnits
         if not pending then pending = {} self._pendingHealthPowerUnits = pending end
-        pending[unit] = true
+        pending[unit] = bit.bor(pending[unit] or 0, flag)
         if not self._healthPowerFlushQueued then
             self._healthPowerFlushQueued = true
             ns.PF_HealthPowerFlushDriver:Show()
@@ -7446,20 +7579,73 @@ function Mod:OnUnitEvent(event, unit)
     if profileStarted then profiler:End("party.identity.paint", profileStarted) end
 end
 
-function Mod:FlushUnitHealthPower(unit)
+-- flags: 1 = health, 2 = power, 4 = absorb range. nil = everything.
+function Mod:FlushUnitHealthPower(unit, flags)
     local frames = self._auraUnitFrames and self._auraUnitFrames[unit]
     if not frames then return end
+    flags = flags or 7
+    local band = bit.band
+    local doHealth, doPower, doAbsorb = band(flags, 1) ~= 0, band(flags, 2) ~= 0, band(flags, 4) ~= 0
     for i = 1, #frames do
         local frame = frames[i]
         if frame and frame:IsShown() then
-            self:UpdateFrameHealthEvent(frame)
-            self:UpdateFramePowerEvent(frame, "UNIT_POWER_FREQUENT")
-            if frame.unit and self.UpdateFrameAbsorbEvent then
+            if doHealth then self:UpdateFrameHealthEvent(frame) end
+            if doPower then self:UpdateFramePowerEvent(frame, "UNIT_POWER_FREQUENT") end
+            if doAbsorb and frame.unit and self.UpdateFrameAbsorbEvent then
                 self:UpdateFrameAbsorbEvent(frame)
             end
         end
     end
 end
+
+-- True when any mode can display a power bar. Mirrors the check in
+-- UpdateFramePowerEvent (`showPowerBar == false` hides it), so a nil setting
+-- keeps the old behaviour.
+function Mod:AnyPowerBarShown()
+    for _, mode in ipairs(MODE_ORDER) do
+        local db = self:GetModeDB(mode)
+        if db and db.showPowerBar ~= false then return true end
+    end
+    return false
+end
+
+-- Register/unregister the power events on every roster unit frame according to
+-- AnyPowerBarShown. Cheap when nothing changed (single boolean compare).
+function Mod:SyncPowerEvents(force)
+    local want = self:AnyPowerBarShown()
+    if not force and self._powerEventsWanted == want then return end
+    self._powerEventsWanted = want
+    local frames, units = Mod._rosterFrames, Mod._rosterUnits
+    if not (frames and units) then return end
+    for unit in pairs(units) do
+        local f = frames[unit]
+        if f then
+            for _, evt in ipairs(ns.PF_RosterPowerEvents) do
+                if want then f:RegisterUnitEvent(evt, unit) else f:UnregisterEvent(evt) end
+            end
+        end
+    end
+end
+
+-- Settings can flip showPowerBar from the options panel or a layout/profile
+-- change: re-sync after the entry points that apply them.
+-- A method (not a bare `do` block) so no file-level local is added: the main
+-- chunk sits at the 200-local cap.
+function Mod:InstallPowerSyncWrappers()
+    if self._powerSyncWrapped then return end
+    self._powerSyncWrapped = true
+    for _, name in ipairs({ "ApplyLayout", "RefreshAll", "SetConfigValue" }) do
+        local original = self[name]
+        if type(original) == "function" then
+            self[name] = function(this, ...)
+                local a, b, c = original(this, ...)
+                this:SyncPowerEvents()
+                return a, b, c
+            end
+        end
+    end
+end
+Mod:InstallPowerSyncWrappers()
 
 function Mod:FlushUnitAbsorbs(unit)
     local frames = self._auraUnitFrames and self._auraUnitFrames[unit]
@@ -7599,12 +7785,7 @@ end
 function Mod:RandomizeTestClasses()
     local classes = IS_FOREVER_CLIENT and {"DRUID", "HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR"}
         or {"HUNTER", "MAGE", "PALADIN", "PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR", "DRUID", "DEATHKNIGHT", "MONK", "DEMONHUNTER", "EVOKER"}
-    for index = #classes, 2, -1 do
-        local other = math.random(1, index)
-        classes[index], classes[other] = classes[other], classes[index]
-    end
-    ns.PF_TestClassOverrides = {}
-    for index = 1, 40 do ns.PF_TestClassOverrides[index] = classes[((index - 1) % #classes) + 1] end
+    ns.PF_TestClassOverrides, ns.PF_TestNameOverrides = ns.PF_RollTestHeroes(classes)
 end
 function Mod:SetTestMode(mode, enabled)
     mode = NormalizeMode(mode)

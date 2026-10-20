@@ -59,6 +59,9 @@ local function ResetModuleDefaults()
     for key, value in pairs(Mod:GetDefaults() or {}) do
         db[key] = CopyValue(value)
     end
+    -- The defaults carry the newest layoutVersion; clear it so GetConfig re-runs the
+    -- Damage Meter migrations (native styles need their panel background on).
+    if type(db.damageMeter) == 'table' then db.damageMeter.layoutVersion = nil end
 end
 
 local function Refresh(opts)
@@ -252,7 +255,7 @@ local function SetSystemSectionState(key, value)
     db.ui.activeEnhancementSystemSection = value and key or nil
 end
 
-local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "system" }
+local CATEGORY_ORDER = { "instance", "damage", "timer", "automation", "interface", "afk", "system" }
 
 local CATEGORY_META = {
     instance = {
@@ -275,6 +278,10 @@ local CATEGORY_META = {
         title = LText("Interface & Comfort"),
         description = LText("Visual cleanup, text sizing, and general comfort options for the client UI."),
     },
+    afk = {
+        title = LText("AFK Screen"),
+        description = LText("What you see while away: character model, info bar, accent logo and whispers."),
+    },
     system = {
         title = LText("System Tuning"),
         description = LText("Performance presets, graphics CVars, spell queue tuning, and live diagnostics."),
@@ -288,6 +295,7 @@ local CATEGORY_ICONS = {
     automation = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Automation&Social.tga",
     interface = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\Interface&Combat.tga",
     system = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\SystemTuning.tga",
+    afk = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\EnhacementsIcons\\AFK.tga",
 }
 
 local CATEGORY_ICON_COLORS = {
@@ -297,6 +305,7 @@ local CATEGORY_ICON_COLORS = {
     automation = { 0.20, 1.00, 0.35 }, -- green
     interface = { 0.20, 0.55, 1.00 }, -- blue
     system = { 1.00, 1.00, 1.00 }, -- white
+    afk = { 1.00, 0.55, 0.10 }, -- orange
 }
 
 local CATEGORY_BUTTON_WIDTH = 198
@@ -1276,6 +1285,7 @@ local DAMAGE_METER_FONT_ORDER = {
 local DAMAGE_METER_TEXTURES = {
     [DAMAGE_METER_DEFAULT_TEXTURE] = LText("Melli"),
     ["Interface\\TargetingFrame\\UI-StatusBar"] = LText("Blizzard"),
+    ["Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga"] = "Recount",
     ["Interface\\AddOns\\KullThranUI\\Libraries\\texture\\MelliDark.tga"] = LText("Melli Dark"),
     ["Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Clean.blp"] = LText("Statusbar Clean"),
     ["Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Stripes_Thin.blp"] = LText("Statusbar Stripes Thin"),
@@ -1285,6 +1295,7 @@ local DAMAGE_METER_TEXTURES = {
 local DAMAGE_METER_TEXTURE_ORDER = {
     DAMAGE_METER_DEFAULT_TEXTURE,
     "Interface\\TargetingFrame\\UI-StatusBar",
+    "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\damagemeter\\BantoBar.tga",
     "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\MelliDark.tga",
     "Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Clean.blp",
     "Interface\\AddOns\\KullThranUI\\Libraries\\WeakAuras_SharedMedia\\Textures\\Statusbar_Stripes_Thin.blp",
@@ -1620,12 +1631,12 @@ local function BuildDamageMeterBlock(container, W, db)
     y = y + h
 
     _, h = W:Dropdown(container, LText("Visual Style"), -y,
-        { kui = "KUI", retail = "Retail", forever = "Forever", classic = "Classic" },
+        { kui = "KUI", forever = "Forever", retail = "Retail", classic = "Classic" },
         function() return Mod:GetDamageMeterStyle() end,
         function(v)
             if Mod:SetDamageMeterStyle(v) then Refresh({ rebuild = true }) end
         end,
-        { "kui", "retail", "forever", "classic" })
+        { "kui", "forever", "retail", "classic" })
     y = y + h
 
     _, h = W:Dropdown(container, LText("Configure Window"), -y,
@@ -2288,6 +2299,87 @@ local function BuildSystemAccordion(parent, W, db, startY)
     return y
 end
 
+local function BuildAFKScreenBlock(container, W, db)
+    local afk = Mod.GetAFKConfig and Mod:GetAFKConfig()
+    if not afk then return 0 end
+    local function Toggle(label, key)
+        return { label = label, get = function() return afk[key] ~= false end, set = function(v) afk[key] = v and true or false end }
+    end
+    local y = AddToggleList(container, W, {
+        Toggle(LText("Enable AFK Screen"), "enabled"),
+        Toggle(LText("Camera Spin"), "spin"),
+        Toggle(LText("Show Character Model"), "showModel"),
+        Toggle(LText("Show Whispers and Guild Chat"), "showChat"),
+        Toggle(LText("Show Logo"), "showLogo"),
+        Toggle(LText("Show Faction Icon"), "showFaction"),
+        Toggle(LText("Show Guild"), "showGuild"),
+        Toggle(LText("Show AFK Time"), "showTimer"),
+        Toggle(LText("Class Colored Name"), "classColorName"),
+    })
+    local h
+
+    local animations, animationOrder = {}, {}
+    for _, anim in ipairs(Mod.AFK_ANIMATIONS or {}) do
+        animations[anim.key] = LText(anim.label)
+        animationOrder[#animationOrder + 1] = anim.key
+    end
+    _, h = W:Dropdown(container, LText("Idle Animation"), -y, animations,
+        function() return afk.animation or "dance" end,
+        function(value) afk.animation = value; Refresh() end,
+        animationOrder)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Logo Size"), -y,
+        function() return tonumber(afk.logoSize) or 260 end,
+        function(v) afk.logoSize = math.floor(v + 0.5); Refresh() end,
+        60, 300, 5)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Logo Opacity"), -y,
+        function() return tonumber(afk.logoAlpha) or 0.9 end,
+        function(v) afk.logoAlpha = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.1, 1, 0.05)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Model Scale"), -y,
+        function() return tonumber(afk.modelScale) or 1 end,
+        function(v) afk.modelScale = math.floor(v * 20 + 0.5) / 20; Refresh() end,
+        0.5, 2, 0.05)
+    y = y + h
+
+    _, h = W:Slider(container, LText("Bottom Bar Height"), -y,
+        function() return tonumber(afk.barHeight) or 10 end,
+        function(v) afk.barHeight = math.floor(v + 0.5); Refresh() end,
+        6, 20, 1)
+    y = y + h
+
+    _, h = W:Slider(container, LText("AFK Font Size"), -y,
+        function() return tonumber(afk.fontSize) or 20 end,
+        function(v) afk.fontSize = math.floor(v + 0.5); Refresh() end,
+        12, 32, 1)
+    y = y + h
+
+    _, h = W:ColorSwatch(container, LText("Bottom Bar Color"), -y,
+        function()
+            local c = afk.barColor or { r = 0.02, g = 0.02, b = 0.03, a = 0.85 }
+            return c.r or 0.02, c.g or 0.02, c.b or 0.03, c.a or 0.85
+        end,
+        function(r, g, b, a)
+            afk.barColor = { r = r, g = g, b = b, a = a or 1 }
+            Refresh()
+        end)
+    y = y + h
+
+    _, h = W:Button(container, LText("Preview AFK Screen"), -y,
+        function() if Mod.PreviewAFKScreen then Mod:PreviewAFKScreen() end end)
+    y = y + h
+
+    _, h = W:Label(container, LText("Shown when you are flagged AFK. Press any key to leave it; combat, group finder and battleground invites close it too."), -y, 11)
+    y = y + h
+
+    return y
+end
+
 local function BuildMythicPlusHistoryBlock(container, W, db)
     local history = Mod.MythicPlusHistory
     if not history then return 0 end
@@ -2357,12 +2449,43 @@ local CATEGORY_SECTIONS = {
     },
     system = {
     },
+    afk = {
+        { column = "left", title = LText("AFK Screen"), build = BuildAFKScreenBlock },
+    },
 }
 
 CATEGORY_SECTIONS.interface[#CATEGORY_SECTIONS.interface + 1] = {
     column = 'left',
     title = LText('LFG Visuals'),
     build = BuildLFGVisualsBlock,
+}
+
+CATEGORY_SECTIONS.automation[#CATEGORY_SECTIONS.automation + 1] = {
+    column = "left",
+    title = LText("Raid Check"),
+    build = function(container, W, db)
+        local cfg = Mod.RaidCheck and Mod.RaidCheck.Config() or {}
+        local y, h = AddToggleList(container, W, {
+            { label = "Enable Raid Check", get = function() return cfg.enable ~= false end, set = function(v) cfg.enable = v and true or false end },
+            { label = "Show on ready check", get = function() return cfg.onReadyCheck ~= false end, set = function(v) cfg.onReadyCheck = v and true or false end },
+            { label = "Group leader only (off: assistants too)", get = function() return cfg.leaderOnly ~= false end, set = function(v) cfg.leaderOnly = v and true or false end },
+            { label = "Track food", get = function() return cfg.checkFood ~= false end, set = function(v) cfg.checkFood = v and true or false end },
+            { label = "Track flask", get = function() return cfg.checkFlask ~= false end, set = function(v) cfg.checkFlask = v and true or false end },
+            { label = "Track augment rune", get = function() return cfg.checkRune ~= false end, set = function(v) cfg.checkRune = v and true or false end },
+            { label = "Track pre-pot", get = function() return cfg.checkPrePot ~= false end, set = function(v) cfg.checkPrePot = v and true or false end },
+            { label = "Require pre-pot from healers", get = function() return cfg.prePotHealers == true end, set = function(v) cfg.prePotHealers = v and true or false end },
+            { label = "Require pre-pot from tanks", get = function() return cfg.prePotTanks == true end, set = function(v) cfg.prePotTanks = v and true or false end },
+            { label = "Mythic raid: only groups 1-4", get = function() return cfg.firstFourGroups ~= false end, set = function(v) cfg.firstFourGroups = v and true or false end },
+        })
+        _, h = W:Slider(container, LText("Hide after ready check (seconds)"), -y,
+            function() return cfg.autoHide or 15 end,
+            function(v) cfg.autoHide = v end, 3, 60, 1)
+        y = y + h
+        _, h = W:Button(container, LText("Open Raid Check (/ktraidcheck)"), -y, function()
+            if Mod.RaidCheck then Mod.RaidCheck.Toggle() end
+        end, "FULL")
+        return y + h
+    end,
 }
 
 local function BuildActiveCategory(parent, W, db)
@@ -2378,6 +2501,13 @@ local function BuildActiveCategory(parent, W, db)
 
     if activeKey == "system" then
         return BuildSystemAccordion(parent, W, db, y)
+    end
+
+    if activeKey == "afk" and CreateOptionBlock and FinalizeOptionBlock then
+        -- Single full-width block: half-width columns made the sliders too cramped.
+        local frame, content = CreateOptionBlock(parent, LText("AFK Screen"), 10, -y, math.max(280, parent:GetWidth() - 36))
+        local totalHeight = FinalizeOptionBlock(frame, content, BuildAFKScreenBlock(content, W, db))
+        return y + totalHeight + 14
     end
 
     if (activeKey == "damage" or activeKey == "timer") and CreateOptionBlock and FinalizeOptionBlock then
