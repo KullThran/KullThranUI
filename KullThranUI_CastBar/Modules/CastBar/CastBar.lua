@@ -579,18 +579,29 @@ function Mod:OnEnable()
     end)
     self:CreateBar()
 
-    self:RegisterEvent("UNIT_SPELLCAST_START")
-    self:RegisterEvent("UNIT_SPELLCAST_DELAYED")
-    self:RegisterEvent("UNIT_SPELLCAST_STOP")
-    self:RegisterEvent("UNIT_SPELLCAST_FAILED")
-    self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-    self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-    self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
-    self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
-    self:RegisterEvent("UNIT_SPELLCAST_EMPOWER_START")
-    self:RegisterEvent("UNIT_SPELLCAST_EMPOWER_UPDATE")
-    self:RegisterEvent("UNIT_SPELLCAST_EMPOWER_STOP")
-    self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", "SnapToTop")
+    -- Player casts only: a plain RegisterEvent delivered every nameplate's and
+    -- group member's casts just to be dropped by the unit check. AceEvent has
+    -- no unit filter, so a private frame carries them; OnDisable clears it.
+    if not self.castEventFrame then
+        self.castEventFrame = CreateFrame("Frame")
+        self.castEventFrame:SetScript("OnEvent", function(_, event, ...)
+            if event == "PLAYER_SPECIALIZATION_CHANGED" then
+                Mod:SnapToTop()
+            else
+                Mod[event](Mod, event, ...)
+            end
+        end)
+    end
+    for _, event in ipairs({
+        "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_STOP",
+        "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED",
+        "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_CHANNEL_STOP",
+        "UNIT_SPELLCAST_EMPOWER_START", "UNIT_SPELLCAST_EMPOWER_UPDATE", "UNIT_SPELLCAST_EMPOWER_STOP",
+    }) do
+        self.castEventFrame:RegisterUnitEvent(event, "player")
+    end
+    -- Also fires for group members' spec changes; only the player's own matters.
+    self.castEventFrame:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
     self:RegisterEvent("PLAYER_ENTERING_WORLD",         "OnZoneChange")
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA",         "OnZoneChange")
 
@@ -1557,6 +1568,9 @@ function Mod:OnDisable()
         self.blizzardCastBarSuppressor:SetScript("OnUpdate", nil)
     end
     self:UnregisterAllEvents()
+    if self.castEventFrame then
+        self.castEventFrame:UnregisterAllEvents()
+    end
     self:StopAutoWidthWatch()
     if self.bar then
         self.bar:Hide()

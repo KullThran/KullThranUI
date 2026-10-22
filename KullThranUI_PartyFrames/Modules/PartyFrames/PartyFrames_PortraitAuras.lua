@@ -123,10 +123,60 @@ local function ActiveUnit(frame, host)
     return unit
 end
 
-local function SeatMask(frame, host)
-    local mask = frame._portraitMaskAdded and frame.portraitMask or nil
-    local swipe = (mask and frame._portraitCircular) and S.ROUND_SWIPE or S.SQUARE_SWIPE
-    S.SeatMask(host, mask, swipe)
+-------------------------------------------------------------------------------
+--  Placement: the icon covers what shows of the portrait, nothing more
+-------------------------------------------------------------------------------
+-- circle_mask.tga is opaque on 102 of its 128 pixels.
+local CIRCLE_MASK = ns.PF_Portrait.media .. "circle_mask.tga"
+local CIRCLE_FILL = 102 / 128
+-- The icon draws above the native ring: it stops a little short of the hole so the ring line
+-- stays whole.
+local NATIVE_FIT = 0.94
+
+-- The host gets its own mask, laid over the same rect as the icons, and the cooldowns swipe
+-- with that same mask file, so the dark swipe matches the icon instead of spilling past it.
+local function Place(frame, host)
+    local portrait = frame.portraitFrame
+    local root = host.frame
+    local maskPath
+    root:ClearAllPoints()
+    if frame._pfNativeStyle then
+        -- Native cards (PartyFrames_Styles.lua) grow the portrait frame past the ring hole
+        -- (_pfNativePad on each side): only a circle the size of the hole shows through.
+        local width = portrait:GetWidth() or 0
+        local hole = width - 2 * (frame._pfNativePad or 0)
+        local circle = math.min(width * CIRCLE_FILL, hole * NATIVE_FIT)
+        local size = math.max(1, circle / CIRCLE_FILL)
+        root:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+        root:SetSize(size, size)
+        maskPath = CIRCLE_MASK
+    else
+        -- KUI portraits: the same rect and shape as frame.portraitMask (SetMask in
+        -- PartyFrames.lua), square portraits fill the whole frame.
+        maskPath = frame._portraitMaskAdded and frame._portraitMaskPath or nil
+        local inset = maskPath and 1 or 0
+        ns.PF_Portrait.Point(root, "TOPLEFT", portrait, "TOPLEFT", inset, -inset)
+        ns.PF_Portrait.Point(root, "BOTTOMRIGHT", portrait, "BOTTOMRIGHT", -inset, inset)
+    end
+
+    local mask
+    if maskPath then
+        mask = host.shapeMask
+        if not mask then
+            mask = root:CreateMaskTexture()
+            mask:SetAllPoints(root)
+            host.shapeMask = mask
+        end
+        if host.shapePath ~= maskPath then
+            mask:SetTexture(maskPath, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            host.shapePath = maskPath
+        end
+    end
+    S.SeatMask(host, mask, maskPath or S.SQUARE_SWIPE)
+end
+M.Place = function(frame)
+    local host = frame and frame._ktPortraitAuras
+    if host then Place(frame, host) end
 end
 
 function M.Apply(frame)
@@ -136,7 +186,7 @@ function M.Apply(frame)
     local unit = ActiveUnit(frame, host)
 
     S.SyncStyle(host.styleKey, BuildStyle(frame, db))
-    SeatMask(frame, host)
+    Place(frame, host)
 
     -- Test frames show a fake icon for as long as the feature is on.
     SetPreviewShown(host, host.wanted and frame.fakeUnit ~= nil)

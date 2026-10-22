@@ -343,6 +343,7 @@ local function GetMetaDB()
     KT.db.global.profileManager.specAssignments = KT.db.global.profileManager.specAssignments or {}
     KT.db.global.profileManager.characterSpecAssignments = KT.db.global.profileManager.characterSpecAssignments or {}
     KT.db.global.profileManager.externalProfiles = KT.db.global.profileManager.externalProfiles or {}
+    KT.db.global.profileManager.profileIcons = KT.db.global.profileManager.profileIcons or {}
     KT.db.global.profileManager.bridgeVersion = math.max(
         tonumber(KT.db.global.profileManager.bridgeVersion) or 0,
         PROFILE_BRIDGE_VERSION
@@ -1081,16 +1082,23 @@ function Mod:OnInitialize()
 
     self.specWatcher = CreateFrame("Frame")
     self.specWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-    self.specWatcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+    self.specWatcher:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
     self.specWatcher:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_LOGIN" then
             Mod:RegisterProfileCallbacks()
             Mod:InitializeProfileBridge()
+        elseif event == "PLAYER_LOGOUT" then
+            -- Keep the active profile's snapshot of the external settings (nameplates, aura reminders,
+            -- spell durations) current. A profile-changed callback at the next login restores that
+            -- snapshot, which would otherwise undo every setting changed since it was taken.
+            local profileName = KT and KT.db and KT.db:GetCurrentProfile()
+            if profileName then SaveExternalProfileSnapshot(profileName) end
         else
             Mod:HandleSpecChange()
         end
     end)
     self.specWatcher:RegisterEvent("PLAYER_LOGIN")
+    self.specWatcher:RegisterEvent("PLAYER_LOGOUT")
 
     self:RegisterProfileCallbacks()
     C_Timer.After(0, function()
@@ -1822,9 +1830,24 @@ function Mod:DeleteProfile(name)
     if meta and meta.externalProfiles then
         meta.externalProfiles[name] = nil
     end
+    if meta and meta.profileIcons then
+        meta.profileIcons[name] = nil
+    end
 
     self:RefreshProfileRuntime()
     return true
+end
+
+-- Icon picked for a profile card on the Profiles page (fileID or texture path).
+function Mod:GetProfileIcon(name)
+    local meta = GetMetaDB()
+    return meta and name and meta.profileIcons[name] or nil
+end
+
+function Mod:SetProfileIcon(name, icon)
+    local meta = GetMetaDB()
+    if not meta or not name or name == "" then return end
+    meta.profileIcons[name] = icon
 end
 
 function Mod:GetCurrentSpecAssignment()

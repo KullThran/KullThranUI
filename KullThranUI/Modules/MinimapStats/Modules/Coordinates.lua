@@ -72,20 +72,16 @@ function MS:CreateCoordinates()
     CoordinatesFrame:SetHeight(CoordinatesFrame.Text:GetHeight())
     if DB.Enable then
         CoordinatesFrame:Show()
-        CoordinatesFrame:SetScript("OnUpdate", function(self, elapsed)
-            self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-            if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                self.Text:SetText(FetchCoordinates())
-                self:SetWidth(self.Text:GetWidth())
-                self:SetHeight(self.Text:GetHeight())
-                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                self.TimeSinceLastUpdate = 0
-            end
+        MS:SetStatTicker(CoordinatesFrame, DB.UpdateInterval, function(self)
+            self.Text:SetText(FetchCoordinates())
+            self:SetWidth(self.Text:GetWidth())
+            self:SetHeight(self.Text:GetHeight())
+            MS:ApplyDetachedMinimapLayout(self, DB.Layout)
         end)
         CoordinatesFrame:SetScript("OnMouseDown", Coordinates_CopyCoordinates)
     else
         CoordinatesFrame:Hide()
-        CoordinatesFrame:SetScript("OnUpdate", nil)
+        MS:SetStatTicker(CoordinatesFrame)
         CoordinatesFrame:SetScript("OnMouseDown", nil)
     end
     MS.CoordinatesFrame = CoordinatesFrame
@@ -108,20 +104,16 @@ function MS:UpdateCoordinates()
         MS.CoordinatesFrame:SetHeight(MS.CoordinatesFrame.Text:GetStringHeight())
         if DB.Enable then
             MS.CoordinatesFrame:Show()
-            MS.CoordinatesFrame:SetScript("OnUpdate", function(self, elapsed)
-                self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-                if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                    self.Text:SetText(FetchCoordinates())
-                    self:SetWidth(self.Text:GetStringWidth())
-                    self:SetHeight(self.Text:GetStringHeight())
-                    MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                    self.TimeSinceLastUpdate = 0
-                end
+            MS:SetStatTicker(MS.CoordinatesFrame, DB.UpdateInterval, function(self)
+                self.Text:SetText(FetchCoordinates())
+                self:SetWidth(self.Text:GetStringWidth())
+                self:SetHeight(self.Text:GetStringHeight())
+                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
             end)
             MS.CoordinatesFrame:SetScript("OnMouseDown", Coordinates_CopyCoordinates)
         else
             MS.CoordinatesFrame:Hide()
-            MS.CoordinatesFrame:SetScript("OnUpdate", nil)
+            MS:SetStatTicker(MS.CoordinatesFrame)
             MS.CoordinatesFrame:SetScript("OnMouseDown", nil)
         end
     end

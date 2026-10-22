@@ -1,5 +1,5 @@
 -- ThemeMechaButton.lua
--- Animaciones del boton "mecanico" de uiverse (".post888-mecha") para las
+-- Animaciones del boton CSS "mecanico" para las
 -- tarjetas de Visual Styles. NO cambia el diseno de la tarjeta: se superponen
 -- solo los movimientos del CSS, aplicados a la tarjeta completa.
 --

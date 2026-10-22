@@ -15,8 +15,8 @@
 --     - tabs and buttons are a dark body with one thin border (the active tab in the accent).
 --
 --  Whispers keep their own colours: whisper tabs (shared and per-player / Battle.net
---  threads) take their border from their own text colour, and the whisper strip is never
---  touched by a style.
+--  threads) take their border from their own text colour, and the whisper strip buttons
+--  wear the style's square button with their pink / blue icon (ApplyWhisperButtons).
 --
 --  Setting: chat.styleByTheme[<visual style>] = "kui" | "classic" | "retail" | "forever";
 --  without a choice every Visual Style uses its own look.   Quick test: /ktchatstyle <style>
@@ -1020,6 +1020,61 @@ end
 
 -- The whisper strip (one button per person / Battle.net friend) is deliberately NOT
 -- skinned: its blue is how whispers are told apart from the rest.
+-------------------------------------------------------------------------------
+--  Whisper strip (one small button per open private chat)
+--  The style's own square button (the same as the side buttons) with its border; the
+--  icon and label keep the whisper colours (pink, blue for Battle.net) and the open
+--  chat gets an outline in the style's accent. KUI Style keeps Chat.lua's flat boxes.
+-------------------------------------------------------------------------------
+local function WhisperRing(button)
+    local ring = button.KT_StyleWhisperRing
+    if ring then return ring end
+    ring = {}
+    for i = 1, 4 do ring[i] = button:CreateTexture(nil, "OVERLAY", nil, 6) end
+    button.KT_StyleWhisperRing = ring
+    return ring
+end
+
+local function ShowWhisperRing(button, shown, r, g, b, thickness)
+    local ring = WhisperRing(button)
+    local t = thickness or 1
+    ring[1]:ClearAllPoints(); ring[1]:SetPoint("TOPLEFT"); ring[1]:SetPoint("TOPRIGHT"); ring[1]:SetHeight(t)
+    ring[2]:ClearAllPoints(); ring[2]:SetPoint("BOTTOMLEFT"); ring[2]:SetPoint("BOTTOMRIGHT"); ring[2]:SetHeight(t)
+    ring[3]:ClearAllPoints(); ring[3]:SetPoint("TOPLEFT", 0, -t); ring[3]:SetPoint("BOTTOMLEFT", 0, t); ring[3]:SetWidth(t)
+    ring[4]:ClearAllPoints(); ring[4]:SetPoint("TOPRIGHT", 0, -t); ring[4]:SetPoint("BOTTOMRIGHT", 0, t); ring[4]:SetWidth(t)
+    for _, edge in ipairs(ring) do
+        if shown then edge:SetColorTexture(r, g, b, 1) end
+        edge:SetShown(shown and true or false)
+    end
+end
+
+-- Called by Mod:PaintWhisperButton after it set the whisper colours. Returns true when
+-- the active style drew the button (Chat.lua then skips its flat box).
+function S.PaintWhisperButton(button)
+    local key = S.lastKey or S.Resolve()
+    local def = STYLES[key]
+    if not def then
+        if button.KT_StyleWhisperRing then ShowWhisperRing(button, false) end
+        return false
+    end
+    if button.SetBackdropColor then
+        button:SetBackdropColor(0, 0, 0, 0)
+        button:SetBackdropBorderColor(0, 0, 0, 0)
+    end
+    -- No outline on the open chat: it stayed on and read as stuck. The open
+    -- chat is told apart by its full opacity (Mod:PaintWhisperButton).
+    if button.KT_StyleWhisperRing then ShowWhisperRing(button, false) end
+    return true
+end
+
+function S:ApplyWhisperButtons(window, key, def)
+    for _, button in ipairs(window.KT_WhisperStripButtons or {}) do
+        SkinButton(button, key, def, nil, window)
+        -- SkinButton tints the icon for the style; the whisper colours come back here.
+        if Mod.PaintWhisperButton then Mod:PaintWhisperButton(button) end
+    end
+end
+
 function S:ApplyButtons(window, key, def)
     for _, button in ipairs(window.KT_ActionButtons or {}) do SkinButton(button, key, def, nil, window) end
     if window.KT_ScrollButton then SkinButton(window.KT_ScrollButton, key, def, nil, window) end
@@ -1164,7 +1219,7 @@ function S:Apply()
     local key = S.Resolve()
     local def = STYLES[key]
     S.lastKey = key
-    for _, phase in ipairs({ "ApplyWindow", "ApplyTabs", "ApplyInput", "ApplyButtons", "ApplyCombatButtons" }) do
+    for _, phase in ipairs({ "ApplyWindow", "ApplyTabs", "ApplyInput", "ApplyButtons", "ApplyCombatButtons", "ApplyWhisperButtons" }) do
         local ok, err = pcall(S[phase], S, window, key, def)
         if not ok then
             S.lastError = phase .. ": " .. tostring(err)
@@ -1199,7 +1254,7 @@ function S:ApplyPreview(window)
     local key = S.Resolve()
     local def = STYLES[key]
     window.KT_Preview = true
-    for _, phase in ipairs({ "ApplyWindow", "ApplyTabs", "ApplyInput", "ApplyButtons", "ApplyCombatButtons" }) do
+    for _, phase in ipairs({ "ApplyWindow", "ApplyTabs", "ApplyInput", "ApplyButtons", "ApplyCombatButtons", "ApplyWhisperButtons" }) do
         local ok, err = pcall(S[phase], S, window, key, def)
         if not ok then S.lastError = "preview " .. phase .. ": " .. tostring(err) end
     end

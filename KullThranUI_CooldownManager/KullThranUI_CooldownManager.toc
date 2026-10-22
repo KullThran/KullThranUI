@@ -2,12 +2,13 @@
 ## Title: KullThranUI - Cooldown Manager
 ## Notes: KullThranUI module: Cooldown Manager
 ## Author: KullThran
-## Version: 5.1.8
+## Version: 6.0.0
 ## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
 ## Dependencies: KullThranUI
 
 Init.lua
 Modules\KUICooldownManager\KUICooldownManager.lua
+Modules\KUICooldownManager\KUICdmGlowStyles.lua
 Modules\KUICooldownManager\KUICdmHooks.lua
 Modules\KUICooldownManager\KUICooldownManager_Keybinds.lua
 Modules\KUICooldownManager\KUICdmBuffBars.lua

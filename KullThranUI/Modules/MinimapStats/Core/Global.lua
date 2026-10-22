@@ -9,7 +9,7 @@ local MINIMAP_ADDON_NAME = "KullThranUI_Minimap"
 
 MSG = MSG or {} -- Global for GUI access if needed
 MS.AddOnName = "MinimapStats" -- Hardcoded as it's now a module
-MS.Version = "5.1.8"
+MS.Version = "6.0.0"
 MS.Author = "KullThran"
 MS.LSM = LibStub("LibSharedMedia-3.0")
 local _, class = UnitClass("player")
@@ -138,6 +138,7 @@ function MS:DisableRuntime(reason)
             end
             if frame.SetScript then
                 frame:SetScript("OnUpdate", nil)
+                MS:SetStatTicker(frame)
                 frame:SetScript("OnEvent", nil)
                 frame:SetScript("OnMouseDown", nil)
                 frame:SetScript("OnEnter", nil)

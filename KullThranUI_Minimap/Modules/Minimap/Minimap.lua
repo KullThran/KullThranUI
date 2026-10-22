@@ -1410,6 +1410,13 @@ function Mod:UpdatePixelPerfectBorder()
         edge:Hide()
     end
 
+    -- A Visual Style square frame (SquareMinimap.lua) replaces the pixel border.
+    if isSquare and self.SquareThemeActive and self:SquareThemeActive() then
+        for _, segment in ipairs(segments) do segment:Hide() end
+        borderFrame:Hide()
+        return
+    end
+
     if isSquare then
         for _, segment in ipairs(segments) do segment:Hide() end
 
@@ -1630,6 +1637,7 @@ function Mod:CreateLayout()
     txtZone:SetPoint("CENTER")
     txtZone:SetJustifyH("CENTER")
     txtZone:SetWordWrap(false)
+    zoneButton.text = txtZone
     self:ApplyZoneAnchor()
 
     local locationButton = self:CreateOverlayButton("KT_MinimapLocation", 170, 14, "TOPLEFT", "TOPLEFT", 0, 0, function()
@@ -1701,6 +1709,8 @@ function Mod:CreateLayout()
         SetModernMailIcon(button, false)
         GameTooltip:Hide()
     end)
+    -- SquareMinimap.lua frames these per Visual Style.
+    self.calendarButton, self.mailButton = calendarButton, mailButton
 
     clockButton = self:CreateOverlayButton("KT_MinimapClock", 84, 14, "BOTTOMLEFT", "BOTTOMLEFT", 4, 28, function()
         ToggleCalendar()
@@ -2179,6 +2189,9 @@ function Mod:Refresh()
     self:UpdatePerformance()
     self:UpdateSocialStats()
     self:UpdateIcons()
+    if self.UpdateThemeDecor then
+        self:UpdateThemeDecor()
+    end
     self:DisableEmbeddedMinimapStatsRuntime()
     self:SuppressLegacyMinimapStats()
     C_Timer.After(0.2, function()
@@ -2250,6 +2263,9 @@ function Mod:RefreshAfterUIShow()
     self:UpdatePerformance()
     self:UpdateSocialStats()
     self:UpdateIcons()
+    if self.UpdateThemeDecor then
+        self:UpdateThemeDecor()
+    end
     self:DisableEmbeddedMinimapStatsRuntime()
     self:SuppressLegacyMinimapStats()
     self:UpdateOverlayVisibility(true)
@@ -2387,6 +2403,9 @@ function Mod:UpdateZone()
     local zone = (GetRealZoneText and GetRealZoneText()) or GetZoneText() or ""
     local pvp = (_G.GetZonePVPInfo and _G.GetZonePVPInfo()) or (C_PvP and C_PvP.GetZonePVPInfo and C_PvP.GetZonePVPInfo())
     local r, g, b = 1, 1, 1
+    if self.GetZoneNeutralColor then
+        r, g, b = self:GetZoneNeutralColor()
+    end
 
     if pvp == "sanctuary" then
         r, g, b = 0.41, 0.8, 0.94
@@ -2400,9 +2419,14 @@ function Mod:UpdateZone()
 
     txtZone:SetText(minimapZone)
     txtZone:SetTextColor(r, g, b)
+    if self.UpdateZoneHeaderStyle then
+        self:UpdateZoneHeaderStyle()
+    end
 
     if txtLocation then
-        txtLocation:SetText(zone)
+        -- The line under the header never repeats it: blank when the zone
+        -- matches the header (outside any subzone).
+        txtLocation:SetText((zone ~= minimapZone) and zone or "")
     end
 
     -- The zone name can still be empty at PLAYER_ENTERING_WORLD (Refresh hides the
@@ -2780,6 +2804,9 @@ function Mod:UpdateSocialMinimapIconStyle()
             StyleModernMinimapIcon(button, button.Icon, 3)
             button.Icon:SetVertexColor(r, g, b, 1)
         end
+    end
+    if self.ApplyThemedSideIcons then
+        self:ApplyThemedSideIcons()
     end
 end
 

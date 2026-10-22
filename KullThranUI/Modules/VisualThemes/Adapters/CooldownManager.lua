@@ -32,7 +32,8 @@ KT.VisualThemes:RegisterModule("cooldownmanager", {
         if themeKey == "classic" then
             shape, borderSize, r, g, b, frameArtKit = "square", 1, 0, 0, 0, "default"
         elseif themeKey == "forever" then
-            shape, borderSize, r, g, b, frameArtKit = "circle", 1, 0, 0, 0, "default"
+            -- Plain icons (no shape mask) by default; the player can still pick one.
+            shape, borderSize, r, g, b, frameArtKit = "none", 1, 0, 0, 0, "default"
         elseif themeKey == "retail" then
             shape, borderSize, r, g, b, frameArtKit = "csquare", 1, 0, 0, 0, "default"
         else
@@ -69,12 +70,23 @@ KT.VisualThemes:RegisterModule("cooldownmanager", {
             end
         end
     end,
-    validate = function(profile)
+    validate = function(profile, themeKey)
         -- Icon borders, reskin and frame art are the player's to edit in every style (the theme
         -- only seeds them); here we just repair invalid shapes.
         local valid = { none = true, cropped = true, square = true, circle = true, csquare = true, diamond = true, hexagon = true, portrait = true, shield = true }
-        for _, bar in ipairs(profile.cdmBars and profile.cdmBars.bars or {}) do
+        local bars = profile.cdmBars and profile.cdmBars.bars or {}
+        for _, bar in ipairs(bars) do
             if not valid[bar.iconShape] then bar.iconShape = "none" end
+        end
+        -- Forever used to seed round icons; its default is now "none". Once per
+        -- profile, turn those seeded circles into "none" (later picks are kept).
+        if themeKey == "forever" and not profile.foreverShapeNoneMigrated then
+            profile.foreverShapeNoneMigrated = true
+            for _, bar in ipairs(bars) do
+                if bar.iconShape == "circle" then bar.iconShape = "none" end
+            end
+            local defaults = profile.cdmBars and profile.cdmBars.barDefaults
+            if defaults and defaults.iconShape == "circle" then defaults.iconShape = "none" end
         end
     end,
 })

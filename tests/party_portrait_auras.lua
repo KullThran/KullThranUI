@@ -68,7 +68,11 @@ function AK.FinishContainer(container, unit)
 end
 _G.KTAuraKit = AK
 
-local ns = { PF_Portrait = { SyncLevels = function() end } }
+local ns = { PF_Portrait = {
+    SyncLevels = function() end,
+    media = "media\\",
+    Point = function(region, ...) region:SetPoint(...) end,
+} }
 assert(loadfile(root .. "/KullThranUI/Modules/PortraitAuraCatalog.lua"))("test", ns)
 assert(loadfile(root .. "/KullThranUI/Modules/PortraitAuraShared.lua"))("test", ns)
 assert(loadfile(root .. "/KullThranUI_PartyFrames/Modules/PartyFrames/PartyFrames_PortraitAuras.lua"))("test", ns)
@@ -174,5 +178,74 @@ assert(tickers == 1, "preview ticker runs")
 db.portraitAurasEnabled = false
 M.Sync(test, db, true)
 assert(tickers == 0, "preview ticker stops")
+
+-- Placement: the icon, its mask and its swipe cover what shows of the portrait.
+local function Recorder()
+    local rec = { points = {} }
+    rec.stub = Stub({
+        ClearAllPoints = function(self) rec.points = {}; return self end,
+        SetPoint = function(self, ...) rec.points[#rec.points + 1] = { ... }; return self end,
+        SetAllPoints = function(self, target) rec.points = { { "ALL", target } }; return self end,
+        SetSize = function(self, w, h) rec.w, rec.h = w, h; return self end,
+        SetTexture = function(self, path) rec.texture = path; return self end,
+        SetSwipeTexture = function(self, path) rec.swipe = path; return self end,
+        AddMaskTexture = function(self, mask) rec.mask = mask; return self end,
+        RemoveMaskTexture = function(self, mask) if rec.mask == mask then rec.mask = nil end; return self end,
+    })
+    return rec
+end
+db.portraitAurasEnabled = true
+local placed = NewFrame("party", "party1")
+local made = {}
+local savedCreate = CreateFrame
+CreateFrame = function()
+    local r = Recorder()
+    r.stub.CreateMaskTexture = function()
+        local m = Recorder(); made.mask = m; return m.stub
+    end
+    made.root = made.root or r
+    return r.stub
+end
+M.Sync(placed, db, true)
+CreateFrame = savedCreate
+local pHost = placed._ktPortraitAuras
+local icon, cooldown = Recorder(), Recorder()
+pHost.icons[#pHost.icons + 1] = icon.stub
+pHost.cooldowns[#pHost.cooldowns + 1] = cooldown.stub
+pHost.maskSeated = nil
+
+-- KUI circular portrait: the 1px inset rect of frame.portraitMask, its shape for icon and swipe.
+placed._portraitMaskPath = "media\\circle_mask.tga"
+M.Place(placed)
+assert(made.root.points[1][1] == "TOPLEFT" and made.root.points[1][4] == 1, "KUI: same inset as the portrait mask")
+assert(made.mask.texture == "media\\circle_mask.tga", "KUI: mask follows the portrait shape")
+assert(icon.mask == made.mask.stub, "KUI: icon masked")
+assert(cooldown.swipe == "media\\circle_mask.tga", "KUI: swipe has the icon's shape, not a bigger disc")
+
+-- Detached portraits keep their own shape.
+placed._portraitMaskPath = "media\\portrait_mask.tga"
+M.Place(placed)
+assert(made.mask.texture == "media\\portrait_mask.tga" and cooldown.swipe == "media\\portrait_mask.tga", "detached shape")
+
+-- Square portraits: whole frame, no mask, square swipe.
+placed._portraitMaskAdded = false
+M.Place(placed)
+assert(made.root.points[1][4] == 0 and icon.mask == nil, "square: no mask")
+assert(cooldown.swipe == "Interface\\Buttons\\WHITE8X8", "square swipe")
+
+-- Native card (Forever): the 60px frame overscans a 36px hole by 12px a side; the icon is a
+-- circle a little smaller than the hole, centred, not the whole overscanned frame.
+placed._portraitMaskAdded = true
+placed._pfNativeStyle, placed._pfNativePad = "forever", 12
+M.Place(placed)
+local circle = made.root.w * 102 / 128
+assert(made.root.points[1][1] == "CENTER", "native: centred on the portrait")
+assert(circle < 36 and circle > 32, "native: circle fits the hole: " .. circle)
+assert(made.mask.texture == "media\\circle_mask.tga" and cooldown.swipe == "media\\circle_mask.tga", "native: round")
+-- Native card (Retail): the frame is the ring opening, the icon matches the portrait circle.
+placed._pfNativeStyle, placed._pfNativePad = "retail", 5.7
+M.Place(placed)
+circle = made.root.w * 102 / 128
+assert(circle <= 60 * 102 / 128 + 1e-6 and circle > 44, "retail: circle within the portrait: " .. circle)
 
 print("party_portrait_auras: ok")

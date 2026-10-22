@@ -1,5 +1,5 @@
 -- PortalButton.lua
--- Botones largos de los modulos: port del boton uiverse "Discord card"
+-- Botones largos de los modulos: port de un boton CSS
 -- (backdrop-blur / indigo) con el color de accent del addon en lugar del indigo.
 --
 --   * reposo: tarjeta oscura con degradado de accent a negro, borde de 2px

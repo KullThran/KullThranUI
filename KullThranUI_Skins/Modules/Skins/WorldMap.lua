@@ -569,11 +569,17 @@ local function SkinWorldMap()
         if DetailsFrame.RewardsFrameContainer and DetailsFrame.RewardsFrameContainer.RewardsFrame then
             S:StripTextures(DetailsFrame.RewardsFrameContainer.RewardsFrame)
             S:CreateBackdrop(DetailsFrame.RewardsFrameContainer.RewardsFrame)
-            if DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop then
-                DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop:SetPoint("TOPLEFT", -5, 5)
-                DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop:SetPoint("BOTTOMRIGHT", 5, -5)
-                DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop:SetBackdropColor(0, 0, 0, 0.12)
-                DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop:SetBackdropBorderColor(0, 0, 0, 0)
+            local rewardsBackdrop = DetailsFrame.RewardsFrameContainer.RewardsFrame.backdrop
+            if rewardsBackdrop then
+                rewardsBackdrop:SetPoint("TOPLEFT", -5, 5)
+                rewardsBackdrop:SetPoint("BOTTOMRIGHT", 5, -5)
+                rewardsBackdrop:SetBackdropBorderColor(unpack(S:GetBorderColor()))
+                -- The rewards drawer sits on top of the scrolling quest text
+                -- (Blizzard covers it with opaque parchment). Keep it opaque or
+                -- the description shows through "Rewards" and the reward list.
+                S:RegisterBlizzardWindowBackground(rewardsBackdrop, function(surface, color)
+                    surface:SetBackdropColor(color[1], color[2], color[3], 1)
+                end)
             end
         end
         if QuestMapFrame.Background    then QuestMapFrame.Background:SetAlpha(0) end

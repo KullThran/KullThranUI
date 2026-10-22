@@ -2496,23 +2496,41 @@ function KRB:OnEnable()
         end)
     end
 
-    self:RegisterEvent("UNIT_DISPLAYPOWER",             "BuildBars")
     self:RegisterEvent("UPDATE_SHAPESHIFT_FORM",        "BuildBars")
-    
-    self:RegisterEvent("UNIT_HEALTH",                   "UpdateBars")
-    self:RegisterEvent("UNIT_MAXHEALTH",                "UpdateBars")
-    self:RegisterEvent("UNIT_POWER_UPDATE",             "UpdateBars")
-    self:RegisterEvent("UNIT_POWER_FREQUENT",           "UpdateBars")
+
+    -- UNIT_* events are registered for the player only: a plain RegisterEvent
+    -- delivered them for every nameplate and group member, only to be thrown
+    -- away in Lua. AceEvent has no unit filter, so a private frame carries them.
+    -- Brewmaster stagger can change without health/power updates (Purifying
+    -- Brew), hence the absorb events.
+    if not self._ktUnitEventFrame then
+        local unitEvents = {
+            UNIT_DISPLAYPOWER               = "BuildBars",
+            UNIT_HEALTH                     = "UpdateBars",
+            UNIT_MAXHEALTH                  = "UpdateBars",
+            UNIT_POWER_UPDATE               = "UpdateBars",
+            UNIT_POWER_FREQUENT             = "UpdateBars",
+            UNIT_ABSORB_AMOUNT_CHANGED      = "UpdateBars",
+            UNIT_HEAL_ABSORB_AMOUNT_CHANGED = "UpdateBars",
+            UNIT_MAXPOWER                   = "UpdateBars",
+            UNIT_AURA                       = "OnUnitAura",
+            -- A spec change arrives with a burst of talent events (and also
+            -- fires for group members): one coalesced rebuild covers them all.
+            PLAYER_SPECIALIZATION_CHANGED   = "OnTalentChange",
+        }
+        local frame = CreateFrame("Frame")
+        for event in pairs(unitEvents) do
+            frame:RegisterUnitEvent(event, "player")
+        end
+        frame:SetScript("OnEvent", function(_, event, ...)
+            KRB[unitEvents[event]](KRB, event, ...)
+        end)
+        self._ktUnitEventFrame = frame
+    end
     -- Death Knight runes don't always trigger UNIT_POWER_* reliably; use rune events for accurate pip updates.
     self:RegisterEvent("RUNE_POWER_UPDATE",             "UpdateBars")
     self:RegisterEvent("RUNE_TYPE_UPDATE",              "UpdateBars")
-    -- Brewmaster stagger changes can occur without health/power updates (e.g. Purifying Brew).
-    self:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED",    "UpdateBars")
-    self:RegisterEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED","UpdateBars")
-    self:RegisterEvent("UNIT_MAXPOWER",                 "UpdateBars")
-    self:RegisterEvent("UNIT_AURA",                     "OnUnitAura")
     self:RegisterEvent("PLAYER_ENTERING_WORLD",         "OnEnteringWorld")
-    self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", "BuildBars")
     -- A talent can add or remove a class resource; a burst of node events
     -- coalesces into one rebuild.
     self:RegisterEvent("TRAIT_CONFIG_UPDATED", "OnTalentChange")

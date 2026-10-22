@@ -201,15 +201,27 @@ function IG:OnEnable()
     self:RegisterEvent("PLAYER_TARGET_CHANGED")
     self:RegisterEvent("PLAYER_FOCUS_CHANGED")
     
-    self:RegisterEvent("UNIT_SPELLCAST_START", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_STOP", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_FAILED", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTIBLE", "HandleCastEvent")
-    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+    -- Target/focus casts and the player's own casts only: a plain RegisterEvent
+    -- delivered every nameplate's and group member's casts to be filtered in Lua.
+    -- AceEvent has no unit filter, so a private frame carries them; OnDisable clears it.
+    if not self.castEventFrame then
+        self.castEventFrame = CreateFrame("Frame")
+        self.castEventFrame:SetScript("OnEvent", function(_, event, ...)
+            if event == "UNIT_SPELLCAST_SUCCEEDED" then
+                IG:UNIT_SPELLCAST_SUCCEEDED(event, ...)
+            else
+                IG:HandleCastEvent(event, ...)
+            end
+        end)
+    end
+    for _, event in ipairs({
+        "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
+        "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
+        "UNIT_SPELLCAST_NOT_INTERRUPTIBLE", "UNIT_SPELLCAST_INTERRUPTIBLE",
+    }) do
+        self.castEventFrame:RegisterUnitEvent(event, "target", "focus")
+    end
+    self.castEventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
     
     -- Hook dinámico para addons que cargan tarde
     self:RegisterEvent("ADDON_LOADED")
@@ -219,6 +231,9 @@ function IG:OnDisable()
     self:SetGlow(false)
     self:ClearExtraButtons()
     self:UnregisterAllEvents()
+    if self.castEventFrame then
+        self.castEventFrame:UnregisterAllEvents()
+    end
     self:CancelAllTimers()
 end
 

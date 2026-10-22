@@ -442,7 +442,7 @@ end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+events:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 events:RegisterEvent("SPELL_UPDATE_USABLE")
 events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 events:RegisterEvent("SPELL_UPDATE_CHARGES")

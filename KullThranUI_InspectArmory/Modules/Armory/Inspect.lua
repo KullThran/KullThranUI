@@ -508,36 +508,51 @@ function INS:CreateTalentOverlay()
     if _G.InspectFrame.KT_TalentOverlay then _G.InspectFrame.KT_TalentOverlay:Hide() end
 end
 
-function INS:UpdateBackground()
-    if not _G.InspectFrame then return end
-    
-    local model = _G.InspectModelFrame
-    local bg = model and model.KT_BG
-    
-    if bg then
-        local unit = _G.InspectFrame.unit or "target"
-        if not UnitExists(unit) then unit = "player" end 
-        
-        local type = self.db.backgroundType or "CLASS"
-        local filename = nil
-    
-        if type == "CLASS" then
-            local _, classFilename = UnitClass(unit)
-            if classFilename then
-                if classFilename == "EVOKER" then
-                    filename = "Cov_Dragon.blp"
-                else
-                    filename = classFilename .. ".blp"
-                end
-            end
-        else
-            for _, d in ipairs(BACKGROUND_LIST) do
-                if d.key == type then filename = d.file break end
+-- Background art for the chosen Background Type and a class file; nil means no
+-- art (Blizzard's own backdrop). Shared with the options page preview.
+function INS:GetBackgroundFile(classFilename)
+    local type = self.db and self.db.backgroundType or "CLASS"
+    local filename
+    if type == "CLASS" then
+        if classFilename then
+            if classFilename == "EVOKER" then
+                filename = "Cov_Dragon.blp"
+            else
+                filename = classFilename .. ".blp"
             end
         end
-    
-        if filename then
-            bg:SetTexture(TEXTURE_PATH .. filename)
+    else
+        for _, d in ipairs(BACKGROUND_LIST) do
+            if d.key == type then filename = d.file break end
+        end
+    end
+    return filename and (TEXTURE_PATH .. filename) or nil
+end
+
+-- Average item level as shown on the frame, honouring Avg iLvl Decimals.
+function INS:FormatAverageIlvl(avg)
+    avg = tonumber(avg) or 0
+    if self.db and self.db.avgIlvlDecimals then
+        return string.format("%.1f", math.floor(avg * 10) / 10)
+    end
+    return tostring(math.floor(avg))
+end
+
+function INS:UpdateBackground()
+    if not _G.InspectFrame then return end
+
+    local model = _G.InspectModelFrame
+    local bg = model and model.KT_BG
+
+    if bg then
+        local unit = _G.InspectFrame.unit or "target"
+        if not UnitExists(unit) then unit = "player" end
+
+        local _, classFilename = UnitClass(unit)
+        local file = self:GetBackgroundFile(classFilename)
+
+        if file then
+            bg:SetTexture(file)
             bg:SetTexCoord(0, 1, 0, 1)
             bg:Show()
             if model.BackgroundOverlay then model.BackgroundOverlay:Hide() end
@@ -728,7 +743,7 @@ function INS:UpdateSlot(button)
 
     if _G.InspectFrame.KT_AvgIlvl then
         local avg = self:CalculateAverageIlvl(unit)
-        if avg > 0 then _G.InspectFrame.KT_AvgIlvl.text:SetText(math.floor(avg)) 
+        if avg > 0 then _G.InspectFrame.KT_AvgIlvl.text:SetText(self:FormatAverageIlvl(avg))
         else _G.InspectFrame.KT_AvgIlvl.text:SetText(LText("...")) end
         _G.InspectFrame.KT_AvgIlvl:Show()
     end

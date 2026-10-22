@@ -1,5 +1,5 @@
 -- SolidButton.lua
--- Boton solido (Reload UI / Reset Profile): port del CSS ".button.x" de uiverse.
+-- Boton solido (Reload UI / Reset Profile): port de un boton CSS.
 --
 --   * relleno liso con esquinas de 8px y borde de 1px (color base al 25%);
 --   * texto blanco en mayusculas;

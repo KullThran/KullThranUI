@@ -1,6 +1,5 @@
 -- ShineButton.lua
--- Botones Reload UI / Reset Profile: port del boton CSS de brillo con barrido
--- de uiverse.
+-- Botones Reload UI / Reset Profile: port de un boton CSS de brillo con barrido.
 --
 --   * fondo transparente, borde de 1px del color del boton, esquinas de 7px,
 --     texto blanco en mayusculas;

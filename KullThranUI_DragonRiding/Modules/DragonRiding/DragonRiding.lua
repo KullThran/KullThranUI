@@ -1064,7 +1064,9 @@ function Mod:ToggleState(enable)
         frame:SetScript("OnUpdate", UpdateLoop)
         
         self:RegisterEvent("SPELL_UPDATE_COOLDOWN", UpdateCooldowns)
-        self:RegisterEvent("UNIT_POWER_UPDATE", "HandleVigorPowerUpdate")
+        if self.unitEventFrame then
+            self.unitEventFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+        end
         
         self:UpdateAuras()
         UpdateCooldowns()
@@ -1077,7 +1079,9 @@ function Mod:ToggleState(enable)
         frame:Hide()
         frame:SetScript("OnUpdate", nil)
         self:UnregisterEvent("SPELL_UPDATE_COOLDOWN")
-        self:UnregisterEvent("UNIT_POWER_UPDATE")
+        if self.unitEventFrame then
+            self.unitEventFrame:UnregisterEvent("UNIT_POWER_UPDATE")
+        end
         
         -- Liberar widget
         UpdateBlizzardWidget()
@@ -1175,20 +1179,39 @@ function Mod:OnEnable()
     self:RegisterEvent("ZONE_CHANGED", "CheckMountState")
     self:RegisterEvent("ZONE_CHANGED_INDOORS", "CheckMountState")
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "CheckMountState")
-    self:RegisterEvent("UNIT_ENTERED_VEHICLE", "CheckMountState")
-    self:RegisterEvent("UNIT_EXITED_VEHICLE", "CheckMountState")
-    self:RegisterEvent("UNIT_MAXPOWER", "CheckMountState") -- Re-check if Vigor becomes available
-    self:RegisterEvent("UNIT_POWER_BAR_SHOW", "CheckMountState")
-    self:RegisterEvent("UNIT_POWER_BAR_HIDE", "CheckMountState")
-    self:RegisterEvent("UNIT_AURA")
     self:RegisterEvent("UPDATE_SHAPESHIFT_FORM", "CheckMountState") -- Druid Flight Form support
-    self:RegisterEvent("UNIT_MODEL_CHANGED", "CheckMountState") -- Evoker Dracthyr/Visage form support
-    self:RegisterEvent("UNIT_DISPLAYPOWER", "CheckMountState") -- Power type change support
     self:RegisterEvent("SPELL_UPDATE_CHARGES", "CheckMountState")
     self:RegisterEvent("PLAYER_CAN_GLIDE_CHANGED", "CheckMountState")
     self:RegisterEvent("PLAYER_IS_GLIDING_CHANGED", "CheckMountState")
     self:RegisterEvent("UPDATE_BONUS_ACTIONBAR", "CheckMountState")
-    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+    -- Player-only unit events. A plain RegisterEvent delivered them for every
+    -- nameplate and group member, and the CheckMountState ones were not even
+    -- filtered: each one restarted the mount-state timer. AceEvent has no unit
+    -- filter, so a private frame carries them; OnDisable clears it.
+    -- UNIT_MAXPOWER re-checks when Vigor becomes available, UNIT_MODEL_CHANGED
+    -- covers Evoker Dracthyr/Visage form, UNIT_DISPLAYPOWER power type changes.
+    -- UNIT_POWER_UPDATE is armed by ToggleState only while skyriding.
+    if not self.unitEventFrame then
+        self.unitEventFrame = CreateFrame("Frame")
+        self.unitEventFrame:SetScript("OnEvent", function(_, event, ...)
+            if event == "UNIT_AURA" then
+                Mod:UNIT_AURA(event, ...)
+            elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+                Mod:UNIT_SPELLCAST_SUCCEEDED(event, ...)
+            elseif event == "UNIT_POWER_UPDATE" then
+                Mod:HandleVigorPowerUpdate(event, ...)
+            else
+                Mod:CheckMountState(event, ...)
+            end
+        end)
+    end
+    for _, event in ipairs({
+        "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE", "UNIT_MAXPOWER",
+        "UNIT_POWER_BAR_SHOW", "UNIT_POWER_BAR_HIDE", "UNIT_AURA",
+        "UNIT_MODEL_CHANGED", "UNIT_DISPLAYPOWER", "UNIT_SPELLCAST_SUCCEEDED",
+    }) do
+        self.unitEventFrame:RegisterUnitEvent(event, "player")
+    end
     -- Hook extra de seguridad para el widget
     if _G.UIWidgetPowerBarContainerFrame then
          _G.UIWidgetPowerBarContainerFrame:HookScript("OnShow", function()
@@ -1216,6 +1239,9 @@ function Mod:OnDisable()
         self:CancelAllTimers()
     end
     self:UnregisterAllEvents()
+    if self.unitEventFrame then
+        self.unitEventFrame:UnregisterAllEvents()
+    end
     self:UnhookAll()
     if frame then frame:Hide() end
 end

@@ -89,12 +89,12 @@ local hooksecurefunc = _G.hooksecurefunc
 
 KT.VERSION = KT.VERSION
     or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version"))
-		or "5.1.8"
+		or "6.0.0"
 -- When loaded directly from the source tree (without the release packager),
 -- GetAddOnMetadata returns the literal "@project-version@" token.  Strip it
 -- so the in-game UI never displays the raw packager placeholder.
 if KT.VERSION and KT.VERSION:find("@", 1, true) then
-    KT.VERSION = "5.1.8"
+    KT.VERSION = "6.0.0"
 end
 
 function KT:IsBlizzardEditModeActive()
@@ -503,7 +503,7 @@ function KT:IsLocalizedDefaultFont(value)
 end
 
 -- Whether a stored font name/path can render the ACTIVE language without tofu.
--- Mirrors the ExwindTools approach: on non-Latin languages only fonts known to
+-- On non-Latin languages only fonts known to
 -- include the required glyphs are kept; anything else is forced to the
 -- localized font so the UI never paints squares.
 function KT:IsFontCompatibleWithLocale(value)

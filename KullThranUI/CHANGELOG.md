@@ -1,38 +1,39 @@
 # KullThranUI Changelog
 
-Current addon version: **5.1.8**
+Current addon version: **6.0.0**
 
 Primary source: https://addons.wago.io/addons/kullthranui/versions
 Secondary source: https://www.curseforge.com/wow/addons/kui-kullthranui/files/all?page=1&pageSize=20&showAlphaFiles=show
 
-## 5.1.8 (2026-10-18)
-- Chat: four chat styles (KUI Style, Forever, Retail and Classic), each with its own frame, tabs, buttons and input bar. Every Visual Style remembers its own choice and whispers keep their colours.
-- Chat: the Combat tab shows only the combat log (no pet, loot or system messages) and its My actions / What happened to me? buttons follow the chat style.
-- Raid Check (Enhancements): after a ready check it lists who is missing food, flask, augment rune or pre-pot and lets you report it to the group. Open it with /ktraidcheck.
-- Premade Groups: a bar under the search box with an icon per dungeon of the current season to toggle it in the filter, a reset button and a friends-only filter, and search results show each member's specialization icon.
-- Bulk Buy (Enhancements): Shift-click a stackable vendor item to buy a whole quantity in one go.
-- Nameplates: optional distance over enemy nameplates, shown as range brackets, with format, colour and scope options.
-- Unit Frames: new Portrait Auras tab. The most important aura of Player, Target, Focus, Pet, Target of Target and Focus Target shows on its portrait (crowd control, disarms, defensives, important spells), with a live preview. A CC Catalog lists the crowd control spells of your game with search and a switch per spell, and raid and arena frames can show the same auras.
-- Unit Frames: Druid alternate mana bar under the Player frame while in cat, bear or moonkin form (off by default on the Retail client). The cast bar sits below it and no longer overlaps the power bar.
-- Unit Frames: Forever Portrait Frame option (bronze ornament or plain ring), Forever combo points, and the style cards can be folded away.
-- Cast Bar: Retail and Forever use Blizzard-style art with the spell name on a plate, identical on both clients.
-- Portraits: Druid forms are framed correctly (cat, bear, moonkin, travel and flight).
-- Damage Meter: native styles keep their panel and header, and the meter drops below the maximized world map.
-- Unlock Mode: the right-click menu has a Scale slider for each element.
-- Skins: the Auction House marks the selected category again.
-- Minimap: the zone name shows even when it loads late.
+## 6.0.0 (2026-10-22)
+- Options window: redesigned, with its own look for each Visual Style (KUI, Forever, Retail, Classic). The Window Scale percentage can be typed in, and scrollbars have a soft glow.
+- Profiles: new page with animated profile cards in your accent colour. Pick any game icon for each profile, and choose modules and Cooldown Manager specs from clear grids to export or import.
+- Cooldown Manager: five new glow styles (Pixel Glow, Action Button Glow, GCD, Classic WoW Glow and Blackout). On icons with a custom shape, the glows follow the shape's outline.
+- Cooldown Manager: glows on action buttons now sit exactly on the spell icon, and active cooldowns that buff you glow even without a target or when a talent replaces the spell.
+- Nameplates: pending DoT damage marker on enemy plates, with an optional kill icon when your DoTs are enough to finish the target, and class icons over friendly players.
+- Damage Meter: new toolbar on every window (new window, reset, data type, segment and options). The mode menu and the breakdown window use the KUI surface texture.
+- Bags: a frame for each Visual Style, with a style picker on the Bags page that applies at once.
+- Chat: messages fade one by one after a while, as in the default chat, while the window frame fades when idle. Private chat buttons follow the chat style, and Chinese, Korean and Cyrillic names keep the chat text size.
+- Minimap: the Calendar, Mail and Tracking buttons follow the Visual Style, the zone name sits on its plate on the round minimap too, and the zone no longer shows twice.
+- Visual Styles: the level on the style cards is shown in full again.
+- Fixed a Lua error when switching the Cooldown Manager glow to Pixel Border or Shape Glow.
+- Fixed the Cooldown Manager buff bar overlapping the Forever and Retail cast bars, and the Cooldown Manager tabs overlapping their header.
+
+## 5.1.8 (2026-10-17)
+- Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.
+- Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.
+- Party Frames: fixed a Lua error that appeared when a party member was dead or offline.
+- Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.
+- Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.
+- Chat: Battle.net toasts (friend online, invites) are visible again.
 
 ## 5.1.7 (2026-10-17)
-- Forever style reworked for the new Forever art: Player, Target, Focus, Target of Target, Pet, Focus Target and Party Frames fit the new three-band plate (bars, names, icons and portraits) and keep the round portrait ring. It looks the same on the Retail and Forever clients.
-- Retail and Forever styles use Blizzard's own bar fill on Unit Frames, Raid Frames and Resource Bars, without the baked edge or the diagonal end that left gaps.
-- Resource Bars: smoother fill and no stale value after a change of resource or talents.
-- Portraits face the right way in every Druid form and for class icons.
-- Damage Meter: the Classic style uses the real Recount bar texture in the live preview, the options and the installer, and Retail and Forever use Blizzard-style bars.
-- Action Bars: end caps span the whole bar group up to the bags, with a new End Cap Width option (Bar Group or Bar 1). Action buttons and Cooldown Manager icons glow following their shape instead of a plain swipe.
-- Cooldown Manager: the KUI Tracker shows again in the outdoor world.
-- Chat: print and debug output shows in the chat frame again, not only in the copy window.
-- Unit Frames: in KUI Style the target buffs clear the health bar and the combo points circle the portrait. Aura timers use the KUI global font and sit on the icon, stack counts are smaller and buff rows keep their distance.
-- Combo points under the Player frame use Forever's bronze rings in the Forever style, on any client.
+- Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.
+- Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.
+- Party Frames: fixed a Lua error that appeared when a party member was dead or offline.
+- Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.
+- Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.
+- Chat: Battle.net toasts (friend online, invites) are visible again.
 
 ## 5.1.6 (2026-10-14)
 - Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.

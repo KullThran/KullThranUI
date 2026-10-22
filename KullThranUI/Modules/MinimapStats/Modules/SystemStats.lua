@@ -68,20 +68,16 @@ function MS:CreateSystemStats()
     SystemStatsFrame:SetHeight(SystemStatsFrame.Text:GetStringHeight())
     if DB.Enable then
         SystemStatsFrame:Show()
-        SystemStatsFrame:SetScript("OnUpdate", function(self, elapsed)
-            self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-            if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                self.Text:SetText(FetchSystemStats())
-                self:SetWidth(self.Text:GetStringWidth())
-                self:SetHeight(self.Text:GetStringHeight())
-                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                self.TimeSinceLastUpdate = 0
-            end
+        MS:SetStatTicker(SystemStatsFrame, DB.UpdateInterval, function(self)
+            self.Text:SetText(FetchSystemStats())
+            self:SetWidth(self.Text:GetStringWidth())
+            self:SetHeight(self.Text:GetStringHeight())
+            MS:ApplyDetachedMinimapLayout(self, DB.Layout)
         end)
         SystemStatsFrame:SetScript("OnMouseDown", SystemStats_OnClick)
     else
         SystemStatsFrame:Hide()
-        SystemStatsFrame:SetScript("OnUpdate", nil)
+        MS:SetStatTicker(SystemStatsFrame)
         SystemStatsFrame:SetScript("OnMouseDown", nil)
     end
     MS.SystemStatsFrame = SystemStatsFrame
@@ -104,15 +100,11 @@ function MS:UpdateSystemStats()
         MS.SystemStatsFrame:SetHeight(MS.SystemStatsFrame.Text:GetStringHeight())
         if DB.Enable then
             MS.SystemStatsFrame:Show()
-            MS.SystemStatsFrame:SetScript("OnUpdate", function(self, elapsed)
-                self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-                if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                    self.Text:SetText(FetchSystemStats())
-                    self:SetWidth(self.Text:GetStringWidth())
-                    self:SetHeight(self.Text:GetStringHeight())
-                    MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                    self.TimeSinceLastUpdate = 0
-                end
+            MS:SetStatTicker(MS.SystemStatsFrame, DB.UpdateInterval, function(self)
+                self.Text:SetText(FetchSystemStats())
+                self:SetWidth(self.Text:GetStringWidth())
+                self:SetHeight(self.Text:GetStringHeight())
+                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
             end)
             MS.SystemStatsFrame.Text:SetText(FetchSystemStats())
             MS.SystemStatsFrame:SetWidth(MS.SystemStatsFrame.Text:GetStringWidth())
@@ -120,7 +112,7 @@ function MS:UpdateSystemStats()
             MS.SystemStatsFrame:SetScript("OnMouseDown", SystemStats_OnClick)
         else
             MS.SystemStatsFrame:Hide()
-            MS.SystemStatsFrame:SetScript("OnUpdate", nil)
+            MS:SetStatTicker(MS.SystemStatsFrame)
             MS.SystemStatsFrame:SetScript("OnMouseDown", nil)
         end
     end

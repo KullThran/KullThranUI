@@ -35,7 +35,8 @@ KT:RegisterPage("bags", "Bags", 73, function(sc, W)
     skin.bagsColorMode = skin.bagsColorMode or "accent"
     if db.lockPosition == nil then db.lockPosition = false end
     if db.showItemLevel == nil then db.showItemLevel = true end
-    db.itemSize = db.itemSize or 40
+    db.itemSize = db.itemSize or 36
+    db.columns = db.columns or 12
     if db.itemLevelColorByRarity == nil then db.itemLevelColorByRarity = true end
     if db.currency.show == nil then db.currency.show = true end
     if db.currency.showGold == nil then db.currency.showGold = true end
@@ -61,6 +62,15 @@ KT:RegisterPage("bags", "Bags", 73, function(sc, W)
         return KT.C_R or 1, KT.C_G or 0, KT.C_B or 0.333
     end
 
+    -- Style cards, as on the Chat and Cast Bar pages: the bag window's frame
+    -- for the current Visual Style, applied as soon as a card is picked.
+    if KT.VisualThemes and KT.VisualThemes.AddStyleCards then
+        y = KT.VisualThemes:AddStyleCards(sc, y, LText("Bags Style"), db, function()
+            local M = KT:GetModule("Bags", true)
+            if M and M.ApplyPanelColor then M:ApplyPanelColor() end
+        end)
+    end
+
     local cols = BeginOptionBlocks(sc, y)
 
     AddOptionBlock(cols, "left", "General", function(container)
@@ -73,8 +83,12 @@ KT:RegisterPage("bags", "Bags", 73, function(sc, W)
         _, h = W:Toggle(container, "Lock Position", -by,
             function() return db.lockPosition == true end,
             function(v) db.lockPosition = v; Refresh() end); by = by + h
-        _, h = W:Slider(container, "Width", -by, function() return db.window.width or 780 end, function(v) db.window.width = v; Refresh() end, 560, 1000, 1); by = by + h
-        _, h = W:Slider(container, "Height", -by, function() return db.window.height or 540 end, function(v) db.window.height = v; Refresh() end, 360, 760, 1); by = by + h
+        -- The window width follows the columns.
+        _, h = W:Slider(container, "Columns", -by, function() return db.columns or 12 end, function(v) db.columns = v; Refresh() end, 8, 24, 1); by = by + h
+        _, h = W:Slider(container, "Height", -by, function() return db.window.height or 640 end, function(v) db.window.height = v; Refresh() end, 360, 1000, 1); by = by + h
+        _, h = W:Toggle(container, "Small Category Buttons", -by,
+            function() return db.smallCategories == true end,
+            function(v) db.smallCategories = v; Refresh() end); by = by + h
         return by
     end)
 
@@ -101,7 +115,7 @@ KT:RegisterPage("bags", "Bags", 73, function(sc, W)
                 Refresh()
             end, false); by = by + h
         _, h = W:Slider(container, "Item Icon Size", -by,
-            function() return db.itemSize or 40 end,
+            function() return db.itemSize or 36 end,
             function(v) db.itemSize = v; Refresh() end,
             30, 52, 1); by = by + h
         _, h = W:Toggle(container, "Show Item Level", -by,

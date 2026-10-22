@@ -438,6 +438,9 @@ local function ApplyMenuScrollBarTheme(scrollBar)
     if thumb and thumb.SetVertexColor then
         thumb:SetVertexColor(accent.r or 1, accent.g or 0, accent.b or 0.3333333333, 0.9)
     end
+    if KT.Widgets and KT.Widgets.DecorateScrollBar then
+        KT.Widgets:DecorateScrollBar(scrollBar, accent.r or 1, accent.g or 0, accent.b or 0.3333333333)
+    end
     if trackBg and trackBg.SetColorTexture then
         trackBg:SetColorTexture(trackTint.r or 0.06, trackTint.g or 0.06, trackTint.b or 0.08, 0.72)
     end
@@ -641,29 +644,47 @@ local function ApplySearchResultIconLayout(texture, anchor, pageId)
 end
 
 local function RefreshMenuNavIcons()
+    -- Sidebar entries paint their icon with their state (ns.PaintMenuNavIcon).
+    local function Refresh(btn)
+        if btn.UpdateVisual then btn:UpdateVisual() else ApplyMenuNavButtonIconStyle(btn) end
+    end
     if type(ns.navButtons) == "table" then
-        for _, btn in pairs(ns.navButtons) do
-            ApplyMenuNavButtonIconStyle(btn)
-        end
+        for _, btn in pairs(ns.navButtons) do Refresh(btn) end
     end
     if type(ns.categoryButtons) == "table" then
-        for _, btn in pairs(ns.categoryButtons) do
-            ApplyMenuNavButtonIconStyle(btn)
-        end
+        for _, btn in pairs(ns.categoryButtons) do Refresh(btn) end
     end
     if KT and KT.MenuPrincipal and KT.MenuPrincipal._ktUnlockShortcut then
-        ApplyMenuNavButtonIconStyle(KT.MenuPrincipal._ktUnlockShortcut)
+        Refresh(KT.MenuPrincipal._ktUnlockShortcut)
     end
 end
 
 -- ============================================================================
 -- GENERAL: UnlockMode shortcut button (header action)
 -- ============================================================================
-local UNLOCKMODE_BUTTON_HEIGHT = 56
+local UNLOCKMODE_BUTTON_HEIGHT = 50
 local UNLOCKMODE_ICON_NAME = "UnlockMode"
-local NAV_SCROLL_TOP_GAP = 16
+local NAV_SCROLL_TOP_GAP = 12
 local NAV_SCROLL_BOTTOM_GAP = 18
 local NAV_CONTENT_TOP_PADDING = 4
+
+-- Sidebar icons: the accent while the entry is active, muted at rest; icons
+-- drawn in their own colours keep them (dimmed at rest).
+ns.PaintMenuNavIcon = function(btn, active, hovered)
+    if not (btn and btn.ico) then return end
+    if ns.MENU_ICON_PRESERVE_COLOR[btn._iconName or ""] then
+        btn.ico:SetVertexColor(1, 1, 1, (active or hovered) and 1 or 0.7)
+    elseif active then
+        local r, g, b = GetMenuAccentColor()
+        btn.ico:SetVertexColor(r, g, b, 1)
+    elseif hovered then
+        local _, _, _, text = GetMenuPaletteColors()
+        btn.ico:SetVertexColor(text.r or 1, text.g or 1, text.b or 1, 1)
+    else
+        local _, _, _, _, muted = GetMenuPaletteColors()
+        btn.ico:SetVertexColor(muted.r or 0.74, muted.g or 0.74, muted.b or 0.78, 0.9)
+    end
+end
 
 local function EnsureUnlockModeShortcut(menu)
     if not menu then return end
@@ -672,63 +693,31 @@ local function EnsureUnlockModeShortcut(menu)
     end
 
     local parent = menu._navHost or menu
-    local accentR, accentG, accentB = GetMenuAccentColor()
     local btn = CreateFrame("Button", nil, parent)
     btn:SetHeight(UNLOCKMODE_BUTTON_HEIGHT)
-    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -10)
-    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -28, -10)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -10)
+    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
     btn:SetFrameLevel((menu and menu.GetFrameLevel and menu:GetFrameLevel() or 0) + 50)
-    btn:SetAlpha(0.55)
 
-    local selBg = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-    selBg:SetAllPoints()
-    selBg:SetColorTexture(accentR, accentG, accentB, 0.16)
-    selBg:Hide()
-    btn.selBg = selBg
+    -- A rounded pill that always shows; open Unlock Mode lights it like an
+    -- active sidebar entry.
+    KT.Widgets:NavChip(btn, { radius = 6, barHeight = 24, card = "shine", chip = { w = 42, h = 34, x = 8, radius = 9 } })
 
-    local selBar = btn:CreateTexture(nil, "ARTWORK")
-    selBar:SetWidth(6)
-    selBar:SetPoint("LEFT")
-    selBar:SetPoint("TOPLEFT")
-    selBar:SetPoint("BOTTOMLEFT")
-    selBar:SetColorTexture(accentR, accentG, accentB, 1)
-    selBar:Hide()
-    btn.selBar = selBar
-
-    local sep = btn:CreateTexture(nil, "ARTWORK")
-    sep:SetHeight(1)
-    sep:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 8, 0)
-    sep:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -8, 0)
-    sep:SetColorTexture(1, 1, 1, 0.05)
-    btn.sep = sep
-
-    local iconBox = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-    iconBox:SetSize(72, 48)
-    iconBox:SetPoint("LEFT", btn, "LEFT", 16, 0)
-    btn.iconBox = iconBox
-    ApplyMenuNavButtonTheme(btn, false)
-
-    local ico = iconBox:CreateTexture(nil, "OVERLAY")
-    ico:SetSize(60, 40)
-    ico:SetPoint("CENTER")
+    local ico = btn:CreateTexture(nil, "OVERLAY")
+    ico:SetSize(42, 28)
+    ico:SetPoint("CENTER", btn._chipKT.box, "CENTER", 0, 0)
     ico:SetTexture(ICON_PATH .. UNLOCKMODE_ICON_NAME .. ".png")
     btn._iconName = UNLOCKMODE_ICON_NAME
     btn.ico = ico
-    ApplyMenuNavButtonIconStyle(btn)
 
     local label = btn:CreateFontString(nil, "OVERLAY")
-    label:SetFont(KT.FONT_PATH, 14, "OUTLINE")
-    label:SetPoint("LEFT", iconBox, "RIGHT", 16, 0)
-    label:SetPoint("RIGHT", btn, "RIGHT", -16, 0)
+    label:SetFont(KT.FONT_PATH, 14, "")
+    label:SetPoint("LEFT", btn._chipKT.box, "RIGHT", 12, 0)
+    label:SetPoint("RIGHT", btn, "RIGHT", -12, 0)
     label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
     label:SetText(LocalizeText("KUI Unlock Mode"))
-    label:SetTextColor(0.78, 0.78, 0.78, 1)
     btn.label = label
-
-    local hov = btn:CreateTexture(nil, "BACKGROUND")
-    hov:SetAllPoints()
-    hov:SetColorTexture(1, 1, 1, 0)
-    btn._hov = hov
 
     local function GetUnlockModeModule()
         if KT and KT.GetModule then
@@ -743,35 +732,16 @@ local function EnsureUnlockModeShortcut(menu)
 
     local function UpdateVisual()
         local isOpen = IsUnlockModeOpen()
-        ApplyMenuNavButtonIconStyle(btn)
-
         local isHovered = btn.IsMouseOver and btn:IsShown() and btn:IsMouseOver()
-        btn._hov:SetColorTexture(1, 1, 1, (isHovered and not isOpen) and 0.05 or 0)
-
-        if isOpen then
-            btn:SetAlpha(1)
-            btn.selBg:Show()
-            btn.selBar:Show()
-            btn.iconBox:SetAlpha(1)
-            ApplyMenuNavButtonTheme(btn, true)
-            label:SetTextColor(1, 1, 1, 1)
-        else
-            btn:SetAlpha(0.55)
-            btn.selBg:Hide()
-            btn.selBar:Hide()
-            btn.iconBox:SetAlpha(0.92)
-            ApplyMenuNavButtonTheme(btn, false)
-            label:SetTextColor(0.78, 0.78, 0.78, 1)
-        end
+        -- The shine row paints the label and icon in accent tints.
+        btn._navLabelKT, btn._navIconKT = label, btn.ico
+        btn._navIconKeep = ns.MENU_ICON_PRESERVE_COLOR[btn._iconName or ""]
+        if btn._navIconKeep then ns.PaintMenuNavIcon(btn, isOpen, isHovered) end
+        KT.Widgets:NavChipState(btn, isOpen and "active" or "rest", isHovered)
     end
 
     btn:SetScript("OnEnter", function(self)
-        if not IsUnlockModeOpen() then
-            self._hov:SetColorTexture(1, 1, 1, 0.05)
-        end
-        if KT.AddBorder and self.iconBox then
-            KT:AddBorder(self.iconBox, 1, 1, 1, 0.45)
-        end
+        UpdateVisual()
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText(LocalizeText("KUI Unlock Mode"), 1, 1, 1)
@@ -780,7 +750,6 @@ local function EnsureUnlockModeShortcut(menu)
         end
     end)
     btn:SetScript("OnLeave", function(self)
-        self._hov:SetColorTexture(1, 1, 1, 0)
         if GameTooltip then GameTooltip:Hide() end
         UpdateVisual()
     end)
@@ -958,31 +927,42 @@ local function ShowDiscordPopup()
     end
 end
 -- AUTO-CHANGELOG-LATEST:BEGIN
-local CHANGELOG_LATEST_ARCHIVED_VERSION = "5.1.8"
+local CHANGELOG_LATEST_ARCHIVED_VERSION = "6.0.0"
 -- AUTO-CHANGELOG-LATEST:END
 -- AUTO-CHANGELOG:BEGIN
 local CHANGELOG_ENTRIES = {
-    ["5.1.8"] = {
-        version = "5.1.8",
-        published = "2026-10-18",
+    ["6.0.0"] = {
+        version = "6.0.0",
+        published = "2026-10-22",
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
-            "Chat: four chat styles (KUI Style, Forever, Retail and Classic), each with its own frame, tabs, buttons and input bar. Every Visual Style remembers its own choice and whispers keep their colours.",
-            "Chat: the Combat tab shows only the combat log (no pet, loot or system messages) and its My actions / What happened to me? buttons follow the chat style.",
-            "Raid Check (Enhancements): after a ready check it lists who is missing food, flask, augment rune or pre-pot and lets you report it to the group. Open it with /ktraidcheck.",
-            "Premade Groups: a bar under the search box with an icon per dungeon of the current season to toggle it in the filter, a reset button and a friends-only filter, and search results show each member's specialization icon.",
-            "Bulk Buy (Enhancements): Shift-click a stackable vendor item to buy a whole quantity in one go.",
-            "Nameplates: optional distance over enemy nameplates, shown as range brackets, with format, colour and scope options.",
-            "Unit Frames: new Portrait Auras tab. The most important aura of Player, Target, Focus, Pet, Target of Target and Focus Target shows on its portrait (crowd control, disarms, defensives, important spells), with a live preview. A CC Catalog lists the crowd control spells of your game with search and a switch per spell, and raid and arena frames can show the same auras.",
-            "Unit Frames: Druid alternate mana bar under the Player frame while in cat, bear or moonkin form (off by default on the Retail client). The cast bar sits below it and no longer overlaps the power bar.",
-            "Unit Frames: Forever Portrait Frame option (bronze ornament or plain ring), Forever combo points, and the style cards can be folded away.",
-            "Cast Bar: Retail and Forever use Blizzard-style art with the spell name on a plate, identical on both clients.",
-            "Portraits: Druid forms are framed correctly (cat, bear, moonkin, travel and flight).",
-            "Damage Meter: native styles keep their panel and header, and the meter drops below the maximized world map.",
-            "Unlock Mode: the right-click menu has a Scale slider for each element.",
-            "Skins: the Auction House marks the selected category again.",
-            "Minimap: the zone name shows even when it loads late.",
+            "Options window: redesigned, with its own look for each Visual Style (KUI, Forever, Retail, Classic). The Window Scale percentage can be typed in, and scrollbars have a soft glow.",
+            "Profiles: new page with animated profile cards in your accent colour. Pick any game icon for each profile, and choose modules and Cooldown Manager specs from clear grids to export or import.",
+            "Cooldown Manager: five new glow styles (Pixel Glow, Action Button Glow, GCD, Classic WoW Glow and Blackout). On icons with a custom shape, the glows follow the shape's outline.",
+            "Cooldown Manager: glows on action buttons now sit exactly on the spell icon, and active cooldowns that buff you glow even without a target or when a talent replaces the spell.",
+            "Nameplates: pending DoT damage marker on enemy plates, with an optional kill icon when your DoTs are enough to finish the target, and class icons over friendly players.",
+            "Damage Meter: new toolbar on every window (new window, reset, data type, segment and options). The mode menu and the breakdown window use the KUI surface texture.",
+            "Bags: a frame for each Visual Style, with a style picker on the Bags page that applies at once.",
+            "Chat: messages fade one by one after a while, as in the default chat, while the window frame fades when idle. Private chat buttons follow the chat style, and Chinese, Korean and Cyrillic names keep the chat text size.",
+            "Minimap: the Calendar, Mail and Tracking buttons follow the Visual Style, the zone name sits on its plate on the round minimap too, and the zone no longer shows twice.",
+            "Visual Styles: the level on the style cards is shown in full again.",
+            "Fixed a Lua error when switching the Cooldown Manager glow to Pixel Border or Shape Glow.",
+            "Fixed the Cooldown Manager buff bar overlapping the Forever and Retail cast bars, and the Cooldown Manager tabs overlapping their header.",
+        },
+    },
+    ["5.1.8"] = {
+        version = "5.1.8",
+        published = "2026-10-17",
+        sourceLabel = "Wago Addons",
+        sourceUrl = CHANGELOG_WAGO_URL,
+        notes = {
+            "Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.",
+            "Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.",
+            "Party Frames: fixed a Lua error that appeared when a party member was dead or offline.",
+            "Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.",
+            "Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.",
+            "Chat: Battle.net toasts (friend online, invites) are visible again.",
         },
     },
     ["5.1.7"] = {
@@ -991,16 +971,12 @@ local CHANGELOG_ENTRIES = {
         sourceLabel = "Wago Addons",
         sourceUrl = CHANGELOG_WAGO_URL,
         notes = {
-            "Forever style reworked for the new Forever art: Player, Target, Focus, Target of Target, Pet, Focus Target and Party Frames fit the new three-band plate (bars, names, icons and portraits) and keep the round portrait ring. It looks the same on the Retail and Forever clients.",
-            "Retail and Forever styles use Blizzard's own bar fill on Unit Frames, Raid Frames and Resource Bars, without the baked edge or the diagonal end that left gaps.",
-            "Resource Bars: smoother fill and no stale value after a change of resource or talents.",
-            "Portraits face the right way in every Druid form and for class icons.",
-            "Damage Meter: the Classic style uses the real Recount bar texture in the live preview, the options and the installer, and Retail and Forever use Blizzard-style bars.",
-            "Action Bars: end caps span the whole bar group up to the bags, with a new End Cap Width option (Bar Group or Bar 1). Action buttons and Cooldown Manager icons glow following their shape instead of a plain swipe.",
-            "Cooldown Manager: the KUI Tracker shows again in the outdoor world.",
-            "Chat: print and debug output shows in the chat frame again, not only in the copy window.",
-            "Unit Frames: in KUI Style the target buffs clear the health bar and the combo points circle the portrait. Aura timers use the KUI global font and sit on the icon, stack counts are smaller and buff rows keep their distance.",
-            "Combo points under the Player frame use Forever's bronze rings in the Forever style, on any client.",
+            "Minimap: choose the side (left, right, top or bottom) for the Teleport Menu, Guild, Friends and KUI options icons and show or hide each one. The live preview now draws the real map of your zone inside the chosen shape, with the icons in place, and the shape picker no longer errors with the Retail ring.",
+            "Party Frames: in the Classic, Retail and Forever styles the portrait fills its ring, the Dead, Offline and AFK icon sits on the portrait, debuffs get their own strip below the frame instead of covering the next one, and the live preview and Party Test show portraits again. These styles keep the portrait on, as their art needs it.",
+            "Party Frames: fixed a Lua error that appeared when a party member was dead or offline.",
+            "Unlock Mode: dragging the X or Y slider no longer sends the element away or makes it flicker, and editing X no longer makes Y sink.",
+            "Nameplates: a friendly player who challenges you to a duel no longer shows two plates at once.",
+            "Chat: Battle.net toasts (friend online, invites) are visible again.",
         },
     },
     ["5.1.6"] = {
@@ -2720,7 +2696,12 @@ local function RefreshChangelogPopupTheme(popup)
     local background = palette.background or { r = 0.04, g = 0.04, b = 0.06, a = 0.97 }
     local text = palette.text or { r = 1, g = 1, b = 1, a = 1 }
 
-    if KT.AddBackdrop then
+    -- The Skins system's textured surface (KUISettingsSurface + dark wash)
+    -- instead of a flat fill; the backdrop keeps only the accent border.
+    if KT.ApplyTexturedSurface then
+        if KT.AddBackdrop then KT:AddBackdrop(popup, 0, 0, 0, 0) end
+        KT:ApplyTexturedSurface(popup, { background.r or 0.04, background.g or 0.04, background.b or 0.06, 1 })
+    elseif KT.AddBackdrop then
         KT:AddBackdrop(popup, background.r or 0.04, background.g or 0.04, background.b or 0.06, background.a or 0.97)
     end
     if KT.AddBorder then
@@ -2758,7 +2739,8 @@ local function EnsureChangelogPopup()
     local frame = CreateFrame("Frame", nil, UIParent)
     frame:SetSize(660, 520)
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("DIALOG")
+    -- Over everything, the options window (FULLSCREEN_DIALOG) included.
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetToplevel(true)
     frame:EnableMouse(true)
     frame:SetMovable(true)
@@ -2911,6 +2893,9 @@ function KT:ShowChangelogPopup(version)
     if self.MarkChangelogVersionShown then
         self:MarkChangelogVersionShown(requestedVersion)
     end
+    -- Above the options window and every piece of it, in its strata.
+    local menu = KT.MenuPrincipal
+    popup:SetFrameLevel(math.min(9000, ((menu and menu:GetFrameLevel()) or 0) + 500))
     popup:Show()
     popup:Raise()
 end
@@ -3078,139 +3063,84 @@ end
 -- ============================================================================
 -- Corrupted generated comment removed.
 -- ============================================================================
-local MENU_W   = 1220
-local MENU_H   = 880
-local MENU_MIN_W = 1120
-local MENU_MIN_H = 800
-local MENU_SIZE_PRESETS = {
-    { key = "S", width = 1220, height = 880, tooltip = "Compact" },
-    { key = "M", width = 1380, height = 980, tooltip = "Medium" },
-    { key = "L", width = 1540, height = 1080, tooltip = "Large" },
-}
-
+-- MENU SCALE BEGIN
+-- The window has one fixed size; only its scale changes. At menuScale 1 one
+-- unit of the window is one physical pixel, so the painted skin stays sharp
+-- at any UI scale (tests/menu_scale.lua loads this block on its own).
+local MENU_W      = 1280
+local MENU_H      = 900
 local NAV_W       = 300
-local TOP_MARGIN  = 90
-local BOT_MARGIN  = 60
+local HEADER_H    = 110
+local TABS_H      = 16   -- gap under the header; page tab bars live in the page
+local FOOTER_H    = 60
+local CONTENT_PAD = 30
+local TOP_MARGIN  = HEADER_H + TABS_H
+local BOT_MARGIN  = FOOTER_H
 
-local CONTENT_W = MENU_W - NAV_W - 30
+local CONTENT_W = MENU_W - NAV_W - (CONTENT_PAD * 2)
 
-local function Lerp(a, b, t)
-    return a + ((b - a) * t)
+local MENU_SCALE_MIN  = 0.5
+local MENU_SCALE_MAX  = 1.5
+local MENU_SCALE_STEP = 0.05
+-- Share of the screen the window may cover at most, whatever the scale.
+local MENU_SCREEN_FIT = 0.95
+
+local function SnapMenuScale(value)
+    value = tonumber(value) or 1
+    value = math.floor(value / MENU_SCALE_STEP + 0.5) * MENU_SCALE_STEP
+    return math.max(MENU_SCALE_MIN, math.min(MENU_SCALE_MAX, value))
 end
 
-local function GetMenuLayoutMetrics(frame)
-    local width = (frame and frame.GetWidth and frame:GetWidth()) or MENU_W
-    local height = (frame and frame.GetHeight and frame:GetHeight()) or MENU_H
-    local smallPreset = MENU_SIZE_PRESETS[1]
-    local mediumPreset = MENU_SIZE_PRESETS[2]
-    local largePreset = MENU_SIZE_PRESETS[3]
-    local t
-    local navWidth
-    local maxContentWidth
-    local topMargin
-    local bottomMargin
+-- 1440p is the reference look: physH / 1440 keeps the window the same share
+-- of the screen on any display, never below 100%.
+local function InitialMenuScale(physH)
+    physH = tonumber(physH)
+    if not physH or physH <= 0 then return 1 end
+    return SnapMenuScale(math.max(1, math.min(physH / 1440, MENU_SCALE_MAX)))
+end
 
-    if width <= (mediumPreset and mediumPreset.width or MENU_W) then
-        local range = math.max(1, (mediumPreset and mediumPreset.width or MENU_W) - (smallPreset and smallPreset.width or MENU_W))
-        t = math.max(0, math.min(1, (width - (smallPreset and smallPreset.width or MENU_W)) / range))
-        navWidth = math.floor(Lerp(292, 300, t) + 0.5)
-        maxContentWidth = math.floor(Lerp(850, 960, t) + 0.5)
-        topMargin = math.floor(Lerp(88, 90, t) + 0.5)
-        bottomMargin = math.floor(Lerp(56, 60, t) + 0.5)
-    else
-        local range = math.max(1, (largePreset and largePreset.width or MENU_W) - (mediumPreset and mediumPreset.width or MENU_W))
-        t = math.max(0, math.min(1, (width - (mediumPreset and mediumPreset.width or MENU_W)) / range))
-        navWidth = math.floor(Lerp(300, 308, t) + 0.5)
-        maxContentWidth = math.floor(Lerp(960, 1040, t) + 0.5)
-        topMargin = math.floor(Lerp(90, 94, t) + 0.5)
-        bottomMargin = math.floor(Lerp(60, 64, t) + 0.5)
+local function ComputeMenuFrameScale(screenW, screenH, physW, physH, userScale)
+    local pixelScale = 1
+    if tonumber(screenW) and tonumber(physW) and physW > 0 then
+        pixelScale = screenW / physW
     end
-
-    local contentInsetLeft = navWidth + 20
-    local availableContentWidth = math.max(320, width - contentInsetLeft - 20)
-    local contentWidth = math.min(availableContentWidth, maxContentWidth)
-    local contentInsetRight = math.max(20, width - contentInsetLeft - contentWidth)
-    local contentInsetTop = topMargin + 10
-    local contentInsetBottom = bottomMargin + 10
-    -- Extra breathing room between the artwork's content panel edge and the
-    -- actual options/blocks. Bumping this insets the whole options window
-    -- (scroll + blocks + backgrounds derive from it), not one module.
-    local contentPadLeft = 26
-
-    return {
-        width = width,
-        height = height,
-        navWidth = navWidth,
-        topMargin = topMargin,
-        bottomMargin = bottomMargin,
-        contentInsetLeft = contentInsetLeft + contentPadLeft,
-        contentInsetRight = contentInsetRight,
-        contentInsetTop = contentInsetTop,
-        contentInsetBottom = contentInsetBottom,
-        contentWidth = contentWidth - contentPadLeft,
-        navContentWidth = math.max(180, navWidth - 10),
-    }
-end
-
-local function GetMenuSizeBounds()
-    local screenW, screenH = GetPhysicalScreenSize()
-    screenW = tonumber(screenW) or 1920
-    screenH = tonumber(screenH) or 1080
-
-    local maxWidth = math.max(MENU_MIN_W, math.floor(screenW * 0.92))
-    local maxHeight = math.max(MENU_MIN_H, math.floor(screenH * 0.92))
-    return MENU_MIN_W, MENU_MIN_H, maxWidth, maxHeight
-end
-
-local function ClampMenuSize(width, height)
-    local minWidth, minHeight, maxWidth, maxHeight = GetMenuSizeBounds()
-    width = tonumber(width) or MENU_W
-    height = tonumber(height) or MENU_H
-    width = math.max(minWidth, math.min(maxWidth, math.floor(width + 0.5)))
-    height = math.max(minHeight, math.min(maxHeight, math.floor(height + 0.5)))
-    return width, height
-end
-
-local function GetCurrentMenuUIScale()
-    local scale = UIParent and UIParent.GetScale and UIParent:GetScale() or nil
-    if not scale or scale <= 0 then
-        scale = KT and KT.db and KT.db.profile and tonumber(KT.db.profile.uiScale) or nil
-    end
-    if not scale or scale <= 0 then
-        scale = 1
+    local scale = pixelScale * (tonumber(userScale) or 1)
+    if tonumber(screenW) and tonumber(screenH) and screenW > 0 and screenH > 0 then
+        local fit = math.min(screenW * MENU_SCREEN_FIT / MENU_W, screenH * MENU_SCREEN_FIT / MENU_H)
+        scale = math.min(scale, fit)
     end
     return scale
 end
 
-local function GetResponsiveMenuSize()
-    local profile = KT and KT.db and KT.db.profile
-    if profile and tonumber(profile.menuCustomWidth) and tonumber(profile.menuCustomHeight) then
-        return ClampMenuSize(profile.menuCustomWidth, profile.menuCustomHeight)
+-- One-time move from the resizable window: drop the saved size and seed the
+-- scale from the monitor. Everything else in the profile is left alone.
+local function MigrateMenuSizeProfile(profile, physH)
+    if type(profile) ~= "table" or profile.menuFixedSizeMigrated then return end
+    profile.menuCustomWidth = nil
+    profile.menuCustomHeight = nil
+    profile.menuSizePreset = nil
+    if profile.menuScale == nil then
+        profile.menuScale = InitialMenuScale(physH)
     end
-
-    local screenW, screenH = GetPhysicalScreenSize()
-    screenW = tonumber(screenW) or 1920
-    screenH = tonumber(screenH) or 1080
-
-    local uiScale = GetCurrentMenuUIScale()
-    local scaleBoost = 0.71 / uiScale
-    if scaleBoost < 1 then scaleBoost = 1 end
-    if scaleBoost > 1.35 then scaleBoost = 1.35 end
-
-    local width = math.floor((MENU_W * scaleBoost) + 0.5)
-    local height = math.floor((MENU_H * math.min(scaleBoost, 1.25)) + 0.5)
-    local autoMaxPreset = MENU_SIZE_PRESETS[2]
-
-    local _, _, maxWidth, maxHeight = GetMenuSizeBounds()
-    if autoMaxPreset then
-        width = math.min(width, autoMaxPreset.width or width)
-        height = math.min(height, autoMaxPreset.height or height)
-    end
-    width = math.max(math.min(MENU_W, maxWidth), math.min(width, maxWidth))
-    height = math.max(math.min(MENU_H, maxHeight), math.min(height, maxHeight))
-
-    return ClampMenuSize(width, height)
+    profile.menuFixedSizeMigrated = true
 end
+
+local function GetMenuLayoutMetrics(frame)
+    return {
+        width = MENU_W,
+        height = MENU_H,
+        navWidth = NAV_W,
+        topMargin = TOP_MARGIN,
+        bottomMargin = BOT_MARGIN,
+        contentInsetLeft = NAV_W + CONTENT_PAD,
+        contentInsetRight = CONTENT_PAD,
+        contentInsetTop = TOP_MARGIN,
+        contentInsetBottom = BOT_MARGIN,
+        contentWidth = CONTENT_W,
+        navContentWidth = NAV_W - 10,
+    }
+end
+-- MENU SCALE END
 
 local function ApplyTextureGradient(texture, orientation, startR, startG, startB, startA, endR, endG, endB, endA)
     if not texture then return end
@@ -3235,64 +3165,182 @@ local function GetContentWidthForMenu(frame)
     return metrics.contentWidth
 end
 
-local function PersistManualMenuSize(frame)
-    local profile = KT and KT.db and KT.db.profile
-    if not (frame and profile) then return end
-    local width, height = ClampMenuSize(frame:GetWidth(), frame:GetHeight())
-    profile.menuCustomWidth = width
-    profile.menuCustomHeight = height
-end
+-- MENU SKIN ART BEGIN
+-- The window background is the active skin's painted canvas (MenuSkins.lua):
+-- base (never tinted), light (tinted with MenuSkins:LightColor()) and an
+-- optional slowly pulsing glow. Every layer is 1440x1060 with the window
+-- centred in it, so shadows and glows can spill 80px past the window edge.
+-- Skins switch with a crossfade between two texture sets.
+-- Kept in one block: Options.lua is close to Lua's 200-locals limit.
+local ApplyMenuSkinArt, InstallMenuSkinArt
+do
+    local MENU_SKIN_ART_W = 1440
+    local MENU_SKIN_ART_H = 1060
+    local MENU_SKIN_FADE = 0.3
+    local MENU_GLOW_PERIOD = 4
+    local MENU_GLOW_MIN, MENU_GLOW_MAX = 0.6, 1.0
 
-local MENU_BACKGROUND_IMAGE_WIDTH = 1307
-local MENU_BACKGROUND_IMAGE_HEIGHT = 953
-
-local function CreateMenuBackgroundLayer(holder, texturePath, sourceX, sourceY, subLevel, allTextures)
-    local layer = {
-        sourceX = sourceX,
-        sourceY = sourceY,
-        textures = {},
-    }
-
-    for row = 1, #sourceY - 1 do
-        layer.textures[row] = {}
-        for column = 1, #sourceX - 1 do
-            local texture = holder:CreateTexture(nil, "BACKGROUND", nil, subLevel)
-            texture:SetTexture(texturePath)
-            layer.textures[row][column] = texture
-            allTextures[#allTextures + 1] = texture
+    local function CreateMenuSkinArtSet(frame, holder, sublevel)
+        local set = { alpha = 1 }
+        for _, layer in ipairs({ "base", "light", "glow" }) do
+            local tex = holder:CreateTexture(nil, "BACKGROUND", nil, sublevel)
+            tex:SetSize(MENU_SKIN_ART_W, MENU_SKIN_ART_H)
+            tex:SetPoint("CENTER", frame, "CENTER", 0, 0)
+            tex:Hide()
+            set[layer] = tex
+            sublevel = sublevel + 1
         end
+        local fallback = holder:CreateTexture(nil, "BACKGROUND", nil, sublevel)
+        fallback:SetAllPoints(frame)
+        fallback:Hide()
+        set.fallback = fallback
+        return set
     end
 
-    return layer
-end
+    local function MenuGlowEnabled()
+        local profile = KT.db and KT.db.profile
+        return not (profile and profile.menuGlow == false)
+    end
 
-local function LayoutMenuBackgroundLayer(layer, holder, destinationX, destinationY)
-    if not (layer and holder) then return end
-    if #destinationX ~= #layer.sourceX or #destinationY ~= #layer.sourceY then return end
+    local function SetMenuSkinArtSetAlpha(set, alpha, pulse)
+        set.alpha = alpha
+        set.base:SetAlpha(alpha)
+        set.light:SetAlpha(alpha * (set.lightAlpha or 1))
+        set.glow:SetAlpha(alpha * (pulse or 1))
+        set.fallback:SetAlpha(alpha)
+    end
 
-    for row = 1, #layer.sourceY - 1 do
-        for column = 1, #layer.sourceX - 1 do
-            local texture = layer.textures[row] and layer.textures[row][column]
-            if texture then
-                local left = destinationX[column]
-                local right = destinationX[column + 1]
-                local top = destinationY[row]
-                local bottom = destinationY[row + 1]
-
-                texture:ClearAllPoints()
-                texture:SetPoint("TOPLEFT", holder, "TOPLEFT", left, -top)
-                texture:SetPoint("BOTTOMRIGHT", holder, "TOPLEFT", right, -bottom)
-                texture:SetTexCoord(
-                    layer.sourceX[column] / MENU_BACKGROUND_IMAGE_WIDTH,
-                    layer.sourceX[column + 1] / MENU_BACKGROUND_IMAGE_WIDTH,
-                    layer.sourceY[row] / MENU_BACKGROUND_IMAGE_HEIGHT,
-                    layer.sourceY[row + 1] / MENU_BACKGROUND_IMAGE_HEIGHT
-                )
-                texture:Show()
+    local function PaintMenuSkinArtSet(set, skinId)
+        local MS = KT.MenuSkins
+        local files = MS:Files(skinId)
+        if files and files.base then
+            set.base:SetTexture(files.base)
+            set.base:Show()
+            if files.light then
+                local r, g, b, a = MS:LightColor()
+                set.light:SetTexture(files.light)
+                set.light:SetVertexColor(r, g, b, 1)
+                set.lightAlpha = a
+                set.light:Show()
+            else
+                set.light:Hide()
             end
+            if files.glow and MenuGlowEnabled() then
+                local r, g, b = MS:LightColor()
+                set.glow:SetTexture(files.glow)
+                set.glow:SetVertexColor(r, g, b, 1)
+                set.glow:Show()
+            else
+                set.glow:Hide()
+            end
+            set.fallback:Hide()
+        else
+            set.base:Hide()
+            set.light:Hide()
+            set.glow:Hide()
+            set.fallback:SetColorTexture(MS:Color("card"))
+            set.fallback:Show()
+        end
+        set.skinId = skinId
+    end
+
+    local function HideMenuSkinArtSet(set)
+        set.base:Hide()
+        set.light:Hide()
+        set.glow:Hide()
+        set.fallback:Hide()
+    end
+
+    local function MenuSkinArtOnUpdate(holder, elapsed)
+        local frame = holder._menu
+        local fade = frame._skinFade
+        local pulse = 1
+        holder._glowClock = (holder._glowClock or 0) + elapsed
+        local wave = 0.5 + 0.5 * math.sin(holder._glowClock * 2 * math.pi / MENU_GLOW_PERIOD)
+        pulse = MENU_GLOW_MIN + (MENU_GLOW_MAX - MENU_GLOW_MIN) * wave
+
+        if fade then
+            fade.elapsed = fade.elapsed + elapsed
+            local t = math.min(1, fade.elapsed / MENU_SKIN_FADE)
+            SetMenuSkinArtSetAlpha(fade.incoming, t, pulse)
+            SetMenuSkinArtSetAlpha(fade.outgoing, 1 - t, pulse)
+            if t >= 1 then
+                HideMenuSkinArtSet(fade.outgoing)
+                frame._skinFade = nil
+            end
+        else
+            SetMenuSkinArtSetAlpha(frame._skinArt, 1, pulse)
+        end
+
+        if not frame._skinFade and not frame._skinArt.glow:IsShown() then
+            holder:SetScript("OnUpdate", nil)
         end
     end
+
+    function ApplyMenuSkinArt(frame, skinId, animate)
+        if not (frame and frame._skinArtSets) then return end
+        skinId = skinId or KT.MenuSkins:GetActive()
+        local current = frame._skinArt
+        local switching = animate and current and current.skinId and current.skinId ~= skinId
+
+        if switching then
+            local incoming = (current == frame._skinArtSets[1]) and frame._skinArtSets[2] or frame._skinArtSets[1]
+            PaintMenuSkinArtSet(incoming, skinId)
+            SetMenuSkinArtSetAlpha(incoming, 0)
+            frame._skinFade = { incoming = incoming, outgoing = current, elapsed = 0 }
+            frame._skinArt = incoming
+        else
+            -- Same skin: repaint in place. An animated call lets a running fade
+            -- finish; an instant one (window just shown) ends it.
+            if frame._skinFade and not animate then
+                HideMenuSkinArtSet(frame._skinFade.outgoing)
+                frame._skinFade = nil
+            end
+            current = current or frame._skinArtSets[1]
+            PaintMenuSkinArtSet(current, skinId)
+            if not frame._skinFade then SetMenuSkinArtSetAlpha(current, 1) end
+            frame._skinArt = current
+        end
+
+        -- A painted canvas draws its own frame (and may cut corners), so the
+        -- rectangular KT:AddBorder line only shows over the plain fallback.
+        if frame.borderKT then
+            frame.borderKT:SetShown(not frame._skinArt.base:IsShown())
+        end
+
+        local holder = frame._skinArtHolder
+        if frame._skinFade or frame._skinArt.glow:IsShown() then
+            holder:SetScript("OnUpdate", MenuSkinArtOnUpdate)
+        else
+            holder:SetScript("OnUpdate", nil)
+        end
+    end
+
+    function InstallMenuSkinArt(frame)
+        -- Its own holder: the canvas overhangs the window, so it must not sit in a
+        -- clipping parent, and it stays below every window child.
+        local holder = CreateFrame("Frame", nil, frame)
+        holder:SetSize(MENU_SKIN_ART_W, MENU_SKIN_ART_H)
+        holder:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        holder:SetFrameLevel(math.max(0, (frame:GetFrameLevel() or 1) - 5))
+        holder._menu = frame
+        frame._skinArtHolder = holder
+        frame._skinArtSets = {
+            CreateMenuSkinArtSet(frame, holder, -8),
+            CreateMenuSkinArtSet(frame, holder, -4),
+        }
+        frame:HookScript("OnShow", function(self)
+            ApplyMenuSkinArt(self, KT.MenuSkins:GetActive(), false)
+        end)
+        KT.MenuSkins:RegisterRepaint(function(skinId)
+            if frame:IsShown() then
+                ApplyMenuSkinArt(frame, skinId, true)
+            end
+        end)
+        ApplyMenuSkinArt(frame, KT.MenuSkins:GetActive(), false)
+    end
 end
+-- MENU SKIN ART END
 
 local function UpdateMenuLayoutForSize(frame)
     if not frame then return end
@@ -3301,13 +3349,15 @@ local function UpdateMenuLayoutForSize(frame)
     if frame._navHost then
         frame._navHost:ClearAllPoints()
         frame._navHost:SetWidth(metrics.navWidth)
-        frame._navHost:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -metrics.topMargin)
-        frame._navHost:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, metrics.bottomMargin)
+        -- The sidebar starts right under the logo plate (it has no tab band).
+        frame._navHost:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -HEADER_H)
+        -- Reload UI keeps its place at the bottom-left, under the sidebar.
+        frame._navHost:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 64)
     end
 
     if frame.scrollFrame then
         frame.scrollFrame:ClearAllPoints()
-        frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.contentInsetLeft, -metrics.contentInsetTop)
+        frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.contentInsetLeft, -(metrics.contentInsetTop + (frame._tabBandH or 0)))
         frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -metrics.contentInsetRight, metrics.contentInsetBottom)
     end
 
@@ -3318,30 +3368,12 @@ local function UpdateMenuLayoutForSize(frame)
         frame._navContent:SetWidth(metrics.navContentWidth)
     end
 
-    if frame._reloadBtn and frame._resetBtn and frame._discordBtn then
-        local discWidth = 34
-        local gap = 6
-        local navMargin = 10
-        local btnWidth = (metrics.navWidth - (navMargin * 2) - discWidth - (gap * 2)) / 2
-
-        frame._reloadBtn:ClearAllPoints()
-        frame._reloadBtn:SetSize(btnWidth - 10, 34)
-        frame._reloadBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", navMargin, 15)
-
-        frame._resetBtn:ClearAllPoints()
-        frame._resetBtn:SetSize(btnWidth + 10, 34)
-        frame._resetBtn:SetPoint("LEFT", frame._reloadBtn, "RIGHT", gap, 0)
-
-        frame._discordBtn:ClearAllPoints()
-        frame._discordBtn:SetSize(discWidth, 34)
-        frame._discordBtn:SetPoint("LEFT", frame._resetBtn, "RIGHT", gap, 0)
-    end
-
     if frame.searchBox then
-        -- Keep the field inside the content-panel edge and clear of the size controls.
+        -- The search pill sits in the header, left of the scale control.
         frame.searchBox:ClearAllPoints()
-        frame.searchBox:SetPoint("LEFT", frame, "TOPLEFT", metrics.contentInsetLeft - 4, -49)
-        frame.searchBox:SetPoint("RIGHT", frame._searchHeaderRight, "LEFT", -20, 0)
+        frame.searchBox:SetHeight(34)
+        frame.searchBox:SetPoint("LEFT", frame, "TOPLEFT", metrics.contentInsetLeft + (frame._searchLeft or 170), -45)
+        frame.searchBox:SetPoint("RIGHT", frame._searchHeaderRight, "LEFT", -18, 0)
     end
     if frame.RefreshNavigationScroll then
         frame:RefreshNavigationScroll()
@@ -3349,99 +3381,10 @@ local function UpdateMenuLayoutForSize(frame)
 end
 
 local function UpdateMenuBackgroundLayout(frame)
-    if not (frame and frame._customBg and frame._customBgHolder) then return end
-
-    local width = frame.GetWidth and frame:GetWidth() or 0
-    local height = frame.GetHeight and frame:GetHeight() or 0
-    if width <= 0 or height <= 0 then return end
-
-    local palette = GetOptionsStylePalette()
-    local metrics = GetMenuLayoutMetrics(frame)
-
-    local slices = frame._customBgSlices or {}
-    local layers = frame._customBgLayers
-    if not layers then return end
-
-    -- The exported PNGs keep the original 1307x953 canvas. These guides are
-    -- the opaque borders in that canvas, not arbitrary crops. Mapping the
-    -- guides to the live widget geometry keeps borders and shadows sharp while
-    -- only the large, flat portions of the artwork are allowed to stretch.
-    LayoutMenuBackgroundLayer(layers.fondo, frame._customBgHolder,
-        { 0, width },
-        { 0, height }
-    )
-
-    local navContentTop = metrics.topMargin + 10 + UNLOCKMODE_BUTTON_HEIGHT
-        + NAV_SCROLL_TOP_GAP + NAV_CONTENT_TOP_PADDING
-    local leftPanelTop = navContentTop - 10
-    local navContentBottom = height - metrics.bottomMargin
-    local navCoreRight = metrics.navWidth + 2
-    LayoutMenuBackgroundLayer(layers.leftPanel, frame._customBgHolder,
-        { 0, navCoreRight, navCoreRight + 55 },
-        { leftPanelTop - 55, leftPanelTop, navContentBottom }
-    )
-
-    LayoutMenuBackgroundLayer(layers.bottomLeft, frame._customBgHolder,
-        { 3, metrics.navWidth - 2 },
-        { height - 58, height - 6 }
-    )
-
-    local unlockBottom = metrics.topMargin + 10 + UNLOCKMODE_BUTTON_HEIGHT
-    local unlockCoreRight = metrics.navWidth - 7
-    LayoutMenuBackgroundLayer(layers.unlock, frame._customBgHolder,
-        { 0, unlockCoreRight, unlockCoreRight + 182 },
-        { 0, unlockBottom - 2, unlockBottom + 2, unlockBottom + 202 }
-    )
-
-    local contentBorderLeft = metrics.contentInsetLeft - 8
-    local contentBorderTop = math.max(1, metrics.contentInsetTop - 27)
-    LayoutMenuBackgroundLayer(layers.right, frame._customBgHolder,
-        { contentBorderLeft, contentBorderLeft + 8, width },
-        { contentBorderTop, contentBorderTop + 8, height }
-    )
-
-    -- This is a fixed top-right cap. It must move with the right edge, never
-    -- crop at the current window width or stretch with the content panel.
-    LayoutMenuBackgroundLayer(layers.rightTop, frame._customBgHolder,
-        { width - 241, width },
-        { 0, 132 }
-    )
-
-    local background = palette.background or STYLE_PRESETS.kui_crimson.background
-    local tint = palette.accent or STYLE_PRESETS.kui_crimson.accent
-
-    for _, texture in ipairs(slices) do
-        if texture.SetDesaturated then
-            texture:SetDesaturated(true)
-        end
-    end
-
-    local tintLift = BlendStyleColor(
-        tint,
-        MakeStyleColor(1, 1, 1, 1),
-        0.34
-    )
-    for _, texture in ipairs(slices) do
-        texture:SetVertexColor(tintLift.r or 0.45, tintLift.g or 0.45, tintLift.b or 0.52, 1)
-    end
-
-    if frame._customBgLift then
-        frame._customBgLift:SetColorTexture(1, 1, 1, 0.03)
-        frame._customBgLift:Show()
-    end
-
-    -- No rectangular header wash: the base artwork and search halos already
-    -- provide the header background without a hard seam at the navigation edge.
-
-    for _, overlay in ipairs({
-        frame._customBgWash,
-        frame._customBgTopGlow,
-        frame._customBgBottomGlow,
-        frame._customBgRightGlow,
-}) do
-        if overlay then
-            overlay:Hide()
-        end
+    -- The canvas has one size; a layout or theme pass only repaints it. A
+    -- skin change on an open window crossfades.
+    if frame and frame._skinArtSets then
+        ApplyMenuSkinArt(frame, KT.MenuSkins:GetActive(), frame:IsShown())
     end
 end
 
@@ -3454,8 +3397,16 @@ local function UpdateMenuThemeVisuals(menu)
         KT:AddBorder(menu, 0.03, 0.03, 0.04, 0.98)
     end
 
-    if menu._closeTex then
-        menu._closeTex:SetVertexColor(text.r or 1, text.g or 1, text.b or 1, 1)
+    for _, key in ipairs({ "_closeBtn", "_reloadBtn", "_resetBtn", "_discordBtn", "_closeFooterBtn" }) do
+        if menu[key] and KT.Widgets and KT.Widgets.PaintPillButton then
+            KT.Widgets:PaintPillButton(menu[key])
+        end
+    end
+    if menu._pageTitle then
+        menu._pageTitle:SetTextColor(text.r or 1, text.g or 1, text.b or 1, 1)
+    end
+    if menu._pageDesc then
+        menu._pageDesc:SetTextColor(muted.r or 0.74, muted.g or 0.74, muted.b or 0.78, 1)
     end
     if menu._logoTex then
         if menu._logoTex.SetDesaturated then
@@ -3498,22 +3449,10 @@ local function UpdateMenuThemeVisuals(menu)
 	menu._versionText:SetText(string.format("|cff%02x%02x%02xv%s|r", vr, vg, vb, menu._versionValue or (KT.VERSION or "5.1.7")))
     end
 
-    for _, btn in ipairs(menu._sizePresetButtons or {}) do
-        if KT.SolidButton then KT.SolidButton.Refresh(btn) end
+    if menu._sizeSlider and menu._sizeSlider.Repaint then
+        menu._sizeSlider:Repaint()
     end
 
-    if menu._reloadBtn and KT.ShineButton then KT.ShineButton.Refresh(menu._reloadBtn) end
-    if menu._resetBtn and KT.ShineButton then KT.ShineButton.Refresh(menu._resetBtn) end
-    if menu._discordBtn and KT.AddBorder then
-        KT:AddBorder(menu._discordBtn, accent.r or 1, accent.g or 0, accent.b or 0.333, 0.7)
-    end
-    if menu._discordIcon then
-        menu._discordIcon:SetVertexColor(accent.r or 1, accent.g or 0, accent.b or 0.333, 1)
-    end
-    if menu._resizeGrip and menu._resizeGrip._texture then
-        menu._resizeGrip._texture:SetVertexColor(
-            accent.r or 1, accent.g or 0, accent.b or 0.333, 0.9)
-    end
 
     if menu._stickyPreviewHost and KT.AddBorder then
         KT:AddBorder(menu._stickyPreviewHost, accent.r or 1, accent.g or 0, accent.b or 0.333, 0.65)
@@ -3527,11 +3466,6 @@ local function UpdateMenuThemeVisuals(menu)
     end
 
     if menu._ktUnlockShortcut and menu._ktUnlockShortcut.UpdateVisual then
-        if menu._ktUnlockShortcut.iconBox and KT.AddBackdrop then
-            local unlockActive = (KT and KT._unlockActive) or false
-            local bgR, bgG, bgB, bgA = GetMenuNavBackdropTint(unlockActive)
-            KT:AddBackdrop(menu._ktUnlockShortcut.iconBox, bgR, bgG, bgB, bgA)
-        end
         menu._ktUnlockShortcut:UpdateVisual()
     end
 
@@ -3547,39 +3481,80 @@ local function UpdateMenuThemeVisuals(menu)
     end
     if menu._navButtons then
         for _, btn in ipairs(menu._navButtons) do
-            ApplyMenuNavButtonTheme(btn, ns.activePageId == btn.pageId)
-            ApplyMenuNavButtonIconStyle(btn)
+            if btn.UpdateVisual then btn:UpdateVisual() end
         end
     end
 
     UpdateMenuBackgroundLayout(menu)
 end
 
-local function ApplyMenuCustomSize(frame, width, height)
-    if not frame then return end
+local function GetSavedMenuScale()
     local profile = KT and KT.db and KT.db.profile
-    width, height = ClampMenuSize(width, height)
-    if profile then
-        profile.menuCustomWidth = width
-        profile.menuCustomHeight = height
-    end
-    frame:SetSize(width, height)
-    UpdateMenuLayoutForSize(frame)
+    return SnapMenuScale(profile and profile.menuScale or 1)
 end
 
-local function ApplyResponsiveMenuMetrics(frame)
-    if not frame then return end
+local function GetTargetMenuFrameScale(userScale)
+    local physW, physH = GetPhysicalScreenSize()
+    local screenW = UIParent and UIParent:GetWidth() or nil
+    local screenH = UIParent and UIParent:GetHeight() or nil
+    return ComputeMenuFrameScale(screenW, screenH, tonumber(physW), tonumber(physH), userScale)
+end
 
-    local minWidth, minHeight, maxWidth, maxHeight = GetMenuSizeBounds()
-    if type(frame.SetResizeBounds) == "function" then
-        frame:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight)
-    elseif type(frame.SetMinResize) == "function" and type(frame.SetMaxResize) == "function" then
-        frame:SetMinResize(minWidth, minHeight)
-        frame:SetMaxResize(maxWidth, maxHeight)
+-- Moves the window to a new scale while its centre stays where it is on
+-- screen. Animated changes glide for MENU_SCALE_GLIDE seconds; a new target
+-- mid-glide carries on from the current scale.
+local MENU_SCALE_GLIDE = 0.15
+
+local function PlaceMenuAtScale(frame, scale, screenX, screenY)
+    frame:SetScale(scale)
+    if screenX and screenY then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", screenX / scale, screenY / scale)
+    end
+end
+
+local function SetMenuScale(frame, userScale, animate)
+    if not frame then return end
+    userScale = SnapMenuScale(userScale)
+    local profile = KT and KT.db and KT.db.profile
+    if profile then profile.menuScale = userScale end
+
+    local target = GetTargetMenuFrameScale(userScale)
+    local from = frame:GetScale() or target
+    local cx, cy = frame:GetCenter()
+    local screenX, screenY = cx and cx * from, cy and cy * from
+
+    if not animate or math.abs(from - target) < 0.0005 then
+        frame._scaleGlide = nil
+        PlaceMenuAtScale(frame, target, screenX, screenY)
+        return
     end
 
-    local width, height = GetResponsiveMenuSize()
-    frame:SetSize(width, height)
+    frame._scaleGlide = { from = from, to = target, elapsed = 0, x = screenX, y = screenY }
+    if not frame._scaleGlider then
+        frame._scaleGlider = CreateFrame("Frame", nil, frame)
+    end
+    frame._scaleGlider:SetScript("OnUpdate", function(self, elapsed)
+        local glide = frame._scaleGlide
+        if not glide then self:SetScript("OnUpdate", nil) return end
+        glide.elapsed = glide.elapsed + elapsed
+        local t = math.min(1, glide.elapsed / MENU_SCALE_GLIDE)
+        local eased = 1 - (1 - t) * (1 - t)
+        PlaceMenuAtScale(frame, glide.from + (glide.to - glide.from) * eased, glide.x, glide.y)
+        if t >= 1 then
+            frame._scaleGlide = nil
+            self:SetScript("OnUpdate", nil)
+        end
+    end)
+end
+
+local function ApplyFixedMenuMetrics(frame)
+    if not frame then return end
+    local profile = KT and KT.db and KT.db.profile
+    local _, physH = GetPhysicalScreenSize()
+    MigrateMenuSizeProfile(profile, physH)
+    frame:SetSize(MENU_W, MENU_H)
+    frame:SetScale(GetTargetMenuFrameScale(GetSavedMenuScale()))
     UpdateMenuLayoutForSize(frame)
 end
 
@@ -3846,46 +3821,25 @@ end
 -- BLOQUES DE OPCIONES (DOS COLUMNAS)
 -- ============================================================================
 local function CreateOptionBlock(parent, title, x, y, width)
-    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(width, 40)
     frame:SetPoint("TOPLEFT", x, y)
-    local accentR, accentG, accentB = GetMenuAccentColor()
-    KT:AddBackdrop(frame, 0.025, 0.025, 0.032, 0.98)
-    KT:AddBorder(frame, accentR, accentG, accentB, 0.38)
-
-    local headerBand = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
-    headerBand:SetPoint("TOPLEFT", 1, -1)
-    headerBand:SetPoint("TOPRIGHT", -1, -1)
-    headerBand:SetHeight(23)
-    headerBand:SetColorTexture(accentR, accentG, accentB, 0.10)
-
-    local accentRail = frame:CreateTexture(nil, "ARTWORK")
-    accentRail:SetPoint("TOPLEFT", 1, -1)
-    accentRail:SetPoint("BOTTOMLEFT", 1, 1)
-    accentRail:SetWidth(3)
-    accentRail:SetColorTexture(accentR, accentG, accentB, 0.82)
-
-    local titleText = frame:CreateFontString(nil, "OVERLAY")
-    titleText:SetFont(KT.FONT_PATH, 10, "OUTLINE")
-    titleText:SetTextColor(accentR, accentG, accentB, 1)
-    titleText:SetPoint("TOPLEFT", 10, -8)
-    local header = LText(title) or ""
-    if type(header) == "string" then
-        header = header:upper()
-    end
-    titleText:SetText(header)
+    -- Layered card (Widgets.lua): rounded front, back plate that lights on
+    -- hover, and a header with a pill and the title in normal case.
+    KT.Widgets:StyleCard(frame, { title = title })
 
     local content = CreateFrame("Frame", nil, frame)
-    content:SetPoint("TOPLEFT", 0, -24)
+    content:SetPoint("TOPLEFT", 0, -KT.Widgets.CARD_HEADER_H)
     content:SetWidth(width)
     content:SetHeight(1)
     content.rowCounter = 0
+    content._ktBlockContent = true
 
     return frame, content
 end
 
 local function FinalizeOptionBlock(frame, content, contentHeight)
-    local headerH = 24
+    local headerH = KT.Widgets.CARD_HEADER_H
     local bottomPad = 10
     local total = headerH + contentHeight + bottomPad
     content:SetHeight(contentHeight)
@@ -3894,8 +3848,9 @@ local function FinalizeOptionBlock(frame, content, contentHeight)
 end
 
 local function BeginOptionBlocks(sc, startY, opts)
-    local gap = (opts and opts.gap) or 12
-    local columnGap = (opts and opts.columnGap) or 14
+    -- Room for the card back plates that peek out (and spread on hover).
+    local gap = (opts and opts.gap) or 18
+    local columnGap = (opts and opts.columnGap) or 16
     local fullW = sc:GetWidth()
     -- Reserve a right margin so two-column option blocks never sit flush against
     -- the frame border. leftX keeps the existing left pad; the right edge of the
@@ -4036,9 +3991,18 @@ local function UpdateStickyPreviewLayout(menu)
     local yOff = opts.y or -10
 
     host:SetHeight(GetStickyPreviewHeight(frame, opts))
+    -- The pinned preview must sit above every scrolled option widget. Those
+    -- nest several frame levels deep inside the scroll child, so the old fixed
+    -- +20 let them draw over (and through) the preview while scrolling.
+    local sf = menu.scrollFrame
+    if sf then
+        host:SetFrameLevel(math.min((sf:GetFrameLevel() or 1) + 200, 9000))
+    end
     host:Show()
 
     frame:SetParent(host)
+    frame:SetFrameStrata(host:GetFrameStrata())
+    frame:SetFrameLevel(host:GetFrameLevel() + 1)
     frame:ClearAllPoints()
     frame:SetPoint(point, host, relativePoint, xOff, yOff)
     frame:Show()
@@ -4208,98 +4172,24 @@ local function GetOverviewModuleIcon(pageId)
     return ICON_PATH .. iconName .. ".png", iconName
 end
 
-local function CreateCategoryOverviewModuleButton(parent, menu, page, x, y, width)
-    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    btn:SetSize(width, 104)
-    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
-
-    local accentR, accentG, accentB = GetMenuAccentColor()
-    if KT.AddBackdrop then
-        KT:AddBackdrop(btn, 0.025, 0.025, 0.035, 0.96)
-    end
-    if KT.AddBorder then
-        KT:AddBorder(btn, accentR, accentG, accentB, 0.36)
-    end
-
-    local background = btn:CreateTexture(nil, "BACKGROUND")
-    background:SetAllPoints()
-    background:SetTexture(ns.CATEGORY_OVERVIEW_TEXTURE)
-    background:SetVertexColor(accentR, accentG, accentB, 0.08)
-    btn._overviewBackground = background
-
-    local accentBar = btn:CreateTexture(nil, "ARTWORK")
-    accentBar:SetWidth(4)
-    accentBar:SetPoint("TOPLEFT")
-    accentBar:SetPoint("BOTTOMLEFT")
-    accentBar:SetColorTexture(accentR, accentG, accentB, 0.72)
-
-    local iconBox = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-    iconBox:SetSize(72, 50)
-    iconBox:SetPoint("LEFT", btn, "LEFT", 13, 0)
-    if KT.AddBackdrop then
-        local bgR, bgG, bgB, bgA = GetMenuNavBackdropTint(false)
-        KT:AddBackdrop(iconBox, bgR, bgG, bgB, bgA)
-    end
-    if KT.AddBorder then
-        KT:AddBorder(iconBox, accentR, accentG, accentB, 0.52)
-    end
-
-    local icon = iconBox:CreateTexture(nil, "OVERLAY")
-    icon:SetSize(60, 40)
-    icon:SetPoint("CENTER")
+local function CreateCategoryOverviewModuleButton(parent, menu, page, x, y, width, height, index)
+    -- Gradient-border module card (Widgets.lua W:ModuleCard).
     local iconTexture, iconName = GetOverviewModuleIcon(page.id)
-    icon:SetTexture(iconTexture)
-    btn.ico = icon
+    local style = ns.PAGE_ICON_STYLE_MAP[page.id] or {}
+    local btn = KT.Widgets:ModuleCard(parent, {
+        width = width,
+        height = height,
+        icon = iconTexture,
+        iconCoords = style.texCoord,
+        iconKeep = ns.MENU_ICON_PRESERVE_COLOR[iconName or ""],
+        title = LText(page.label or page.id),
+        description = LText(ns.MODULE_DESCRIPTION_MAP[page.id] or "Open this module's configuration options."),
+        button = LText("Open"),
+        index = string.format("%02d", index or 0),
+        onClick = function() LoadPage(menu, page.id) end,
+    })
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
     btn._iconName = iconName
-    ApplyMenuNavButtonIconStyle(btn)
-    ApplyMenuNavButtonIconLayout(btn, page.id)
-
-    local title = btn:CreateFontString(nil, "OVERLAY")
-    title:SetFont(KT.FONT_PATH, 13, "OUTLINE")
-    title:SetPoint("TOPLEFT", iconBox, "TOPRIGHT", 13, -6)
-    title:SetPoint("RIGHT", btn, "RIGHT", -28, 0)
-    title:SetJustifyH("LEFT")
-    title:SetText(LText(page.label or page.id))
-    title:SetTextColor(1, 1, 1, 1)
-
-    local description = btn:CreateFontString(nil, "OVERLAY")
-    description:SetFont(KT.FONT_PATH, 10, "")
-    description:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -7)
-    description:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -24, 12)
-    description:SetJustifyH("LEFT")
-    description:SetJustifyV("TOP")
-    description:SetWordWrap(true)
-    description:SetText(LText(ns.MODULE_DESCRIPTION_MAP[page.id] or "Open this module's configuration options."))
-    description:SetTextColor(0.72, 0.72, 0.76, 1)
-
-    local arrow = btn:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(14, 10)
-    arrow:SetPoint("RIGHT", btn, "RIGHT", -9, 0)
-    arrow:SetTexture(ICON_PATH .. "right_arrow.png")
-    arrow:SetVertexColor(accentR, accentG, accentB, 0.76)
-
-    btn:SetScript("OnEnter", function(self)
-        self._overviewBackground:SetVertexColor(accentR, accentG, accentB, 0.17)
-        if KT.AddBorder then
-            KT:AddBorder(self, accentR, accentG, accentB, 0.9)
-            KT:AddBorder(iconBox, accentR, accentG, accentB, 0.9)
-        end
-        title:SetTextColor(accentR, accentG, accentB, 1)
-        arrow:SetVertexColor(accentR, accentG, accentB, 1)
-    end)
-    btn:SetScript("OnLeave", function(self)
-        self._overviewBackground:SetVertexColor(accentR, accentG, accentB, 0.08)
-        if KT.AddBorder then
-            KT:AddBorder(self, accentR, accentG, accentB, 0.36)
-            KT:AddBorder(iconBox, accentR, accentG, accentB, 0.52)
-        end
-        title:SetTextColor(1, 1, 1, 1)
-        arrow:SetVertexColor(accentR, accentG, accentB, 0.76)
-    end)
-    btn:SetScript("OnClick", function()
-        LoadPage(menu, page.id)
-    end)
-
     return btn
 end
 
@@ -4314,60 +4204,15 @@ local function BuildCategoryOverview(menu, sc, categoryId)
     local y = 0
     local accentR, accentG, accentB = GetMenuAccentColor()
 
-    local hero = CreateFrame("Frame", nil, sc, "BackdropTemplate")
-    hero:SetSize(contentWidth, 106)
+    -- Starfield header card (Widgets.lua W:StarHero).
+    local hero = KT.Widgets:StarHero(sc, {
+        width = contentWidth,
+        height = 110,
+        eyebrow = LText("MODULE CATEGORY"),
+        title = LText(category.label),
+        subtitle = LText(ns.CATEGORY_DESCRIPTION_MAP[categoryId] or "Choose a module to open its configuration."),
+    })
     hero:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -y)
-    if KT.AddBackdrop then
-        KT:AddBackdrop(hero, 0.02, 0.02, 0.028, 0.98)
-    end
-    if KT.AddBorder then
-        KT:AddBorder(hero, accentR, accentG, accentB, 0.58)
-    end
-
-    local heroAccent = hero:CreateTexture(nil, "ARTWORK")
-    heroAccent:SetHeight(3)
-    heroAccent:SetPoint("TOPLEFT")
-    heroAccent:SetPoint("TOPRIGHT")
-    heroAccent:SetColorTexture(accentR, accentG, accentB, 1)
-
-    local categoryIconBox = CreateFrame("Frame", nil, hero, "BackdropTemplate")
-    categoryIconBox:SetSize(74, 52)
-    categoryIconBox:SetPoint("LEFT", hero, "LEFT", 18, 0)
-    if KT.AddBackdrop then
-        KT:AddBackdrop(categoryIconBox, 0.035, 0.035, 0.045, 0.98)
-    end
-    if KT.AddBorder then
-        KT:AddBorder(categoryIconBox, accentR, accentG, accentB, 0.72)
-    end
-
-    local categoryIcon = categoryIconBox:CreateTexture(nil, "OVERLAY")
-    categoryIcon:SetSize(60, 40)
-    categoryIcon:SetPoint("CENTER")
-    categoryIcon:SetTexture(CATEGORY_ICON_PATH .. category.icon .. ".png")
-    local iconR, iconG, iconB = GetMenuIconVertexColor(category.icon or "")
-    categoryIcon:SetVertexColor(iconR, iconG, iconB, 1)
-
-    local eyebrow = hero:CreateFontString(nil, "OVERLAY")
-    eyebrow:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-    eyebrow:SetPoint("TOPLEFT", categoryIconBox, "TOPRIGHT", 16, -2)
-    eyebrow:SetText(LText("MODULE CATEGORY"))
-    eyebrow:SetTextColor(accentR, accentG, accentB, 1)
-
-    local title = hero:CreateFontString(nil, "OVERLAY")
-    title:SetFont(KT.FONT_PATH, 18, "OUTLINE")
-    title:SetPoint("TOPLEFT", eyebrow, "BOTTOMLEFT", 0, -5)
-    title:SetPoint("RIGHT", hero, "RIGHT", -18, 0)
-    title:SetJustifyH("LEFT")
-    title:SetText(LText(category.label))
-    title:SetTextColor(1, 1, 1, 1)
-
-    local subtitle = hero:CreateFontString(nil, "OVERLAY")
-    subtitle:SetFont(KT.FONT_PATH, 10, "")
-    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -7)
-    subtitle:SetPoint("RIGHT", hero, "RIGHT", -18, 0)
-    subtitle:SetJustifyH("LEFT")
-    subtitle:SetText(LText(ns.CATEGORY_DESCRIPTION_MAP[categoryId] or "Choose a module to open its configuration."))
-    subtitle:SetTextColor(0.72, 0.72, 0.76, 1)
 
     y = y + 124
 
@@ -4389,16 +4234,16 @@ local function BuildCategoryOverview(menu, sc, categoryId)
 
     y = y + 27
 
-    local gap = 12
-    local columns = contentWidth >= 660 and 2 or 1
+    local gap = 16
+    local columns = (contentWidth >= 820 and 3) or (contentWidth >= 540 and 2) or 1
     local cardWidth = math.floor((contentWidth - (gap * (columns - 1))) / columns)
-    local cardHeight = 104
-    local rowGap = 12
+    local cardHeight = 200
+    local rowGap = 18
 
     for index, page in ipairs(categoryPages) do
         local column = (index - 1) % columns
         local row = math.floor((index - 1) / columns)
-        CreateCategoryOverviewModuleButton(sc, menu, page, 10 + column * (cardWidth + gap), y + row * (cardHeight + rowGap), cardWidth)
+        CreateCategoryOverviewModuleButton(sc, menu, page, 10 + column * (cardWidth + gap), y + row * (cardHeight + rowGap), cardWidth, cardHeight, index)
     end
 
     local rows = math.ceil(#categoryPages / columns)
@@ -4448,6 +4293,10 @@ LoadCategoryOverview = function(menu, categoryId, forceReload, preserveScroll)
     end
 
     ClearStickyPreview(menu)
+    if menu._tabBand then menu._tabBand:Clear() end
+    if menu.SetPageHeading then
+        menu:SetPageHeading(LText(CATEGORY_BY_ID[categoryId].label), LText(ns.CATEGORY_DESCRIPTION_MAP[categoryId] or ""))
+    end
     for _, region in ipairs({sc:GetRegions()}) do
         region:Hide()
     end
@@ -4492,32 +4341,25 @@ LoadPage = function(menu, pageId, forceReload, preserveScroll)
         profile.menuOpenCategory = categoryId
     end
 
-    for id, btn in pairs(ns.navButtons) do
-        if id == pageId then
-            btn:SetAlpha(1)
-            if btn.selBar then btn.selBar:Show() end
-            if btn.selBg  then btn.selBg:Show()  end
-            if btn.lbl    then btn.lbl:SetTextColor(1, 1, 1, 1) end
-            if btn.iconBox then
-                btn.iconBox:SetAlpha(1)
-                ApplyMenuNavButtonTheme(btn, true)
-            end
-            ApplyMenuNavButtonIconStyle(btn)
-        else
-            btn:SetAlpha(0.55)
-            if btn.selBar then btn.selBar:Hide() end
-            if btn.selBg  then btn.selBg:Hide()  end
-            if btn.lbl    then btn.lbl:SetTextColor(0.78, 0.78, 0.78, 1) end
-            if btn.iconBox then
-                btn.iconBox:SetAlpha(0.92)
-                ApplyMenuNavButtonTheme(btn, false)
-            end
-            ApplyMenuNavButtonIconStyle(btn)
-        end
+    for _, btn in pairs(ns.navButtons) do
+        if btn.UpdateVisual then btn:UpdateVisual() end
     end
 
     local sc = menu.scrollChild
     ClearStickyPreview(menu)
+    if menu._tabBand then menu._tabBand:Clear() end
+    if menu.SetPageHeading then
+        local label, description = pageId, nil
+        for _, page in ipairs(ns.pages) do
+            if page.id == pageId then
+                label, description = page.label or page.id, page.description
+                break
+            end
+        end
+        local category = CATEGORY_BY_ID[categoryId]
+        description = description or ns.MODULE_DESCRIPTION_MAP[pageId] or (category and category.label) or ""
+        menu:SetPageHeading(LText(label), LText(description))
+    end
     for _, region in ipairs({sc:GetRegions()}) do
         region:Hide()
     end
@@ -4647,8 +4489,18 @@ local function CreateMenuFrame()
     f:SetSize(MENU_W, MENU_H)
     f:SetPoint("CENTER")
     f:SetFrameStrata("FULLSCREEN_DIALOG")
+    -- Blizzard popups (reload, confirmations) live in DIALOG, below this
+    -- window: lift them over it while the menu is open.
+    for i = 1, (STATICPOPUP_NUMDIALOGS or 4) do
+        local popup = _G["StaticPopup" .. i]
+        if popup and popup.HookScript then
+            popup:HookScript("OnShow", function(self)
+                self:SetFrameStrata(f:IsShown() and "TOOLTIP" or "DIALOG")
+            end)
+        end
+    end
     f:SetMovable(true)
-    f:SetResizable(true)
+    f:SetResizable(false)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
@@ -4665,33 +4517,9 @@ local function CreateMenuFrame()
     bgHolder:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 5))
     f._customBgHolder = bgHolder
 
-    local basePath = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\CapasFondo\\"
-    
-    local backgroundTextures = {}
-    local backgroundLayers = {}
-
-    backgroundLayers.fondo = CreateMenuBackgroundLayer(bgHolder, basePath .. "Fondo.png",
-        { 0, 1307 }, { 0, 953 }, -7, backgroundTextures)
-    backgroundLayers.leftPanel = CreateMenuBackgroundLayer(bgHolder, basePath .. "LeftPanel.png",
-        { 0, 294, 349 }, { 109, 164, 894 }, -6, backgroundTextures)
-    backgroundLayers.bottomLeft = CreateMenuBackgroundLayer(bgHolder, basePath .. "BottomLeftDivisor.png",
-        { 3, 290 }, { 895, 947 }, -5, backgroundTextures)
-    backgroundLayers.right = CreateMenuBackgroundLayer(bgHolder, basePath .. "RightDivisor.png",
-        { 311, 319, 1307 }, { 71, 79, 953 }, -5, backgroundTextures)
-    backgroundLayers.rightTop = CreateMenuBackgroundLayer(bgHolder, basePath .. "RightTopDivisor.png",
-        { 1066, 1307 }, { 0, 132 }, -5, backgroundTextures)
-    backgroundLayers.unlock = CreateMenuBackgroundLayer(bgHolder, basePath .. "UnlockModeDivisor.png",
-        { 0, 285, 467 }, { 0, 152, 156, 356 }, -5, backgroundTextures)
-
-    f._customBgLayers = backgroundLayers
-    f._customBgSlices = backgroundTextures
+    InstallMenuSkinArt(f)
     -- Alias retained for the existing background-ready checks.
-    f._customBg = backgroundLayers.fondo.textures[1][1]
-
-    local customBgLift = bgHolder:CreateTexture(nil, "BACKGROUND", nil, -6)
-    customBgLift:SetAllPoints(bgHolder)
-    customBgLift:SetColorTexture(1, 1, 1, 0.05)
-    f._customBgLift = customBgLift
+    f._customBg = f._skinArt.base
 
     local logoTex = f:CreateTexture(nil, "ARTWORK", nil, 1)
     logoTex:SetSize(80, 80)
@@ -4700,76 +4528,137 @@ local function CreateMenuFrame()
     f._logoTex = logoTex
 
     -- Corrupted generated comment removed.
-    local closeBtn = CreateFrame("Button", nil, f)
-    closeBtn:SetSize(30, 30)
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -34)
-    local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeTex:SetSize(16, 16)
-    closeTex:SetPoint("CENTER")
-    closeTex:SetTexture(ICON_PATH .. "kui-close.png")
-    closeBtn:SetScript("OnClick",  function() KT:OpenMenu() end)
-    closeBtn:SetScript("OnEnter",  function() closeTex:SetVertexColor(1, 0.3, 0.3, 1) end)
-    closeBtn:SetScript("OnLeave",  function() closeTex:SetVertexColor(0.6, 0.6, 0.6, 1) end)
-    f._closeTex = closeTex
+    local closeBtn = KT.Widgets:PillButton(f, "", {
+        width = 30, height = 30, radius = 8, iconSize = 14,
+        icon = ICON_PATH .. "kui-close.png",
+        onClick = function() KT:OpenMenu() end,
+    })
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -26, -30)
+    f._closeBtn = closeBtn
 
-    local presetAnchor = closeBtn
-    f._sizePresetButtons = {}
+    -- Window scale: the window keeps one size and this slider zooms it,
+    -- MENU_SCALE_MIN..MAX in MENU_SCALE_STEP steps. Dragging only previews the
+    -- percentage; the scale is applied when the drag ends. The mouse wheel
+    -- steps one notch and applies at once.
     local accentR, accentG, accentB = GetMenuAccentColor()
-    for i = #MENU_SIZE_PRESETS, 1, -1 do
-        local preset = MENU_SIZE_PRESETS[i]
-        local btn = CreateFrame("Button", nil, f)
-        btn:SetSize(32, 24)
-        btn:SetPoint("RIGHT", presetAnchor, "LEFT", -8, 0)
-        btn.preset = preset
-        btn.label = btn:CreateFontString(nil, "OVERLAY")
-        KT.SolidButton.Style(btn, { text = btn.label, fontSize = 11, color = { 0.06, 0.06, 0.08 }, borderColor = GetMenuAccentColor, borderAlpha = 0.55 })
-        KT.SolidButton.SetLabel(btn, preset.key)
-        btn:SetScript("OnClick", function(self)
-            ApplyMenuCustomSize(f, self.preset.width, self.preset.height)
-        end)
-        btn:SetScript("OnEnter", function(self)
-            if GameTooltip then
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(LText("Window Size: ") .. LText(self.preset.tooltip), 1, 1, 1)
-                GameTooltip:Show()
-            end
-        end)
-        btn:SetScript("OnLeave", function(self)
-            if GameTooltip then GameTooltip:Hide() end
-        end)
-        tinsert(f._sizePresetButtons, 1, btn)
-        presetAnchor = btn
+    -- One header line, vertically centred on the close button like the
+    -- search box (which anchors its right edge to this group, so the two
+    -- must share that centre): "Window Scale  [slider]  100%  X".
+    -- The percentage is an edit box: type a value and press Enter.
+    local sizeValue = CreateFrame("EditBox", nil, f)
+    sizeValue:SetFont(KT.FONT_PATH or STANDARD_TEXT_FONT, 11, "")
+    sizeValue:SetSize(42, 18)
+    sizeValue:SetJustifyH("RIGHT")
+    sizeValue:SetTextInsets(2, 3, 0, 0)
+    sizeValue:SetAutoFocus(false)
+    sizeValue:SetMaxLetters(5)
+    sizeValue:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    sizeValue:SetFrameLevel(closeBtn:GetFrameLevel())
+    local sizeValueLine = sizeValue:CreateTexture(nil, "BORDER")
+    sizeValueLine:SetPoint("BOTTOMLEFT", 0, 0)
+    sizeValueLine:SetPoint("BOTTOMRIGHT", 0, 0)
+    sizeValueLine:SetHeight(1)
+    f._sizeValue = sizeValue
+
+    local scaleMinPct = math.floor(MENU_SCALE_MIN * 100 + 0.5)
+    local scaleMaxPct = math.floor(MENU_SCALE_MAX * 100 + 0.5)
+    local scaleStepPct = math.floor(MENU_SCALE_STEP * 100 + 0.5)
+
+    local sizeSlider = CreateFrame("Slider", nil, f)
+    sizeSlider:SetOrientation("HORIZONTAL")
+    sizeSlider:SetSize(80, 16)
+    sizeSlider:SetPoint("RIGHT", sizeValue, "LEFT", -8, 0)
+    sizeSlider:SetFrameLevel(closeBtn:GetFrameLevel())
+    sizeSlider:SetMinMaxValues(scaleMinPct, scaleMaxPct)
+    sizeSlider:SetValueStep(scaleStepPct)
+    if sizeSlider.SetObeyStepOnDrag then sizeSlider:SetObeyStepOnDrag(true) end
+    sizeSlider:EnableMouseWheel(true)
+
+    local sizeTrack = KT.Widgets:RoundRect(sizeSlider, "BACKGROUND", 0, 2)
+    sizeTrack:SetPoint("LEFT", sizeSlider, "LEFT", 0, 0)
+    sizeTrack:SetPoint("RIGHT", sizeSlider, "RIGHT", 0, 0)
+    sizeTrack:SetHeight(4)
+    sizeTrack:SetColor(KT.MenuSkins:Color("controlTrack"))
+    local sizeFill = KT.Widgets:RoundRect(sizeSlider, "ARTWORK", 0, 2)
+    sizeFill:SetPoint("LEFT", sizeSlider, "LEFT", 0, 0)
+    sizeFill:SetHeight(4)
+    local sizeThumb = sizeSlider:CreateTexture(nil, "OVERLAY")
+    sizeThumb:SetTexture(KT.MenuSkins.TEXTURE_PATH .. "round_disc")
+    sizeThumb:SetSize(12, 12)
+    sizeSlider:SetThumbTexture(sizeThumb)
+    local sizeCaption = f:CreateFontString(nil, "OVERLAY")
+    sizeCaption:SetFont(KT.FONT_PATH or STANDARD_TEXT_FONT, 11, "")
+    sizeCaption:SetPoint("RIGHT", sizeSlider, "LEFT", -10, 0)
+    sizeCaption:SetText(LText("Window Scale"))
+    f._sizeCaption = sizeCaption
+
+    local function PaintSize(value)
+        local w = sizeSlider:GetWidth()
+        local t = ((value or scaleMinPct) - scaleMinPct) / (scaleMaxPct - scaleMinPct)
+        sizeFill:SetWidth(math.max(0.01, w * math.max(0, math.min(1, t))))
+        if not sizeValue:HasFocus() then
+            sizeValue:SetText(string.format("%d%%", value or 100))
+        end
     end
-
-    local resizeGrip = CreateFrame("Button", nil, f)
-    resizeGrip:SetSize(40, 30)
-    resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
-    resizeGrip:RegisterForDrag("LeftButton")
-    resizeGrip:SetFrameLevel(f:GetFrameLevel() + 20)
-    f._resizeGrip = resizeGrip
-
-    local gripTexture = resizeGrip:CreateTexture(nil, "ARTWORK")
-    gripTexture:SetSize(27, 19)
-    gripTexture:SetPoint("BOTTOMRIGHT", resizeGrip, "BOTTOMRIGHT", -1, 1)
-    gripTexture:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\arrowlauncher.png")
-    gripTexture:SetVertexColor(accentR, accentG, accentB, 0.9)
-    resizeGrip._texture = gripTexture
-    resizeGrip:SetScript("OnEnter", function(self)
-        self._texture:SetVertexColor(1, 1, 1, 1)
+    function sizeSlider:Repaint()
+        local r, g, b = GetMenuAccentColor()
+        local _, _, _, _, muted = GetMenuPaletteColors()
+        sizeFill:SetColor(r, g, b, 1)
+        sizeTrack:SetColor(KT.MenuSkins:Color("controlTrack"))
+        sizeThumb:SetVertexColor(1, 1, 1, 1)
+        sizeValue:SetTextColor(muted.r or 0.74, muted.g or 0.74, muted.b or 0.78, 1)
+        sizeValueLine:SetColorTexture(r, g, b, sizeValue:HasFocus() and 1 or 0.35)
+        sizeCaption:SetTextColor(muted.r or 0.74, muted.g or 0.74, muted.b or 0.78, 1)
+        PaintSize(math.floor(self:GetValue() + 0.5))
+    end
+    function sizeSlider:Sync()
+        self._ktSyncing = true
+        self:SetValue(math.floor(GetSavedMenuScale() * 100 + 0.5))
+        self._ktSyncing = nil
+        PaintSize(math.floor(self:GetValue() + 0.5))
+    end
+    local function ApplySliderScale()
+        SetMenuScale(f, sizeSlider:GetValue() / 100, true)
+    end
+    sizeSlider:SetScript("OnValueChanged", function(self, value)
+        PaintSize(math.floor(value + 0.5))
+        if self._ktSyncing or self._ktDragging then return end
+        ApplySliderScale()
     end)
-    resizeGrip:SetScript("OnLeave", function(self)
-        local lr, lg, lb = GetMenuAccentColor()
-        self._texture:SetVertexColor(lr, lg, lb, 0.9)
+    sizeSlider:SetScript("OnMouseDown", function(self) self._ktDragging = true end)
+    sizeSlider:SetScript("OnMouseUp", function(self)
+        self._ktDragging = nil
+        ApplySliderScale()
     end)
-    resizeGrip:SetScript("OnDragStart", function()
-        f._manualResizeActive = true
-        f:StartSizing("BOTTOMRIGHT")
+    sizeSlider:SetScript("OnMouseWheel", function(self, delta)
+        local step = delta > 0 and scaleStepPct or -scaleStepPct
+        self:SetValue(math.max(scaleMinPct, math.min(scaleMaxPct, self:GetValue() + step)))
     end)
-    resizeGrip:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        f._manualResizeActive = false
-        PersistManualMenuSize(f)
+    f:HookScript("OnShow", function() sizeSlider:Sync() end)
+    f._sizeSlider = sizeSlider
+    sizeValue:SetScript("OnEditFocusGained", function(self)
+        self:SetText(tostring(math.floor(sizeSlider:GetValue() + 0.5)))
+        self:HighlightText()
+        sizeSlider:Repaint()
     end)
+    sizeValue:SetScript("OnEditFocusLost", function()
+        sizeSlider:Repaint()
+    end)
+    sizeValue:SetScript("OnEnterPressed", function(self)
+        local typed = tonumber((self:GetText() or ""):match("%d+"))
+        self:ClearFocus()
+        if typed then
+            local value = math.max(scaleMinPct, math.min(scaleMaxPct, math.floor(typed + 0.5)))
+            if math.floor(sizeSlider:GetValue() + 0.5) ~= value then
+                sizeSlider:SetValue(value) -- OnValueChanged applies the scale
+            end
+        end
+        sizeSlider:Repaint()
+    end)
+    sizeValue:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    sizeSlider:Sync()
+    sizeSlider:Repaint()
+    local presetAnchor = sizeCaption
 
     f._searchHeaderRight = presetAnchor
 
@@ -4841,10 +4730,12 @@ local function CreateMenuFrame()
         return globalSearchIndex
     end
 
+    -- Wide search pill on the title line, from after the page title to the
+    -- scale control; the description runs underneath at full width.
     local searchBox = CreateFrame("EditBox", nil, f)
-    searchBox:SetHeight(35)
-    searchBox:SetPoint("RIGHT", f._searchHeaderRight, "LEFT", -20, 0)
-    searchBox:SetPoint("LEFT", f, "TOPLEFT", GetMenuLayoutMetrics(f).contentInsetLeft - 4, -49)
+    searchBox:SetHeight(34)
+    searchBox:SetPoint("LEFT", f, "TOPLEFT", NAV_W + CONTENT_PAD + 170, -45)
+    searchBox:SetPoint("RIGHT", f._searchHeaderRight, "LEFT", -18, 0)
     searchBox:SetFont(KT.FONT_PATH, 12, "OUTLINE")
     searchBox:SetAutoFocus(false)
     searchBox:SetTextInsets(44, 42, 0, 0)
@@ -4886,9 +4777,11 @@ local function CreateMenuFrame()
     f._searchClearTex = searchClearTex
 
     local searchDropdown = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    searchDropdown:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -4)
-    searchDropdown:SetPoint("TOPRIGHT", searchBox, "BOTTOMRIGHT", 0, -4)
+    searchDropdown:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -6)
+    searchDropdown:SetPoint("TOPRIGHT", searchBox, "BOTTOMRIGHT", 0, -6)
     searchDropdown:SetHeight(240)
+    -- Above every page widget (cards and previews raise their own levels).
+    searchDropdown:SetFrameStrata("TOOLTIP")
     searchDropdown:SetFrameLevel((f:GetFrameLevel() or 1) + 60)
     searchDropdown:EnableMouse(true)
     searchDropdown:Hide()
@@ -4900,7 +4793,7 @@ local function CreateMenuFrame()
     dropdownScroll:SetPoint("BOTTOMRIGHT", -20, 4)
     
     local dropdownContent = CreateFrame("Frame", nil, dropdownScroll)
-    dropdownContent:SetSize(searchBox:GetWidth() - 24, 1)
+    dropdownContent:SetSize(math.max(200, (searchDropdown:GetWidth() or 0) - 24), 1)
     dropdownScroll:SetScrollChild(dropdownContent)
     
     local dropdownSb = CreateFrame("Slider", nil, dropdownScroll)
@@ -4988,7 +4881,7 @@ local function CreateMenuFrame()
         end
         ApplyMenuScrollBarTheme(dropdownSb)
         searchDropdown:Show()
-        dropdownContent:SetWidth(searchBox:GetWidth() - 24)
+        dropdownContent:SetWidth(searchDropdown:GetWidth() - 24)
         local y = 0
         local btnHeight = 30
         for i, match in ipairs(matches) do
@@ -5122,6 +5015,38 @@ local function CreateMenuFrame()
     searchBox:SetScript("OnEnterPressed", SubmitSearch)
     f.searchBox = searchBox
 
+    -- Page heading: the module (or category) name and a one-line summary.
+    local pageTitle = f:CreateFontString(nil, "OVERLAY")
+    pageTitle:SetFont(KT.FONT_PATH, 24, "")
+    pageTitle:SetPoint("LEFT", f, "TOPLEFT", NAV_W + CONTENT_PAD, -45)
+    pageTitle:SetWidth(320)
+    pageTitle:SetJustifyH("LEFT")
+    pageTitle:SetWordWrap(false)
+    f._pageTitle = pageTitle
+
+    local pageDesc = f:CreateFontString(nil, "OVERLAY")
+    pageDesc:SetFont(KT.FONT_PATH, 12, "")
+    -- Its own line under the title row, clear of the search pill.
+    pageDesc:SetPoint("TOPLEFT", f, "TOPLEFT", NAV_W + CONTENT_PAD, -73)
+    pageDesc:SetWidth(CONTENT_W)
+    pageDesc:SetJustifyH("LEFT")
+    pageDesc:SetJustifyV("TOP")
+    pageDesc:SetWordWrap(true)
+    if pageDesc.SetMaxLines then pageDesc:SetMaxLines(1) end
+    f._pageDesc = pageDesc
+
+    -- The search pill starts right after the title, so it is as wide as the
+    -- title allows (the title is cut with "..." past 320px).
+    function f:SetPageHeading(title, description)
+        pageTitle:SetWidth(320)
+        pageTitle:SetText(title or "")
+        pageDesc:SetText(description or "")
+        local titleW = math.min(320, math.ceil(pageTitle:GetStringWidth() or 0))
+        pageTitle:SetWidth(math.max(1, titleW))
+        self._searchLeft = math.max(130, titleW + 32)
+        UpdateMenuLayoutForSize(self)
+    end
+
     -- Corrupted generated comment removed.
     local titleTex = f:CreateFontString(nil, "OVERLAY")
     titleTex:SetFont(KT.FONT_PATH, 13, "OUTLINE")
@@ -5137,8 +5062,8 @@ local function CreateMenuFrame()
     local nav = CreateFrame("Frame", nil, f)
     nav:SetFrameLevel((f:GetFrameLevel() or 1) + 10)
     nav:SetWidth(NAV_W)
-    nav:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -TOP_MARGIN)
-    nav:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, BOT_MARGIN)
+    nav:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -HEADER_H)
+    nav:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 64)
     f._navHost = nav
 
     local unlockBtn = EnsureUnlockModeShortcut(f)
@@ -5183,7 +5108,7 @@ local function CreateMenuFrame()
         local navH = navScroll:GetHeight()
         if navH and navH > 0 and yrange > 0.5 then
             if f._navContent then
-                f._navContent:SetWidth(math.max(180, (nav:GetWidth() or NAV_W) - 18))
+                f._navContent:SetWidth(math.max(180, (nav:GetWidth() or NAV_W) - 20))
             end
             navSb:Show()
             navSb:SetMinMaxValues(0, yrange)
@@ -5237,10 +5162,9 @@ local function CreateMenuFrame()
     f._moduleButtonsByCategory = {}
 
     local CATEGORY_BTN_H = 56
-    local CATEGORY_BTN_GAP = 6
-    local MODULE_BTN_H = 32
-    local MODULE_BTN_GAP = 2
-    local MODULE_INDENT = 26
+    local CATEGORY_BTN_GAP = 8
+    local MODULE_BTN_H = 42
+    local MODULE_BTN_GAP = 4
 
     local function ClearNavigationTable(tbl)
         for key in pairs(tbl) do
@@ -5360,99 +5284,49 @@ local function CreateMenuFrame()
         self:ReflowCategoryNavigation(revealPageId)
     end
 
+    -- Category rows: the category icon in a rounded chip, the name and a
+    -- chevron that points down while open and left while folded. An open
+    -- category keeps a faint band; hover lights a halo and slides the row.
     local function CreateCategoryButton(category)
         local btn = CreateFrame("Button", nil, navContent)
         local categoryId = category.id
         btn.categoryId = categoryId
         btn:SetHeight(CATEGORY_BTN_H)
-        btn:SetAlpha(0.62)
+        KT.Widgets:NavChip(btn, { inset = 6, right = 8, radius = 6, card = "shine", chip = { w = 48, h = 40, x = 8, radius = 9 } })
 
-        local selBg = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-        selBg:SetAllPoints()
-        selBg:Hide()
-        btn.selBg = selBg
-
-        local selBar = btn:CreateTexture(nil, "ARTWORK")
-        selBar:SetWidth(6)
-        selBar:SetPoint("TOPLEFT")
-        selBar:SetPoint("BOTTOMLEFT")
-        selBar:Hide()
-        btn.selBar = selBar
-
-        local hover = btn:CreateTexture(nil, "BACKGROUND")
-        hover:SetAllPoints()
-        hover:SetColorTexture(1, 1, 1, 0)
-        btn._hov = hover
-
-        local separator = btn:CreateTexture(nil, "ARTWORK")
-        separator:SetHeight(1)
-        separator:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 8, 0)
-        separator:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -8, 0)
-        separator:SetColorTexture(1, 1, 1, 0.05)
-        btn.sep = separator
-
-        local iconBox = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-        iconBox:SetSize(72, 48)
-        iconBox:SetPoint("LEFT", btn, "LEFT", 16, 0)
-        btn.iconBox = iconBox
-
-        local icon = iconBox:CreateTexture(nil, "OVERLAY")
-        icon:SetSize(60, 40)
-        icon:SetPoint("CENTER")
+        local icon = btn:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(48, 32)
+        icon:SetPoint("CENTER", btn._chipKT.box, "CENTER", 0, 0)
         icon:SetTexture(CATEGORY_ICON_PATH .. category.icon .. ".png")
         btn._iconName = category.icon
         btn.ico = icon
 
-        -- Reuse the MinimapButton drawer toggle artwork while leaving the
-        -- complete category row as the single click target. A nested button
-        -- here can consume or duplicate the parent click when collapsing.
-        local categoryToggle = CreateFrame("Frame", nil, btn)
-        categoryToggle:SetSize(20, 40)
-        categoryToggle:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
-        categoryToggle:EnableMouse(false)
-        btn.categoryToggle = categoryToggle
-
-        local arrow = categoryToggle:CreateTexture(nil, "ARTWORK")
-        arrow:SetPoint("CENTER")
-        arrow:SetSize(20, 20)
+        local arrow = btn:CreateTexture(nil, "ARTWORK")
+        arrow:SetSize(12, 12)
+        arrow:SetPoint("RIGHT", btn, "RIGHT", -18, 0)
         arrow:SetTexture(ICON_PATH .. "EnhancedFriendList\\ArrowDown.png")
-        arrow:SetTexCoord(0, 1, 0, 1)
-        arrow:SetDesaturated(false)
-        arrow:SetAlpha(0.92)
-        categoryToggle.Icon = arrow
         btn.arrow = arrow
+        btn._chevronKT = arrow
 
         local label = btn:CreateFontString(nil, "OVERLAY")
-        label:SetFont(KT.FONT_PATH, 12, "OUTLINE")
+        label:SetFont(KT.FONT_PATH, 13, "")
         label:SetText(LText(category.label))
-        label:SetPoint("LEFT", iconBox, "RIGHT", 12, 0)
-        label:SetPoint("RIGHT", categoryToggle, "LEFT", -6, 0)
-        label:SetHeight(40)
+        label:SetPoint("LEFT", btn._chipKT.box, "RIGHT", 12, 0)
+        label:SetPoint("RIGHT", arrow, "LEFT", -6, 0)
         label:SetJustifyH("LEFT")
-        label:SetJustifyV("MIDDLE")
-        label:SetWordWrap(true)
+        label:SetWordWrap(false)
         btn.lbl = label
 
         btn.UpdateVisual = function(self)
             local isOpen = IsCategoryOpen(categoryId)
             local isActiveCategory = GetActiveCategoryId() == categoryId
-
-            if self._hov then
-                self._hov:SetColorTexture(1, 1, 1, 0)
-            end
-            self:SetAlpha((isOpen or isActiveCategory) and 1 or 0.62)
-            if isActiveCategory then self.selBg:Show() else self.selBg:Hide() end
-            if isActiveCategory then self.selBar:Show() else self.selBar:Hide() end
-            self.iconBox:SetAlpha(isOpen and 1 or 0.92)
-            local textLevel = isActiveCategory and 1 or (isOpen and 0.9 or 0.78)
-            self.lbl:SetTextColor(textLevel, textLevel, textLevel, 1)
-            local accentR, accentG, accentB = GetMenuAccentColor()
-            self.arrow:SetRotation(isOpen and 0 or (math.pi * 1.5))
-            self.arrow:SetVertexColor(accentR, accentG, accentB, 1)
-            self.arrow:SetDesaturated(false)
-            self.arrow:SetAlpha(self:IsMouseOver() and 1 or 0.92)
-            ApplyMenuNavButtonTheme(self, isOpen or isActiveCategory)
-            ApplyMenuNavButtonIconStyle(self)
+            local hovered = self:IsMouseOver()
+            -- The shine row paints the label, chevron and icon in accent tints.
+            self._navLabelKT, self._navArrowKT, self._navIconKT = self.lbl, self.arrow, self.ico
+            self._navIconKeep = ns.MENU_ICON_PRESERVE_COLOR[self._iconName or ""]
+            if self._navIconKeep then ns.PaintMenuNavIcon(self, isOpen or isActiveCategory, hovered) end
+            self.arrow:SetRotation(isOpen and 0 or (-math.pi / 2))
+            KT.Widgets:NavChipState(self, (isOpen or isActiveCategory) and "open" or "rest", hovered)
         end
 
         local function ToggleCategory()
@@ -5460,27 +5334,16 @@ local function CreateMenuFrame()
             LoadCategoryOverview(f, categoryId)
         end
 
-        btn:SetScript("OnEnter", function(self)
-            if self.arrow then
-                self.arrow:SetAlpha(1)
-            end
-            if GetActiveCategoryId() ~= categoryId then
-                self._hov:SetColorTexture(1, 1, 1, 0.05)
-                if self.iconBox and KT.AddBorder then
-                    KT:AddBorder(self.iconBox, 1, 1, 1, 0.45)
-                end
-            end
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self._hov:SetColorTexture(1, 1, 1, 0)
-            self:UpdateVisual()
-        end)
+        btn:SetScript("OnEnter", function(self) self:UpdateVisual() end)
+        btn:SetScript("OnLeave", function(self) self:UpdateVisual() end)
         btn:SetScript("OnClick", ToggleCategory)
 
         btn:UpdateVisual()
         return btn
     end
 
+    -- Module rows: icon in a rounded chip and the name; the active one gets a
+    -- warm band, an accent icon and a 3px accent bar at its left edge.
     local function CreateModuleButton(page, categoryId)
         local btn = CreateFrame("Button", nil, navContent)
         local pageId = page.id
@@ -5488,35 +5351,11 @@ local function CreateMenuFrame()
         btn.categoryId = categoryId
         btn.isModuleButton = true
         btn:SetHeight(MODULE_BTN_H)
-        btn:SetAlpha(0.62)
+        KT.Widgets:NavChip(btn, { inset = 18, right = 8, radius = 6, barHeight = 20, card = "shine", chip = { w = 40, h = 30, x = 8, radius = 8 } })
 
-        local selBg = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-        selBg:SetPoint("TOPLEFT", btn, "TOPLEFT", 20, 0)
-        selBg:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-        selBg:Hide()
-        btn.selBg = selBg
-
-        local selBar = btn:CreateTexture(nil, "ARTWORK")
-        selBar:SetWidth(3)
-        selBar:SetPoint("TOPLEFT", btn, "TOPLEFT", 20, 0)
-        selBar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 20, 0)
-        selBar:Hide()
-        btn.selBar = selBar
-
-        local hover = btn:CreateTexture(nil, "BACKGROUND")
-        hover:SetPoint("TOPLEFT", btn, "TOPLEFT", 20, 0)
-        hover:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-        hover:SetColorTexture(1, 1, 1, 0)
-        btn._hov = hover
-
-        local iconBox = CreateFrame("Frame", nil, btn, "BackdropTemplate")
-        iconBox:SetSize(48, 28)
-        iconBox:SetPoint("LEFT", btn, "LEFT", MODULE_INDENT, 0)
-        btn.iconBox = iconBox
-
-        local icon = iconBox:CreateTexture(nil, "OVERLAY")
-        icon:SetSize(40, 26)
-        icon:SetPoint("CENTER")
+        local icon = btn:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(39, 26)
+        icon:SetPoint("CENTER", btn._chipKT.box, "CENTER", 0, 0)
         local iconName = ns.MODULE_ICON_MAP[pageId]
         if iconName then
             icon:SetTexture(MODULE_ICON_PATH .. iconName .. ".png")
@@ -5528,42 +5367,25 @@ local function CreateMenuFrame()
         btn.ico = icon
 
         local label = btn:CreateFontString(nil, "OVERLAY")
-        label:SetFont(KT.FONT_PATH, 12, "OUTLINE")
+        label:SetFont(KT.FONT_PATH, 13, "")
         label:SetText(LText(page.label))
-        label:SetPoint("LEFT", iconBox, "RIGHT", 10, 0)
-        label:SetPoint("RIGHT", btn, "RIGHT", -12, 0)
+        label:SetPoint("LEFT", btn._chipKT.box, "RIGHT", 11, 0)
+        label:SetPoint("RIGHT", btn, "RIGHT", -24, 0)
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
         btn.lbl = label
 
         btn.UpdateVisual = function(self)
             local isActive = ns.activePageId == pageId
-            self:SetAlpha(isActive and 1 or 0.62)
-            if isActive then
-                self.selBg:Show()
-                self.selBar:Show()
-            else
-                self.selBg:Hide()
-                self.selBar:Hide()
-            end
-            self.iconBox:SetAlpha(isActive and 1 or 0.88)
-            self.lbl:SetTextColor(isActive and 1 or 0.76, isActive and 1 or 0.76, isActive and 1 or 0.76, 1)
-            ApplyMenuNavButtonTheme(self, isActive)
-            ApplyMenuNavButtonIconStyle(self)
+            local hovered = self:IsMouseOver()
+            self._navLabelKT, self._navIconKT = self.lbl, self.ico
+            self._navIconKeep = ns.MENU_ICON_PRESERVE_COLOR[self._iconName or ""]
+            if self._navIconKeep then ns.PaintMenuNavIcon(self, isActive, hovered) end
+            KT.Widgets:NavChipState(self, isActive and "active" or "rest", hovered)
         end
 
-        btn:SetScript("OnEnter", function(self)
-            if ns.activePageId ~= pageId then
-                self._hov:SetColorTexture(1, 1, 1, 0.05)
-                if self.iconBox and KT.AddBorder then
-                    KT:AddBorder(self.iconBox, 1, 1, 1, 0.45)
-                end
-            end
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self._hov:SetColorTexture(1, 1, 1, 0)
-            self:UpdateVisual()
-        end)
+        btn:SetScript("OnEnter", function(self) self:UpdateVisual() end)
+        btn:SetScript("OnLeave", function(self) self:UpdateVisual() end)
         btn:SetScript("OnClick", function()
             LoadPage(f, pageId)
         end)
@@ -5664,63 +5486,58 @@ local function CreateMenuFrame()
 
     f:RebuildCategoryNavigation()
 
-    -- Botones Inferiores (Reload & Reset)
-    local discWidth = 34
-    local gap = 6
-    local navMargin = 10
-    local btnWidth = (NAV_W - (navMargin * 2) - discWidth - (gap * 2)) / 2
+    -- Reload UI and Discord stay at the bottom-left, under the sidebar; the
+    -- footer under the content holds Reset Profile and Close (the one
+    -- primary button), clear of the claw marks painted at the bottom-right cut.
+    local footer = CreateFrame("Frame", nil, f)
+    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", NAV_W, 10)
+    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 10)
+    footer:SetHeight(FOOTER_H - 10)
+    footer:SetFrameLevel((f:GetFrameLevel() or 1) + 14)
+    f._footer = footer
 
-    local reloadBtn = CreateFrame("Button", nil, f)
-    reloadBtn:SetSize(btnWidth - 10, 34)
-    reloadBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", navMargin, 15)
-    local reloadLbl = reloadBtn:CreateFontString(nil, "OVERLAY")
-    reloadLbl:SetFont(KT.FONT_PATH, 12, "OUTLINE")
-    reloadLbl:SetText(LText("Reload UI"))
-    reloadLbl:SetTextColor(1, 1, 1, 1)
-    reloadBtn:SetScript("OnClick", ReloadUI)
-    KT.ShineButton.Style(reloadBtn, { text = reloadLbl, fontSize = 12, color = { 0.55, 0.55, 0.62 } })
-    KT.ShineButton.SetLabel(reloadBtn, LText("Reload UI"))
+    local reloadBtn = KT.Widgets:PillButton(f, LText("Reload UI"), { width = 178, height = 34, ringAlways = true, onClick = ReloadUI })
+    reloadBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 18)
+    reloadBtn:SetFrameLevel((f:GetFrameLevel() or 1) + 14)
     f._reloadBtn = reloadBtn
-    f._reloadLabel = reloadLbl
 
-    local resetBtn = CreateFrame("Button", nil, f)
-    resetBtn:SetSize(btnWidth + 10, 34)
-    resetBtn:SetPoint("LEFT", reloadBtn, "RIGHT", gap, 0)
-    local resetLbl = resetBtn:CreateFontString(nil, "OVERLAY")
-    resetLbl:SetFont(KT.FONT_PATH, 12, "OUTLINE")
-    resetLbl:SetText(LText("Reset Profile"))
-    resetLbl:SetTextColor(1, 0.4, 0.4, 1)
-    resetBtn:SetScript("OnClick",  ResetConfirm)
-    KT.ShineButton.Style(resetBtn, { text = resetLbl, fontSize = 12, color = GetMenuAccentColor })
-    KT.ShineButton.SetLabel(resetBtn, LText("Reset Profile"))
-    f._resetBtn = resetBtn
-    f._resetLabel = resetLbl
-
-    local discordBtn = CreateFrame("Button", nil, f)
-    discordBtn:SetSize(discWidth, 34)
-    discordBtn:SetPoint("LEFT", resetBtn, "RIGHT", gap, 0)
-    if KT.AddBackdrop then KT:AddBackdrop(discordBtn, 0.15, 0.15, 0.2, 1) end
-    if KT.AddBorder then KT:AddBorder(discordBtn, 0.3, 0.3, 0.5, 0.7) end
-    local discIcon = discordBtn:CreateTexture(nil, "ARTWORK")
-    discIcon:SetSize(22, 22)
-    discIcon:SetPoint("CENTER")
-    discIcon:SetTexture(ICON_PATH .. "discord-2.png")
-    discordBtn:SetScript("OnClick", ShowDiscordPopup)
-    discordBtn:SetScript("OnEnter", function(s) if KT.AddBorder then KT:AddBorder(s, 0.5, 0.5, 0.8, 1) end end)
-    discordBtn:SetScript("OnLeave", function(s)
-        local palette = GetOptionsStylePalette()
-        local accent = palette.accent or {}
-        if KT.AddBorder then
-            KT:AddBorder(s, accent.r or 1, accent.g or 0, accent.b or 0.333, 0.7)
-        end
-        if discIcon then
-            discIcon:SetVertexColor(accent.r or 1, accent.g or 0, accent.b or 0.333, 1)
-        end
-    end)
+    local discordBtn = KT.Widgets:PillButton(f, "", {
+        width = 34, height = 34, iconSize = 18, icon = ICON_PATH .. "discord-2.png", onClick = ShowDiscordPopup,
+    })
+    discordBtn:SetPoint("LEFT", reloadBtn, "RIGHT", 8, 0)
+    discordBtn:SetFrameLevel((f:GetFrameLevel() or 1) + 14)
     f._discordBtn = discordBtn
-    f._discordIcon = discIcon
 
-    -- Corrupted generated comment removed.
+    local closeFooterBtn = KT.Widgets:PillButton(footer, LText("Close"), {
+        width = 124, height = 34, primary = true, onClick = function() KT:OpenMenu() end,
+    })
+    closeFooterBtn:SetPoint("RIGHT", footer, "RIGHT", -80, 0)
+    f._closeFooterBtn = closeFooterBtn
+
+    local resetBtn = KT.Widgets:PillButton(footer, LText("Reset Profile"), { width = 124, height = 34, danger = true, ringAlways = true, onClick = ResetConfirm })
+    resetBtn:SetPoint("RIGHT", closeFooterBtn, "LEFT", -10, 0)
+    f._resetBtn = resetBtn
+
+    -- Fixed tab bar under the header: an options page puts its top tab bar
+    -- here (AddPageSubTabBar), it stays put while the page scrolls, and the
+    -- page content moves down to make room for it.
+    local tabBand = CreateFrame("Frame", nil, f)
+    tabBand:SetPoint("TOPLEFT", f, "TOPLEFT", NAV_W + CONTENT_PAD, -(HEADER_H + 15))
+    tabBand:SetSize(CONTENT_W, 40)
+    tabBand:SetFrameLevel((f:GetFrameLevel() or 1) + 14)
+    function tabBand:SetUsed(used)
+        f._tabBandH = used and 54 or 0
+        UpdateMenuLayoutForSize(f)
+    end
+    function tabBand:Clear()
+        for _, child in ipairs({ self:GetChildren() }) do
+            child:Hide()
+            child:SetParent(ns.OPTIONS_RECYCLER)
+        end
+        self:SetUsed(false)
+    end
+    f._tabBand = tabBand
+
     local sf, sc = CreateContentScroll(f)
     sf:SetFrameLevel((f:GetFrameLevel() or 1) + 12)
     sc:SetFrameLevel((sf:GetFrameLevel() or ((f:GetFrameLevel() or 1) + 12)) + 1)
@@ -5743,23 +5560,13 @@ local function CreateMenuFrame()
     KT._scrollFrame = sf
     f.RefreshTheme = function(self)
         UpdateMenuThemeVisuals(self)
+        -- Skinned widgets (and the canvas) listen to MenuSkins.
+        if KT.MenuSkins then KT.MenuSkins:Repaint() end
     end
-    f:SetScript("OnSizeChanged", function(self, width, height)
-        if self._applyingSizeChange then return end
-        local clampedW, clampedH = ClampMenuSize(width, height)
-        if math.abs((width or 0) - clampedW) > 0.5 or math.abs((height or 0) - clampedH) > 0.5 then
-            self._applyingSizeChange = true
-            self:SetSize(clampedW, clampedH)
-            self._applyingSizeChange = false
-            return
-        end
-
+    f:SetScript("OnSizeChanged", function(self)
         UpdateMenuLayoutForSize(self)
         UpdateMenuBackgroundLayout(self)
         UpdateStickyPreviewLayout(self)
-        if self._manualResizeActive then
-            PersistManualMenuSize(self)
-        end
         RequestMenuPageReflow(self)
     end)
     f:HookScript("OnShow", function(self)
@@ -5784,7 +5591,7 @@ local function CreateMenuFrame()
 
     tinsert(UISpecialFrames, f:GetName())
     KT.MenuPrincipal = f
-    ApplyResponsiveMenuMetrics(f)
+    ApplyFixedMenuMetrics(f)
     UpdateMenuThemeVisuals(f)
     UpdateMenuBackgroundLayout(f)
 
@@ -5914,7 +5721,7 @@ function KT:OpenMenu(pageId)
             f:Hide()
         else
             LockScaleGuard()
-            ApplyResponsiveMenuMetrics(f)
+            ApplyFixedMenuMetrics(f)
             f:Show()
             if C_Timer and C_Timer.After then
                 C_Timer.After(0, CloseGameMenuForKUIOptions)
@@ -6082,14 +5889,17 @@ local selectedModuleExports = {}
 local selectedCDMSpecExports = {}
 local PAGE_BUTTON_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\Button.png"
 
+-- Each tab carries its own icon (media\\icons\\GeneralTabs, used nowhere
+-- else). Quick Setup is no longer a tab: its layout installers live in the
+-- Profiles tab (BuildProfilesTab).
+local GENERAL_TAB_ICON = ICON_PATH .. "GeneralTabs\\"
 local GENERAL_SUBTABS = {
-    { id = "general", label = "General" },
-    { id = "kuimove", label = "KUIMove" },
-    { id = "disablemodules", label = "Disable Modules" },
-    { id = "compatibility", label = "Compatibility" },
-    { id = "profiles", label = "Profiles" },
-    { id = "quicksetup", label = "Quick Setup" },
-    { id = "fontscolors", label = "Fonts & Colors" },
+    { id = "general", label = "General", icon = GENERAL_TAB_ICON .. "General.tga" },
+    { id = "kuimove", label = "KUIMove", icon = GENERAL_TAB_ICON .. "KUIMove.tga" },
+    { id = "disablemodules", label = "Disable Modules", icon = GENERAL_TAB_ICON .. "DisableModules.tga" },
+    { id = "compatibility", label = "Compatibility", icon = GENERAL_TAB_ICON .. "Compatibility.tga" },
+    { id = "profiles", label = "Profiles", icon = GENERAL_TAB_ICON .. "Profiles.tga" },
+    { id = "fontscolors", label = "Fonts & Colors", icon = GENERAL_TAB_ICON .. "FontsColors.tga" },
 }
 
 function KT:SetGeneralOptionsSubTab(tabId)
@@ -6177,7 +5987,19 @@ local specID, specName, _, specIcon = GetSpecializationInfo(specIndex)
 end
 
 local function AddPageSubTabBar(parent, yOffset, tabs, selectedId, onSelect)
-    -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua).
+    -- A bar at the top of an options page goes to the fixed band under the
+    -- header (W:PageTabs); one further down, or too wide for one row, stays
+    -- in the page as shared nav tabs (KullThranUI/NavTabs.lua).
+    local menu = KT.MenuPrincipal
+    local band = menu and menu._tabBand
+    if band and parent == menu.scrollChild and (tonumber(yOffset) or 0) >= -16 then
+        local bar = KT.Widgets:PageTabs(band, tabs, selectedId, onSelect, { localize = LText, width = band:GetWidth() })
+        if bar then
+            bar:SetPoint("TOPLEFT", band, "TOPLEFT", 0, 0)
+            band:SetUsed(true)
+            return bar, 0
+        end
+    end
     return KT.NavTabs.CreateBar(parent, yOffset, tabs, selectedId, onSelect, {
         localize = LText,
         height = 34,
@@ -6201,68 +6023,40 @@ end
 
 local function AddProfileSpecCard(parent, yOffset, currentProfileName, assignedProfileName)
     local _, specName, specIcon = GetCurrentSpecVisual()
+    local displayName = (KT.GetProfileDisplayName and KT:GetProfileDisplayName(currentProfileName))
+        or currentProfileName or LText("Unknown")
+    local height = 96
 
-    local frame = CreateFrame("Frame", nil, parent)
-    frame:SetSize(parent:GetWidth() - 20, 66)
-    frame:SetPoint("TOPLEFT", 10, yOffset)
-    KT:AddBackdrop(frame, 0.04, 0.04, 0.06, 0.96)
-    KT:AddAccentBorder(frame, 0.42)
+    -- Same starfield card as the General page header ("Interface Control
+    -- Center", Widgets.lua W:StarHero), with the spec icon on its left.
+    local hero = KT.Widgets:StarHero(parent, {
+        width = parent:GetWidth() - 20,
+        height = height,
+        eyebrow = LText("CURRENT PROFILE"),
+        title = displayName,
+        subtitle = LTextFmt("Spec: %s", specName or LText("Unknown")) .. "     "
+            .. LTextFmt("Assigned: %s", assignedProfileName or LText("None")),
+    })
+    hero:SetPoint("TOPLEFT", 10, yOffset)
 
-    local buttonBg = frame:CreateTexture(nil, "BACKGROUND")
-    buttonBg:SetAllPoints()
-    buttonBg:SetTexture(PAGE_BUTTON_TEXTURE)
-    buttonBg:SetVertexColor(1, 1, 1, 0.32)
-
-    local iconBox = CreateFrame("Frame", nil, frame)
-    iconBox:SetSize(44, 44)
-    iconBox:SetPoint("LEFT", 10, 0)
-    KT:AddBackdrop(iconBox, 0.02, 0.02, 0.03, 1)
-    KT:AddAccentBorder(iconBox, 0.75)
-
-    local icon = iconBox:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    local top = CreateFrame("Frame", nil, hero)
+    top:SetAllPoints(hero)
+    top:SetFrameLevel(((hero._textKT and hero._textKT:GetFrameLevel()) or hero:GetFrameLevel()) + 2)
+    local r, g, b = GetMenuAccentColor()
+    local iconBorder = top:CreateTexture(nil, "ARTWORK", nil, 0)
+    iconBorder:SetSize(48, 48)
+    iconBorder:SetPoint("LEFT", hero, "LEFT", 18, 0)
+    iconBorder:SetColorTexture(r, g, b, 0.85)
+    local iconBack = top:CreateTexture(nil, "ARTWORK", nil, 1)
+    iconBack:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", 1, -1)
+    iconBack:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", -1, 1)
+    iconBack:SetColorTexture(0.02, 0.02, 0.03, 1)
+    local icon = top:CreateTexture(nil, "ARTWORK", nil, 2)
+    icon:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", 2, -2)
+    icon:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", -2, 2)
     icon:SetTexture(specIcon or 134400)
-
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 11, "OUTLINE")
-    title:SetPoint("TOPLEFT", iconBox, "TOPRIGHT", 12, -8)
-    title:SetText(LText("Current Profile"))
-    KT:SetAccentTextColor(title, 1)
-
-    local profileText = frame:CreateFontString(nil, "OVERLAY")
-    profileText:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 13, "OUTLINE")
-    profileText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-    profileText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -10, -24)
-    profileText:SetWordWrap(false)
-    profileText:SetJustifyH("LEFT")
-    profileText:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 11, "OUTLINE")
-    profileText:SetText((KT.GetProfileDisplayName and KT:GetProfileDisplayName(currentProfileName)) or currentProfileName or LText("Unknown"))
-    profileText:SetTextColor(1, 1, 1, 1)
-
-    local specText = frame:CreateFontString(nil, "OVERLAY")
-    specText:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 10, "")
-    specText:SetPoint("BOTTOMLEFT", profileText, "BOTTOMLEFT", 0, -14)
-    specText:SetText(LTextFmt("Spec: %s", specName or LText("Unknown")))
-    specText:SetTextColor(0.76, 0.76, 0.76, 1)
-
-    local assignText = frame:CreateFontString(nil, "OVERLAY")
-    assignText:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 10, "")
-    assignText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
-    assignText:SetJustifyH("RIGHT")
-    assignText:SetText(LTextFmt("Assigned: %s", assignedProfileName or LText("None")))
-    assignText:SetTextColor(assignedProfileName and 1 or 0.62, assignedProfileName and 1 or 0.62, assignedProfileName and 1 or 0.62, 1)
-
-    frame:EnableMouse(true)
-    frame:SetScript("OnEnter", function(self)
-        if GameTooltip then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(currentProfileName or LText("Unknown"))
-            GameTooltip:Show()
-        end
-    end)
-    frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    return frame, 72
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    return hero, height + 8
 end
 
 local PROFILE_MODULE_ICON_MAP = {
@@ -6294,8 +6088,7 @@ local PROFILE_MODULE_ICON_MAP = {
     teleportmenu = "TeleportMenu",
 }
 
--- Profile controls: every button is a KT.NavTabs button (uiverse stale-cheetah
--- style: accent rim, accent fill + glow and a shine sweep on hover), so the 1px
+-- Profile controls: every button is a KT.NavTabs button (accent rim, accent fill + glow and a shine sweep on hover), so the 1px
 -- borders stay on whole physical pixels at fractional UI scales. Action rows,
 -- module cards and the pager all go through KT.NavTabs.Layout to stay aligned.
 ns.ProfileUI = ns.ProfileUI or { activeTab = "profiles", moduleQuery = "", modulePage = 1 }
@@ -6514,110 +6307,154 @@ function ns.ProfileUI.AddPager(parent, yOffset, page, pages, onPage)
     return row, 26 + 8 + 4
 end
 
--- Selectable card: icon, title (+ optional subtitle) and a check when selected.
-local function CreateProfilesSelectionCard(parent, width, height, opts)
-    local NT = KT.NavTabs
-    local selected = opts.isSelected and opts.isSelected() or false
-    local btn = ns.ProfileUI.CreateButton(parent, 0, 0, width, height, opts.title, opts.onClick, selected,
-        { fontSize = 10 })
-    local textLeft, textRight = 46, 30
-    NT.SetContent(btn, {
-        textLeft = textLeft, textRight = textRight, align = "LEFT",
-        textY = opts.subtitle and 7 or 0,
-    })
+-- Profiles page grids (KullThranUI/ProfileCards.lua): wave cards for saved
+-- profiles and CDM specs, grid buttons for modules.
+-- Kept in ns.ProfileUI: the main chunk of this file is at Lua's 200-local limit.
+ns.ProfileUI.Grid = {
+    pageIcon = GENERAL_TAB_ICON .. "Profiles.tga",
+    cardMinW = 118,
+    cardRatio = 0.8,    -- height / width (the CSS card is 240x330)
+    cardMaxH = 104,
+    actionH = 32,       -- KT.SoftButton action rows
+    moduleMinW = 190,
+    moduleH = 42,
+    gap = 10,
+}
 
-    local iconBox = btn:CreateTexture(nil, "OVERLAY")
-    iconBox:SetSize(24, 24)
-    iconBox:SetPoint("LEFT", btn, "LEFT", 12, 0)
-    iconBox:SetTexture(opts.iconPath or opts.icon or 134400)
-    if opts.iconPath then
-        local r, g, b = GetMenuIconVertexColor(opts.iconName or "")
-        iconBox:SetVertexColor(r, g, b, 1)
-        local style = ns.PAGE_ICON_STYLE_MAP[opts.iconName and opts.iconName:lower() or ""] or {}
-        local iw, ih = style.width or 60, style.height or 40
-        local scale = math.min(30 / iw, 22 / ih)
-        iconBox:SetSize(iw * scale, ih * scale)
-    else
-        iconBox:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    end
-
-    if opts.subtitle and opts.subtitle ~= "" then
-        local sub = btn:CreateFontString(nil, "OVERLAY")
-        sub:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 9, "")
-        sub:SetPoint("LEFT", btn, "LEFT", textLeft, -7)
-        sub:SetPoint("RIGHT", btn, "RIGHT", -textRight, -7)
-        sub:SetJustifyH("LEFT")
-        sub:SetWordWrap(false)
-        sub:SetTextColor(0.62, 0.62, 0.68, 1)
-        sub:SetText(opts.subtitle)
-    end
-
-    local check = btn:CreateTexture(nil, "OVERLAY")
-    check:SetSize(14, 14)
-    check:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
-    check:SetTexture(PROFILE_ICON_PATH .. "check.tga")
-    local r, g, b = GetMenuAccentColor()
-    check:SetVertexColor(r, g, b, 1)
-    check:SetShown(selected)
-
-    return btn
+function ns.ProfileUI.GetWaveCardSize(usable)
+    local cols = math.max(1, math.min(6, math.floor((usable + ns.ProfileUI.Grid.gap) / (ns.ProfileUI.Grid.cardMinW + ns.ProfileUI.Grid.gap))))
+    local cardW = (usable - ns.ProfileUI.Grid.gap * (cols - 1)) / cols
+    return cols, cardW, math.floor(math.min(ns.ProfileUI.Grid.cardMaxH, cardW * ns.ProfileUI.Grid.cardRatio))
 end
 
-local function AddProfilesSelectionGrid(parent, startY, entries, opts)
-    local NT = KT.NavTabs
-    local filtered = opts.searchable and ns.ProfileUI.FilterEntries(entries, ns.ProfileUI.moduleQuery) or entries
+-- entries -> wave cards. opts: getTitle, getSubtitle, getIcon, getIconCoords,
+-- getBadge, getTooltip, isSelected, onClick, onDoubleClick, onIconClick,
+-- iconTooltip. Returns the new y.
+function ns.ProfileUI.WaveGrid(parent, startY, entries, opts)
     local usable = parent:GetWidth() - 20
-    local cols = math.max(1, math.min(3, math.floor(usable / 170)))
+    local cols, cardW, cardH = ns.ProfileUI.GetWaveCardSize(usable)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOPLEFT", 10, -startY)
+    holder:SetWidth(usable)
+    local cards = {}
+    for _, entry in ipairs(entries) do
+        cards[#cards + 1] = KT.WaveCard.Create(holder, {
+            width = cardW, height = cardH,
+            title = opts.getTitle(entry),
+            subtitle = opts.getSubtitle and opts.getSubtitle(entry) or nil,
+            icon = opts.getIcon and opts.getIcon(entry) or nil,
+            iconCoords = opts.getIconCoords and opts.getIconCoords(entry) or opts.iconCoords,
+            onIconClick = opts.onIconClick and function() opts.onIconClick(entry) end or nil,
+            iconTooltip = opts.iconTooltip,
+            badge = opts.getBadge and opts.getBadge(entry) or nil,
+            selected = opts.isSelected(entry),
+            onClick = function() opts.onClick(entry) end,
+            onDoubleClick = opts.onDoubleClick and function() opts.onDoubleClick(entry) end or nil,
+        })
+    end
+    local used = KT.LayoutCardGrid(holder, cards, {
+        width = usable, columns = cols, height = cardH, gap = ns.ProfileUI.Grid.gap, y = 4,
+    })
+    holder:SetHeight(math.max(1, used + 4))
+    return startY + used + 4 + 12
+end
+
+-- One row of KT.SoftButton (accent shadows), equal widths.
+-- specs: { { text =, onClick =, icon =, danger =, confirm =, confirmText = }, ... }
+function ns.ProfileUI.SoftActionRow(parent, yOffset, specs)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetPoint("TOPLEFT", 10, yOffset)
+    row:SetSize(parent:GetWidth() - 20, ns.ProfileUI.Grid.actionH)
+    local buttons = {}
+    for index, spec in ipairs(specs) do
+        local onClick = spec.onClick
+        if spec.confirm then
+            local run = spec.onClick
+            onClick = function()
+                StaticPopupDialogs.KT_CONFIRM_ACTION = {
+                    text = LText(spec.confirmText or "Are you sure?"), button1 = LText("Yes"), button2 = LText("No"),
+                    OnAccept = run, timeout = 0, whileDead = 1, hideOnEscape = 1,
+                }
+                StaticPopup_Show("KT_CONFIRM_ACTION")
+            end
+        end
+        local icon = spec.icon or PROFILE_ACTION_ICONS[spec.text]
+        buttons[index] = KT.SoftButton.Create(row, {
+            label = LText(spec.text),
+            icon = icon and (PROFILE_ICON_PATH .. icon .. ".tga") or nil,
+            danger = spec.danger or PROFILE_DANGER_ACTIONS[spec.text],
+            onClick = function() if onClick then onClick() end end,
+        })
+    end
+    -- 8px above and below for the shadows.
+    local used = KT.LayoutCardGrid(row, buttons, {
+        width = row:GetWidth(), columns = #buttons, height = ns.ProfileUI.Grid.actionH, gap = 14, y = 8,
+    })
+    row:SetHeight(used + 16)
+    return row, used + 16 + 4
+end
+
+function ns.ProfileUI.Summary(parent, y, text)
+    local summary = parent:CreateFontString(nil, "OVERLAY")
+    summary:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 10, "OUTLINE")
+    summary:SetTextColor(0.68, 0.68, 0.74, 1)
+    summary:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -y - 2)
+    summary:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -y - 2)
+    summary:SetJustifyH("CENTER")
+    summary:SetText(text)
+    return y + 20
+end
+
+-- Module defs -> searchable, paged grid of grid buttons. Returns the new y.
+function ns.ProfileUI.ModuleGrid(parent, startY, defs, isSelected, onToggle)
+    local filtered = ns.ProfileUI.FilterEntries(defs, ns.ProfileUI.moduleQuery)
+    local usable = parent:GetWidth() - 20
+    local cols = math.max(1, math.min(4, math.floor((usable + ns.ProfileUI.Grid.gap) / (ns.ProfileUI.Grid.moduleMinW + ns.ProfileUI.Grid.gap))))
     local y = startY
     local function Refresh() if KT.RefreshPage then KT:RefreshPage() end end
 
-    if opts.searchable then
-        local _, sh = ns.ProfileUI.AddSearchRow(parent, -y, ns.ProfileUI.moduleQuery, function(text)
-            ns.ProfileUI.moduleQuery, ns.ProfileUI.modulePage = text, 1
-            Refresh()
-        end)
-        y = y + sh
-    end
+    local _, sh = ns.ProfileUI.AddSearchRow(parent, -y, ns.ProfileUI.moduleQuery, function(text)
+        ns.ProfileUI.moduleQuery, ns.ProfileUI.modulePage = text, 1
+        Refresh()
+    end)
+    y = y + sh
 
-    local pageSize = opts.searchable and math.min(6, cols * 3) or #filtered
-    local pages = math.max(1, math.ceil(#filtered / math.max(1, pageSize)))
-    local page = opts.searchable and math.max(1, math.min(pages, ns.ProfileUI.modulePage)) or 1
-    if opts.searchable then ns.ProfileUI.modulePage = page end
+    local pageSize = cols * 4
+    local pages = math.max(1, math.ceil(#filtered / pageSize))
+    local page = math.max(1, math.min(pages, ns.ProfileUI.modulePage))
+    ns.ProfileUI.modulePage = page
     local first = (page - 1) * pageSize + 1
-    local last = opts.searchable and math.min(#filtered, first + pageSize - 1) or #filtered
+    local last = math.min(#filtered, first + pageSize - 1)
 
-    local hasSubtitle = false
-    local cards = {}
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetPoint("TOPLEFT", 10, -y)
     holder:SetWidth(usable)
-    local cardH = 40
+    local buttons = {}
     for index = first, last do
-        local entry = filtered[index]
-        local subtitle = opts.getSubtitle and opts.getSubtitle(entry) or ""
-        if opts.showSubtitle and subtitle ~= "" then hasSubtitle = true else subtitle = nil end
-        cards[#cards + 1] = CreateProfilesSelectionCard(holder, usable / cols, hasSubtitle and 46 or cardH, {
-            title = opts.getTitle and opts.getTitle(entry) or "",
-            subtitle = subtitle,
-            tooltip = opts.getTooltip and opts.getTooltip(entry) or nil,
-            icon = opts.getIcon and opts.getIcon(entry) or nil,
-            iconPath = opts.getIconPath and opts.getIconPath(entry) or nil,
-            iconName = opts.getIconName and opts.getIconName(entry) or nil,
-            isSelected = function() return opts.isSelected and opts.isSelected(entry) end,
-            onClick = function() if opts.onToggle then opts.onToggle(entry, not (opts.isSelected and opts.isSelected(entry))) end end,
+        local def = filtered[index]
+        local iconName = PROFILE_MODULE_ICON_MAP[def.id] or "Config"
+        local style = ns.PAGE_ICON_STYLE_MAP[iconName:lower()] or {}
+        local iw, ih = style.width or 60, style.height or 40
+        local scale = math.min(28 / iw, 18 / ih)
+        buttons[#buttons + 1] = KT.GridButton.Create(holder, {
+            height = ns.ProfileUI.Grid.moduleH,
+            label = LText(def.label),
+            icon = ICON_PATH .. iconName .. ".png",
+            iconWidth = iw * scale, iconHeight = ih * scale,
+            selected = isSelected(def),
+            onClick = function() onToggle(def, not isSelected(def)) end,
         })
     end
     local used = 0
-    if #cards > 0 then
-        used = NT.Layout(holder, cards, {
-            width = usable, height = hasSubtitle and 46 or cardH, gap = 8, rowGap = 8, padding = 38,
-            fontSize = 10, y = 4, perRow = cols,
-        }) + 8
+    if #buttons > 0 then
+        used = KT.LayoutCardGrid(holder, buttons, {
+            width = usable, columns = cols, height = ns.ProfileUI.Grid.moduleH, gap = 8, y = 4,
+        }) + 4
     end
     holder:SetHeight(math.max(1, used))
-    y = y + used + 4
+    y = y + used + 8
 
-    if opts.searchable and pages > 1 then
+    if pages > 1 then
         local _, ph = ns.ProfileUI.AddPager(parent, -y, page, pages, function(p)
             ns.ProfileUI.modulePage = math.max(1, math.min(pages, p))
             Refresh()
@@ -6626,20 +6463,11 @@ local function AddProfilesSelectionGrid(parent, startY, entries, opts)
     end
 
     local totalSelected = 0
-    for _, entry in ipairs(entries) do if opts.isSelected(entry) then totalSelected = totalSelected + 1 end end
-    local summary = parent:CreateFontString(nil, "OVERLAY")
-    summary:SetFont(KT.ResolveFontPath and KT:ResolveFontPath() or KT.FONT_PATH, 10, "OUTLINE")
-    summary:SetTextColor(0.68, 0.68, 0.74, 1)
-    summary:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -y - 2)
-    summary:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -y - 2)
-    summary:SetJustifyH("CENTER")
+    for _, def in ipairs(defs) do if isSelected(def) then totalSelected = totalSelected + 1 end end
     if #filtered == 0 then
-        summary:SetText(LText("No modules found"))
-    else
-        summary:SetText(string.format("%d / %d %s", totalSelected, #entries, LText("selected")))
+        return ns.ProfileUI.Summary(parent, y, LText("No modules found"))
     end
-    y = y + 20
-    return y
+    return ns.ProfileUI.Summary(parent, y, string.format("%d / %d %s", totalSelected, #defs, LText("selected")))
 end
 
 local COMPATIBILITY_ICON_NAME_BY_RULE = {
@@ -7169,74 +6997,45 @@ local function BuildGeneralCore(sc, W, y)
     local profileMod = GetProfilesModule()
     local assigned = profileMod and profileMod:GetCurrentSpecAssignment() or nil
 
-    -- Strong landing card: this page is the control center of the addon, not a
-    -- flat list of unrelated widgets.
-    local hero = CreateFrame("Frame", nil, sc, "BackdropTemplate")
+    -- Landing card in the starfield style of the category headers
+    -- (Widgets.lua W:StarHero); profile, version, spec and the changelog
+    -- button sit on a layer above its sky.
+    -- The real widget, not the search proxy, so the layer above can use its text frame.
+    local hero = KT.Widgets:StarHero(sc, {
+        width = sc:GetWidth() - 20,
+        height = 118,
+        eyebrow = LText("KULLTHRANUI CONFIGURATION"),
+        title = LText("Interface Control Center"),
+        subtitle = LText("Configure the foundation of KUI here. Module-specific behavior remains in the sections on the left."),
+    })
     hero:SetPoint("TOPLEFT", 10, -y)
-    hero:SetSize(sc:GetWidth() - 20, 104)
-    KT:AddBackdrop(hero, 0.025, 0.022, 0.028, 0.98)
-    KT:AddBorder(hero, accentR, accentG, accentB, 0.72)
+    local heroTop = CreateFrame("Frame", nil, hero)
+    heroTop:SetAllPoints(hero)
+    heroTop:SetFrameLevel((hero._textKT:GetFrameLevel() or 1) + 2)
 
-    local heroRail = hero:CreateTexture(nil, "ARTWORK")
-    heroRail:SetPoint("TOPLEFT", 1, -1)
-    heroRail:SetPoint("BOTTOMLEFT", 1, 1)
-    heroRail:SetWidth(5)
-    heroRail:SetColorTexture(accentR, accentG, accentB, 1)
-
-    local heroEyebrow = hero:CreateFontString(nil, "OVERLAY")
-    heroEyebrow:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-    heroEyebrow:SetPoint("TOPLEFT", 22, -15)
-    heroEyebrow:SetText(LText("KULLTHRANUI CONFIGURATION"))
-    heroEyebrow:SetTextColor(accentR, accentG, accentB, 1)
-
-    local heroTitle = hero:CreateFontString(nil, "OVERLAY")
-    heroTitle:SetFont(KT.FONT_PATH, 18, "OUTLINE")
-    heroTitle:SetPoint("TOPLEFT", heroEyebrow, "BOTTOMLEFT", 0, -7)
-    heroTitle:SetText(LText("Interface Control Center"))
-    heroTitle:SetTextColor(1, 1, 1, 1)
-
-    local heroDescription = hero:CreateFontString(nil, "OVERLAY")
-    heroDescription:SetFont(KT.FONT_PATH, 10, "")
-    heroDescription:SetPoint("TOPLEFT", heroTitle, "BOTTOMLEFT", 0, -7)
-    heroDescription:SetPoint("RIGHT", hero, "RIGHT", -22, 0)
-    heroDescription:SetJustifyH("LEFT")
-    heroDescription:SetText(LText("Configure the foundation of KUI here. Module-specific behavior remains in the sections on the left."))
-    heroDescription:SetTextColor(0.72, 0.72, 0.76, 1)
-
-    local heroProfile = hero:CreateFontString(nil, "OVERLAY")
+    local heroProfile = heroTop:CreateFontString(nil, "OVERLAY")
     heroProfile:SetFont(KT.FONT_PATH, 10, "OUTLINE")
     heroProfile:SetPoint("BOTTOMLEFT", 22, 13)
     heroProfile:SetText(LTextFmt("PROFILE  %s", profileName))
     heroProfile:SetTextColor(0.92, 0.92, 0.95, 1)
 
-    local heroVersion = hero:CreateFontString(nil, "OVERLAY")
+    local heroVersion = heroTop:CreateFontString(nil, "OVERLAY")
     heroVersion:SetFont(KT.FONT_PATH, 10, "OUTLINE")
     heroVersion:SetPoint("BOTTOMRIGHT", -18, 13)
     heroVersion:SetText(LTextFmt("VERSION  %s", currentVersion))
     heroVersion:SetTextColor(accentR, accentG, accentB, 1)
 
     -- Compact changelog access in the corner of the landing card.
-    local changelogBtn = CreateFrame("Button", nil, hero, "BackdropTemplate")
-    changelogBtn:SetSize(92, 20)
-    changelogBtn:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -14, -12)
-    KT:AddBackdrop(changelogBtn, 0.05, 0.045, 0.055, 0.95)
-    KT:AddBorder(changelogBtn, accentR, accentG, accentB, 0.55)
-
-    local changelogLabel = changelogBtn:CreateFontString(nil, "OVERLAY")
-    changelogLabel:SetFont(KT.FONT_PATH, 9, "OUTLINE")
-    changelogLabel:SetPoint("CENTER")
-    changelogLabel:SetText(LText("Open Changelog"))
-    changelogBtn:SetWidth(math.max(92, math.ceil(changelogLabel:GetStringWidth()) + 20))
-    changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+    -- Cut-corner gradient button (Widgets.lua W:CutButton).
+    local changelogBtn = KT.Widgets:CutButton(heroTop, LText("Open Changelog"), { width = 150, height = 26 })
+    changelogBtn:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -16, -12)
 
     changelogBtn:SetScript("OnClick", function()
         if KT and KT.ShowChangelogPopup then
             KT:ShowChangelogPopup(currentVersion)
         end
     end)
-    changelogBtn:SetScript("OnEnter", function(self)
-        KT:AddBorder(self, accentR, accentG, accentB, 1)
-        changelogLabel:SetTextColor(1, 1, 1, 1)
+    changelogBtn:HookScript("OnEnter", function(self)
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
             GameTooltip:SetText(LText("Updates & Release Notes"), 1, 1, 1)
@@ -7252,21 +7051,19 @@ local function BuildGeneralCore(sc, W, y)
             GameTooltip:Show()
         end
     end)
-    changelogBtn:SetScript("OnLeave", function(self)
-        KT:AddBorder(self, accentR, accentG, accentB, 0.55)
-        changelogLabel:SetTextColor(accentR, accentG, accentB, 1)
+    changelogBtn:HookScript("OnLeave", function(self)
         if GameTooltip then GameTooltip:Hide() end
     end)
 
     if assigned then
-        local heroSpec = hero:CreateFontString(nil, "OVERLAY")
+        local heroSpec = heroTop:CreateFontString(nil, "OVERLAY")
         heroSpec:SetFont(KT.FONT_PATH, 9, "")
         heroSpec:SetPoint("RIGHT", changelogBtn, "LEFT", -10, 0)
         heroSpec:SetText(LTextFmt("SPEC ASSIGNMENT  %s", assigned))
         heroSpec:SetTextColor(0.72, 0.72, 0.76, 1)
     end
 
-    y = y + 118
+    y = y + 132
 
     local coreCols = BeginOptionBlocks(sc, y, { gap = 14, columnGap = 14 })
 
@@ -7423,8 +7220,9 @@ local function BuildGeneralCore(sc, W, y)
         return by
     end)
 
-    y = EndOptionBlocks(coreCols) + 14
-    _, h = W:SectionHeader(sc, "Advanced Style System", -y); y = y + h
+    -- No section header here: on a plain page it opens a card that stays
+    -- hidden until a row joins it, which only left an empty band.
+    y = EndOptionBlocks(coreCols) + 8
     _, h = W:Label(sc, "Build a complete visual preset for KUI or fine tune the palette manually. These settings affect the entire addon.", -y, 11); y = y + h
     -- Visual Theme sits on top, full width: it decides the geometry and assets.
     local themeFrame, themeContent = CreateOptionBlock(sc, "Visual Theme", 10, -y, sc:GetWidth() - 22)
@@ -7491,7 +7289,7 @@ local function BuildGeneralCore(sc, W, y)
             fontPath = KT.FONT_PATH,
             localize = LText,
             isSelected = function(presetKey)
-                return (KT.db.profile.skin and KT.db.profile.skin.stylePreset or "kui_crimson") == presetKey
+                return KT.IsAccentPresetActive(KT.db.profile.skin, presetKey)
             end,
             onSelect = function(presetKey)
                 ApplySmartStylePreset(presetKey)
@@ -7511,130 +7309,97 @@ local function BuildGeneralCore(sc, W, y)
     -- removed themeAccent block there), so gating input here too was
     -- doubly wrong.
 
-    local frame, content = CreateOptionBlock(sc, LText("Manual Colors"), 10, -y, sc:GetWidth() - 22)
+    -- Manual colours: two cards side by side. "Palette" pairs the window
+    -- colours two per row; "Module Colors" gives each module one row with an
+    -- Accent/Custom switch and its swatch.
+    KT.db.profile.skin = KT.db.profile.skin or {}
+    local skin = KT.db.profile.skin
+    skin.unlockModeColorMode = skin.unlockModeColorMode or "accent"
+    skin.friendListColorMode = skin.friendListColorMode or "accent"
+    skin.armoryColorMode = skin.armoryColorMode or "accent"
+    skin.bagsColorMode = skin.bagsColorMode or "accent"
+
+    local function ApplyManualStyle()
+        skin.stylePreset = "custom"
+        SyncSmartStyleDerivedTargets()
+        RefreshSmartStyleLive()
+    end
+
+    local function ColorOf(mode, own)
+        local c = (mode == "custom" and own) or KT_GetActiveAccent(skin)
+        return c.r, c.g, c.b, 1
+    end
+
+    _, h = W:SectionHeader(sc, "Manual Colors", -y); y = y + h
+    _, h = W:Label(sc, LText("Fine tune the smart recolor palette manually if you want a custom style."), -y, 11); y = y + h
+    local manualCols = BeginOptionBlocks(sc, y)
+
+    AddOptionBlock(manualCols, "left", "Palette", function(container)
         local by = 0
-        KT.db.profile.skin = KT.db.profile.skin or {}
-        local skin = KT.db.profile.skin
-        skin.unlockModeColorMode = skin.unlockModeColorMode or "accent"
-        skin.friendListColorMode = skin.friendListColorMode or "accent"
-        skin.armoryColorMode = skin.armoryColorMode or "accent"
-        skin.bagsColorMode = skin.bagsColorMode or "accent"
+        _, h = W:DualRow(container, -by,
+            { type = "colorpicker", text = "Accent Color",
+              getValue = function() local c = KT_GetActiveAccent(skin); return c.r, c.g, c.b, 1 end,
+              setValue = function(r, g, b)
+                  skin.accentColor = MakeStyleColor(r, g, b, 1)
+                  skin.customBorderColor = MakeStyleColor(r, g, b, 1)
+                  skin.kullthranUIColorByClass = false
+                  skin.borderTheme = "CUSTOM"
+                  skin.borderThemeBeforeClass = "CUSTOM"
+                  ApplyManualStyle()
+              end },
+            { type = "colorpicker", text = "Window Background", hasAlpha = true,
+              getValue = function() local c = skin.backgroundColor or STYLE_PRESETS.kui_crimson.background; return c.r, c.g, c.b, c.a end,
+              setValue = function(r, g, b, a) skin.backgroundColor = MakeStyleColor(r, g, b, a); ApplyManualStyle() end }
+        ); by = by + h
+        _, h = W:DualRow(container, -by,
+            { type = "colorpicker", text = "Main Text",
+              getValue = function() local c = skin.menuTextColor or STYLE_PRESETS.kui_crimson.text; return c.r, c.g, c.b, 1 end,
+              setValue = function(r, g, b) skin.menuTextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end },
+            { type = "colorpicker", text = "Secondary Text",
+              getValue = function() local c = skin.menuSubtextColor or STYLE_PRESETS.kui_crimson.muted; return c.r, c.g, c.b, 1 end,
+              setValue = function(r, g, b) skin.menuSubtextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end }
+        ); by = by + h
+        _, h = W:DualRow(container, -by,
+            { type = "colorpicker", text = "Background Tint", hasAlpha = true,
+              getValue = function() local c = skin.menuBackgroundTint or STYLE_PRESETS.kui_crimson.backgroundTint; return c.r, c.g, c.b, c.a end,
+              setValue = function(r, g, b, a) skin.menuBackgroundTint = MakeStyleColor(r, g, b, a); ApplyManualStyle() end },
+            { type = "dropdown", text = "Menu Icons",
+              values = { accent = "Accent", white = "White" }, order = { "accent", "white" },
+              getValue = function() return skin.menuIconColorMode or "accent" end,
+              setValue = function(v) skin.menuIconColorMode = v; ApplyManualStyle() end }
+        ); by = by + h
+        return by
+    end)
 
-        local function ApplyManualStyle()
-            skin.stylePreset = "custom"
-            SyncSmartStyleDerivedTargets()
-            RefreshSmartStyleLive()
-        end
-
-
-        _, h = W:Label(content, LText("Fine tune the smart recolor palette manually if you want a custom style."), -by, 11); by = by + h
-        _, h = W:ColorSwatch(content, LText("Accent Color"), -by,
-            function() local c = KT_GetActiveAccent(skin); return c.r, c.g, c.b, 1 end,
-            function(r, g, b)
-                skin.accentColor = MakeStyleColor(r, g, b, 1)
-                skin.customBorderColor = MakeStyleColor(r, g, b, 1)
-                skin.kullthranUIColorByClass = false
-                skin.borderTheme = "CUSTOM"
-                skin.borderThemeBeforeClass = "CUSTOM"
-                ApplyManualStyle()
-            end,
-            false
-        ); by = by + h
-        _, h = W:ColorSwatch(content, LText("Window Background"), -by,
-            function() local c = skin.backgroundColor or STYLE_PRESETS.kui_crimson.background; return c.r, c.g, c.b, c.a end,
-            function(r, g, b, a) skin.backgroundColor = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
-            true
-        ); by = by + h
-        _, h = W:ColorSwatch(content, LText("Main Text"), -by,
-            function() local c = skin.menuTextColor or STYLE_PRESETS.kui_crimson.text; return c.r, c.g, c.b, 1 end,
-            function(r, g, b) skin.menuTextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
-            false
-        ); by = by + h
-        _, h = W:ColorSwatch(content, LText("Secondary Text"), -by,
-            function() local c = skin.menuSubtextColor or STYLE_PRESETS.kui_crimson.muted; return c.r, c.g, c.b, 1 end,
-            function(r, g, b) skin.menuSubtextColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end,
-            false
-        ); by = by + h
-        _, h = W:ColorSwatch(content, LText("Background Tint"), -by,
-            function() local c = skin.menuBackgroundTint or STYLE_PRESETS.kui_crimson.backgroundTint; return c.r, c.g, c.b, c.a end,
-            function(r, g, b, a) skin.menuBackgroundTint = MakeStyleColor(r, g, b, a); ApplyManualStyle() end,
-            true
-        ); by = by + h
-        _, h = W:Dropdown(content, "Unlock Mode Color", -by,
-            { accent = "Accent", custom = "Custom" },
+    AddOptionBlock(manualCols, "right", "Module Colors", function(container)
+        local by = 0
+        _, h = W:ModeColorRow(container, "Unlock Mode", -by,
             function() return skin.unlockModeColorMode or "accent" end,
             function(v) skin.unlockModeColorMode = v; ApplyManualStyle() end,
-            { "accent", "custom" }
+            function() return ColorOf(skin.unlockModeColorMode, skin.unlockModeColor) end,
+            function(r, g, b) skin.unlockModeColorMode = "custom"; skin.unlockModeColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end
         ); by = by + h
-        _, h = W:ColorSwatch(content, "Unlock Mode Accent", -by,
-            function()
-                local mode = skin.unlockModeColorMode or "accent"
-                local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.unlockModeColor or KT_GetActiveAccent(skin))
-                return c.r, c.g, c.b, 1
-            end,
-            function(r, g, b)
-                skin.unlockModeColorMode = "custom"
-                skin.unlockModeColor = MakeStyleColor(r, g, b, 1)
-                ApplyManualStyle()
-            end,
-            false
-        ); by = by + h
-        _, h = W:Dropdown(content, "Friend List Color", -by,
-            { accent = "Accent", custom = "Custom" },
+        _, h = W:ModeColorRow(container, "Friend List", -by,
             function() return skin.friendListColorMode or "accent" end,
             function(v) skin.friendListColorMode = v; ApplyManualStyle() end,
-            { "accent", "custom" }
+            function() return ColorOf(skin.friendListColorMode, skin.friendListColor) end,
+            function(r, g, b) skin.friendListColorMode = "custom"; skin.friendListColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end
         ); by = by + h
-        _, h = W:ColorSwatch(content, "Friend List Accent", -by,
-            function()
-                local mode = skin.friendListColorMode or "accent"
-                local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.friendListColor or KT_GetActiveAccent(skin))
-                return c.r, c.g, c.b, 1
-            end,
-            function(r, g, b)
-                skin.friendListColorMode = "custom"
-                skin.friendListColor = MakeStyleColor(r, g, b, 1)
-                ApplyManualStyle()
-            end,
-            false
-        ); by = by + h
-        _, h = W:Dropdown(content, "Armory Color", -by,
-            { accent = "Accent", custom = "Custom" },
+        _, h = W:ModeColorRow(container, "Armory", -by,
             function() return skin.armoryColorMode or "accent" end,
-            function(v)
-                skin.armoryColorMode = v
-                ApplyLegacySkinColorEdit()
-            end,
-            { "accent", "custom" }
+            function(v) skin.armoryColorMode = v; ApplyLegacySkinColorEdit() end,
+            function() return ColorOf(skin.armoryColorMode, skin.armoryColor) end,
+            function(r, g, b) skin.armoryColorMode = "custom"; skin.armoryColor = { r = r, g = g, b = b, a = 1 }; ApplyLegacySkinColorEdit() end
         ); by = by + h
-        _, h = W:ColorSwatch(content, "Armory Accent", -by,
-            function()
-                local mode = skin.armoryColorMode or "accent"
-                local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.armoryColor or KT_GetActiveAccent(skin))
-                return c.r, c.g, c.b, 1
-            end,
-            function(r, g, b)
-                skin.armoryColorMode = "custom"
-                skin.armoryColor = { r = r, g = g, b = b, a = 1 }
-                ApplyLegacySkinColorEdit()
-            end,
-            false
-        ); by = by + h
-        _, h = W:Dropdown(content, "Objective Tracker Color", -by,
-            { accent = "Accent", custom = "Custom" },
+        _, h = W:ModeColorRow(container, "Objective Tracker", -by,
             function() return KT.db.profile.objectiveTracker and KT.db.profile.objectiveTracker.colorMode or "accent" end,
             function(v)
                 if KT.db.profile.objectiveTracker then KT.db.profile.objectiveTracker.colorMode = v end
                 ApplyLegacySkinColorEdit()
             end,
-            { "accent", "custom" }
-        ); by = by + h
-        _, h = W:ColorSwatch(content, "Objective Tracker Accent", -by,
             function()
                 local obj = KT.db.profile.objectiveTracker
-                local mode = obj and obj.colorMode or "accent"
-                local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (obj and obj.customColor or KT_GetActiveAccent(skin))
-                return c.r, c.g, c.b, 1
+                return ColorOf(obj and obj.colorMode, obj and obj.customColor)
             end,
             function(r, g, b)
                 local obj = KT.db.profile.objectiveTracker
@@ -7643,44 +7408,19 @@ local function BuildGeneralCore(sc, W, y)
                     obj.customColor = { r = r, g = g, b = b, a = 1 }
                 end
                 ApplyLegacySkinColorEdit()
-            end,
-            false
+            end
         ); by = by + h
-        _, h = W:Dropdown(content, "Bags Color", -by,
-            { accent = "Accent", custom = "Custom" },
+        _, h = W:ModeColorRow(container, "Bags", -by,
             function() return skin.bagsColorMode or "accent" end,
             function(v) skin.bagsColorMode = v; ApplyManualStyle() end,
-            { "accent", "custom" }
+            function() return ColorOf(skin.bagsColorMode, skin.bagsColor) end,
+            function(r, g, b) skin.bagsColorMode = "custom"; skin.bagsColor = MakeStyleColor(r, g, b, 1); ApplyManualStyle() end
         ); by = by + h
-        _, h = W:ColorSwatch(content, "Bags Accent", -by,
-            function()
-                local mode = skin.bagsColorMode or "accent"
-                local c = (mode == "accent") and (KT_GetActiveAccent(skin)) or (skin.bagsColor or KT_GetActiveAccent(skin))
-                return c.r, c.g, c.b, 1
-            end,
-            function(r, g, b)
-                skin.bagsColorMode = "custom"
-                skin.bagsColor = MakeStyleColor(r, g, b, 1)
-                ApplyManualStyle()
-            end,
-            false
-        ); by = by + h
-        _, h = W:Dropdown(content, "Menu Icons", -by,
-            { accent = "Accent", white = "White" },
-            function() return skin.menuIconColorMode or "accent" end,
-            function(v) skin.menuIconColorMode = v; ApplyManualStyle() end,
-            { "accent", "white" }
-        ); by = by + h
-        _, h = W:Label(content, "If some live module keeps the previous palette, use Reload UI after saving the style.", -by, 10); by = by + h
+        return by
+    end)
 
-
-
-
-    -- Manual Colors stays fully usable regardless of theme (see the
-    -- matching removal above, for the Color Presets block).
-    content:SetAlpha(1.0)
-
-    y = y + FinalizeOptionBlock(frame, content, by) + 8
+    y = EndOptionBlocks(manualCols)
+    _, h = W:Label(sc, "If some live module keeps the previous palette, use Reload UI after saving the style.", -y, 10); y = y + h + 8
 
 
 
@@ -7702,324 +7442,265 @@ local function BuildProfilesTab(sc, W, y)
             KT:RefreshPage()
         end
     end
+    local function Report(ok, err)
+        if not ok and err then KT:Print(err) return false end
+        return true
+    end
 
     W = ns.ProfileUI.WrapWidgets(W)
-    local cols = BeginOptionBlocks(sc, y, { gap = 16, columnGap = 16 })
     local defs = profileMod:GetModuleDefinitions()
     local specEntries = profileMod:GetCDMSpecEntries()
     local assignedProfile = profileMod:GetCurrentSpecAssignment()
+    local currentProfile = KT.db and KT.db:GetCurrentProfile() or "Unknown"
+    local _, profileList = profileMod:GetProfileValues()
+    local _, specName, specIcon = GetCurrentSpecVisual()
 
-    AddOptionBlock(cols, "left", "KUI Profiles", function(container)
+    -- One full-width block per section, stacked: the grids need the width.
+    local blockX, blockW = 10, sc:GetWidth() - 22
+    local function AddSection(title, buildFn)
+        local frame, content = CreateOptionBlock(sc, title, blockX, -y, blockW)
+        y = y + FinalizeOptionBlock(frame, content, buildFn(content)) + 16
+    end
+
+    local function DisplayName(name)
+        return (KT.GetProfileDisplayName and KT:GetProfileDisplayName(name)) or name
+    end
+    local function LoadProfile(name)
+        if name == currentProfile then return end
+        if Report(profileMod:SwitchProfile(name)) then
+            profilesSelectionName = KT.db:GetCurrentProfile()
+            profilesDraftName = profilesSelectionName or ""
+            RefreshProfilesPage()
+        end
+    end
+
+    AddSection("KUI Profiles", function(container)
         local by = 0
-        _, h = AddProfileSpecCard(container, -by, KT.db and KT.db:GetCurrentProfile() or "Unknown", assignedProfile); by = by + h
-        _, h = W:Dropdown(container, "Saved Profiles", -by,
-            function()
-                return select(1, profileMod:GetProfileValues())
+        _, h = AddProfileSpecCard(container, -by, currentProfile, assignedProfile); by = by + h
+        _, h = W:Label(container, "Click a card to select it, double-click to load it.", -by, 11); by = by + h
+        by = ns.ProfileUI.WaveGrid(container, by, profileList, {
+            getTitle = DisplayName,
+            getSubtitle = function(name)
+                if name == assignedProfile then
+                    return LTextFmt("Assigned to %s", specName or LText("Unknown"))
+                end
+                return name == currentProfile and LText("Active profile") or LText("Saved profile")
             end,
-            function()
-                EnsureProfileState()
-                return profilesSelectionName
+            getIcon = function(name)
+                local custom = profileMod.GetProfileIcon and profileMod:GetProfileIcon(name)
+                if custom then return custom end
+                if name == assignedProfile and specIcon then return specIcon end
+                return ns.ProfileUI.Grid.pageIcon
             end,
-            function(v)
-                profilesSelectionName = v
-            end
-        ); by = by + h
+            getIconCoords = function(name)
+                local custom = profileMod.GetProfileIcon and profileMod:GetProfileIcon(name)
+                if custom or (name == assignedProfile and specIcon) then return { 0.08, 0.92, 0.08, 0.92 } end
+                return nil
+            end,
+            iconTooltip = LText("Click to choose this profile's icon."),
+            onIconClick = profileMod.SetProfileIcon and function(name)
+                KT.IconPicker.Open(profileMod:GetProfileIcon(name), function(icon)
+                    profileMod:SetProfileIcon(name, icon)
+                    RefreshProfilesPage()
+                end)
+            end or nil,
+            getBadge = function(name) return name == currentProfile and LText("Active") or nil end,
+            getTooltip = function(name, tip)
+                tip:SetText(DisplayName(name))
+                if name == currentProfile then tip:AddLine(LText("Active profile"), 0.4, 1, 0.5) end
+                if name == assignedProfile then tip:AddLine(LTextFmt("Assigned to %s", specName or LText("Unknown")), 1, 0.82, 0.3) end
+                tip:AddLine(LText("Click to select. Double-click to load."), 0.8, 0.8, 0.8, true)
+            end,
+            isSelected = function(name) return name == profilesSelectionName end,
+            onClick = function(name)
+                profilesSelectionName = name
+                RefreshProfilesPage()
+            end,
+            onDoubleClick = LoadProfile,
+        })
+
+        local selectedLabel = DisplayName(profilesSelectionName or currentProfile)
+        _, h = W:Label(container, LTextFmt("Selected: %s", selectedLabel), -by, 11, { r = 1, g = 1, b = 1 }); by = by + h
+        _, h = ns.ProfileUI.SoftActionRow(container, -by, {
+            { text = "Load Selected", onClick = function() LoadProfile(profilesSelectionName) end },
+            { text = "Assign To Spec", onClick = function()
+                local target = profilesSelectionName or currentProfile
+                if Report(profileMod:AssignCurrentSpec(target)) then
+                    profilesSelectionName = target
+                    RefreshProfilesPage()
+                end
+            end },
+            { text = "Clear Spec Assign", onClick = function()
+                if Report(profileMod:ClearCurrentSpecAssignment()) then RefreshProfilesPage() end
+            end },
+            { text = "Delete Selected", confirm = true,
+                confirmText = LTextFmt("Delete profile %s?", selectedLabel),
+                onClick = function()
+                    if Report(profileMod:DeleteProfile(profilesSelectionName)) then
+                        profilesSelectionName = KT.db:GetCurrentProfile()
+                        RefreshProfilesPage()
+                    end
+                end },
+        }); by = by + h
+
         _, h = W:Input(container, "Save Current As", -by,
             function() return profilesDraftName end,
             function(v) profilesDraftName = v end
         ); by = by + h
-
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Load Selected",
-                onClick = function()
-                    local ok, err = profileMod:SwitchProfile(profilesSelectionName)
-                    if not ok and err then
-                        KT:Print(err)
-                    else
-                        profilesSelectionName = KT.db:GetCurrentProfile()
-                        profilesDraftName = profilesSelectionName or ""
-                        RefreshProfilesPage()
-                    end
-                end,
-        },
-            {
-                type = "button",
-                text = "Delete Selected",
-                onClick = function()
-                    local ok, err = profileMod:DeleteProfile(profilesSelectionName)
-                    if not ok and err then
-                        KT:Print(err)
-                    else
-                        profilesSelectionName = KT.db:GetCurrentProfile()
-                        RefreshProfilesPage()
-                    end
-                end,
-        }
-        ); by = by + h
-
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Save As",
-                onClick = function()
-                    local ok, err = profileMod:SaveCurrentAsProfile(profilesDraftName)
-                    if not ok and err then
-                        KT:Print(err)
-                    else
-                        profilesSelectionName = KT.db:GetCurrentProfile()
-                        profilesDraftName = profilesSelectionName or ""
-                        RefreshProfilesPage()
-                    end
-                end,
-        },
-            {
-                type = "button",
-                text = "Assign To Spec",
-                onClick = function()
-                    local target = profilesSelectionName or KT.db:GetCurrentProfile()
-                    local ok, err = profileMod:AssignCurrentSpec(target)
-                    if not ok and err then
-                        KT:Print(err)
-                    else
-                        profilesSelectionName = target
-                        RefreshProfilesPage()
-                    end
-                end,
-        }
-        ); by = by + h
-
-        _, h = W:Button(container, "Clear Spec Assign", -by, function()
-            local ok, err = profileMod:ClearCurrentSpecAssignment()
-            if not ok and err then
-                KT:Print(err)
-            else
-                RefreshProfilesPage()
-            end
-        end); by = by + h
-        return by
-    end)
-
-    AddOptionBlock(cols, "left", "Profile Transfer", function(container)
-        local by = 0
-        _, h = W:Label(container, "Export or import the full active KullThranUI profile from one place.", -by, 11); by = by + h
-        _, h = W:Button(container, "Export Current Profile", -by, function()
-            local exportString, err = profileMod:ExportCurrentProfileString()
-            if not exportString then
-                KT:Print(err)
-            else
-                profileMod:ShowExportPopup(LText("Export Current Profile"), exportString)
-            end
-        end, "FULL"); by = by + h
-        _, h = W:Button(container, "Import Profile", -by, function()
-            profileMod:ShowImportPopup(
-                LText("Import Profile"),
-                LText("|cffff5555This overwrites the active KullThranUI profile.|r"),
-                function(text)
-                    local ok, err = profileMod:ImportProfileString(text)
-                    if not ok and err then
-                        KT:Print(err)
-                    else
-                        profilesSelectionName = KT.db:GetCurrentProfile()
-                        profilesDraftName = profilesSelectionName or ""
-                        RefreshProfilesPage()
-                    end
+        _, h = ns.ProfileUI.SoftActionRow(container, -by, {
+            { text = "Save As", onClick = function()
+                if Report(profileMod:SaveCurrentAsProfile(profilesDraftName)) then
+                    profilesSelectionName = KT.db:GetCurrentProfile()
+                    profilesDraftName = profilesSelectionName or ""
+                    RefreshProfilesPage()
                 end
-            )
-        end, "FULL"); by = by + h
+            end },
+            { text = "Export Current Profile", onClick = function()
+                local exportString, err = profileMod:ExportCurrentProfileString()
+                if not exportString then
+                    KT:Print(err)
+                else
+                    profileMod:ShowExportPopup(LText("Export Current Profile"), exportString)
+                end
+            end },
+            { text = "Import Profile", onClick = function()
+                profileMod:ShowImportPopup(
+                    LText("Import Profile"),
+                    LText("|cffff5555This overwrites the active KullThranUI profile.|r"),
+                    function(text)
+                        if Report(profileMod:ImportProfileString(text)) then
+                            profilesSelectionName = KT.db:GetCurrentProfile()
+                            profilesDraftName = profilesSelectionName or ""
+                            RefreshProfilesPage()
+                        end
+                    end
+                )
+            end },
+        }); by = by + h
         return by
     end)
 
-    AddOptionBlock(cols, "right", "Modules Export", function(container)
+    AddSection("Modules Export", function(container)
         local by = 0
         _, h = W:Label(container, "Pick the KUI modules you want to export or merge into the current profile.", -by, 11); by = by + h
-        by = AddProfilesSelectionGrid(container, by, defs, {
-            searchable = true,
-            columns = 3,
-            cardHeight = 52,
-            getTitle = function(def)
-                return LText(def.label)
-            end,
-            getSubtitle = function()
-                return LText("Module export")
-            end,
-            getIconPath = function(def)
-                local iconName = PROFILE_MODULE_ICON_MAP[def.id] or "Config"
-                return ICON_PATH .. iconName .. ".png"
-            end,
-            getIconName = function(def)
-                return PROFILE_MODULE_ICON_MAP[def.id] or "Config"
-            end,
-            isSelected = function(def)
-                return selectedModuleExports[def.id] == true
-            end,
-            onToggle = function(def, selected)
+        by = ns.ProfileUI.ModuleGrid(container, by, defs,
+            function(def) return selectedModuleExports[def.id] == true end,
+            function(def, selected)
                 selectedModuleExports[def.id] = selected and true or false
                 RefreshProfilesPage()
-            end,
-    })
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Select All",
-                onClick = function()
-                    SetAllSelections(selectedModuleExports, defs, true)
-                    RefreshProfilesPage()
-                end,
-        },
-            {
-                type = "button",
-                text = "Clear Selection",
-                onClick = function()
-                    SetAllSelections(selectedModuleExports, defs, false)
-                    RefreshProfilesPage()
-                end,
-        }
-        ); by = by + h
-        _, h = W:Button(container, "Load Modules", -by, function()
-            local ok, err = profileMod:ApplyModulesFromProfile(profilesSelectionName, CollectSelectedKeys(selectedModuleExports))
-            if not ok and err then
-                KT:Print(err)
-            else
+            end)
+        _, h = ns.ProfileUI.SoftActionRow(container, -by, {
+            { text = "Select All", onClick = function()
+                SetAllSelections(selectedModuleExports, defs, true)
                 RefreshProfilesPage()
-            end
-        end, "FULL"); by = by + h
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Export Modules",
-                onClick = function()
-                    local exportString, err = profileMod:ExportModulesString(CollectSelectedKeys(selectedModuleExports))
-                    if not exportString then
-                        KT:Print(err)
-                    else
-                        profileMod:ShowExportPopup(LText("Export Modules"), exportString)
+            end },
+            { text = "Clear Selection", onClick = function()
+                SetAllSelections(selectedModuleExports, defs, false)
+                RefreshProfilesPage()
+            end },
+            { text = "Load Modules", onClick = function()
+                if Report(profileMod:ApplyModulesFromProfile(profilesSelectionName, CollectSelectedKeys(selectedModuleExports))) then
+                    RefreshProfilesPage()
+                end
+            end },
+            { text = "Export Modules", onClick = function()
+                local exportString, err = profileMod:ExportModulesString(CollectSelectedKeys(selectedModuleExports))
+                if not exportString then
+                    KT:Print(err)
+                else
+                    profileMod:ShowExportPopup(LText("Export Modules"), exportString)
+                end
+            end },
+            { text = "Import Modules", onClick = function()
+                profileMod:ShowImportPopup(
+                    LText("Import Module Profile"),
+                    LText("|cffff5555This merges the imported modules into the active profile.|r"),
+                    function(text)
+                        if Report(profileMod:ImportProfileString(text)) then RefreshProfilesPage() end
                     end
-                end,
-        },
-            {
-                type = "button",
-                text = "Import Modules",
-                onClick = function()
-                    profileMod:ShowImportPopup(
-                        LText("Import Module Profile"),
-                        LText("|cffff5555This merges the imported modules into the active profile.|r"),
-                        function(text)
-                            local ok, err = profileMod:ImportProfileString(text)
-                            if not ok and err then
-                                KT:Print(err)
-                            else
-                                RefreshProfilesPage()
-                            end
-                        end
-                    )
-                end,
-        }
-        ); by = by + h
+                )
+            end },
+        }); by = by + h
         return by
     end)
 
-    AddOptionBlock(cols, "right", "CDM Spell Profiles", function(container)
+    AddSection("CDM Spell Profiles", function(container)
         local by = 0
         _, h = W:Label(container, "Each card is a specialization. Export only the specs you actually want to move.", -by, 11); by = by + h
-        by = AddProfilesSelectionGrid(container, by, specEntries, {
-            columns = 2,
-            cardHeight = 52,
-            getTitle = function(spec)
-                return spec.name
-            end,
-            showSubtitle = true,
+        by = ns.ProfileUI.WaveGrid(container, by, specEntries, {
+            iconCoords = { 0.08, 0.92, 0.08, 0.92 },
+            getTitle = function(spec) return spec.name end,
             getSubtitle = function(spec)
                 return spec.hasData and LText("CDM data saved") or LText("No CDM data yet")
             end,
-            getIcon = function(spec)
-                return spec.icon or 134400
+            getIcon = function(spec) return spec.icon or 134400 end,
+            getTooltip = function(spec, tip)
+                tip:SetText(spec.name)
+                tip:AddLine(spec.hasData and LText("CDM data saved") or LText("No CDM data yet"), 0.8, 0.8, 0.8)
             end,
-            isSelected = function(spec)
-                return selectedCDMSpecExports[spec.key] == true
-            end,
-            onToggle = function(spec, selected)
-                selectedCDMSpecExports[spec.key] = selected and true or false
+            isSelected = function(spec) return selectedCDMSpecExports[spec.key] == true end,
+            onClick = function(spec)
+                selectedCDMSpecExports[spec.key] = not selectedCDMSpecExports[spec.key]
                 RefreshProfilesPage()
             end,
-    })
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Select All",
-                onClick = function()
-                    SetAllSelections(selectedCDMSpecExports, specEntries, true)
-                    RefreshProfilesPage()
-                end,
-        },
-            {
-                type = "button",
-                text = "Clear Selection",
-                onClick = function()
-                    SetAllSelections(selectedCDMSpecExports, specEntries, false)
-                    RefreshProfilesPage()
-                end,
-        }
-        ); by = by + h
-        _, h = W:DualRow(container, -by,
-            {
-                type = "button",
-                text = "Export Spells",
-                onClick = function()
-                    local exportString, err = profileMod:ExportCDMSpellsString(CollectSelectedKeys(selectedCDMSpecExports))
-                    if not exportString then
-                        KT:Print(err)
-                    else
-                        profileMod:ShowExportPopup(LText("Export Spells"), exportString)
+        })
+        local totalSelected = 0
+        for _, spec in ipairs(specEntries) do if selectedCDMSpecExports[spec.key] then totalSelected = totalSelected + 1 end end
+        by = ns.ProfileUI.Summary(container, by - 8, string.format("%d / %d %s", totalSelected, #specEntries, LText("selected")))
+        _, h = ns.ProfileUI.SoftActionRow(container, -by, {
+            { text = "Select All", onClick = function()
+                SetAllSelections(selectedCDMSpecExports, specEntries, true)
+                RefreshProfilesPage()
+            end },
+            { text = "Clear Selection", onClick = function()
+                SetAllSelections(selectedCDMSpecExports, specEntries, false)
+                RefreshProfilesPage()
+            end },
+            { text = "Export Spells", onClick = function()
+                local exportString, err = profileMod:ExportCDMSpellsString(CollectSelectedKeys(selectedCDMSpecExports))
+                if not exportString then
+                    KT:Print(err)
+                else
+                    profileMod:ShowExportPopup(LText("Export Spells"), exportString)
+                end
+            end },
+            { text = "Import Spells", onClick = function()
+                profileMod:ShowImportPopup(
+                    LText("Import CDM Spell Profile"),
+                    LText("|cffff5555This overwrites imported CDM specs.|r"),
+                    function(text)
+                        if Report(profileMod:ImportCDMSpellsString(text)) then RefreshProfilesPage() end
                     end
-                end,
-        },
-            {
-                type = "button",
-                text = "Import Spells",
-                onClick = function()
-                    profileMod:ShowImportPopup(
-                        LText("Import CDM Spell Profile"),
-                        LText("|cffff5555This overwrites imported CDM specs.|r"),
-                        function(text)
-                            local ok, err = profileMod:ImportCDMSpellsString(text)
-                            if not ok and err then
-                                KT:Print(err)
-                            else
-                                RefreshProfilesPage()
-                            end
-                        end
-                    )
-                end,
-        }
-        ); by = by + h
+                )
+            end },
+        }); by = by + h
         return by
     end)
 
-    return EndOptionBlocks(cols)
-end
-
-local function BuildQuickSetupTab(sc, W, y)
-    local h = 0
-
-    _, h = W:SectionHeader(sc, "Quick Setup", -y); y = y + h
-    _, h = W:Label(sc, "|cffFF5555Warning:|r These installers overwrite the target profile and reload the UI.", -y, 11); y = y + h
-
+    -- Quick Setup (formerly its own tab): the resolution layout installers.
     if ns.ProfileData and ns.Handlers then
-        _, h = W:SectionHeader(sc, "Layout Profiles", -y); y = y + h
-        for _, res in ipairs({ "1080p", "2K", "4K" }) do
-            local preset = res
-            _, h = W:Button(sc, LTextFmt("%s Layout", preset), -y, function()
-                ns.Handlers.Layout("KullThranUI", ns.ProfileData.Layouts[preset])
-                KT:ForceSetProfile("KullThranUI", "KullThranUI")
-                ReloadUI()
-            end, "FULL", true, LTextFmt("Apply %s layout? UI will reload.", preset)); y = y + h
-        end
+        AddSection("Quick Setup", function(container)
+            local by = 0
+            _, h = W:Label(container, "|cffFF5555Warning:|r These installers overwrite the target profile and reload the UI.", -by, 11); by = by + h
+            local buttons = {}
+            for _, res in ipairs({ "1080p", "2K", "4K" }) do
+                local preset = res
+                buttons[#buttons + 1] = {
+                    text = LTextFmt("%s Layout", preset),
+                    confirm = true,
+                    confirmText = LTextFmt("Apply %s layout? UI will reload.", preset),
+                    onClick = function()
+                        ns.Handlers.Layout("KullThranUI", ns.ProfileData.Layouts[preset])
+                        KT:ForceSetProfile("KullThranUI", "KullThranUI")
+                        ReloadUI()
+                    end,
+                }
+            end
+            _, h = ns.ProfileUI.SoftActionRow(container, -by, buttons); by = by + h
+            return by
+        end)
     end
 
-    _, h = W:SectionHeader(sc, "CDM Presets", -y); y = y + h
-    _, h = W:Label(sc, "The per-spec CDM import/export framework is now in Profiles. Additional presets can be added later once the source data is available.", -y, 11); y = y + h
     return y
 end
 
@@ -8587,7 +8268,8 @@ RegisterPage("general", "General", 10, function(sc, W)
     elseif generalSubTab == "profiles" then
         y = BuildProfilesTab(sc, W, y)
     elseif generalSubTab == "quicksetup" then
-        y = BuildQuickSetupTab(sc, W, y)
+        generalSubTab = "profiles"
+        y = BuildProfilesTab(sc, W, y)
     elseif generalSubTab == "fontscolors" then
         y = BuildFontsColorsTab(sc, W, y)
     elseif generalSubTab == "disablemodules" then

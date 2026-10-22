@@ -719,6 +719,16 @@ end
 -- Classic. `box` here is sized exactly like the real `frame` (both are the
 -- 232x100 stock box at the same scale), so the same anchor math applies
 -- unchanged.
+-- The player's own name and level for every card (a sample while the
+-- client has no unit yet).
+local function PreviewPlayer()
+    local okName, name = pcall(UnitName, "player")
+    if not (okName and type(name) == "string" and name ~= "") then name = T("Player") end
+    local okLevel, level = pcall(UnitLevel, "player")
+    if not (okLevel and type(level) == "number" and level > 0) then level = 60 end
+    return name, tostring(level)
+end
+
 local function AddLevelBadge(box, scale, ox, oy)
     local levelTextXNudge = 2 * scale
     local levelXNudge = 4 * scale
@@ -731,9 +741,10 @@ local function AddLevelBadge(box, scale, ox, oy)
     -- not a guarantee (same as KUIUnitFrames.lua's PvP-circle-vs-icon
     -- stacking). A higher-FrameLevel child always wins regardless of
     -- either side's own sublevel usage.
+    -- Well above the portrait (its model frame sits over the box too).
     local holder = CreateFrame("Frame", nil, box)
     holder:SetAllPoints(box)
-    holder:SetFrameLevel(box:GetFrameLevel() + 1)
+    holder:SetFrameLevel(box:GetFrameLevel() + 12)
 
     local circle = holder:CreateTexture(nil, "OVERLAY")
     circle:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -751,9 +762,11 @@ local function AddLevelBadge(box, scale, ox, oy)
     text:SetFont(GetPreviewFont(), Clamp(math.floor(11 * scale), 7, 11), "OUTLINE")
     text:SetTextColor(1, 0.82, 0.20, 1)
     text:SetJustifyH("CENTER")
-    text:SetSize(18 * scale, 14 * scale)
+    -- No fixed width: a 2-3 digit level in a box this small came out as "...".
+    text:SetWordWrap(false)
     text:SetPoint("CENTER", holder, "BOTTOMLEFT", ox * scale + levelTextXNudge - levelXNudge, oy * scale)
-    text:SetText("60")
+    local _, level = PreviewPlayer()
+    text:SetText(level)
 end
 
 -- Vanilla sheet renderer: the real TargetingFrame sample with its real
@@ -790,7 +803,7 @@ local function DrawSheetFrame(box, kit, scale, healthColor, accent)
     -- Classic's portrait sits inside its own rectangular window cut into the
     -- sheet, so it is drawn plain: no circular mask belongs on this theme.
     AddPortrait(box, geom.portrait, scale, false)
-    AddNameText(box, geom.name, scale, "KULLTHRAN", kit)
+    AddNameText(box, geom.name, scale, (PreviewPlayer()), kit)
     AddLevelBadge(box, scale, 60, 33)
 end
 
@@ -819,7 +832,7 @@ local function DrawHudFrame(box, kit, scale, healthColor, accent)
     end
     AddMaskedBar(box, geom.power, scale, kit.power, "_ktPreviewPowerMask")
     AddPortrait(box, geom.portrait, scale, true)
-    AddNameText(box, geom.name, scale, kit.retail and "PLAYER" or "KULLTHRAN", kit)
+    AddNameText(box, geom.name, scale, (PreviewPlayer()), kit)
 
     -- Forever and Retail use the same real ornament as Classic (they share
     -- the same 36/30.5 anchor in KUIUnitFrames.lua), unconditionally, not
@@ -829,74 +842,137 @@ local function DrawHudFrame(box, kit, scale, healthColor, accent)
     AddLevelBadge(box, scale, 36, 30.5)
 end
 
--- KullThranUI's own flat renderer. The real kui frame has no panel, it
--- just floats portrait+bars directly with no container, so no panel fill
--- or hairline border is drawn for this kit. KUIUnitFrames.lua sizes an
--- attached portrait as `playerTargetHeight + portraitSize` (the SAME
--- height as the combined health+power bar stack, by default), not a
--- fraction of the card, so portrait size is tied directly to the real bar
--- stack height and the two stay in the same ratio the real frame uses.
--- Name sits above the bars (the real frame's name text floats above, not
--- overlaid on the health fill) and the level is a small dark badge
--- overlapping the portrait's bottom-left corner, matching the real
--- level-circle ornament instead of a floating corner label.
-local function DrawFlatFrame(box, kit, scale, w, h, healthColor, accent)
-    -- KUI Style's card shows the health and power bars without a portrait.
-    local barsH = math.max(14, h - math.floor(h * 0.16))
-    local powerH = math.max(3, math.floor(barsH * 6 / 26))
-    local healthH = barsH - powerH
+-- KullThranUI Style as the live player frame draws it: a round portrait whose
+-- ring (the health color, like ResolveCircularPortraitColor's default)
+-- overlaps the bars, the level centred under the portrait, the name on the
+-- left of the health bar and "health | percent" on its right, and a thin power
+-- bar below. Laid out in the same 232x100 box as the stock themes, with the
+-- portrait where theirs sits, so every card's frame lines up at one height.
+local KUI_GEO = {
+    portrait = { x = 24, y = 19, size = 60 },
+    health = { x = 76, y = 36, w = 133, h = 22 },
+    power = { x = 76, y = 58, w = 133, h = 5 },
+}
 
-    local barsLeft = 0
-    local barsWidth = math.max(24, w - barsLeft)
-    local barsTop = -math.floor((h - barsH) * 0.5)
+-- Retail's KUI Style frame has no portrait (and so no level): the card shows
+-- just the bars, starting where the stock themes' portrait does so the four
+-- frames still line up. The Forever workspace keeps the portrait.
+local KUI_PREVIEW_PORTRAIT = false
+-- Without the portrait the bars carry the frame on their own, so they are
+-- taller than the portrait theme's (a 22px bar read as a thin strip).
+if not KUI_PREVIEW_PORTRAIT then
+    KUI_GEO.health = { x = 24, y = 28, w = 185, h = 34 }
+    KUI_GEO.power = { x = 24, y = 62, w = 185, h = 7 }
+end
 
-    -- MelliDark.tga is a HEALTH FILL texture option, not a pre-darkened
-    -- backdrop asset -- the real frame only ever draws it tinted to #4f4f4f
-    -- (DARK_BG_R/G/B in KUIUnitFrames.lua's CreateHealthBar). Drawn untinted
-    -- its own native (bright) pixels show through as solid white.
-    local track = box:CreateTexture(nil, "BACKGROUND")
+-- The player's own name and max health, or a sample when the client hides
+-- the value (secret values) or has no unit yet.
+local function KuiPreviewTexts()
+    local okName, name = pcall(UnitName, "player")
+    if not (okName and type(name) == "string" and name ~= "") then name = T("Player") end
+    local health = "1,228"
+    local okHealth, maxHealth = pcall(UnitHealthMax, "player")
+    local secret = issecretvalue and okHealth and issecretvalue(maxHealth)
+    if okHealth and not secret and type(maxHealth) == "number" and maxHealth > 0 then
+        health = BreakUpLargeNumbers and BreakUpLargeNumbers(maxHealth) or tostring(maxHealth)
+    end
+    local okLevel, level = pcall(UnitLevel, "player")
+    if not (okLevel and type(level) == "number" and level > 0) then level = 60 end
+    return name, health .. " | 100%", tostring(level)
+end
+
+local function DrawFlatFrame(box, kit, scale, healthColor, accent)
+    local geo = KUI_GEO
+    local nameText, valueText, levelText = KuiPreviewTexts()
+
+    -- Bars: dark track, full health fill, thin power fill, hairline edge.
+    local bars = CreateFrame("Frame", nil, box)
+    bars:SetPoint("TOPLEFT", box, "TOPLEFT", geo.health.x * scale, -geo.health.y * scale)
+    bars:SetSize(geo.health.w * scale, (geo.health.h + geo.power.h) * scale)
+
+    local track = bars:CreateTexture(nil, "BACKGROUND")
+    track:SetAllPoints(bars)
     track:SetTexture(KUI_BAR_TRACK)
     track:SetVertexColor(0x4f / 255 * 0.55, 0x4f / 255 * 0.55, 0x4f / 255 * 0.55, 1)
-    track:SetPoint("TOPLEFT", box, "TOPLEFT", barsLeft, barsTop)
-    track:SetSize(barsWidth, healthH)
     Unsnap(track)
 
-    local FILL_FRACTION, ABSORB_FRACTION = 0.55, 0.23
-    local health = box:CreateTexture(nil, "ARTWORK")
+    local health = bars:CreateTexture(nil, "ARTWORK")
     health:SetTexture(KUI_BAR_FILL)
-    health:SetVertexColor(healthColor[1], healthColor[2], healthColor[3], healthColor[4])
-    box._ktSetHealthColor = function(color)
-        -- Preserve the bar texture when changing the card's health color.
-        health:SetVertexColor(color[1], color[2], color[3], color[4] or 1)
-    end
-    health:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
-    health:SetSize(math.max(6, barsWidth * FILL_FRACTION), healthH)
+    health:SetPoint("TOPLEFT", bars, "TOPLEFT", 0, 0)
+    health:SetPoint("TOPRIGHT", bars, "TOPRIGHT", 0, 0)
+    health:SetHeight(geo.health.h * scale)
+    health:SetVertexColor(healthColor[1], healthColor[2], healthColor[3], healthColor[4] or 1)
     Unsnap(health)
 
-    local absorb = box:CreateTexture(nil, "ARTWORK")
-    absorb:SetColorTexture(0.10, 0.86, 0.52, 1)
-    absorb:SetPoint("TOPLEFT", health, "TOPRIGHT", 0, 0)
-    absorb:SetSize(math.max(3, barsWidth * ABSORB_FRACTION), healthH)
-
-    local power = box:CreateTexture(nil, "ARTWORK")
+    local power = bars:CreateTexture(nil, "ARTWORK")
     power:SetTexture(KUI_BAR_FILL)
+    power:SetPoint("BOTTOMLEFT", bars, "BOTTOMLEFT", 0, 0)
+    power:SetPoint("BOTTOMRIGHT", bars, "BOTTOMRIGHT", 0, 0)
+    power:SetHeight(geo.power.h * scale)
     power:SetVertexColor(kit.power[1], kit.power[2], kit.power[3], kit.power[4])
-    power:SetPoint("TOPLEFT", track, "BOTTOMLEFT", 0, 0)
-    power:SetSize(barsWidth, powerH)
     Unsnap(power)
+    PaintBorder(MakeBorder(bars, "_ktPreviewBarsBorder", { 0, 0, 0, 1 }, 1), { 0, 0, 0, 1 }, 1)
 
-    local textSize = Clamp(math.floor(healthH * 0.46), 7, 12)
-    local name = box:CreateFontString(nil, "OVERLAY")
-    name:SetFont(GetPreviewFont(), textSize, "OUTLINE")
-    name:SetPoint("LEFT", track, "LEFT", 6, 0)
-    name:SetText(T("Player"))
-    name:SetTextColor(1, 1, 1, 1)
+    local textSize = Clamp(math.floor(11 * scale), 7, 11)
+    local ring
+    if KUI_PREVIEW_PORTRAIT then
+        -- Portrait above the bars, so its ring overlaps their left end.
+        local size = geo.portrait.size * scale
+        local portrait = CreateFrame("Frame", nil, box)
+        portrait:SetSize(size, size)
+        portrait:SetPoint("TOPLEFT", box, "TOPLEFT", geo.portrait.x * scale, -geo.portrait.y * scale)
+        portrait:SetFrameLevel(bars:GetFrameLevel() + 2)
+        -- circle_mask/circle_border carry transparent padding in their canvas;
+        -- these ratios size them so the visible circle fills the portrait.
+        local MASK_PAD_RATIO = 128 / (116 - 12)
+        local RING_PAD_RATIO = 128 / (118 - 10)
+        local icon = portrait:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(size * MASK_PAD_RATIO, size * MASK_PAD_RATIO)
+        icon:SetPoint("CENTER", portrait, "CENTER")
+        if not ApplyPlayerPortrait(icon) then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        if portrait.CreateMaskTexture then
+            local mask = portrait:CreateMaskTexture()
+            mask:SetTexture(KUI_PORTRAIT_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetAllPoints(icon)
+            icon:AddMaskTexture(mask)
+        end
+        ring = portrait:CreateTexture(nil, "ARTWORK", nil, 1)
+        ring:SetSize(size * RING_PAD_RATIO, size * RING_PAD_RATIO)
+        ring:SetPoint("CENTER", portrait, "CENTER")
+        ring:SetTexture(KUI_PORTRAIT_RING)
+        ring:SetVertexColor(healthColor[1], healthColor[2], healthColor[3], 1)
 
-    local value = box:CreateFontString(nil, "OVERLAY")
+        -- Level: centred on the portrait's bottom edge, white (KUI Style's
+        -- default level color), as the live frame places it.
+        local level = portrait:CreateFontString(nil, "OVERLAY")
+        level:SetFont(GetPreviewFont(), textSize, "OUTLINE")
+        level:SetPoint("CENTER", portrait, "BOTTOM", 0, 4 * scale)
+        level:SetTextColor(1, 1, 1, 1)
+        level:SetText(levelText)
+    end
+
+    box._ktSetHealthColor = function(color)
+        health:SetVertexColor(color[1], color[2], color[3], color[4] or 1)
+        if ring then ring:SetVertexColor(color[1], color[2], color[3], 1) end
+    end
+
+    local textLeft = KUI_PREVIEW_PORTRAIT
+        and (geo.portrait.x + geo.portrait.size - geo.health.x + 4) * scale or 4 * scale
+    local value = bars:CreateFontString(nil, "OVERLAY")
     value:SetFont(GetPreviewFont(), textSize, "OUTLINE")
-    value:SetPoint("RIGHT", track, "RIGHT", -5, 0)
-    value:SetText("78%")
+    value:SetPoint("RIGHT", health, "RIGHT", -4 * scale, 0)
+    value:SetJustifyH("RIGHT")
     value:SetTextColor(1, 1, 1, 1)
+    value:SetText(valueText)
+
+    local name = bars:CreateFontString(nil, "OVERLAY")
+    name:SetFont(GetPreviewFont(), textSize, "OUTLINE")
+    name:SetPoint("LEFT", health, "LEFT", textLeft, 0)
+    name:SetPoint("RIGHT", value, "LEFT", -4 * scale, 0)
+    name:SetJustifyH("LEFT")
+    name:SetWordWrap(false)
+    name:SetTextColor(1, 1, 1, 1)
+    name:SetText(nameText)
 end
 
 --- Builds one theme's miniature on `stage`.
@@ -907,74 +983,34 @@ local function DrawScene(stage, themeKey, width, height)
     stageBg:SetAllPoints()
     stageBg:SetColorTexture(0.035, 0.040, 0.050, 1)
 
-    -- No slot row: its real-asset end caps barely read at this size on
-    -- Classic (two glyphs stuck together with nothing between them) or
-    -- Retail (end-cap art nearly invisible), so the vertical space goes to
-    -- a bigger, more accurate main preview instead.
     local padX, padTop, padBottom = 6, 6, 6
     local frameBand = height - padTop - padBottom
-    -- kui's card is a reference sample of the theme's own default look,
-    -- not a mirror of whatever the live profile happens to be customized
-    -- to right now (Classic/Forever/Retail's health color stays
-    -- live-reflecting on purpose, since their cards carry an explicit
-    -- HEALTH/CLASS COLOR toggle for it) -- always show class-colored health
-    -- here regardless of customFillColor/darkTheme.
     local healthColor = ResolveThemeHealthColor(themeKey, kit.health)
     local accent = ResolveThemeAccent(kit, healthColor)
 
-    local box
-    local scale
-    if kit.kind == "flat" then
-        scale = 1
-        box = CreateFrame("Frame", nil, stage)
-        -- Sized like the real circular frame (portrait ~46px against the
-        -- 100px-wide stock box's proportions), not stretched to fill the
-        -- whole stage -- the old full-height box turned the bars into
-        -- chunky blocks nothing like the Unit Frames live preview.
-        local boxH = Clamp(math.floor(frameBand * 0.45), 34, 60)
-        box:SetSize(math.max(60, width - (padX * 2)), boxH)
-        box:SetPoint("CENTER", stage, "CENTER", 0, 0)
-        DrawFlatFrame(box, kit, 1, box:GetWidth(), box:GetHeight(), healthColor, accent)
-        stage._ktPreviewBox = box
-    else
-        scale = math.min((width - (padX * 2)) / BOX_W, frameBand / BOX_H)
-        scale = math.max(Clamp(scale, 0.35, 1.2), 0.3)
-        box = CreateFrame("Frame", nil, stage)
-        box:SetSize(BOX_W * scale, BOX_H * scale)
-        -- Classic's real geometry (GEO.sheet) leaves a 42-unit margin
-        -- before the portrait but only 7 after the health bar (portrait at
-        -- x=42, health ends at x=225, out of a 232-wide box) -- an
-        -- asymmetric real layout that reads as "pushed to the right" once
-        -- wrapped in this card's own symmetric bordered box (the real
-        -- floating in-game frame has no such box drawing attention to it).
-        -- Forever/Retail's GEO.hud doesn't have this problem (its content
-        -- spans 24-209, center within half a unit of the box's own center)
-        -- so only Classic's box gets re-centered on its actual content
-        -- rather than on the raw 232-unit virtual canvas -- the content
-        -- geometry itself (GEO.sheet) is untouched, still exactly what the
-        -- real frame uses.
-        local xOffset = 0
-        if kit.kind == "sheet" then
-            local contentCenter = (42 + 225) / 2
-            xOffset = -(contentCenter - (BOX_W / 2)) * scale
-        end
-        box:SetPoint("TOP", stage, "TOP", xOffset, -padTop)
-        if kit.kind == "sheet" then
-            DrawSheetFrame(box, kit, scale, healthColor, accent)
-        else
-            DrawHudFrame(box, kit, scale, healthColor, accent)
-        end
-        stage._ktPreviewBox = box
+    -- Every theme, KUI Style included, draws inside the same 232x100 box at
+    -- the same scale and top offset, so the four frames line up across cards.
+    local scale = math.min((width - (padX * 2)) / BOX_W, frameBand / BOX_H)
+    scale = math.max(Clamp(scale, 0.35, 1.2), 0.3)
+    local box = CreateFrame("Frame", nil, stage)
+    box:SetSize(BOX_W * scale, BOX_H * scale)
+    -- Classic's real geometry (GEO.sheet) puts its content off-centre in the
+    -- box (portrait at x=42, health ending at x=225), so only its box is
+    -- shifted onto the content's own centre.
+    local xOffset = 0
+    if kit.kind == "sheet" then
+        local contentCenter = (42 + 225) / 2
+        xOffset = -(contentCenter - (BOX_W / 2)) * scale
     end
-
-    -- No second border around the whole `stage` (the card's fixed
-    -- stageHeight area): AddPanel already draws its own border tightly
-    -- around `box` (the content-fitted area) for sheet/hud kinds, and
-    -- `box` is shorter than `stage` whenever width, not height, is the
-    -- limiting factor in the scale calc, so the two borders never lined
-    -- up and Classic's card showed a second, badly-fitted rectangle.
-    -- AddPanel's box-level border already frames the miniature on its own
-    -- (and kui intentionally has none).
+    box:SetPoint("TOP", stage, "TOP", xOffset, -padTop)
+    if kit.kind == "flat" then
+        DrawFlatFrame(box, kit, scale, healthColor, accent)
+    elseif kit.kind == "sheet" then
+        DrawSheetFrame(box, kit, scale, healthColor, accent)
+    else
+        DrawHudFrame(box, kit, scale, healthColor, accent)
+    end
+    stage._ktPreviewBox = box
 end
 
 --- Creates a live miniature of `themeKey` inside `parent`.

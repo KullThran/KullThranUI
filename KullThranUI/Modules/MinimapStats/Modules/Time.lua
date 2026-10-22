@@ -46,20 +46,16 @@ function MS:CreateTime()
     TimeFrame:SetHeight(TimeFrame.Text:GetStringHeight())
     if DB.Enable then
         TimeFrame:Show()
-        TimeFrame:SetScript("OnUpdate", function(self, elapsed)
-            self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-            if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                self.Text:SetText(FetchTime())
-                self:SetWidth(self.Text:GetStringWidth())
-                self:SetHeight(self.Text:GetStringHeight())
-                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                self.TimeSinceLastUpdate = 0
-            end
+        MS:SetStatTicker(TimeFrame, DB.UpdateInterval, function(self)
+            self.Text:SetText(FetchTime())
+            self:SetWidth(self.Text:GetStringWidth())
+            self:SetHeight(self.Text:GetStringHeight())
+            MS:ApplyDetachedMinimapLayout(self, DB.Layout)
         end)
         TimeFrame:SetScript("OnMouseDown", Time_OnClick)
     else
         TimeFrame:Hide()
-        TimeFrame:SetScript("OnUpdate", nil)
+        MS:SetStatTicker(TimeFrame)
         TimeFrame:SetScript("OnMouseDown", nil)
     end
     MS.TimeFrame = TimeFrame
@@ -83,15 +79,11 @@ function MS:UpdateTime()
         MS.TimeFrame:SetHeight(MS.TimeFrame.Text:GetStringHeight())
         if DB.Enable then
             MS.TimeFrame:Show()
-            MS.TimeFrame:SetScript("OnUpdate", function(self, elapsed)
-                self.TimeSinceLastUpdate = (self.TimeSinceLastUpdate or 0) + elapsed
-                if self.TimeSinceLastUpdate >= DB.UpdateInterval then
-                    self.Text:SetText(FetchTime())
-                    self:SetWidth(self.Text:GetStringWidth())
-                    self:SetHeight(self.Text:GetStringHeight())
-                    MS:ApplyDetachedMinimapLayout(self, DB.Layout)
-                    self.TimeSinceLastUpdate = 0
-                end
+            MS:SetStatTicker(MS.TimeFrame, DB.UpdateInterval, function(self)
+                self.Text:SetText(FetchTime())
+                self:SetWidth(self.Text:GetStringWidth())
+                self:SetHeight(self.Text:GetStringHeight())
+                MS:ApplyDetachedMinimapLayout(self, DB.Layout)
             end)
             MS.TimeFrame:SetScript("OnMouseDown", Time_OnClick)
             MS.TimeFrame.Text:SetText(FetchTime())
@@ -99,7 +91,7 @@ function MS:UpdateTime()
             MS.TimeFrame:SetHeight(MS.TimeFrame.Text:GetStringHeight())
         else
             MS.TimeFrame:Hide()
-            MS.TimeFrame:SetScript("OnUpdate", nil)
+            MS:SetStatTicker(MS.TimeFrame)
             MS.TimeFrame:SetScript("OnMouseDown", nil)
         end
     end

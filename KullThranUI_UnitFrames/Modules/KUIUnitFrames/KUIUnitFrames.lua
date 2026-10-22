@@ -760,6 +760,8 @@ local defaults = {
         levelFontSize = 11,
         levelFontOutline = "OUTLINE",
         levelColor = { r = 1, g = 0.82, b = 0.20, a = 1 },
+        -- KUI Style has its own level colour (see ns.LevelColorKey).
+        levelColorKUI = { r = 1, g = 1, b = 1, a = 1 },
         levelX = 2,
         levelY = 2,
         levelAnchor = "AUTO",
@@ -1738,6 +1740,17 @@ local function SetFSFont(fs, size, flags)
 end
 
 -- Disable WoW's automatic pixel snapping on a texture (prevents sub-pixel jitter)
+-- KUI Style keeps its own level colour, white by default;
+-- the stock-art styles keep levelColor (gold). Returns the profile key in use
+-- and its default.
+function ns.LevelColorKey()
+    local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+    if theme == nil or theme == "kui" then
+        return "levelColorKUI", { r = 1, g = 1, b = 1, a = 1 }
+    end
+    return "levelColor", { r = 1, g = 0.82, b = 0.20, a = 1 }
+end
+
 local function ApplyForeverLevelTextStyle(text, profile, frame)
     if not (text and text.SetFont) then return end
     profile = profile or {}
@@ -1756,7 +1769,8 @@ local function ApplyForeverLevelTextStyle(text, profile, frame)
     if KT and KT.EnableTextFontFallback then
         KT:EnableTextFontFallback(text, fontPath)
     end
-    local color = profile.levelColor or { r = 1, g = 0.82, b = 0.20, a = 1 }
+    local colorKey, colorDefault = ns.LevelColorKey()
+    local color = profile[colorKey] or colorDefault
     text:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
     if frame then
         text:ClearAllPoints()
@@ -3074,15 +3088,23 @@ local function GetPortraitFacing(unit, settings)
 end
 
 -- Texture/font visibility is safe during combat; frame geometry is not.
-ns.ShowCharacterLevel = function(profile)
+-- KUI Style shows the level only on the portrait (centred on its bottom edge,
+-- half over it); without a portrait it has no place for it.
+ns.ShowCharacterLevel = function(profile, portraitVisible)
     local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
-    if KT.IS_FOREVER ~= true and (theme == nil or theme == "kui") then return false end
+    if KT.IS_FOREVER ~= true and (theme == nil or theme == "kui") and not portraitVisible then return false end
     return not profile or profile.showCharacterLevel ~= false
+end
+ns.IsUnitPortraitVisible = function(frame, u, profile)
+    local settings = GetSettingsForUnit(u)
+    local portrait = frame and frame.Portrait and frame.Portrait.backdrop
+    return (profile and profile.portraitStyle ~= "none" and settings and settings.showPortrait ~= false
+        and portrait and portrait:IsShown()) and true or false
 end
 ns.RefreshLevelBadgeVisibility = function(frame, u, profile, ornament, value, combat)
     if not (frame and frame._kuiLevelText and frame._kuiLevelCircle) then return end
     local exists = type(UnitExists) ~= "function" or ns.SafeCall(UnitExists, u)
-    local enabled = exists and ns.ShowCharacterLevel(profile)
+    local enabled = exists and ns.ShowCharacterLevel(profile, ns.IsUnitPortraitVisible(frame, u, profile))
     if ornament == nil then
         local theme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
         local settings = GetSettingsForUnit(u)
@@ -5903,7 +5925,11 @@ local function CreateUnitDispelBorder(frame)
         frame.dispelBorderFrame = f
         frame.dispelBorder = CreateDispelFrameBorder(f)
         
-        f:RegisterEvent("UNIT_AURA")
+        -- Only the player frame ever paints this border; every other frame just
+        -- clears it. A plain RegisterEvent sent each frame every unit's auras.
+        if frame.unit == "player" then
+            f:RegisterUnitEvent("UNIT_AURA", "player")
+        end
         f:SetScript("OnEvent", UpdateUnitDispelBorderEvent)
         UpdateUnitDispelBorderEvent(f, "UNIT_AURA", frame.unit)
     end
@@ -5977,7 +6003,14 @@ local function ApplyTargetAuraSettings(frame, settings)
 
     local bar, width, auraSize, gap = KT:ResolveUFAuraBarGeometry(frame)
     container:ClearAllPoints()
-    container:SetPoint(dia, bar, dfp, dox * gap, doy * gap + cbOffset)
+    -- Stock looks re-seat the castbar under Power (SeatStockCastbar), so a
+    -- fixed castbarHeight offset from Health lands the row on the castbar.
+    local castBg = frame.Castbar and frame.Castbar:GetParent()
+    if cbOffset ~= 0 and castBg and KT:GetStyledDebuffLift() > 0 then
+        container:SetPoint(dia, castBg, dfp, dox * gap, doy * gap - 2)
+    else
+        container:SetPoint(dia, bar, dfp, dox * gap, doy * gap + cbOffset)
+    end
 
     local AK = _G.KTAuraKit
     if AK then
@@ -6666,11 +6699,11 @@ local function SetupUnitIndicators(frame, unit)
             portraitRing:Hide()
             frame._kuiClassificationPortraitRing = portraitRing
         end
-        -- KUI Style shows no level; only the stock-art styles
-        -- (Classic/Forever/Retail) do.
+        -- KUI Style shows the level only on the portrait; the stock-art
+        -- styles (Classic/Forever/Retail) always have their level ring.
         local levelTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
             and KT.VisualThemes:GetRenderedTheme() or "kui"
-        local showLevel = ns.ShowCharacterLevel(profile)
+        local showLevel = ns.ShowCharacterLevel(profile, portraitVisible)
         local showClassification = not profile or profile.showClassification ~= false
         local noPortraitSize = math.max(8, tonumber(profile and profile.classificationNoPortraitSize) or CLASSIFICATION_NO_PORTRAIT_SIZE)
         ApplyForeverLevelTextStyle(frame._kuiLevelText, profile, portraitAnchor)
@@ -6771,6 +6804,14 @@ local function SetupUnitIndicators(frame, unit)
             frame._kuiLevelText:SetSize(38, 14)
             frame._kuiLevelText:SetJustifyH("LEFT")
             frame._kuiLevelCircle:Hide()
+            -- KUI Style: the number sits centred on the portrait's bottom edge,
+            -- half over the portrait. A custom
+            -- Level Anchor still wins.
+            if levelTheme == "kui" and portraitVisible and not OVERLAY_ANCHORS[levelAnchor] then
+                frame._kuiLevelText:ClearAllPoints()
+                frame._kuiLevelText:SetPoint("CENTER", portraitBackdrop, "BOTTOM", 0, 4)
+                frame._kuiLevelText:SetJustifyH("CENTER")
+            end
         end
 
         frame._kuiClassificationIndicator:ClearAllPoints()
@@ -9273,7 +9314,7 @@ local function CreateCustomClassPower(playerFrame, style)
         end
 
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+        eventFrame:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 
         if needsAura then
             eventFrame:RegisterUnitEvent("UNIT_AURA", "player")

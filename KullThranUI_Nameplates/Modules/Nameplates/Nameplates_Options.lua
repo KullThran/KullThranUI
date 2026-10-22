@@ -3787,6 +3787,190 @@ initFrame:SetScript("OnEvent", function(self)
         _, h = W:Spacer(parent, y, 20); y = y - h
 
         -----------------------------------------------------------------------
+        --  DOT DAMAGE (health your bleeds and DoTs will still take)
+        -----------------------------------------------------------------------
+        _, h = W:SectionHeader(parent, "DOT DAMAGE", y); y = y - h
+
+        do
+            local function RefreshDotDamage()
+                if ns.RefreshDotDamage then ns.RefreshDotDamage() end
+            end
+            local lists = ns.DOT_DAMAGE_LISTS or {}
+            local defaults = ns.DOT_DAMAGE_DEFAULTS or {}
+            local function Values(list)
+                local values, order = {}, {}
+                for _, entry in ipairs(list or {}) do
+                    local key = tostring(entry[1])
+                    values[key] = entry[2]
+                    order[#order + 1] = key
+                end
+                return values, order
+            end
+            local function Setting(key)
+                local value = DBVal(key)
+                if value == nil then return defaults[key] end
+                return value
+            end
+            local function Dropdown(text, key, list, numeric)
+                local values, order = Values(list)
+                return {
+                    type = "dropdown",
+                    text = LText(text),
+                    values = values,
+                    order = order,
+                    getValue = function() return tostring(Setting(key)) end,
+                    setValue = function(v)
+                        DB()[key] = numeric and tonumber(v) or v
+                        RefreshDotDamage()
+                    end
+                }
+            end
+            local function Slider(text, key, min, max, step)
+                return {
+                    type = "slider",
+                    text = LText(text),
+                    min = min,
+                    max = max,
+                    step = step,
+                    getValue = function() return tonumber(Setting(key)) or 0 end,
+                    setValue = function(v)
+                        DB()[key] = v
+                        RefreshDotDamage()
+                    end
+                }
+            end
+            local function Color(text, key, getter)
+                return {
+                    type = "colorpicker",
+                    text = LText(text),
+                    getValue = function()
+                        if getter then return getter() end
+                        return 1, 1, 1
+                    end,
+                    setValue = function(r, g, b)
+                        DB()[key] = { r = r, g = g, b = b }
+                        RefreshDotDamage()
+                    end
+                }
+            end
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Pending DoT Damage"),
+                    getValue = function() return DBVal("dotDamageEnabled") == true end,
+                    setValue = function(v)
+                        DB().dotDamageEnabled = v
+                        RefreshDotDamage()
+                    end,
+                    tooltip = LText("Draws a marker on every enemy nameplate with your DoTs on it, for the damage they still have to deal. If the health ends inside the marker, the DoTs will kill it.")
+                },
+                Dropdown("Wait for First Tick", "dotDamageWaitFirstTick", lists.waitModes)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Dropdown("DoT Colors", "dotDamageColors", lists.dotColors),
+                Dropdown("Fill Style", "dotDamageFill", lists.fills)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Color("Fill Color", "dotDamageColor", ns.GetDotDamageColor),
+                Slider("Fill Opacity", "dotDamageFillOpacity", 0, 100, 5)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Dropdown("Outline", "dotDamageOutline", lists.outlines),
+                Dropdown("Dash Length", "dotDamageDashLength", lists.dashLengths, true)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Outline Thickness", "dotDamageOutlineThickness", 1, 3, 1),
+                Color("Outline Color", "dotDamageOutlineColor", ns.GetDotDamageOutlineColor)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Outline Opacity", "dotDamageOutlineOpacity", 10, 100, 5),
+                {
+                    type = "button",
+                    text = LText("Forget Learned Tick Sizes"),
+                    onClick = function()
+                        if ns.ResetDotTicks then ns.ResetDotTicks() end
+                    end
+                }); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Kill Icon"),
+                    getValue = function() return Setting("dotDamageKillIcon") == true end,
+                    setValue = function(v)
+                        DB().dotDamageKillIcon = v
+                        RefreshDotDamage()
+                    end,
+                    tooltip = LText("Shows an icon next to the nameplate when your DoTs will kill it.")
+                },
+                Dropdown("Kill Icon", "dotDamageIcon", lists.icons)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Kill Icon Size", "dotDamageIconSize", 12, 32, 1),
+                Dropdown("Kill Icon Position", "dotDamageIconPosition", lists.iconPositions)); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                Slider("Icon Horizontal Offset", "dotDamageIconOffsetX", -40, 40, 1),
+                Slider("Icon Vertical Offset", "dotDamageIconOffsetY", -40, 40, 1)); y = y - h
+        end
+        _, h = W:Spacer(parent, y, 20); y = y - h
+
+        -----------------------------------------------------------------------
+        --  FRIENDLY CLASS ICONS (big round class / spec / healer icon)
+        -----------------------------------------------------------------------
+        _, h = W:SectionHeader(parent, "FRIENDLY CLASS ICONS", y); y = y - h
+
+        do
+            local function RefreshClassIcons()
+                if ns.RefreshClassIcons then ns.RefreshClassIcons() end
+            end
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "toggle",
+                    text = LText("Show Class Icons on Friendly Players"),
+                    getValue = function() return DBVal("friendlyClassIcons") == true end,
+                    setValue = function(v)
+                        DB().friendlyClassIcons = v
+                        RefreshClassIcons()
+                    end,
+                    tooltip = LText("Shows a big round icon over friendly players: the healer cross for healers, otherwise their spec or class icon.")
+                },
+                {
+                    type = "slider",
+                    text = LText("Class Icon Size"),
+                    min = 16,
+                    max = 64,
+                    step = 1,
+                    getValue = function()
+                        return tonumber(DBVal("friendlyClassIconSize")) or ns.CLASS_ICON_DEFAULT_SIZE or 34
+                    end,
+                    setValue = function(v)
+                        DB().friendlyClassIconSize = v
+                        RefreshClassIcons()
+                    end
+                }); y = y - h
+
+            _, h = W:DualRow(parent, y,
+                {
+                    type = "slider",
+                    text = LText("Class Icon Height"),
+                    min = -40,
+                    max = 60,
+                    step = 1,
+                    getValue = function() return tonumber(DBVal("friendlyClassIconYOffset")) or 0 end,
+                    setValue = function(v)
+                        DB().friendlyClassIconYOffset = v
+                        RefreshClassIcons()
+                    end
+                },
+                nil); y = y - h
+        end
+
+        _, h = W:Spacer(parent, y, 20); y = y - h
+
+        -----------------------------------------------------------------------
         --  EXTRAS
         -----------------------------------------------------------------------
         _, h = W:SectionHeader(parent, SECTION_MISC, y); y = y - h
@@ -4686,7 +4870,7 @@ initFrame:SetScript("OnEvent", function(self)
             entries[i] = { id = name, label = name, danger = (name == "Restore Defaults") }
         end
 
-        -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua); every edge is
+        -- Shared nav tabs (KullThranUI/NavTabs.lua); every edge is
         -- snapped to whole pixels so no border is lost at fractional UI scales.
         local usedH = KT.NavTabs.Populate(bar, entries, {
             localize = LText,

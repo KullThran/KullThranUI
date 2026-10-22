@@ -254,7 +254,7 @@ end
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
-ev:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+ev:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 ev:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
 ev:RegisterUnitEvent("UNIT_MAXPOWER", "player")
 ev:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")

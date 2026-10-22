@@ -785,6 +785,15 @@ KT:RegisterPage("chat", "Chat", 72, function(sc, W)
         _, h = W:Slider(container, "Fade Duration", -by,
             function() return db.fadeDuration or 8 end,
             function(v) db.fadeDuration = v; RefreshChat() end, 1, 60, 1); by = by + h
+        _, h = W:Slider(container, "Resting Opacity", -by,
+            function() return math.floor(((db.fadeRestAlpha == nil and 0.3 or db.fadeRestAlpha) * 100) + 0.5) end,
+            function(v) db.fadeRestAlpha = v / 100; RefreshChat() end, 0, 100, 5); by = by + h
+        _, h = W:Toggle(container, "Fade Old Messages", -by,
+            function() return db.fadeLines ~= false end,
+            function(v) db.fadeLines = v; RefreshChat() end); by = by + h
+        _, h = W:Slider(container, "Message Visible Time", -by,
+            function() return db.fadeLineTime or 120 end,
+            function(v) db.fadeLineTime = v; RefreshChat() end, 10, 600, 10); by = by + h
         return by
     end)
 

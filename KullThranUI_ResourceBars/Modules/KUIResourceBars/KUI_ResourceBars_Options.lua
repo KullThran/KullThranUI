@@ -477,6 +477,10 @@ end
 -- BLOQUES DE OPCIONES (DOS COLUMNAS)
 -------------------------------------------------------------------------------
 local function CreateOptionBlock(parent, title, x, y, width)
+    -- The core block (skinned card) when the core is loaded; this copy is the fallback.
+    if KT.Options and KT.Options.CreateOptionBlock then
+        return KT.Options.CreateOptionBlock(parent, title, x, y, width)
+    end
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     frame:SetSize(width, 40)
     frame:SetPoint("TOPLEFT", x, y)
@@ -686,7 +690,7 @@ KT:RegisterPage("resourcebars", LText("Resource Bars"), 13, function(sc, W)
         local btn = CreateFrame("Button", nil, parent)
         btn:SetSize(82, 20)
         btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -26)
-        -- Shared uiverse-style nav tabs (KullThranUI/NavTabs.lua).
+        -- Shared nav tabs (KullThranUI/NavTabs.lua).
         KT.NavTabs.StyleButton(btn, { label = text, fontSize = 9 })
         return btn
     end

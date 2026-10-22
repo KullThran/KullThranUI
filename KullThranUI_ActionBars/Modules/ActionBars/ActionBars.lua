@@ -1874,60 +1874,82 @@ local function EnforceBarVisuals(frame, alphaTarget)
     end
 end
 
-local function HandleFade(frame, enable)
-    if not frame then return end
-    if enable then
-        if not frame:IsMouseEnabled() then
-            frame:EnableMouse(true)
-            frame.KT_MouseEnabled = true
+-- Mouseover fade: one shared driver steps every fading bar at 20 Hz. It used to
+-- be an OnUpdate hooked onto each Blizzard bar, which kept running every frame
+-- even after the fade was turned off. The driver is hidden while no bar fades.
+local HandleFade
+do
+    local fadeBars = {}
+    local fadeDriver = CreateFrame("Frame")
+    fadeDriver:Hide()
+    local fadeElapsed = 0
+
+    local function StepBarFade(bar)
+        local isOver = IsMouseOverFrame(bar)
+        local currentAlpha = bar:GetAlpha()
+        local targetAlpha = isOver and 1 or 0
+
+        if bar.KT_IsHovered ~= isOver then
+            bar.KT_IsHovered = isOver
         end
-        if frame.KT_IsHovered == nil then
-            frame.KT_IsHovered = IsMouseOverFrame(frame)
-            frame:SetAlpha(frame.KT_IsHovered and 1 or 0)
-            EnforceBarVisuals(frame, frame:GetAlpha())
-        end
-        if not frame.KT_FadeHooked then
-            frame:HookScript("OnUpdate", function(self, elapsed)
-                if not self.KT_FadeEnabled then return end
-                self.KT_UpdateTimer = (self.KT_UpdateTimer or 0) + elapsed
-                if self.KT_UpdateTimer < 0.05 then return end
-                self.KT_UpdateTimer = 0
 
-                local isOver = IsMouseOverFrame(self)
-                local currentAlpha = self:GetAlpha()
-                local targetAlpha = isOver and 1 or 0
+        if math.abs(currentAlpha - targetAlpha) > 0.01 then
+            local step = isOver and 0.2 or -0.2
+            local newAlpha = currentAlpha + step
+            if newAlpha > 1 then newAlpha = 1 end
+            if newAlpha < 0 then newAlpha = 0 end
+            bar:SetAlpha(newAlpha)
 
-                if self.KT_IsHovered ~= isOver then
-                    self.KT_IsHovered = isOver
-                end
-
-                if math.abs(currentAlpha - targetAlpha) > 0.01 then
-                    local step = isOver and 0.2 or -0.2
-                    local newAlpha = currentAlpha + step
-                    if newAlpha > 1 then newAlpha = 1 end
-                    if newAlpha < 0 then newAlpha = 0 end
-                    self:SetAlpha(newAlpha)
-
-                    if newAlpha < 0.1 then
-                        EnforceBarVisuals(self, 0)
-                    elseif newAlpha > 0.9 then
-                        EnforceBarVisuals(self, 1)
-                    end
-                end
-            end)
-            frame.KT_FadeHooked = true
-        end
-        frame.KT_FadeEnabled = true
-    else
-        if frame.KT_FadeEnabled then
-            frame.KT_FadeEnabled = false
-            frame:SetAlpha(1)
-            EnforceBarVisuals(frame, 1)
-            if frame.KT_MouseEnabled then
-                frame:EnableMouse(false)
-                frame.KT_MouseEnabled = nil
+            if newAlpha < 0.1 then
+                EnforceBarVisuals(bar, 0)
+            elseif newAlpha > 0.9 then
+                EnforceBarVisuals(bar, 1)
             end
-            frame.KT_IsHovered = nil
+        end
+    end
+
+    fadeDriver:SetScript("OnUpdate", function(_, elapsed)
+        fadeElapsed = fadeElapsed + elapsed
+        if fadeElapsed < 0.05 then return end
+        fadeElapsed = 0
+        for bar in pairs(fadeBars) do
+            -- A per-bar OnUpdate only ran while the bar was visible.
+            if bar:IsVisible() then
+                StepBarFade(bar)
+            end
+        end
+    end)
+
+    HandleFade = function(frame, enable)
+        if not frame then return end
+        if enable then
+            if not frame:IsMouseEnabled() then
+                frame:EnableMouse(true)
+                frame.KT_MouseEnabled = true
+            end
+            if frame.KT_IsHovered == nil then
+                frame.KT_IsHovered = IsMouseOverFrame(frame)
+                frame:SetAlpha(frame.KT_IsHovered and 1 or 0)
+                EnforceBarVisuals(frame, frame:GetAlpha())
+            end
+            frame.KT_FadeEnabled = true
+            fadeBars[frame] = true
+            fadeDriver:Show()
+        else
+            fadeBars[frame] = nil
+            if not next(fadeBars) then
+                fadeDriver:Hide()
+            end
+            if frame.KT_FadeEnabled then
+                frame.KT_FadeEnabled = false
+                frame:SetAlpha(1)
+                EnforceBarVisuals(frame, 1)
+                if frame.KT_MouseEnabled then
+                    frame:EnableMouse(false)
+                    frame.KT_MouseEnabled = nil
+                end
+                frame.KT_IsHovered = nil
+            end
         end
     end
 end

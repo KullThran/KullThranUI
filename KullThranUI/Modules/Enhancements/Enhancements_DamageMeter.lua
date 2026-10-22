@@ -338,6 +338,11 @@ local function GetConfig()
     -- AceDB exposes defaults through its metatable, so rawget is required to
     -- distinguish an existing pre-layout profile from the new defaults.
     local layoutVersion = tonumber(rawget(db.damageMeter, "layoutVersion")) or 0
+    if rawget(db.damageMeter, "presetPicked") == nil then
+        -- A new profile (no layout yet) or a meter that is still off gets the
+        -- first-use preset picker; meters already in use keep their mode.
+        db.damageMeter.presetPicked = layoutVersion > 0 and db.damageMeter.enabled == true
+    end
     if layoutVersion < 4 then
         if db.damageMeter.fontSize == nil or db.damageMeter.fontSize == 11 or db.damageMeter.fontSize == 14 then
             db.damageMeter.fontSize = 12
@@ -1967,7 +1972,13 @@ local function CreateBreakdownList(parent, title, width, height, count)
     list.offset = 0
     list.visibleCount = count
     list:EnableMouseWheel(true)
-    if KT.AddBackdrop then KT:AddBackdrop(list, 0.018, 0.02, 0.027, 0.96) end
+    -- Breakdown columns: KUI Skins' textured surface, not a flat black box.
+    if KT.ApplyTexturedSurface then
+        if KT.AddBackdrop then KT:AddBackdrop(list, 0, 0, 0, 0) end
+        KT:ApplyTexturedSurface(list, nil, 0.5)
+    elseif KT.AddBackdrop then
+        KT:AddBackdrop(list, 0.018, 0.02, 0.027, 0.96)
+    end
     list.title = list:CreateFontString(nil, "OVERLAY")
     list.title:SetFont(DAMAGE_METER_RESOLVED_FONT(), 12, "OUTLINE")
     ApplyFontReadability(list.title)
@@ -1991,7 +2002,7 @@ local function CreateBreakdownList(parent, title, width, height, count)
         row:SetPoint("TOPRIGHT", -5, -(22 + ((index - 1) * rowHeight)))
         row:SetHeight(rowHeight - 1)
         row.bg = row:CreateTexture(nil, "BACKGROUND"); row.bg:SetAllPoints()
-        row.bg:SetColorTexture(0.06, 0.065, 0.085, index % 2 == 0 and 0.72 or 0.48)
+        row.bg:SetColorTexture(0.06, 0.065, 0.085, index % 2 == 0 and 0.38 or 0.2)
         row.bar = row:CreateTexture(nil, "BORDER"); row.bar:SetPoint("TOPLEFT"); row.bar:SetPoint("BOTTOMLEFT")
         row.icon = row:CreateTexture(nil, "ARTWORK"); row.icon:SetPoint("LEFT", 2, 0); row.icon:SetSize(rowHeight - 3, rowHeight - 3)
         row.name = row:CreateFontString(nil, "OVERLAY"); row.name:SetFont(DAMAGE_METER_RESOLVED_FONT(), 12, "OUTLINE")
@@ -2071,7 +2082,7 @@ local function PopulateBreakdownList(list, entries, total, session, click, mode)
                 local accentR, accentG, accentB = GetAccentColor()
                 row.bg:SetColorTexture(accentR, accentG, accentB, 0.34)
             else
-                row.bg:SetColorTexture(0.06, 0.065, 0.085, entryIndex % 2 == 0 and 0.72 or 0.48)
+                row.bg:SetColorTexture(0.06, 0.065, 0.085, entryIndex % 2 == 0 and 0.38 or 0.2)
             end
             if mode == "deathRecap" then
                 SetDeathRecapName(row.name, entry)
@@ -3139,7 +3150,15 @@ function Mod:RefreshDamageMeterStyle(useCurrentSize, targetFrame)
     frame.sessionButton.text:SetFont(meterFont, math.max(10, tonumber(cfg.headerFontSize) or 12), "OUTLINE")
     local sessionWidth = math.max(60, math.min(130, width * 0.34))
     frame.sessionButton:SetWidth(sessionWidth)
-    frame.modeButton:SetWidth(math.max(65, width - sessionWidth - 15))
+    -- The window toolbar (Enhancements_DamageMeterControls.lua) replaces the session button.
+    local toolbarWidth = Mod.LayoutDamageMeterToolbar and Mod:LayoutDamageMeterToolbar(frame, width) or 0
+    if toolbarWidth > 0 then
+        frame.sessionButton:Hide()
+        frame.modeButton:SetWidth(math.max(40, width - toolbarWidth - 15))
+    else
+        frame.sessionButton:Show()
+        frame.modeButton:SetWidth(math.max(65, width - sessionWidth - 15))
+    end
     RefreshSessionButtonIcon(frame)
     if frame.modeButton.icon then
         frame.modeButton.icon:SetTexture(MODE_ICONS[cfg.mode] or MODE_ICONS.damageDone)
@@ -3508,7 +3527,14 @@ local function CreateDropdown(owner, globalName)
     dropdown.rows = {}
     dropdown.owner = owner
     dropdown:Hide()
-    KT:AddBackdrop(dropdown, 0.025, 0.03, 0.04, 0.98)
+    -- KUI Skins' textured surface instead of a flat near-black fill
+    -- (the backdrop keeps only the accent border).
+    KT:AddBackdrop(dropdown, 0, 0, 0, 0)
+    if KT.ApplyTexturedSurface then
+        KT:ApplyTexturedSurface(dropdown, nil, 0.45)
+    else
+        KT:AddBackdrop(dropdown, 0.025, 0.03, 0.04, 0.98)
+    end
     local r, g, b = GetAccentColor()
     KT:AddBorder(dropdown, r, g, b, 0.7)
 
@@ -4319,6 +4345,9 @@ local function CreateDamageMeterFrame(self, frameName, damageMeterConfig)
         -- jumps and needless work; commit the expensive refresh on MouseUp.
     end)
 
+    if self.CreateDamageMeterToolbar then
+        self:CreateDamageMeterToolbar(frame)
+    end
     self:RegisterDamageMeterDirectDrag(frame)
     self:RefreshDamageMeterStyle(false, frame)
     self:ApplyDamageMeterPosition(frame)
@@ -4621,6 +4650,24 @@ function Mod:PreviewDamageMeter(windowIndex)
     end)
 end
 
+-- Shared with Enhancements_DamageMeterControls.lua (window toolbar, preset picker).
+Mod._damageMeterInternals = {
+    GetConfig = GetConfig,
+    GetFrameConfig = GetFrameConfig,
+    GetAccentColor = GetAccentColor,
+    GetDamageMeterFont = GetDamageMeterFont,
+    GetSavedCombatHistory = GetSavedCombatHistory,
+    GetSessionLabel = GetSessionLabel,
+    IsDamageMeterModuleEnabled = IsDamageMeterModuleEnabled,
+    IsModeSupported = IsModeSupported,
+    ShowDropdown = ShowDropdown,
+    BuildModeMenu = BuildModeMenu,
+    BuildSessionMenu = BuildSessionMenu,
+    SelectSession = SelectSession,
+    MODE_LABELS = MODE_LABELS,
+    MODE_ICONS = MODE_ICONS,
+}
+
 function Mod:RefreshDamageMeter()
     if not IsDamageMeterModuleEnabled() then
         self:StopDamageMeterLiveRefresh(false)
@@ -4639,6 +4686,9 @@ function Mod:RefreshDamageMeter()
     end
     self:InvalidateDamageMeterDataCache()
     self:RefreshVisibleDamageMeterWindows()
+    if self.MaybeShowDamageMeterPresetPicker then
+        self:MaybeShowDamageMeterPresetPicker()
+    end
     if UnitAffectingCombat("player") then
         self:StartDamageMeterLiveRefresh()
     else

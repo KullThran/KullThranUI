@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 --  Raid Check: consumables panel for ready checks.
 --
---  Port of the Details! "Raid Check" plugin. When a ready check starts and you
+--  When a ready check starts and you
 --  lead the group (or assist, if allowed), a panel lists every member with the
 --  food, flask, augment rune and pre-pot state, so you see who is missing what
 --  before the pull. Click a report button to announce the missing names in
@@ -54,7 +54,7 @@ end
 
 -------------------------------------------------------------------------------
 --  Consumable data
---  Details ships empty Midnight lists, so IDs are only a head start: food and
+--  The ID lists are only a head start for new expansions: food and
 --  flasks are also recognised by the aura name ("Well Fed", "Flask of ...").
 -------------------------------------------------------------------------------
 local FLASK_IDS = {

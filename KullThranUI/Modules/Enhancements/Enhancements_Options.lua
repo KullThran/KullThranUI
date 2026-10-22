@@ -351,6 +351,25 @@ end
 
 local function CreateCategoryButton(parent, key, yOffset)
     local meta = CATEGORY_META[key]
+    -- Focus cards in the menu's style (Widgets.lua W:FocusCard).
+    if KT.Widgets and KT.Widgets.FocusCard then
+        local card, cardHeight = KT.Widgets:FocusCard(parent, {
+            width = CATEGORY_BUTTON_WIDTH,
+            title = LText(meta.title),
+            description = LText(meta.description),
+            icon = CATEGORY_ICONS[key] or "Interface\\Icons\\INV_Misc_QuestionMark",
+            iconCoords = { 0.08, 0.92, 0.08, 0.92 },
+            iconColor = CATEGORY_ICON_COLORS[key],
+            active = GetActiveCategory() == key,
+            onClick = function()
+                SetActiveCategory(key)
+                Refresh({ rebuild = true })
+            end,
+        })
+        card:SetPoint("TOPLEFT", 8, yOffset)
+        card._ktCategoryKey = key
+        return card, cardHeight + 10
+    end
     local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
     button._ktCategoryKey = key
     button:SetPoint("TOPLEFT", 8, yOffset)
@@ -1665,6 +1684,7 @@ local function BuildDamageMeterBlock(container, W, db)
         { label = LText("Lock Window"), get = function() return damageMeterConfig.locked == true end, set = function(v) damageMeterConfig.locked = v and true or false end },
         { label = LText("Show only in combat"), get = function() return damageMeterConfig.showOnlyInCombat == true end, set = function(v) damageMeterConfig.showOnlyInCombat = v and true or false end },
         { label = LText("Show Background"), get = function() return damageMeterConfig.showBackground ~= false end, set = function(v) damageMeterConfig.showBackground = v and true or false end },
+        { label = LText("Show Window Buttons"), get = function() return damageMeterConfig.showToolbar ~= false end, set = function(v) damageMeterConfig.showToolbar = v and true or false end },
         { label = LText("Auto-fit Window Height"), get = function() return damageMeterConfig.autoHeight ~= false end, set = function(v) damageMeterConfig.autoHeight = v and true or false end },
         { label = LText("Class Colored Bars"), get = function() return damageMeterConfig.classColors ~= false end, set = function(v) damageMeterConfig.classColors = v and true or false end },
         { label = LText("Show Percentages"), get = function() return damageMeterConfig.showPercentages == true end, set = function(v) damageMeterConfig.showPercentages = v and true or false end },

@@ -1,5 +1,5 @@
 -- PressButton.lua
--- Botones Reload UI / Reset Profile: port del boton CSS 3D de uiverse
+-- Botones Reload UI / Reset Profile: port de un boton CSS 3D
 -- (".button_top" sobre una base negra).
 --
 --   * base negra con esquinas de 0.75em; la cara (borde negro de 2px, relleno de

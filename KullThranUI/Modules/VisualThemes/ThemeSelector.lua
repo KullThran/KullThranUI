@@ -65,6 +65,15 @@ local ACCENT_PRESET_ORDER = {
 }
 local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 
+--- True when `key` is the accent preset currently in use. Class colour, a
+--- custom accent or a hand-edited palette ("custom") means no preset is.
+function KT.IsAccentPresetActive(skin, key)
+    if type(skin) ~= "table" then return false end
+    if skin.kullthranUIColorByClass == true or skin.borderTheme == "CLASS" then return false end
+    if skin.borderTheme == "CUSTOM" or skin.stylePreset == "custom" then return false end
+    return (skin.stylePreset or "kui_crimson") == key
+end
+
 function KT:CreateAccentPresetGrid(parent, opts)
     opts = opts or {}
     local presets = KT.STYLE_PRESETS or {}
@@ -79,21 +88,15 @@ function KT:CreateAccentPresetGrid(parent, opts)
     local font = opts.fontPath or KT.FONT_PATH or STANDARD_TEXT_FONT
 
     local cards = {}
+    -- Same card as the Visual Theme cards (ThemeBrutalCard.lua), in each
+    -- preset's own accent: the rotating accent band runs on the selected
+    -- preset and on hover.
     local function Paint(card)
-        local preset = card.preset
         local selected = opts.isSelected and opts.isSelected(card.key) or false
-        local a = preset.accent
-        card.tint:SetColorTexture(a.r, a.g, a.b, selected and 0.16 or 0)
-        card.bar:SetColorTexture(a.r, a.g, a.b, selected and 1 or 0.55)
-        card.bar:SetHeight(selected and 3 or 2)
         card.ring:SetShown(selected)
-        if KT.AddBorder then
-            local hot = card.hover and 1 or (selected and 0.95 or 0.35)
-            if card.hover and not selected then
-                KT:AddBorder(card, 1, 1, 1, 0.8)
-            else
-                KT:AddBorder(card, a.r, a.g, a.b, hot)
-            end
+        if KT.BrutalCard then
+            KT.BrutalCard.SetInUse(card, selected)
+            KT.BrutalCard.SetHover(card, card.hover)
         end
     end
 
@@ -106,51 +109,48 @@ function KT:CreateAccentPresetGrid(parent, opts)
             local row = math.floor((index - 1) / columns)
             local col = (index - 1) % columns
             rows = math.max(rows, row + 1)
-            local card = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            local card = CreateFrame("Button", nil, parent)
             card:SetSize(cardWidth, cardHeight)
             card:SetPoint("TOPLEFT", parent, "TOPLEFT",
                 startX + col * (cardWidth + gap), -(startY + row * (cardHeight + gap)))
-            if KT.AddBackdrop then
-                KT:AddBackdrop(card, preset.background.r, preset.background.g, preset.background.b, 0.97)
-            end
             card.key, card.preset = key, preset
-
-            card.tint = card:CreateTexture(nil, "BACKGROUND", nil, 1)
-            card.tint:SetPoint("TOPLEFT", 1, -1)
-            card.tint:SetPoint("BOTTOMRIGHT", -1, 1)
+            local face = card
+            if KT.BrutalCard then
+                local a = preset.accent
+                face = KT.BrutalCard.Style(card, {
+                    accent = { a.r, a.g, a.b },
+                    fill = { preset.background.r, preset.background.g, preset.background.b },
+                }).body
+            end
 
             -- Accent dot with a soft ring when selected.
             local dotSize = math.max(12, math.floor(cardHeight * 0.34))
-            card.ring = card:CreateTexture(nil, "ARTWORK", nil, 1)
+            card.ring = face:CreateTexture(nil, "ARTWORK", nil, 1)
             card.ring:SetSize(dotSize + 8, dotSize + 8)
-            card.ring:SetPoint("LEFT", card, "LEFT", 7, 0)
+            card.ring:SetPoint("LEFT", face, "LEFT", 7, 0)
             card.ring:SetColorTexture(preset.accent.r, preset.accent.g, preset.accent.b, 0.30)
-            local ringMask = card:CreateMaskTexture()
+            local ringMask = face:CreateMaskTexture()
             ringMask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
             ringMask:SetAllPoints(card.ring)
             card.ring:AddMaskTexture(ringMask)
 
-            card.dot = card:CreateTexture(nil, "ARTWORK", nil, 2)
+            card.dot = face:CreateTexture(nil, "ARTWORK", nil, 2)
             card.dot:SetSize(dotSize, dotSize)
             card.dot:SetPoint("CENTER", card.ring, "CENTER", 0, 0)
             card.dot:SetColorTexture(preset.accent.r, preset.accent.g, preset.accent.b, 1)
-            local dotMask = card:CreateMaskTexture()
+            local dotMask = face:CreateMaskTexture()
             dotMask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
             dotMask:SetAllPoints(card.dot)
             card.dot:AddMaskTexture(dotMask)
 
-            card.label = card:CreateFontString(nil, "OVERLAY")
+            card.label = face:CreateFontString(nil, "OVERLAY")
             card.label:SetFont(font, tonumber(opts.fontSize) or 10, "OUTLINE")
             card.label:SetPoint("LEFT", card.ring, "RIGHT", 6, 0)
-            card.label:SetPoint("RIGHT", card, "RIGHT", -6, 2)
+            card.label:SetPoint("RIGHT", face, "RIGHT", -6, 0)
             card.label:SetJustifyH("LEFT")
             card.label:SetWordWrap(false)
             card.label:SetText(opts.localize and opts.localize(preset.label) or preset.label)
             card.label:SetTextColor(preset.text.r, preset.text.g, preset.text.b, 1)
-
-            card.bar = card:CreateTexture(nil, "ARTWORK")
-            card.bar:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 3, 3)
-            card.bar:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -3, 3)
 
             card:SetScript("OnEnter", function(self) self.hover = true; Paint(self) end)
             card:SetScript("OnLeave", function(self) self.hover = false; Paint(self) end)

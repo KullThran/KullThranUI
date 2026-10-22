@@ -394,13 +394,24 @@ end
 ns.EnsureCDMHookFrame = EnsureCDMHookFrame
 EnsureCDMHookFrame()
 
+-- Glows follow the spell icon, not the whole button: skinned action buttons
+-- inset the icon, and a glow on the button's rect missed the icon's edge.
+local function GlowAnchor(btn)
+    local name = btn.GetName and btn:GetName()
+    local icon = btn.icon or btn.Icon or (name and _G[name .. "Icon"])
+    if icon and icon.GetObjectType and icon:GetObjectType() == "Texture" then
+        return icon
+    end
+    return btn
+end
+
 local function GetOrCreateOverlay(actionBar, actionButtonIndex, cdmSlotIndex)
     local key = actionBar .. "_" .. actionButtonIndex .. "_" .. cdmSlotIndex
     if overlayFrames[key] then return overlayFrames[key] end
     local btn = GetTargetButton(actionBar, actionButtonIndex)
     if not btn then return nil end
     local overlay = CreateFrame("Frame", "KUI_Glow_" .. key, btn)
-    overlay:SetAllPoints(btn)
+    overlay:SetAllPoints(GlowAnchor(btn))
     overlay:SetFrameLevel(btn:GetFrameLevel() + 10)
     overlay:Hide()
     overlayFrames[key] = overlay
@@ -459,7 +470,7 @@ local function SetupOverlays()
                     if btn then
                         if not overlayFrames[key] then
                             local overlay = CreateFrame("Frame", "KUI_GlowV2_" .. key, btn)
-                            overlay:SetAllPoints(btn)
+                            overlay:SetAllPoints(GlowAnchor(btn))
                             overlay:SetFrameLevel(btn:GetFrameLevel() + 10)
                             overlayFrames[key] = overlay
                         end
@@ -489,7 +500,7 @@ local function SetupOverlays()
             overlayEventFrame:RegisterUnitEvent("UNIT_AURA", "player")
             overlayEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
             overlayEventFrame:RegisterEvent("SPELLS_CHANGED")
-            overlayEventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+            overlayEventFrame:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
             overlayEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
             overlayEventFrame:RegisterEvent("PLAYER_DEAD")
             overlayEventFrame:RegisterEvent("PLAYER_ALIVE")
@@ -542,51 +553,28 @@ local function GetGlowColor(entry, bg)
 end
 ns.ResolveBarGlowColor = GetGlowColor
 
+-- Numeric codes from older saved settings.
+local LEGACY_GLOW_CODES = { [0] = "none", [1] = "autocast", [2] = "pixel", [4] = "button", [6] = "blizzard" }
+
+local function NamedGlowStyle(style)
+    if type(style) == "string" then
+        return ns.CDMNormalizeNamedGlowStyle and ns.CDMNormalizeNamedGlowStyle(style) or nil
+    end
+    local code = tonumber(style)
+    return code and LEGACY_GLOW_CODES[code] or nil
+end
+
+-- Every named style of KUICooldownManager.lua and KUICdmGlowStyles.lua is
+-- valid here (Shape Glow, Pixel Glow, GCD, ... included). 0 = no glow.
 local function GetGlowStyle(entry, bg)
     if entry and entry.useGlobalGlow then
         entry = nil
     end
-    local style = entry and entry.glowStyle
-    if type(style) == "string" then
-        local lowered = style:lower()
-        if lowered == "none" then return 0 end
-        if lowered == "blizzard" or lowered == "autocast" or lowered == "pixel" or lowered == "button" then
-            return lowered
-        end
-    end
-
-    local s = tonumber(style)
-    if s == 0 then return 0 end
-    if s == 6 then return "blizzard" end
-    if s == 1 then return "autocast" end
-    if s == 2 then return "pixel" end
-    if s == 4 then return "button" end
-
-    local global = bg and bg.glowStyle
-    if global == "none" then return 0 end
-    if global == "pixel" then return "pixel" end
-    if global == "autocast" then return "autocast" end
-    if global == "button" then return "button" end
-    local resolved = "blizzard"
-    if type(style) == "string" then
-        local lowered = style:lower()
-        if lowered == "pixel" then
-            resolved = "pixel"
-        elseif lowered == "autocast" then
-            resolved = "autocast"
-        elseif lowered == "button" then
-            resolved = "button"
-        elseif lowered == "blizzard" then
-            resolved = "blizzard"
-        end
-    elseif global == "pixel" or global == "autocast" or global == "button" then
-        resolved = global
-    end
-
-    if resolved ~= "blizzard" and ns.CDMHasNamedGlowSupport and not ns.CDMHasNamedGlowSupport(resolved) then
-        return "blizzard"
-    end
-    return resolved
+    local named = NamedGlowStyle(entry and entry.glowStyle)
+        or NamedGlowStyle(bg and bg.glowStyle)
+        or "blizzard"
+    if named == "none" then return 0 end
+    return named
 end
 ns.ResolveBarGlowStyle = GetGlowStyle
 
@@ -704,12 +692,9 @@ GetCooldownProcGlowStyle = function(entry, bg)
     if entry and not entry.useGlobalGlow then
         return GetGlowStyle(entry, { glowStyle = bg and bg.procGlowStyle })
     end
-    local style = bg and bg.procGlowStyle
-    if style == "none" then return 0 end
-    if style == "pixel" then return "pixel" end
-    if style == "autocast" then return "autocast" end
-    if style == "button" then return "button" end
-    return "blizzard"
+    local named = NamedGlowStyle(bg and bg.procGlowStyle) or "blizzard"
+    if named == "none" then return 0 end
+    return named
 end
 
 local activeCDMGlowsScratch = {}

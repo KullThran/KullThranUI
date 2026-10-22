@@ -1,7 +1,7 @@
 -- NavTabs.lua
 -- Botones de pestañas compartidos para todas las barras de navegación del menú.
 --
--- Port del botón CSS uiverse "mrhyddenn/stale-cheetah-42":
+-- Port de un botón CSS:
 --   * borde de 1px con esquinas redondeadas, fondo casi transparente;
 --   * texto en mayúsculas;
 --   * hover: relleno con el color de accent + glow difuso (transición 0.2s);
@@ -556,7 +556,11 @@ function NavTabs.Layout(container, buttons, opts)
     local function Needs(row)
         local need, total = {}, 0
         for i, btn in ipairs(row) do
-            need[i] = ceil(NavTabs.GetTextWidth(btn) / px) + padPx * 2
+            -- A tab with an icon also needs the icon and its gap to the text.
+            local content = btn._ktNav and btn._ktNav.content
+            local iconPx = (content and content.icon and content.textLeft)
+                and ceil((content.textLeft - (content.textRight or 0)) / px) or 0
+            need[i] = ceil(NavTabs.GetTextWidth(btn) / px) + padPx * 2 + iconPx
             total = total + need[i]
         end
         return need, total
@@ -647,6 +651,17 @@ function NavTabs.Populate(container, tabs, opts)
             selected = opts.selectedId ~= nil and tab.id == opts.selectedId,
             danger = tab.danger,
         })
+        -- tab.icon: a white icon at the left, tinted like the label (accent
+        -- at rest, white on hover/selected); the label centres in the rest.
+        if tab.icon then
+            local iconSize = opts.iconSize or 14
+            NavTabs.SetContent(btn, {
+                icon = tab.icon, iconSize = iconSize, iconInset = 10,
+                textLeft = 10 + iconSize + 6, textRight = 8,
+            })
+        elseif btn._ktNav and btn._ktNav.content then
+            NavTabs.SetContent(btn, nil)
+        end
         btn:SetScript("OnClick", function(self)
             if opts.onSelect then opts.onSelect(self._ktNavTab.id, self._ktNavTab) end
         end)

@@ -202,27 +202,1795 @@ end
 -- ============================================================================
 local function FW(parent) return parent:GetWidth() - 20 end
 
-local function RowBg(frame, parent)
-    if not parent.rowCounter then parent.rowCounter = 0 end
-    parent.rowCounter = parent.rowCounter + 1
-    local alpha = (parent.rowCounter % 2 == 0) and 0.05 or 0.02
-    local bg = frame:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(1, 1, 1, alpha)
+-- Defined in the LOCALIZATION section below; declared here so the card
+-- helpers can use it.
+local LText
+
+-- Skin-painted textures and shapes remember their MenuSkins colour token so a
+-- skin or accent change (MenuSkins:Repaint) recolours what is on screen.
+local skinned = setmetatable({}, { __mode = "k" })
+local skinnedCards = setmetatable({}, { __mode = "k" })
+
+local function SkinColor(token)
+    if KT.MenuSkins then return KT.MenuSkins:Color(token) end
+    return 1, 1, 1, 0.03
 end
 
+local function PaintSkinned(tex, token)
+    skinned[tex] = token
+    tex._skinToken = token
+    if tex._ktRound then
+        tex:SetColor(SkinColor(token))
+    else
+        tex:SetColorTexture(SkinColor(token))
+    end
+end
+
+local function PartPath(name)
+    return (KT.MenuSkins and KT.MenuSkins.TEXTURE_PATH or "") .. name
+end
+
+-- ----------------------------------------------------------------------------
+-- Rounded rectangle: nine slices of one white disc (quarter-circle corners,
+-- thin edge strips, solid centre). Position it through rr:SetPoint/SetSize
+-- like a texture; rr:SetColor tints every slice.
+-- ----------------------------------------------------------------------------
+local ROUND_COORDS = {
+    { 0, 0.5, 0, 0.5 }, { 0.49, 0.51, 0, 0.5 }, { 0.5, 1, 0, 0.5 },
+    { 0, 0.5, 0.49, 0.51 }, { 0.49, 0.51, 0.49, 0.51 }, { 0.5, 1, 0.49, 0.51 },
+    { 0, 0.5, 0.5, 1 }, { 0.49, 0.51, 0.5, 1 }, { 0.5, 1, 0.5, 1 },
+}
+local RoundRect = {}
+RoundRect.__index = RoundRect
+
+function RoundRect:SetRadius(radius)
+    self.radius = radius
+    local box, p, r = self.box, self.pieces, radius
+    for i = 1, 9 do p[i]:ClearAllPoints() end
+    p[1]:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0); p[1]:SetSize(r, r)
+    p[3]:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, 0); p[3]:SetSize(r, r)
+    p[7]:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", 0, 0); p[7]:SetSize(r, r)
+    p[9]:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 0, 0); p[9]:SetSize(r, r)
+    p[2]:SetPoint("TOPLEFT", box, "TOPLEFT", r, 0); p[2]:SetPoint("BOTTOMRIGHT", box, "TOPRIGHT", -r, -r)
+    p[8]:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", r, 0); p[8]:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", -r, r)
+    p[4]:SetPoint("TOPLEFT", box, "TOPLEFT", 0, -r); p[4]:SetPoint("BOTTOMRIGHT", box, "BOTTOMLEFT", r, r)
+    p[6]:SetPoint("TOPRIGHT", box, "TOPRIGHT", 0, -r); p[6]:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", -r, r)
+    p[5]:SetPoint("TOPLEFT", box, "TOPLEFT", r, -r); p[5]:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -r, r)
+    return self
+end
+
+function RoundRect:SetColor(r, g, b, a)
+    if type(r) == "table" then r, g, b, a = r[1], r[2], r[3], r[4] end
+    self.color = { r, g, b, a or 1 }
+    for i = 1, 9 do self.pieces[i]:SetVertexColor(r, g, b, a or 1) end
+end
+
+function RoundRect:SetPoint(...) self.box:SetPoint(...) end
+function RoundRect:ClearAllPoints() self.box:ClearAllPoints() end
+function RoundRect:SetAllPoints(target) self.box:SetAllPoints(target) end
+function RoundRect:SetSize(w, h) self.w, self.h = w, h; self.box:SetSize(w, h) end
+function RoundRect:SetWidth(w) self.w = w; self.box:SetWidth(w) end
+function RoundRect:SetHeight(h) self.h = h; self.box:SetHeight(h) end
+
+function RoundRect:SetShown(shown)
+    self.shown = shown and true or false
+    for i = 1, 9 do self.pieces[i]:SetShown(self.shown) end
+end
+function RoundRect:Show() self:SetShown(true) end
+function RoundRect:Hide() self:SetShown(false) end
+function RoundRect:IsShown() return self.shown end
+
+function W:RoundRect(parent, layer, sublevel, radius)
+    local rr = setmetatable({ pieces = {}, shown = true, _ktRound = true }, RoundRect)
+    rr.box = parent:CreateTexture(nil, layer, nil, sublevel)
+    rr.box:SetColorTexture(0, 0, 0, 0)
+    for i = 1, 9 do
+        local t = parent:CreateTexture(nil, layer, nil, sublevel)
+        t:SetTexture(PartPath("round_disc"))
+        t:SetTexCoord(unpack(ROUND_COORDS[i]))
+        rr.pieces[i] = t
+    end
+    rr:SetRadius(radius or 8)
+    return rr
+end
+
+if KT.MenuSkins then
+    KT.MenuSkins:RegisterRepaint(function()
+        for tex, token in pairs(skinned) do
+            if token then PaintSkinned(tex, token) end
+        end
+        for card in pairs(skinnedCards) do
+            if card._ktSetHover then card._ktSetHover(card._ktHovered, true) end
+        end
+    end)
+end
+
+-- ----------------------------------------------------------------------------
+-- Layered card: a back plate peeks out below the rounded front; on hover the
+-- plate spreads and lights with the accent. The header holds a small pill and
+-- the title in normal case.
+-- ----------------------------------------------------------------------------
+local CARD_RADIUS = 12
+local CARD_HEADER_H = 34
+
+-- Header icons: cells of MenuSkins/card_icons.tga (8x8 grid, rendered by
+-- tools/photoshop/card_icons.py, same order). A card takes opts.icon or the
+-- first rule whose word prefix appears in its English title; "claw" otherwise.
+W.CARD_ICONS = {
+    "claw", "palette", "typography", "layout", "dimensions", "eye", "photo",
+    "user-circle", "brush", "clock", "sparkles", "chart-bar", "click",
+    "adjustments", "plug", "gauge", "bell", "users", "sword", "id-badge",
+    "map", "refresh", "wand", "puzzle", "list-check", "target", "route",
+    "moon", "bookmark", "arrows-move", "bolt", "heart", "flame", "stairs-up",
+    "layout-grid", "external-link", "settings", "device-desktop", "shield",
+}
+W.CARD_ICON_RULES = {
+    { "external-link", { "open addon" } },
+    { "bolt", { "spell queue" } },
+    { "stairs-up", { "nameplate level" } },
+    { "heart", { "health" } },
+    { "flame", { "class resource", "resource" } },
+    { "arrows-move", { "kuimove", "frame access", "unlock" } },
+    { "moon", { "afk" } },
+    { "target", { "reticle" } },
+    { "route", { "trail" } },
+    { "device-desktop", { "preview" } },
+    { "map", { "minimap", "zone", "coordinate" } },
+    { "refresh", { "update", "release" } },
+    { "plug", { "compatib", "conflict", "integration" } },
+    { "wand", { "install", "quick setup" } },
+    { "bookmark", { "preset" } },
+    { "puzzle", { "module" } },
+    { "list-check", { "track", "objective" } },
+    { "palette", { "colo", "palette", "threat" } },
+    { "typography", { "typograph", "text", "font", "keybind", "hotkey" } },
+    { "user-circle", { "profile" } },
+    { "dimensions", { "dimension", "size" } },
+    { "layout-grid", { "views" } },
+    { "layout", { "position", "layout" } },
+    { "eye", { "visib", "hide", "fade", "mouseover" } },
+    { "sparkles", { "glow", "effect", "special" } },
+    { "clock", { "cooldown", "timer", "swipe", "duration" } },
+    { "brush", { "style", "theme", "appearance", "shape", "art", "skin", "window" } },
+    { "chart-bar", { "bar", "progress", "cast" } },
+    { "click", { "button" } },
+    { "photo", { "icon", "aura catalog" } },
+    { "bell", { "remind", "buff", "aura", "trigger" } },
+    { "users", { "party", "raid", "friendly", "role", "group" } },
+    { "sword", { "enemy", "dot", "damage" } },
+    { "id-badge", { "nameplate", "unit" } },
+    { "gauge", { "diagnostic", "monitor", "fps", "graphic", "render", "quality", "distance", "post processing", "display", "stats" } },
+    { "settings", { "setting" } },
+    { "adjustments", { "general", "misc", "advanced", "enhancement" } },
+}
+
+function W:CardIconFor(title)
+    if type(title) ~= "string" then return "claw" end
+    local text = " " .. title:lower():gsub("[^%w]+", " ")
+    for _, rule in ipairs(W.CARD_ICON_RULES) do
+        for _, word in ipairs(rule[2]) do
+            if text:find(" " .. word, 1, true) then return rule[1] end
+        end
+    end
+    return "claw"
+end
+
+function W:CardIconCoords(name)
+    local index = 0
+    for i, icon in ipairs(W.CARD_ICONS) do
+        if icon == name then index = i - 1; break end
+    end
+    local col, row = index % 8, math.floor(index / 8)
+    return col / 8, (col + 1) / 8, row / 8, (row + 1) / 8
+end
+
+local function Mix(a, b, t)
+    return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, (a[4] or 1) + ((b[4] or 1) - (a[4] or 1)) * t
+end
+
+function W:StyleCard(frame, opts)
+    opts = opts or {}
+    skinnedCards[frame] = true
+
+    local back = frame._backKT or W:RoundRect(frame, "BACKGROUND", -4, CARD_RADIUS)
+    local border = frame._borderKT or W:RoundRect(frame, "BACKGROUND", -3, CARD_RADIUS + 1)
+    local front = frame._frontKT or W:RoundRect(frame, "BACKGROUND", -2, CARD_RADIUS)
+    frame._backKT, frame._borderKT, frame._frontKT = back, border, front
+
+    border:ClearAllPoints()
+    border:SetPoint("TOPLEFT", frame, "TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 1, -1)
+    front:ClearAllPoints()
+    front:SetAllPoints(frame)
+    PaintSkinned(front, "card")
+
+    local function PlaceBack(t)
+        local side = 10 - 6 * t
+        back:ClearAllPoints()
+        back:SetPoint("TOPLEFT", frame, "TOPLEFT", side, -8)
+        back:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -side, -(6 + 4 * t))
+    end
+
+    local function Paint(t)
+        local ar, ag, ab = CurrentAccentColor()
+        local accent = { ar, ag, ab, 1 }
+        back:SetColor(Mix({ SkinColor("cardBack") }, accent, t))
+        border:SetColor(Mix({ SkinColor("cardBorder") }, { ar * 0.45, ag * 0.45, ab * 0.45, 1 }, t))
+        PlaceBack(t)
+    end
+
+    -- Hover polls the cursor (child controls take the mouse, so the card
+    -- itself never gets OnEnter) and eases between rest (0) and lit (1).
+    frame._ktHoverLevel = frame._ktHoverLevel or 0
+    frame._ktSetHover = function(hovered, instant)
+        frame._ktHovered = hovered and true or false
+        frame._ktHoverTarget = hovered and 1 or 0
+        if instant then frame._ktHoverLevel = frame._ktHoverTarget end
+        Paint(frame._ktHoverLevel)
+    end
+    if not frame._ktHoverPoll then
+        local acc = 0
+        frame:SetScript("OnUpdate", function(self, elapsed)
+            acc = acc + elapsed
+            if acc >= 0.05 then
+                acc = 0
+                local over = self.IsMouseOver and self:IsMouseOver() or false
+                if over ~= (self._ktHovered or false) then self._ktSetHover(over) end
+            end
+            local level, target = self._ktHoverLevel, self._ktHoverTarget or 0
+            if level ~= target then
+                local step = elapsed / 0.2
+                level = (target > level) and math.min(target, level + step) or math.max(target, level - step)
+                self._ktHoverLevel = level
+                Paint(level)
+            end
+        end)
+        frame._ktHoverPoll = true
+    end
+    frame._ktSetHover(frame._ktHovered, true)
+
+    if opts.title then
+        local pill = frame._pillKT or W:RoundRect(frame, "ARTWORK", 0, 7)
+        pill:ClearAllPoints()
+        pill:SetSize(22, 22)
+        pill:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -7)
+        local ar, ag, ab = CurrentAccentColor()
+        pill:SetColor(ar * 0.22, ag * 0.22, ab * 0.22, 1)
+        frame._pillKT = pill
+
+        local mark = frame._pillMarkKT or frame:CreateTexture(nil, "OVERLAY")
+        mark:ClearAllPoints()
+        mark:SetTexture(PartPath("card_icons"))
+        mark:SetTexCoord(W:CardIconCoords(opts.icon or W:CardIconFor(opts.title)))
+        mark:SetSize(14, 14)
+        mark:SetPoint("CENTER", pill.box, "CENTER", 0, 0)
+        mark:SetVertexColor(ar, ag, ab, 1)
+        frame._pillMarkKT = mark
+
+        local title = frame._titleKT or frame:CreateFontString(nil, "OVERLAY")
+        title:SetFont(CurrentFont(), 13)
+        title:ClearAllPoints()
+        title:SetPoint("LEFT", pill.box, "RIGHT", 9, 0)
+        title:SetPoint("RIGHT", frame, "RIGHT", -12, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
+        title:SetText(LText(opts.title))
+        local tr, tg, tb = CurrentTextColor()
+        title:SetTextColor(tr, tg, tb, 1)
+        frame._titleKT = title
+    end
+    return front
+end
+
+W.CARD_HEADER_H = CARD_HEADER_H
+
+-- ----------------------------------------------------------------------------
+-- Window frame pieces: rounded frame buttons, sidebar entries and the
+-- segmented tab control. Every piece repaints with MenuSkins.
+-- ----------------------------------------------------------------------------
+local framePieces = setmetatable({}, { __mode = "k" })
+
+-- Rounded button for the window frame (footer, header).
+-- opts: primary, danger, width, height, radius, fontSize, onClick, icon,
+-- iconCoords, iconSize (an icon with no label sits in the centre).
+function W:PillButton(parent, label, opts)
+    opts = opts or {}
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(opts.width or 120, opts.height or 40)
+    local radius = opts.radius or 9
+    local border = W:RoundRect(btn, "BACKGROUND", 1, radius + 1)
+    border:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 1, -1)
+    local bg = W:RoundRect(btn, "BACKGROUND", 2, radius)
+    bg:SetAllPoints(btn)
+    btn._pillBorderKT, btn._pillBgKT = border, bg
+
+    local text = btn:CreateFontString(nil, "OVERLAY")
+    text:SetFont(CurrentFont(), opts.fontSize or 12)
+    text:SetPoint("LEFT", btn, "LEFT", 8, 0)
+    text:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    text:SetJustifyH("CENTER")
+    text:SetWordWrap(false)
+    text:SetText(label or "")
+    btn._pillTextKT = text
+
+    if opts.icon then
+        local icon = btn:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(opts.iconSize or 14, opts.iconSize or 14)
+        icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        icon:SetTexture(opts.icon)
+        if opts.iconCoords then icon:SetTexCoord(unpack(opts.iconCoords)) end
+        btn._pillIconKT = icon
+    end
+    btn._pillPrimary = opts.primary and true or false
+    btn._pillDanger = opts.danger and true or false
+    btn._ringAlways = opts.ringAlways and true or false
+
+    framePieces[btn] = "pill"
+    btn:HookScript("OnEnter", function(self) W:PaintPillButton(self, true) end)
+    btn:HookScript("OnLeave", function(self) W:PaintPillButton(self, false) end)
+    if opts.onClick then btn:SetScript("OnClick", opts.onClick) end
+    if opts.steam ~= false then
+        -- The "steam" button (W:ApplySteamSkin) replaces the plain pill.
+        border:Hide()
+        bg:Hide()
+        W:ApplySteamSkin(btn)
+    end
+    W:PaintPillButton(btn, false)
+    return btn
+end
+
+function W:PaintPillButton(btn, hovered)
+    if hovered == nil then hovered = btn._pillHovered end
+    btn._pillHovered = hovered and true or false
+    if btn._steamKT then return W:PaintSteam(btn) end
+    local ar, ag, ab = CurrentAccentColor()
+    local accent = { ar, ag, ab, 1 }
+    local icon = btn._pillIconKT
+    if btn._pillPrimary then
+        -- Dark plate warmed by the accent with an accent edge: it leads the
+        -- footer without a flat block of bright colour.
+        btn._pillBgKT:SetColor(Mix({ SkinColor("controlBg") }, accent, hovered and 0.36 or 0.22))
+        btn._pillBorderKT:SetColor(Mix({ SkinColor("cardBorder") }, accent, hovered and 0.95 or 0.6))
+        local tr, tg, tb = Mix(accent, { 1, 1, 1, 1 }, hovered and 0.75 or 0.55)
+        btn._pillTextKT:SetTextColor(tr, tg, tb, 1)
+        if icon then icon:SetVertexColor(tr, tg, tb, 1) end
+    else
+        btn._pillBgKT:SetColor(SkinColor(hovered and "rowHover" or "controlBg"))
+        btn._pillBorderKT:SetColor(Mix({ SkinColor("cardBorder") }, accent, hovered and 0.45 or 0))
+        local tr, tg, tb = CurrentTextColor()
+        if btn._pillDanger and hovered then tr, tg, tb = 1, 0.42, 0.42 end
+        btn._pillTextKT:SetTextColor(tr, tg, tb, 1)
+        if icon then
+            if hovered then icon:SetVertexColor(ar, ag, ab, 1) else icon:SetVertexColor(CurrentMutedColor()) end
+        end
+    end
+end
+
+-- Sidebar entry skin: a rounded band behind the row with a soft accent halo
+-- around it, a 3px accent bar at its left edge and, when opts.chip is set, a
+-- rounded chip holding the icon. Hover and the active state ease in and out
+-- (W:NavChipState); on hover the chip, and whatever the caller anchored to
+-- it, slides a few pixels to the right.
+-- opts: inset, right, radius, barHeight, chip ({ w, h, x, radius }), always
+-- (the band also shows at rest), card ("full": front, border and back plate
+-- like the option cards; "flat": front and border only; "gradient": the
+-- accent gradient button, which also paints btn._navLabelKT, _navArrowKT
+-- and _navIconKT unless btn._navIconKeep).
+-- Gradient rows (opts.card = "gradient"), after the user's gradient button:
+-- a 1px rounded ring with a vertical gradient, a faint inner glow line, a
+-- face darkening from top to bottom with a lighter band across its middle,
+-- and a sheen that fades in on hover. Every colour is a shade of the accent:
+-- muted and deep at rest, bright for the selected entry.
+local NAV_WHITE = "Interface\\Buttons\\WHITE8x8"
+local GRADIENT_FADE = 0.22
+
+local function TexGradient(tex, orientation, c1, c2)
+    if tex.SetGradientAlpha then
+        tex:SetGradientAlpha(orientation, c1[1], c1[2], c1[3], c1[4] or 1, c2[1], c2[2], c2[3], c2[4] or 1)
+    elseif tex.SetGradient and CreateColor then
+        tex:SetGradient(orientation, CreateColor(c1[1], c1[2], c1[3], c1[4] or 1), CreateColor(c2[1], c2[2], c2[3], c2[4] or 1))
+    else
+        tex:SetVertexColor((c1[1] + c2[1]) / 2, (c1[2] + c2[2]) / 2, (c1[3] + c2[3]) / 2, ((c1[4] or 1) + (c2[4] or 1)) / 2)
+    end
+end
+
+-- Accent shade: grey pulls it towards its own grey, k darkens it.
+local function Shade(c, k, grey, alpha)
+    local l = c[1] * 0.3 + c[2] * 0.59 + c[3] * 0.11
+    return { (c[1] + (l - c[1]) * grey) * k, (c[2] + (l - c[2]) * grey) * k, (c[3] + (l - c[3]) * grey) * k, alpha or 1 }
+end
+
+local function Lerp(a, b, t)
+    return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, (a[4] or 1) + ((b[4] or 1) - (a[4] or 1)) * t }
+end
+
+-- Vertical gradient over a rounded rect: top-row slices take the top colour,
+-- bottom-row slices the bottom one, the middle row blends between them.
+local function RoundGradient(rr, top, bottom)
+    local p = rr.pieces
+    for i = 1, 3 do p[i]:SetVertexColor(top[1], top[2], top[3], top[4] or 1) end
+    for i = 7, 9 do p[i]:SetVertexColor(bottom[1], bottom[2], bottom[3], bottom[4] or 1) end
+    for i = 4, 6 do TexGradient(p[i], "VERTICAL", bottom, top) end
+end
+
+-- Horizontal gradient over a rounded rect: left-column slices take the left
+-- colour, right-column slices the right one, the middle column blends.
+local function RoundGradientH(rr, left, right)
+    local p = rr.pieces
+    for _, i in ipairs({ 1, 4, 7 }) do p[i]:SetVertexColor(left[1], left[2], left[3], left[4] or 1) end
+    for _, i in ipairs({ 3, 6, 9 }) do p[i]:SetVertexColor(right[1], right[2], right[3], right[4] or 1) end
+    for _, i in ipairs({ 2, 5, 8 }) do TexGradient(p[i], "HORIZONTAL", left, right) end
+end
+
+local function BuildGradientRow(btn, inset, right, radius)
+    local function Rect(key, sublevel, r, pad)
+        local rr = btn[key] or W:RoundRect(btn, "BACKGROUND", sublevel, r)
+        rr:ClearAllPoints()
+        rr:SetPoint("TOPLEFT", btn, "TOPLEFT", inset + pad, -1 - pad)
+        rr:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -right - pad, 1 + pad)
+        btn[key] = rr
+        return rr
+    end
+    -- 1px ring, then a 1px inner glow line, then the face.
+    Rect("_gRingKT", 1, radius, 0)
+    Rect("_gGlowKT", 2, math.max(2, radius - 1), 1)
+    Rect("_gFaceKT", 3, math.max(2, radius - 2), 2)
+    -- Halves of the lighter middle band and of the hover sheen, fading out
+    -- towards the sides so they never show a seam.
+    local cx = (inset - right) / 2
+    local function Half(key, sublevel, left)
+        local t = btn[key] or btn:CreateTexture(nil, "BACKGROUND", nil, sublevel)
+        t:SetTexture(NAV_WHITE)
+        t:ClearAllPoints()
+        if left then
+            t:SetPoint("TOPLEFT", btn, "TOPLEFT", inset + 2, -3)
+            t:SetPoint("BOTTOMRIGHT", btn, "BOTTOM", cx, 3)
+        else
+            t:SetPoint("TOPLEFT", btn, "TOP", cx, -3)
+            t:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -right - 2, 3)
+        end
+        btn[key] = t
+    end
+    Half("_gMidL", 4, true); Half("_gMidR", 4, false)
+    Half("_gHovL", 5, true); Half("_gHovR", 5, false)
+end
+
+local function PaintGradientRow(btn, t, a, o)
+    local ar, ag, ab = CurrentAccentColor()
+    local A = { ar, ag, ab, 1 }
+    local W1 = { 1, 1, 1, 1 }
+    -- Kept quiet: greyed, dark accent shades at rest; hover lifts them a
+    -- little; only the selected entry gets the full accent.
+    local lit = math.max(a, 0.2 * o)
+
+    local ringTop = Lerp(Lerp(Shade(A, 0.32, 0.55), Shade(A, 0.46, 0.4), t), Lerp(A, W1, 0.05), lit)
+    local ringBottom = Lerp(Lerp(Shade(A, 0.20, 0.4), Shade(A, 0.28, 0.3), t), Shade(A, 0.45, 0.1), lit)
+    RoundGradient(btn._gRingKT, ringTop, ringBottom)
+    btn._gGlowKT:SetColor(ar, ag, ab, 0.04 + 0.05 * t + 0.12 * a)
+
+    local faceTop = Lerp(Lerp({ 0.05, 0.047, 0.052, 1 }, Shade(A, 0.30, 0.6), 0.18), Shade(A, 0.26, 0.2), 0.45 * a)
+    local faceBottom = Lerp(Lerp({ 0.032, 0.03, 0.034, 1 }, Shade(A, 0.20, 0.4), 0.12), Shade(A, 0.16, 0.1), 0.45 * a)
+    RoundGradient(btn._gFaceKT, faceTop, faceBottom)
+
+    local mid = Shade(A, 0.12, 0.5, 0.45 + 0.25 * a)
+    local edge = { mid[1], mid[2], mid[3], 0 }
+    TexGradient(btn._gMidL, "HORIZONTAL", edge, mid)
+    TexGradient(btn._gMidR, "HORIZONTAL", mid, edge)
+
+    local sheen = { ar, ag, ab, 0.10 * t }
+    local sheenEdge = { ar * 0.3, ag * 0.3, ab * 0.3, 0 }
+    TexGradient(btn._gHovL, "HORIZONTAL", sheenEdge, sheen)
+    TexGradient(btn._gHovR, "HORIZONTAL", sheen, sheenEdge)
+    btn._gHovL:SetShown(t > 0.005)
+    btn._gHovR:SetShown(t > 0.005)
+
+    local halo = 0.08 * a
+    btn._navGlowOutKT:SetColor(ar, ag, ab, halo)
+    btn._navGlowOutKT:SetShown(halo > 0.005)
+    btn._navGlowInKT:Hide()
+    btn._activeBandKT:Hide()
+
+    -- Label, chevron and icon in light accent tints; white when selected.
+    -- Text: a near-white with only a hint of accent at rest.
+    local text = Lerp(Lerp(Shade(A, 1, 0.75), W1, 0.62), Lerp(A, W1, 0.85), t)
+    text = Lerp(text, W1, a)
+    if btn._navLabelKT then btn._navLabelKT:SetTextColor(text[1], text[2], text[3], 1) end
+    if btn._navArrowKT then btn._navArrowKT:SetVertexColor(text[1], text[2], text[3], 0.75 + 0.25 * t) end
+    if btn._navIconKT and not btn._navIconKeep then
+        local ic = Lerp(Lerp(Shade(A, 1, 0.65), W1, 0.45), Lerp(A, W1, 0.5), t)
+        ic = Lerp(ic, Lerp(A, W1, 0.08), a)
+        btn._navIconKT:SetVertexColor(ic[1], ic[2], ic[3], 1)
+    end
+    if btn._chipKT then
+        btn._chipKT:SetColor(Lerp(Shade(A, 0.10, 0.55), Shade(A, 0.30, 0.1), a))
+    end
+end
+
+local NAV_FADE, NAV_SLIDE = 0.2, 3
+
+-- Progress is eased (smoothstep) before painting, so fades start and end
+-- softly instead of moving at one constant speed.
+local function NavEase(p) return p * p * (3 - 2 * p) end
+
+local function PaintNavChip(btn)
+    local band, bar, chip = btn._activeBandKT, btn._activeBarKT, btn._chipKT
+    if not band then return end
+    local t, a, o = NavEase(btn._navHoverP or 0), NavEase(btn._navActiveP or 0), NavEase(btn._navOpenP or 0)
+    local ar, ag, ab = CurrentAccentColor()
+    local accent = { ar, ag, ab, 1 }
+
+    if btn._navCard == "shine" then
+        W:_PaintShineRow(btn, t, a, o)
+    elseif btn._navCard == "gradient" then
+        PaintGradientRow(btn, t, a, o)
+    elseif btn._navCard then
+        -- Card rows, like the option cards: front plate, 1px rounded border
+        -- and (full cards) a back plate peeking out below that warms with
+        -- the accent and spreads on hover.
+        local fr, fg, fb, fa = Mix({ SkinColor("card") }, { SkinColor("rowHover") }, 0.6 * t)
+        fr, fg, fb = Mix({ fr, fg, fb, 1 }, accent, 0.12 * a)
+        band:SetColor(fr, fg, fb, fa)
+        band:Show()
+        btn._navGlowInKT:SetColor(Mix({ SkinColor("cardBorder") }, { ar * 0.45, ag * 0.45, ab * 0.45, 1 }, math.max(0.6 * t, a)))
+        btn._navGlowInKT:Show()
+        local halo = 0.10 * a
+        btn._navGlowOutKT:SetColor(ar, ag, ab, halo)
+        btn._navGlowOutKT:SetShown(halo > 0.005)
+        local back = btn._navBackKT
+        if back then
+            back:SetColor(Mix({ SkinColor("cardBack") }, accent, math.max(t, 0.7 * a)))
+            local side = 8 - 4 * t
+            back:ClearAllPoints()
+            back:SetPoint("TOPLEFT", btn, "TOPLEFT", btn._navInset + side, -6)
+            back:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -btn._navRight - side, -(2 + 2 * t))
+        end
+    else
+    -- Hover only lifts the band a shade and draws a faint accent hairline
+    -- round it; the warm fill and the halo belong to the active entry.
+    local br, bg, bb = Mix({ SkinColor("rowHover") }, accent, 0.14 * a)
+    br, bg, bb = Mix({ br, bg, bb, 1 }, { 1, 1, 1, 1 }, 0.035 * t * (1 - a))
+    local alpha = math.max(t * 0.85, a, o * 0.55, btn._navAlways and 1 or 0)
+    band:SetColor(br, bg, bb, alpha)
+    band:SetShown(alpha > 0.01)
+    local ring = math.max(0.16 * t, 0.30 * a)
+    local halo = 0.11 * a
+    btn._navGlowInKT:SetColor(ar, ag, ab, ring)
+    btn._navGlowOutKT:SetColor(ar, ag, ab, halo)
+    btn._navGlowInKT:SetShown(ring > 0.005)
+    btn._navGlowOutKT:SetShown(halo > 0.005)
+    end
+
+    bar:SetColorTexture(ar, ag, ab, a)
+    bar:SetHeight((btn._navBarH or 16) * (0.4 + 0.6 * a))
+    bar:SetShown(a > 0.01)
+
+    if chip then
+        if btn._navCard ~= "gradient" and btn._navCard ~= "shine" then
+            chip:SetColor(Mix({ SkinColor("controlBg") }, accent, 0.25 * a))
+        end
+        chip:ClearAllPoints()
+        chip:SetSize(btn._navChipW, btn._navChipH)
+        chip:SetPoint("LEFT", btn, "LEFT", btn._navChipX + NAV_SLIDE * t, 0)
+    end
+end
+
+local function StepNavChip(btn, elapsed)
+    local step = elapsed / (btn._navFade or NAV_FADE)
+    local done = true
+    for _, k in ipairs({ "Hover", "Active", "Open" }) do
+        local cur, target = btn["_nav" .. k .. "P"] or 0, btn["_nav" .. k .. "T"] or 0
+        if cur ~= target then
+            cur = (target > cur) and math.min(target, cur + step) or math.max(target, cur - step)
+            btn["_nav" .. k .. "P"] = cur
+            if cur ~= target then done = false end
+        end
+    end
+    if btn._navCard == "shine" and W:_StepShineRow(btn, elapsed) then done = false end
+    PaintNavChip(btn)
+    if done then btn:SetScript("OnUpdate", nil) end
+end
+
+function W:NavChip(btn, opts)
+    opts = opts or {}
+    local inset, right = opts.inset or 0, opts.right or 0
+    local radius = opts.radius or 9
+    local function Plate(key, sublevel, r, grow)
+        local rr = btn[key] or W:RoundRect(btn, "BACKGROUND", sublevel, r)
+        rr:ClearAllPoints()
+        rr:SetPoint("TOPLEFT", btn, "TOPLEFT", inset - grow, -1 + grow)
+        rr:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -right + grow, 1 - grow)
+        btn[key] = rr
+        return rr
+    end
+    Plate("_navGlowOutKT", -1, radius + 5, 5)
+    Plate("_navGlowInKT", 0, radius + 1, 1)
+    local band = Plate("_activeBandKT", 1, radius, 0)
+    btn._navCard, btn._navInset, btn._navRight = opts.card, inset, right
+    if opts.card == "full" then
+        btn._navBackKT = btn._navBackKT or W:RoundRect(btn, "BACKGROUND", -2, radius)
+    elseif opts.card == "gradient" then
+        BuildGradientRow(btn, inset, right, radius)
+        btn._navFade = GRADIENT_FADE
+    elseif opts.card == "shine" then
+        W:_BuildShineRow(btn, inset, right)
+        btn._navFade = 0.2
+    end
+
+    local bar = btn._activeBarKT or btn:CreateTexture(nil, "ARTWORK", nil, 2)
+    bar:ClearAllPoints()
+    bar:SetWidth(3)
+    bar:SetPoint("LEFT", btn, "LEFT", inset - 1, 0)
+    btn._activeBarKT = bar
+    btn._navBarH = opts.barHeight or 16
+
+    if opts.chip then
+        btn._chipKT = btn._chipKT or W:RoundRect(btn, "ARTWORK", 0, opts.chip.radius or 6)
+        btn._navChipW, btn._navChipH = opts.chip.w, opts.chip.h or opts.chip.w
+        btn._navChipX = inset + (opts.chip.x or 6)
+    end
+    btn._navAlways = opts.always and true or false
+    framePieces[btn] = "nav"
+    W:NavChipState(btn, btn._navState or "rest", btn._navHovered, true)
+    return band
+end
+
+-- state: "active" (warm band, accent bar and halo), "open" (a faint band,
+-- for an open category) or "rest"; "hover" is short for rest + hovered.
+-- hovered adds the hover band and halo. instant skips the easing.
+function W:NavChipState(btn, state, hovered, instant)
+    if state == "hover" then state, hovered = "rest", true end
+    btn._navState, btn._navHovered = state, hovered and true or false
+    btn._navHoverT = hovered and 1 or 0
+    btn._navActiveT = (state == "active") and 1 or 0
+    btn._navOpenT = (state == "open") and 1 or 0
+    if not btn._activeBandKT then return end
+    if instant then
+        btn._navHoverP, btn._navActiveP, btn._navOpenP = btn._navHoverT, btn._navActiveT, btn._navOpenT
+        PaintNavChip(btn)
+    else
+        btn:SetScript("OnUpdate", StepNavChip)
+        StepNavChip(btn, 0)
+    end
+end
+
+-- Tabs as a segmented control: a dark rounded track with one rounded segment
+-- per tab, the selected one lit with the accent. Rows wrap when the tabs do
+-- not fit; opts.single returns nil instead of wrapping.
+-- opts: localize, width, single, fontSize. Returns the bar and its height.
+local SEG_H, SEG_PAD, SEG_GAP, SEG_TEXT_PAD, SEG_ICON = 28, 3, 4, 12, 14
+
+local function PaintSegments(bar)
+    local ar, ag, ab = CurrentAccentColor()
+    local accent = { ar, ag, ab, 1 }
+    bar._trackKT:SetColor(SkinColor("segmentTrack"))
+    for _, seg in ipairs(bar._segmentsKT) do
+        local selected = seg._tabId == bar.selectedId
+        local r, g, b
+        if selected then
+            seg._bgKT:Show()
+            seg._bgKT:SetColor(Mix({ SkinColor("rowHover") }, accent, 0.16))
+            r, g, b = Mix(accent, { 1, 1, 1, 1 }, 0.2)
+        elseif seg._hovered then
+            seg._bgKT:Show()
+            seg._bgKT:SetColor(SkinColor("rowHover"))
+            r, g, b = CurrentTextColor()
+        else
+            seg._bgKT:Hide()
+            r, g, b = CurrentMutedColor()
+        end
+        seg._textKT:SetTextColor(r, g, b, 1)
+        if seg._iconKT then seg._iconKT:SetVertexColor(r, g, b, 1) end
+    end
+end
+
+function W:SegmentedTabs(parent, tabs, selectedId, onSelect, opts)
+    opts = opts or {}
+    local localize = opts.localize or LText
+    local maxW = opts.width or FW(parent)
+    if not maxW or maxW <= 0 then maxW = 600 end
+    local bar = CreateFrame("Frame", nil, parent)
+    bar._trackKT = W:RoundRect(bar, "BACKGROUND", 0, 11)
+    bar._trackKT:SetAllPoints(bar)
+    bar._segmentsKT = {}
+    bar.selectedId = selectedId
+
+    local x, y, rows, widest = SEG_PAD, SEG_PAD, 1, 0
+    for _, tab in ipairs(tabs or {}) do
+        local seg = CreateFrame("Button", nil, bar)
+        local text = seg:CreateFontString(nil, "OVERLAY")
+        text:SetFont(CurrentFont(), opts.fontSize or 12)
+        text:SetWordWrap(false)
+        text:SetText(localize(tab.label or tab.id or ""))
+        local iconW = tab.icon and (SEG_ICON + 6) or 0
+        local w = math.ceil(text:GetStringWidth() or 0) + SEG_TEXT_PAD * 2 + iconW
+        w = math.min(w, maxW - SEG_PAD * 2)
+        if x > SEG_PAD and x + w + SEG_PAD > maxW then
+            if opts.single then
+                bar:Hide()
+                return nil, 0
+            end
+            widest = math.max(widest, x - SEG_GAP + SEG_PAD)
+            x, y, rows = SEG_PAD, y + SEG_H + SEG_GAP, rows + 1
+        end
+        seg:SetSize(w, SEG_H)
+        seg:SetPoint("TOPLEFT", bar, "TOPLEFT", x, -y)
+        seg._bgKT = W:RoundRect(seg, "BACKGROUND", 1, 8)
+        seg._bgKT:SetAllPoints(seg)
+        if tab.icon then
+            local icon = seg:CreateTexture(nil, "OVERLAY")
+            icon:SetSize(SEG_ICON, SEG_ICON)
+            icon:SetPoint("LEFT", seg, "LEFT", SEG_TEXT_PAD, 0)
+            icon:SetTexture(tab.icon)
+            seg._iconKT = icon
+        end
+        text:SetPoint("LEFT", seg, "LEFT", SEG_TEXT_PAD + iconW, 0)
+        text:SetPoint("RIGHT", seg, "RIGHT", -SEG_TEXT_PAD, 0)
+        text:SetJustifyH(tab.icon and "LEFT" or "CENTER")
+        seg._textKT = text
+        seg._tabId, seg._tab = tab.id, tab
+        seg:SetScript("OnClick", function(self)
+            bar.selectedId = self._tabId
+            PaintSegments(bar)
+            if onSelect then onSelect(self._tabId, self._tab) end
+        end)
+        seg:SetScript("OnEnter", function(self) self._hovered = true; PaintSegments(bar) end)
+        seg:SetScript("OnLeave", function(self) self._hovered = nil; PaintSegments(bar) end)
+        bar._segmentsKT[#bar._segmentsKT + 1] = seg
+        x = x + w + SEG_GAP
+    end
+    widest = math.max(widest, x - SEG_GAP + SEG_PAD)
+    local h = rows * SEG_H + (rows - 1) * SEG_GAP + SEG_PAD * 2
+    bar:SetSize(widest, h)
+    framePieces[bar] = "tabs"
+    PaintSegments(bar)
+    return bar, h
+end
+
+-- Page tab bar after the user's "steam" CSS button: a dark rounded face
+-- (#141414, 8px corners) inside a 2px rounded ring painted with a diagonal
+-- black / grey / light-grey gradient, plus a soft halo standing in for the
+-- blurred copy. The gradient only travels while the cursor is over the tab
+-- or it is pressed; at rest the ring sits still and nearly black. The
+-- selected tab keeps an accent ring and accent-tinted label. Tabs size to
+-- their labels and fill the width; returns nil when they cannot fit a row.
+-- opts: localize, width, height, gap, fontSize. Returns the bar and its height.
+local STEAM_STOPS = {
+    { 0.078, 0.078, 0.078 }, { 0.106, 0.106, 0.106 }, { 0.180, 0.180, 0.180 },
+    { 0.882, 0.882, 0.882 }, { 0.180, 0.180, 0.180 }, { 0.106, 0.106, 0.106 },
+    { 0.078, 0.078, 0.078 }, { 0.078, 0.078, 0.078 },
+}
+local STEAM_FACE = { 0.078, 0.078, 0.078, 1 }
+local STEAM_RING, STEAM_RADIUS, STEAM_SEGMENTS = 2, 10, 8
+local STEAM_PERIOD = 2.4    -- there and back (the CSS takes 20s; too slow under a cursor)
+local STEAM_FADE = 0.12     -- quicker than the CSS .2s so hover feels immediate
+local TAB_ICON = 14
+local WHITE_TEX = "Interface\\Buttons\\WHITE8x8"
+
+-- The light stop and the greys next to it take the accent, so the travelling
+-- light is the accent colour; the dark stops stay near black.
+local function SetSteamAccent()
+    local ar, ag, ab = CurrentAccentColor()
+    STEAM_STOPS[3] = { 0.06 + ar * 0.22, 0.06 + ag * 0.22, 0.06 + ab * 0.22 }
+    STEAM_STOPS[4] = { ar + (1 - ar) * 0.25, ag + (1 - ag) * 0.25, ab + (1 - ab) * 0.25 }
+    STEAM_STOPS[5] = STEAM_STOPS[3]
+end
+
+-- The gradient is 4x the button (background-size: 400%); s runs over it.
+local function SteamColor(s)
+    local t = (s % 4) / 4 * 7
+    local i = math.floor(t)
+    local f = t - i
+    local a, b = STEAM_STOPS[i + 1], STEAM_STOPS[math.min(i + 2, #STEAM_STOPS)]
+    return a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f
+end
+
+local function SetTexGradient(tex, orientation, r1, g1, b1, r2, g2, b2)
+    if tex.SetGradientAlpha then
+        tex:SetGradientAlpha(orientation, r1, g1, b1, 1, r2, g2, b2, 1)
+    elseif tex.SetGradient and CreateColor then
+        tex:SetGradient(orientation, CreateColor(r1, g1, b1, 1), CreateColor(r2, g2, b2, 1))
+    else
+        tex:SetVertexColor((r1 + r2) / 2, (g1 + g2) / 2, (b1 + b2) / 2, 1)
+    end
+end
+
+-- Ring colour at (x, y) of the ring box (y down from the top): the 45deg
+-- gradient position plus the travelling phase, eased between the still
+-- rest look and the moving one, and pulled to the accent on the selected tab.
+local function RingColor(tab, x, y)
+    local u = ((x / tab._ringW) + (1 - y / tab._ringH)) / 2
+    local hp = tab._hoverP or 0
+    local r0, g0, b0 = SteamColor(u)
+    if tab._ringAlways then
+        -- Always-on border: a still accent gradient at rest.
+        local ar, ag, ab = CurrentAccentColor()
+        local k = 0.38 + 0.32 * u
+        r0, g0, b0 = ar * k, ag * k, ab * k
+    end
+    local r1, g1, b1 = SteamColor(u + (tab._phase or 0))
+    local r, g, b = r0 + (r1 - r0) * hp, g0 + (g1 - g0) * hp, b0 + (b1 - b0) * hp
+    if tab._selected then
+        local ar, ag, ab = CurrentAccentColor()
+        local k = 0.75 - 0.45 * hp
+        r, g, b = r + (ar - r) * k, g + (ag - g) * k, b + (ab - b) * k
+    end
+    return r, g, b
+end
+
+-- Paints a ring built by BuildPageTabRing with colour(x, y) over the ring
+-- box (y down from the top): corners take their centre, edge segments blend.
+local function PaintRingWith(tab, colour)
+    local ring = tab._ringKT
+    local W, H, R = tab._ringW, tab._ringH, tab._ringR or STEAM_RADIUS
+    local cx = { R / 2, W - R / 2, R / 2, W - R / 2 }
+    local cy = { R / 2, R / 2, H - R / 2, H - R / 2 }
+    for i = 1, 4 do ring.corners[i]:SetVertexColor(colour(cx[i], cy[i])) end
+    local segW = (W - 2 * R) / STEAM_SEGMENTS
+    for i = 1, STEAM_SEGMENTS do
+        local x1, x2 = R + (i - 1) * segW, R + i * segW
+        local r1, g1, b1 = colour(x1, 0)
+        local r2, g2, b2 = colour(x2, 0)
+        SetTexGradient(ring.top[i], "HORIZONTAL", r1, g1, b1, r2, g2, b2)
+        r1, g1, b1 = colour(x1, H)
+        r2, g2, b2 = colour(x2, H)
+        SetTexGradient(ring.bottom[i], "HORIZONTAL", r1, g1, b1, r2, g2, b2)
+    end
+    -- VERTICAL gradients go from the bottom colour to the top one.
+    local rb, gb, bb = colour(0, H - R)
+    local rt, gt, bt = colour(0, R)
+    SetTexGradient(ring.left, "VERTICAL", rb, gb, bb, rt, gt, bt)
+    rb, gb, bb = colour(W, H - R)
+    rt, gt, bt = colour(W, R)
+    SetTexGradient(ring.right, "VERTICAL", rb, gb, bb, rt, gt, bt)
+end
+
+local function PaintPageTab(tab)
+    SetSteamAccent()
+    local W, H = tab._ringW, tab._ringH
+    PaintRingWith(tab, function(x, y) return RingColor(tab, x, y) end)
+
+    -- Halo: the blurred copy, bright only while the light passes by.
+    local light = 0
+    for _, p in ipairs({ { 0, 0 }, { W, 0 }, { 0, H }, { W, H }, { W / 2, 0 }, { W / 2, H } }) do
+        local r, g, b = RingColor(tab, p[1], p[2])
+        light = math.max(light, r, g, b)
+    end
+    local hp = tab._hoverP or 0
+    local glow = math.max(0, light - 0.18) * 0.22 * hp
+    local ar, ag, ab = CurrentAccentColor()
+    tab._haloInKT:SetColor(ar, ag, ab, glow)
+    tab._haloOutKT:SetColor(ar, ag, ab, glow * 0.45)
+    tab._haloInKT:SetShown(glow > 0.003)
+    tab._haloOutKT:SetShown(glow > 0.003)
+
+    if tab._selected then
+        tab._faceKT:SetColor(Mix(STEAM_FACE, { ar, ag, ab, 1 }, 0.12))
+        tab._textKT:SetTextColor(Mix({ ar, ag, ab, 1 }, { 1, 1, 1, 1 }, 0.3))
+    else
+        tab._faceKT:SetColor(unpack(STEAM_FACE))
+        tab._textKT:SetTextColor(1, 1, 1, 1)
+    end
+    if tab._iconKT then tab._iconKT:SetVertexColor(ar, ag, ab, 1) end
+    if tab._pillDanger and tab._hovered then tab._textKT:SetTextColor(1, 0.42, 0.42, 1) end
+end
+
+local function StepPageTab(tab, elapsed)
+    elapsed = elapsed or 0
+    local target = (tab._hovered or tab._pressed) and 1 or 0
+    local hp = tab._hoverP or 0
+    local step = elapsed / STEAM_FADE
+    hp = (target > hp) and math.min(target, hp + step) or math.max(target, hp - step)
+    tab._hoverP = hp
+    if hp > 0 then
+        -- background-position 0 -> 400% -> 0: the phase runs 0..3 and back.
+        tab._clock = ((tab._clock or 0) + elapsed) % STEAM_PERIOD
+        local half = STEAM_PERIOD / 2
+        local t = tab._clock < half and tab._clock / half or (STEAM_PERIOD - tab._clock) / half
+        tab._phase = 3 * t
+    end
+    PaintPageTab(tab)
+    if hp == 0 and target == 0 then tab:SetScript("OnUpdate", nil) end
+end
+
+local function BuildPageTabRing(tab)
+    local ring = { corners = {}, top = {}, bottom = {} }
+    local disc = PartPath("round_disc")
+    local quarter = { ROUND_COORDS[1], ROUND_COORDS[3], ROUND_COORDS[7], ROUND_COORDS[9] }
+    local points = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
+    local k = tab._ringK or STEAM_RING
+    local off = { { -k, k }, { k, k }, { -k, -k }, { k, -k } }
+    for i = 1, 4 do
+        local t = tab:CreateTexture(nil, "BACKGROUND", nil, 0)
+        t:SetTexture(disc)
+        t:SetTexCoord(unpack(quarter[i]))
+        t:SetSize(tab._ringR or STEAM_RADIUS, tab._ringR or STEAM_RADIUS)
+        t:SetPoint(points[i], tab, points[i], off[i][1], off[i][2])
+        ring.corners[i] = t
+    end
+    for i = 1, STEAM_SEGMENTS do
+        ring.top[i] = tab:CreateTexture(nil, "BACKGROUND", nil, 0)
+        ring.bottom[i] = tab:CreateTexture(nil, "BACKGROUND", nil, 0)
+        ring.top[i]:SetTexture(WHITE_TEX)
+        ring.bottom[i]:SetTexture(WHITE_TEX)
+    end
+    ring.left = tab:CreateTexture(nil, "BACKGROUND", nil, 0)
+    ring.right = tab:CreateTexture(nil, "BACKGROUND", nil, 0)
+    ring.left:SetTexture(WHITE_TEX)
+    ring.right:SetTexture(WHITE_TEX)
+    -- Segment edges fall on fractions of a pixel; letting the client snap
+    -- each one again opened 1px gaps in the ring.
+    local function NoSnap(t)
+        if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+        if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
+    end
+    for i = 1, 4 do NoSnap(ring.corners[i]) end
+    for i = 1, STEAM_SEGMENTS do NoSnap(ring.top[i]); NoSnap(ring.bottom[i]) end
+    NoSnap(ring.left); NoSnap(ring.right)
+    tab._ringKT = ring
+end
+
+local function LayoutPageTabRing(tab, w, h)
+    local ring, R, k = tab._ringKT, tab._ringR or STEAM_RADIUS, tab._ringK or STEAM_RING
+    tab._ringW, tab._ringH = w + 2 * k, h + 2 * k
+    local segW = (tab._ringW - 2 * R) / STEAM_SEGMENTS
+    -- Each segment (and the side strips) overlaps its neighbours and the
+    -- corners by 1px so no seam can open between them.
+    for i = 1, STEAM_SEGMENTS do
+        local x = -k + R + (i - 1) * segW - 1
+        ring.top[i]:ClearAllPoints()
+        ring.top[i]:SetPoint("TOPLEFT", tab, "TOPLEFT", x, k)
+        ring.top[i]:SetSize(segW + 2, k + 2)
+        ring.bottom[i]:ClearAllPoints()
+        ring.bottom[i]:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", x, -k)
+        ring.bottom[i]:SetSize(segW + 2, k + 2)
+    end
+    ring.left:ClearAllPoints()
+    ring.left:SetPoint("TOPLEFT", tab, "TOPLEFT", -k, -(R - k) + 1)
+    ring.left:SetSize(k + 2, tab._ringH - 2 * R + 2)
+    ring.right:ClearAllPoints()
+    ring.right:SetPoint("TOPRIGHT", tab, "TOPRIGHT", k, -(R - k) + 1)
+    ring.right:SetSize(k + 2, tab._ringH - 2 * R + 2)
+end
+
+local function AddSteamHalo(btn)
+    btn._haloOutKT = W:RoundRect(btn, "BACKGROUND", -2, 17)
+    btn._haloOutKT:SetPoint("TOPLEFT", btn, "TOPLEFT", -9, 9)
+    btn._haloOutKT:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 9, -9)
+    btn._haloInKT = W:RoundRect(btn, "BACKGROUND", -1, 12)
+    btn._haloInKT:SetPoint("TOPLEFT", btn, "TOPLEFT", -4, 4)
+    btn._haloInKT:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 4, -4)
+end
+
+-- The same "steam" look on a frame button (W:PillButton): a primary button
+-- keeps the accent ring the selected tab has.
+function W:ApplySteamSkin(btn)
+    AddSteamHalo(btn)
+    BuildPageTabRing(btn)
+    btn._faceKT = W:RoundRect(btn, "BACKGROUND", 2, 8)
+    btn._faceKT:SetAllPoints(btn)
+    btn._textKT = btn._pillTextKT
+    btn._iconKT = btn._pillIconKT
+    btn._selected = btn._pillPrimary
+    btn._steamKT = true
+    LayoutPageTabRing(btn, btn:GetWidth() or 0, btn:GetHeight() or 0)
+    btn:HookScript("OnSizeChanged", function(self, w, h) LayoutPageTabRing(self, w or self:GetWidth(), h or self:GetHeight()); PaintPageTab(self) end)
+    local function Animate(self) self:SetScript("OnUpdate", StepPageTab) end
+    btn:HookScript("OnEnter", function(self) self._hovered = true; Animate(self) end)
+    btn:HookScript("OnLeave", function(self) self._hovered = nil; self._pressed = nil; Animate(self) end)
+    btn:HookScript("OnMouseDown", function(self) self._pressed = true; Animate(self) end)
+    btn:HookScript("OnMouseUp", function(self) self._pressed = nil; Animate(self) end)
+    PaintPageTab(btn)
+end
+
+function W:PaintSteam(btn) PaintPageTab(btn) end
+
+-- Shine rows (NavChip card = "shine"), after the user's "Get Started"
+-- button: a black rounded face over a 2px ring cut from a soft two-tone
+-- accent gradient (deep to light) that spins while the cursor is over the
+-- row. (The CSS streak sweeping across on hover is left out on request;
+-- _shineSweep still drives it if set.)
+-- The selected entry gets a brighter ring. Its layers live on a frame below
+-- the button, so the button's own icon and label stay on top.
+local SHINE_SPIN = 1.4      -- seconds per turn while hovered
+local SHINE_RADIUS = 6      -- squarer than the tabs: corners only softened
+local NAV_GLOW_TEX = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\PortalRadial.tga"
+local SHINE_SWEEP = 0.7
+
+function W:_BuildShineRow(btn, inset, right)
+    local host = btn._shineHostKT
+    if not host then
+        local level = btn:GetFrameLevel() or 3
+        host = CreateFrame("Frame", nil, btn)
+        host:SetFrameLevel(math.max(0, level - 3))
+        host._ringR = SHINE_RADIUS
+        BuildPageTabRing(host)
+        host._faceKT = W:RoundRect(host, "BACKGROUND", 2, SHINE_RADIUS - 2)
+        host._faceKT:SetAllPoints(host)
+        -- Selected entry: an accent wash fading from left to right.
+        host._fillKT = W:RoundRect(host, "BACKGROUND", 3, SHINE_RADIUS - 2)
+        host._fillKT:SetAllPoints(host)
+        local clip = CreateFrame("Frame", nil, host)
+        clip:SetFrameLevel(math.max(0, level - 2))
+        clip:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -2)
+        clip:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
+        if clip.SetClipsChildren then clip:SetClipsChildren(true) end
+        local sheen = CreateFrame("Frame", nil, clip)
+        sheen:SetFrameLevel(math.max(0, level - 1))
+        sheen:SetAllPoints(clip)
+        local streak = sheen:CreateTexture(nil, "ARTWORK")
+        streak:SetTexture(WHITE_TEX)
+        streak:Hide()
+        host._streakKT, host._clipKT = streak, clip
+        host:SetScript("OnSizeChanged", function(self, w, h)
+            if (w or 0) > 0 and (h or 0) > 0 then
+                LayoutPageTabRing(self, w, h)
+                W:_PaintShineRow(btn)
+            end
+        end)
+        btn._shineHostKT = host
+    end
+    host:ClearAllPoints()
+    host:SetPoint("TOPLEFT", btn, "TOPLEFT", inset + STEAM_RING, -1 - STEAM_RING)
+    host:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -right - STEAM_RING, 1 + STEAM_RING)
+    local w, h = host:GetWidth() or 0, host:GetHeight() or 0
+    if w > 0 and h > 0 then LayoutPageTabRing(host, w, h) end
+end
+
+function W:_PaintShineRow(btn, t, a, o)
+    if t then btn._shineState = { t, a, o } end
+    local st = btn._shineState or { 0, 0, 0 }
+    t, a, o = st[1], st[2], st[3]
+    local host = btn._shineHostKT
+    local ar, ag, ab = CurrentAccentColor()
+    local A, W1 = { ar, ag, ab, 1 }, { 1, 1, 1, 1 }
+    local lit = math.max(a, 0.25 * o)
+
+    if host and host._ringW and host._ringW > 0 then
+        local c1 = Lerp(Shade(A, 0.42, 0.2), Shade(A, 0.75, 0), lit)
+        local c2 = Lerp(Lerp(A, W1, 0.25), Lerp(A, W1, 0.45), lit)
+        local k = 0.55 + 0.45 * math.max(t, lit)
+        -- The spin only shows while hovered: at rest every row paints the
+        -- same still gradient, wherever its last spin stopped.
+        local rot = btn._shineRot or 0
+        local w, h = host._ringW, host._ringH
+        PaintRingWith(host, function(x, y)
+            local ang = math.atan2(h / 2 - y, x - w / 2)
+            local m = 0.5 + 0.5 * (math.cos(ang) + (math.cos(ang - rot) - math.cos(ang)) * t)
+            return (c1[1] + (c2[1] - c1[1]) * m) * k, (c1[2] + (c2[2] - c1[2]) * m) * k, (c1[3] + (c2[3] - c1[3]) * m) * k
+        end)
+        -- The blurred blob shows faintly through the 90% face.
+        host._faceKT:SetColor(Lerp({ 0.018, 0.017, 0.02, 0.93 }, Shade(A, 0.22, 0.2, 0.93), 0.16))
+        if host._fillKT then
+            RoundGradientH(host._fillKT, { ar, ag, ab, 0.17 * a }, { ar, ag, ab, 0 })
+            host._fillKT:SetShown(a > 0.01)
+        end
+
+        local streak = host._streakKT
+        local sweep = btn._shineSweep
+        local cw = host._clipKT:GetWidth() or 0
+        if sweep and cw > 0 then
+            local e = sweep * sweep
+            local sw = math.max(40, cw * 0.35)
+            streak:ClearAllPoints()
+            streak:SetPoint("TOPLEFT", host._clipKT, "TOPLEFT", -sw + (cw + sw) * e, 0)
+            streak:SetPoint("BOTTOMLEFT", host._clipKT, "BOTTOMLEFT", -sw + (cw + sw) * e, 0)
+            streak:SetWidth(sw)
+            local g = Lerp({ 0.42, 0.42, 0.45, 1 }, A, 0.35)
+            TexGradient(streak, "HORIZONTAL", { g[1], g[2], g[3], 0.30 }, { 1, 1, 1, 0.03 })
+            streak:Show()
+        else
+            streak:Hide()
+        end
+    end
+
+    local halo = 0.08 * a
+    btn._navGlowOutKT:SetColor(ar, ag, ab, halo)
+    btn._navGlowOutKT:SetShown(halo > 0.005)
+    btn._navGlowInKT:Hide()
+    btn._activeBandKT:Hide()
+
+    -- Only the selected entry lights its icon and label with the accent;
+    -- the rest stay neutral grey and brighten a little under the cursor.
+    local neutral = Lerp({ 0.80, 0.80, 0.82, 1 }, W1, t)
+    local text = Lerp(neutral, Lerp(A, W1, 0.35), a)
+    if btn._navLabelKT then btn._navLabelKT:SetTextColor(text[1], text[2], text[3], 1) end
+    if btn._navArrowKT then btn._navArrowKT:SetVertexColor(neutral[1], neutral[2], neutral[3], 0.7 + 0.3 * t) end
+    -- Flat icon in the accent (a little lighter under the cursor); the
+    -- selected entry gets a soft accent glow behind it.
+    if btn._navIconKT and not btn._navIconKeep then
+        local ic = Lerp(A, W1, 0.25 * t * (1 - a))
+        btn._navIconKT:SetVertexColor(ic[1], ic[2], ic[3], 1)
+    end
+    if btn._chipKT then
+        btn._chipKT:Hide()
+        local glow = btn._iconGlowKT
+        if not glow then
+            glow = btn:CreateTexture(nil, "ARTWORK", nil, 0)
+            glow:SetTexture(NAV_GLOW_TEX)
+            btn._iconGlowKT = glow
+        end
+        local d = (btn._navChipH or 30) * 1.45
+        glow:ClearAllPoints()
+        glow:SetPoint("CENTER", btn._chipKT.box, "CENTER", 0, 0)
+        glow:SetSize(d, d)
+        glow:SetVertexColor(ar, ag, ab, 0.32 * a)
+        glow:SetShown(a > 0.01)
+    end
+end
+
+-- Spin and sweep clocks, run from the row's OnUpdate. Returns true while
+-- something still moves.
+function W:_StepShineRow(btn, elapsed)
+    local moving = false
+    if btn._navHoverT == 1 then
+        btn._shineRot = ((btn._shineRot or 0) + elapsed * 2 * math.pi / SHINE_SPIN) % (2 * math.pi)
+        moving = true
+    end
+    if btn._shineSweep then
+        btn._shineSweep = btn._shineSweep + elapsed / SHINE_SWEEP
+        if btn._shineSweep >= 1 then btn._shineSweep = nil else moving = true end
+    end
+    return moving
+end
+
+-- Module cards for the category pages, after the user's gradient-border
+-- card CSS, in accent shades instead of the rainbow: a face fading from
+-- near black at the bottom to dark grey at the top (10px corners) inside a
+-- 2px ring painted with a 45-degree band of accent shades that travels
+-- there and back (background-size 400%), and a soft accent halo for the
+-- blurred copy. The ring always moves, slowly; hover brightens it and the
+-- halo. Icon, name and description sit centred.
+-- opts: width, height, icon (texture path), iconCoords, iconKeep (icon has
+-- its own colours), title, description, onClick. Returns the card.
+local MCARD_PERIOD, MCARD_FADE = 12, 0.2
+
+local function CardRingColour(card)
+    local ar, ag, ab = CurrentAccentColor()
+    local A, W1 = { ar, ag, ab, 1 }, { 1, 1, 1, 1 }
+    local stops = { Shade(A, 0.35, 0), A, Lerp(A, W1, 0.45), Shade(A, 0.6, 0), A }
+    local n = #stops
+    local k = 0.72 + 0.28 * NavEase(card._hoverP or 0)
+    local W, H = card._ringW, card._ringH
+    local phase = card._phase or 0
+    return function(x, y)
+        -- 45deg position over a gradient four times the card (400%).
+        local u = (((x / W) + (1 - y / H)) / 2 + phase) / 4
+        local t = (u % 1) * (n - 1)
+        local i = math.floor(t)
+        local a, b = stops[i + 1], stops[math.min(i + 2, n)]
+        local f = t - i
+        return (a[1] + (b[1] - a[1]) * f) * k, (a[2] + (b[2] - a[2]) * f) * k, (a[3] + (b[3] - a[3]) * f) * k
+    end
+end
+
+local function PaintModuleCard(card)
+    local ar, ag, ab = CurrentAccentColor()
+    if card._ringW and card._ringW > 0 then PaintRingWith(card, CardRingColour(card)) end
+    -- linear-gradient(0deg, #000, #272727): black at the bottom.
+    RoundGradient(card._faceKT, { 0.153, 0.153, 0.153, 1 }, { 0, 0, 0, 1 })
+    local e = NavEase(card._hoverP or 0)
+    card._haloInKT:SetColor(ar, ag, ab, 0.10 + 0.10 * e)
+    card._haloOutKT:SetColor(ar, ag, ab, 0.05 + 0.05 * e)
+    if not card._iconKeep then card._iconKT:SetVertexColor(ar, ag, ab, 1) end
+    card._titleKT:SetTextColor(1, 1, 1, 1)
+    local mr, mg, mb = CurrentMutedColor()
+    card._descKT:SetTextColor(mr, mg, mb, 1)
+end
+
+local function StepModuleCard(card, elapsed)
+    elapsed = elapsed or 0
+    card._clock = ((card._clock or 0) + elapsed) % MCARD_PERIOD
+    local half = MCARD_PERIOD / 2
+    local p = card._clock < half and card._clock / half or (MCARD_PERIOD - card._clock) / half
+    card._phase = 3 * p   -- background-position 0 -> 400% -> 0
+    local target = card._hovered and 1 or 0
+    local h = card._hoverP or 0
+    local step = elapsed / MCARD_FADE
+    card._hoverP = (target > h) and math.min(target, h + step) or math.max(target, h - step)
+    PaintModuleCard(card)
+end
+
+function W:ModuleCard(parent, opts)
+    opts = opts or {}
+    local w, h = opts.width or 296, opts.height or 200
+    local card = CreateFrame("Button", nil, parent)
+    card:SetSize(w, h)
+    AddSteamHalo(card)
+    BuildPageTabRing(card)
+    LayoutPageTabRing(card, w, h)
+    card._faceKT = W:RoundRect(card, "BACKGROUND", 2, 8)
+    card._faceKT:SetAllPoints(card)
+
+    card._iconKT = card:CreateTexture(nil, "ARTWORK")
+    if opts.icon then card._iconKT:SetTexture(opts.icon) end
+    if opts.iconCoords then card._iconKT:SetTexCoord(unpack(opts.iconCoords)) end
+    card._iconKT:SetSize(66, 44)
+    card._iconKT:SetPoint("CENTER", card, "CENTER", 0, 26)
+    card._iconKeep = opts.iconKeep and true or false
+    card._titleKT = card:CreateFontString(nil, "OVERLAY")
+    card._titleKT:SetFont(CurrentFont(), 16, "OUTLINE")
+    card._titleKT:SetJustifyH("CENTER")
+    card._titleKT:SetWordWrap(false)
+    card._titleKT:SetWidth(w - 30)
+    card._titleKT:SetText(opts.title or "")
+    card._titleKT:SetPoint("TOP", card._iconKT, "BOTTOM", 0, -12)
+    card._descKT = card:CreateFontString(nil, "OVERLAY")
+    card._descKT:SetFont(CurrentFont(), 11, "")
+    card._descKT:SetJustifyH("CENTER")
+    card._descKT:SetWordWrap(true)
+    if card._descKT.SetMaxLines then card._descKT:SetMaxLines(2) end
+    card._descKT:SetWidth(w - 40)
+    card._descKT:SetText(opts.description or "")
+    card._descKT:SetPoint("TOP", card._titleKT, "BOTTOM", 0, -6)
+
+    card:SetScript("OnEnter", function(self) self._hovered = true end)
+    card:SetScript("OnLeave", function(self) self._hovered = nil end)
+    card:SetScript("OnSizeChanged", function(self, cw, ch)
+        if (cw or 0) > 0 and (ch or 0) > 0 then LayoutPageTabRing(self, cw, ch) end
+    end)
+    if opts.onClick then card:SetScript("OnClick", opts.onClick) end
+    -- The ring keeps travelling while the card is shown (OnUpdate pauses
+    -- while it is hidden).
+    card:SetScript("OnUpdate", StepModuleCard)
+
+    framePieces[card] = "mcard"
+    card._clock, card._phase = 0, 0
+    PaintModuleCard(card)
+    return card
+end
+
+-- Enhancements focus cards, after the user's spinning-border card CSS, in
+-- accent shades: a dark rounded face inside a 4px ring painted by four
+-- radial blobs sitting at the corners (light, accent, mid and deep accent)
+-- that wander round (bg-spin, 3s), a blurred copy of it as a soft halo, and
+-- ten accent points drifting down and to the right inside the card, fading
+-- out as they go (floating-points). The selected card burns brighter;
+-- hover lifts the ring and the halo.
+-- opts: width, title, description, icon, iconCoords, iconColor ({r,g,b},
+-- the accent when absent), active, onClick. Returns the card and its height.
+local FOCUS_R, FOCUS_RING, FOCUS_SPIN = 12, 4, 3
+-- A sparse, faint selection of the CSS points (four of ten, at ~35%), so
+-- they never compete with the text drawn above them.
+local FOCUS_POINTS = {
+    { left = 0.10, alpha = 0.35, dur = 2.35, delay = 0.2 },
+    { left = 0.44, alpha = 0.25, dur = 2.05, delay = 0 },
+    { left = 0.75, alpha = 0.20, dur = 1.5, delay = 1.5 },
+    { left = 0.98, alpha = 0.25, dur = 2.6, delay = 0.1 },
+}
+
+local function FocusRingColour(card)
+    local ar, ag, ab = CurrentAccentColor()
+    local A, W1 = { ar, ag, ab, 1 }, { 1, 1, 1, 1 }
+    local W, H = card._ringW, card._ringH
+    local lit = math.max(card._active and 1 or 0, 0.6 * NavEase(card._hoverP or 0))
+    local k = 0.55 + 0.45 * lit
+    -- Four corner blobs (0 100%, 100% 0, 100% 100%, 0 0) whose centres
+    -- wander as the 400% background moves.
+    local ph = (card._clock or 0) / FOCUS_SPIN * 2 * math.pi
+    local dx, dy = math.sin(ph) * W * 0.35, math.cos(ph) * H * 0.35
+    local blobs = {
+        { 0 + dx, H - dy, Lerp(A, W1, 0.35) },
+        { W - dx, 0 + dy, A },
+        { W + dy, H + dx, Shade(A, 0.62, 0) },
+        { 0 - dy, 0 - dx, Shade(A, 0.35, 0.1) },
+    }
+    local reach = math.max(W, H) * 0.85
+    return function(x, y)
+        local r, g, b = 0, 0, 0
+        for _, blob in ipairs(blobs) do
+            local d = math.sqrt((x - blob[1]) ^ 2 + (y - blob[2]) ^ 2)
+            local f = math.max(0, 1 - d / reach)
+            r, g, b = r + blob[3][1] * f, g + blob[3][2] * f, b + blob[3][3] * f
+        end
+        return math.min(1, r) * k, math.min(1, g) * k, math.min(1, b) * k
+    end
+end
+
+local function PaintFocusCard(card)
+    local ar, ag, ab = CurrentAccentColor()
+    if card._ringW and card._ringW > 0 then PaintRingWith(card, FocusRingColour(card)) end
+    card._faceKT:SetColor(0.075, 0.072, 0.082, 1)
+    local lit = math.max(card._active and 1 or 0, 0.6 * NavEase(card._hoverP or 0))
+    card._haloInKT:SetColor(ar, ag, ab, 0.08 + 0.14 * lit)
+    card._haloOutKT:SetColor(ar, ag, ab, 0.04 + 0.08 * lit)
+    local ic = card._iconColor
+    card._iconKT:SetVertexColor(ic and ic[1] or ar, ic and ic[2] or ag, ic and ic[3] or ab, 1)
+    local tr, tg, tb = CurrentTextColor()
+    local t = Lerp({ 0.86, 0.86, 0.88, 1 }, { tr, tg, tb, 1 }, lit)
+    card._titleKT:SetTextColor(t[1], t[2], t[3], 1)
+    local mr, mg, mb = CurrentMutedColor()
+    card._descKT:SetTextColor(mr, mg, mb, 1)
+    local pc = Lerp({ ar, ag, ab, 1 }, { 1, 1, 1, 1 }, 0.3)
+    for _, pt in ipairs(card._pointsKT) do pt.tex:SetVertexColor(pc[1], pc[2], pc[3], 1) end
+end
+
+local function StepFocusCard(card, elapsed)
+    elapsed = elapsed or 0
+    card._clock = (card._clock or 0) + elapsed
+    local target = card._hovered and 1 or 0
+    local h = card._hoverP or 0
+    card._hoverP = (target > h) and math.min(target, h + elapsed / 0.5) or math.max(target, h - elapsed / 0.5)
+    -- floating-points: each point travels (h/1.75, h/1.5) and fades at 95%.
+    local ch = card:GetHeight() or 0
+    local cw = card._pointsW or 0
+    for _, pt in ipairs(card._pointsKT) do
+        local t = card._clock - pt.delay
+        local u = t < 0 and 0 or ((t % pt.dur) / pt.dur)
+        local e = u * u * (3 - 2 * u)
+        pt.tex:ClearAllPoints()
+        pt.tex:SetPoint("TOPLEFT", card._pointLayerKT, "TOPLEFT", cw * pt.left + e * ch / 1.75, 8 - e * ch / 1.5)
+        local fade = u < 0.95 and 1 or 0
+        pt.tex:SetAlpha(pt.alpha * fade * (t < 0 and 0 or 1))
+    end
+    PaintFocusCard(card)
+end
+
+function W:FocusCard(parent, opts)
+    opts = opts or {}
+    local w = opts.width or 198
+    local pad = 12
+    local card = CreateFrame("Button", nil, parent)
+    card._active = opts.active and true or false
+    AddSteamHalo(card)
+    card._ringR, card._ringK = FOCUS_R, FOCUS_RING
+    BuildPageTabRing(card)
+    card._faceKT = W:RoundRect(card, "BACKGROUND", 2, FOCUS_R - 4)
+    card._faceKT:SetAllPoints(card)
+
+    -- Points float inside the face, clipped to it.
+    local clip = CreateFrame("Frame", nil, card)
+    clip:SetAllPoints(card)
+    if clip.SetClipsChildren then clip:SetClipsChildren(true) end
+    local layer = CreateFrame("Frame", nil, clip)
+    layer:SetAllPoints(clip)
+    card._pointLayerKT = layer
+    card._pointsKT = {}
+    for _, def in ipairs(FOCUS_POINTS) do
+        local tex = layer:CreateTexture(nil, "ARTWORK")
+        tex:SetTexture(PartPath("round_disc"))
+        tex:SetSize(3, 3)
+        card._pointsKT[#card._pointsKT + 1] = { tex = tex, left = def.left, alpha = def.alpha, dur = def.dur, delay = def.delay }
+    end
+
+    -- Texts well above the points' layer.
+    local text = CreateFrame("Frame", nil, card)
+    text:SetAllPoints(card)
+    text:SetFrameLevel((layer:GetFrameLevel() or 1) + 8)
+    card._iconColor = opts.iconColor
+    card._iconKT = text:CreateTexture(nil, "OVERLAY")
+    if opts.icon then card._iconKT:SetTexture(opts.icon) end
+    if opts.iconCoords then card._iconKT:SetTexCoord(unpack(opts.iconCoords)) end
+    card._iconKT:SetSize(22, 22)
+    card._iconKT:SetPoint("TOPLEFT", card, "TOPLEFT", pad, -pad)
+    card._titleKT = text:CreateFontString(nil, "OVERLAY")
+    card._titleKT:SetFont(CurrentFont(), 12, "OUTLINE")
+    card._titleKT:SetJustifyH("LEFT")
+    card._titleKT:SetWordWrap(true)
+    card._titleKT:SetWidth(w - pad * 2 - 30)
+    card._titleKT:SetPoint("LEFT", card._iconKT, "RIGHT", 8, 0)
+    card._titleKT:SetText(opts.title or "")
+    card._descKT = text:CreateFontString(nil, "OVERLAY")
+    card._descKT:SetFont(CurrentFont(), 9, "")
+    card._descKT:SetJustifyH("LEFT")
+    card._descKT:SetJustifyV("TOP")
+    card._descKT:SetWordWrap(true)
+    card._descKT:SetWidth(w - pad * 2)
+    card._descKT:SetPoint("TOPLEFT", card, "TOPLEFT", pad, -(pad + 22 + 8))
+    card._descKT:SetText(opts.description or "")
+
+    local height = math.max(88, pad + 22 + 8 + math.max(22, card._descKT:GetStringHeight() or 0) + 14)
+    card:SetSize(w, height)
+    -- The ring sits just outside the face, like the CSS padding border.
+    LayoutPageTabRing(card, w, height)
+    card._pointsW = w
+
+    function card:SetActive(active)
+        self._active = active and true or false
+        PaintFocusCard(self)
+    end
+    card:SetScript("OnEnter", function(self) self._hovered = true end)
+    card:SetScript("OnLeave", function(self) self._hovered = nil end)
+    if opts.onClick then card:SetScript("OnClick", opts.onClick) end
+    -- The border and the points keep moving while the card is shown.
+    card:SetScript("OnUpdate", StepFocusCard)
+
+    framePieces[card] = "focus"
+    card._clock = 0
+    StepFocusCard(card, 0)
+    return card, height
+end
+
+-- Cut-corner button, after the user's gradient-border button CSS, in accent
+-- shades: corners cut at the top left and bottom right (like the window),
+-- a 2px border of an accent gradient that drifts (move-bg, 5s), a near
+-- black face, and a light accent label. On hover the face draws back into
+-- the bottom-right corner, uncovering the gradient underneath, kept deeply
+-- darkened so the label (now white) still reads.
+-- opts: width, height, onClick. Returns the button.
+local CUT_SIZE, CUT_BORDER, CUT_BAND, CUT_FILL_DIM = 6, 2, 5, 0.3
+
+-- One cut-corner shape: three strips and two corner triangles.
+local function CutShape(parent, layer, sublevel)
+    local shape = { parts = {} }
+    for _, k in ipairs({ "top", "mid", "bot", "tl", "br" }) do
+        local t = parent:CreateTexture(nil, layer, nil, sublevel)
+        t:SetTexture((k == "tl" or k == "br") and PartPath("cut_tri") or NAV_WHITE)
+        shape.parts[k] = t
+    end
+    shape.parts.tl:SetTexCoord(1, 0, 0, 1)   -- lower-right half: cut at the top left
+    shape.parts.br:SetTexCoord(0, 1, 1, 0)   -- upper-left half: cut at the bottom right
+    return shape
+end
+
+-- x0/y0 from the parent's top left; colour(x) gives the colour at x.
+local function LayoutCutShape(shape, parent, x0, y0, w, h, s, colour)
+    local p = shape.parts
+    local visible = w > 1 and h > 1
+    for _, t in pairs(p) do t:SetShown(visible) end
+    if not visible then return end
+    s = math.min(s, w / 2, h / 2)
+    local function Place(t, x, y, pw, ph)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
+        t:SetSize(math.max(0.01, pw), math.max(0.01, ph))
+    end
+    Place(p.top, x0 + s, y0, w - s, s)
+    Place(p.mid, x0, y0 + s, w, h - 2 * s)
+    Place(p.bot, x0, y0 + h - s, w - s, s)
+    Place(p.tl, x0, y0, s, s)
+    Place(p.br, x0 + w - s, y0 + h - s, s, s)
+    local function Grad(t, xa, xb)
+        TexGradient(t, "HORIZONTAL", colour(xa), colour(xb))
+    end
+    Grad(p.top, x0 + s, x0 + w)
+    Grad(p.mid, x0, x0 + w)
+    Grad(p.bot, x0, x0 + w - s)
+    local a, b = colour(x0 + s / 2), colour(x0 + w - s / 2)
+    p.tl:SetVertexColor(a[1], a[2], a[3], a[4] or 1)
+    p.br:SetVertexColor(b[1], b[2], b[3], b[4] or 1)
+end
+
+local function StepCutButton(btn, elapsed)
+    elapsed = elapsed or 0
+    btn._clock = (btn._clock or 0) + elapsed
+    local target = btn._hovered and 1 or 0
+    local h = btn._hoverP or 0
+    local speed = target > h and 0.2 or 0.5   -- 200ms in, 500ms back
+    btn._hoverP = (target > h) and math.min(target, h + elapsed / speed) or math.max(target, h - elapsed / speed)
+    local e = NavEase(btn._hoverP)
+
+    local ar, ag, ab = CurrentAccentColor()
+    local A, W1 = { ar, ag, ab, 1 }, { 1, 1, 1, 1 }
+    local stops = { Lerp(A, W1, 0.35), Shade(A, 0.45, 0), A }
+    local c = (btn._clock % CUT_BAND) / CUT_BAND
+    local phase = 0.31 + 0.39 * (c < 0.5 and c * 2 or (1 - c) * 2)
+    local w, hh = btn._w, btn._h
+    local function Band(x, dim)
+        local u = ((x / w) * 0.5 + phase) % 1
+        local t = u * (#stops - 1)
+        local i = math.floor(t)
+        local a, b = stops[i + 1], stops[math.min(i + 2, #stops)]
+        local f = t - i
+        local k = dim or 1
+        return { (a[1] + (b[1] - a[1]) * f) * k, (a[2] + (b[2] - a[2]) * f) * k, (a[3] + (b[3] - a[3]) * f) * k, 1 }
+    end
+    local b, s = CUT_BORDER, CUT_SIZE
+    LayoutCutShape(btn._borderKT, btn, 0, 0, w, hh, s, function(x) return Band(x) end)
+    LayoutCutShape(btn._fillKT, btn, b, b, w - 2 * b, hh - 2 * b, s - 1, function(x) return Band(x, CUT_FILL_DIM) end)
+    -- The face shrinks into the bottom-right corner as the cursor arrives.
+    local fw, fh = (w - 2 * b) * (1 - e), (hh - 2 * b) * (1 - e)
+    LayoutCutShape(btn._faceKT, btn, w - b - fw, hh - b - fh, fw, fh, (s - 1) * (1 - e),
+        function() return { 0.035, 0.03, 0.042, 1 } end)
+
+    local tc = Lerp(Lerp(A, W1, 0.55), W1, e)
+    btn._textKT:SetTextColor(tc[1], tc[2], tc[3], 1)
+end
+
+function W:CutButton(parent, label, opts)
+    opts = opts or {}
+    local w, h = opts.width or 150, opts.height or 26
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(w, h)
+    btn._w, btn._h = w, h
+    btn._borderKT = CutShape(btn, "BACKGROUND", 0)
+    btn._fillKT = CutShape(btn, "BACKGROUND", 1)
+    btn._faceKT = CutShape(btn, "BACKGROUND", 2)
+    btn._textKT = btn:CreateFontString(nil, "OVERLAY")
+    btn._textKT:SetFont(CurrentFont(), 11, "")
+    btn._textKT:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn._textKT:SetText(KT.NavTabs and KT.NavTabs.Upper and KT.NavTabs.Upper(label or "") or (label or ""):upper())
+    btn:SetScript("OnEnter", function(self) self._hovered = true end)
+    btn:SetScript("OnLeave", function(self) self._hovered = nil end)
+    if opts.onClick then btn:SetScript("OnClick", opts.onClick) end
+    -- The border band keeps drifting while the button is shown.
+    btn:SetScript("OnUpdate", StepCutButton)
+    framePieces[btn] = "cutbtn"
+    btn._clock = 0
+    StepCutButton(btn, 0)
+    return btn
+end
+
+-- Category header after the user's starfield CSS: a radial glow rising from
+-- the bottom (a deep accent tone into near black), three layers of stars
+-- drifting upwards at different speeds (1px fastest, 3px slowest), and the
+-- texts fading up into place once when the page opens (1.2s, ease-out).
+-- opts: width, height, eyebrow, title, subtitle. Returns the frame.
+local STAR_LAYERS = { { size = 1, count = 110, speed = 9, alpha = 0.55 },
+                      { size = 2, count = 36, speed = 5, alpha = 0.7 },
+                      { size = 3, count = 12, speed = 3, alpha = 0.85 } }
+local STAR_INTRO = 1.2
+local RADIAL_TEX = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\PortalRadial.tga"
+
+local function PaintStarHero(hero)
+    local ar, ag, ab = CurrentAccentColor()
+    local A, W1 = { ar, ag, ab, 1 }, { 1, 1, 1, 1 }
+    hero._baseKT:SetColorTexture(0.028, 0.027, 0.032, 1)
+    local glow = Shade(A, 0.5, 0)
+    hero._glowKT:SetVertexColor(glow[1], glow[2], glow[3], 0.85)
+    local star = Lerp(W1, A, 0.2)
+    for _, s in ipairs(hero._starsKT) do s.tex:SetVertexColor(star[1], star[2], star[3], s.alpha) end
+    for _, t in ipairs(hero._edgeKT) do
+        t:SetColorTexture(ar, ag, ab, 0.55)
+    end
+    hero._eyebrowKT:SetTextColor(ar, ag, ab, 1)
+    local tr, tg, tb = CurrentTextColor()
+    hero._titleKT:SetTextColor(tr, tg, tb, 1)
+    local mr, mg, mb = CurrentMutedColor()
+    hero._subKT:SetTextColor(mr, mg, mb, 1)
+end
+
+local function StepStarHero(hero, elapsed)
+    elapsed = elapsed or 0
+    hero._clock = (hero._clock or 0) + elapsed
+    local h = hero:GetHeight() or 0
+    for _, s in ipairs(hero._starsKT) do
+        local y = (s.y - hero._clock * s.speed) % h
+        s.tex:ClearAllPoints()
+        s.tex:SetPoint("TOPLEFT", hero._skyKT, "TOPLEFT", s.x, -y)
+    end
+    -- Intro: the texts rise 30px into place and fade in.
+    hero._intro = (hero._intro or 0) + elapsed
+    local p = math.min(1, hero._intro / STAR_INTRO)
+    local e = 1 - (1 - p) * (1 - p)
+    local dy = 30 * (1 - e)
+    hero._textKT:ClearAllPoints()
+    hero._textKT:SetPoint("CENTER", hero, "CENTER", 0, -dy)
+    hero._textKT:SetAlpha(e)
+end
+
+function W:StarHero(parent, opts)
+    opts = opts or {}
+    local w, h = opts.width or 920, opts.height or 110
+    local hero = CreateFrame("Frame", nil, parent)
+    hero:SetSize(w, h)
+    hero._baseKT = hero:CreateTexture(nil, "BACKGROUND", nil, 0)
+    hero._baseKT:SetAllPoints(hero)
+
+    -- Sky: clipped so the glow and the stars never leave the card.
+    local sky = CreateFrame("Frame", nil, hero)
+    sky:SetAllPoints(hero)
+    if sky.SetClipsChildren then sky:SetClipsChildren(true) end
+    local layer = CreateFrame("Frame", nil, sky)
+    layer:SetAllPoints(sky)
+    hero._skyKT = layer
+    hero._glowKT = layer:CreateTexture(nil, "BACKGROUND", nil, 1)
+    hero._glowKT:SetTexture(RADIAL_TEX)
+    hero._glowKT:SetPoint("CENTER", layer, "BOTTOM", 0, 0)
+    hero._glowKT:SetSize(w * 1.25, h * 2.4)
+
+    -- Stars: fixed pseudo-random positions so every page looks the same.
+    hero._starsKT = {}
+    local seed = 1985
+    local function Rand()
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
+    end
+    for _, L in ipairs(STAR_LAYERS) do
+        for _ = 1, math.max(1, math.floor(L.count * w / 920)) do
+            local tex = layer:CreateTexture(nil, "ARTWORK")
+            tex:SetTexture(NAV_WHITE)
+            tex:SetSize(L.size, L.size)
+            hero._starsKT[#hero._starsKT + 1] = { tex = tex, x = Rand() * w, y = Rand() * h, speed = L.speed, alpha = L.alpha }
+        end
+    end
+
+    hero._edgeKT = {}
+    for i = 1, 4 do hero._edgeKT[i] = hero:CreateTexture(nil, "BORDER") end
+    local e = hero._edgeKT
+    e[1]:SetPoint("TOPLEFT"); e[1]:SetPoint("TOPRIGHT"); e[1]:SetHeight(1)
+    e[2]:SetPoint("BOTTOMLEFT"); e[2]:SetPoint("BOTTOMRIGHT"); e[2]:SetHeight(1)
+    e[3]:SetPoint("TOPLEFT"); e[3]:SetPoint("BOTTOMLEFT"); e[3]:SetWidth(1)
+    e[4]:SetPoint("TOPRIGHT"); e[4]:SetPoint("BOTTOMRIGHT"); e[4]:SetWidth(1)
+
+    -- Texts, centred like the CSS title, above the sky.
+    local text = CreateFrame("Frame", nil, hero)
+    text:SetSize(w - 40, h - 16)
+    text:SetFrameLevel((layer:GetFrameLevel() or 1) + 2)
+    hero._textKT = text
+    hero._eyebrowKT = text:CreateFontString(nil, "OVERLAY")
+    hero._eyebrowKT:SetFont(CurrentFont(), 9, "OUTLINE")
+    hero._eyebrowKT:SetText(opts.eyebrow or "")
+    hero._titleKT = text:CreateFontString(nil, "OVERLAY")
+    hero._titleKT:SetFont(CurrentFont(), 24, "")
+    hero._titleKT:SetText(opts.title or "")
+    if hero._titleKT.SetSpacing then hero._titleKT:SetSpacing(2) end
+    hero._subKT = text:CreateFontString(nil, "OVERLAY")
+    hero._subKT:SetFont(CurrentFont(), 11, "")
+    hero._subKT:SetText(opts.subtitle or "")
+    hero._titleKT:SetPoint("CENTER", text, "CENTER", 0, 2)
+    hero._eyebrowKT:SetPoint("BOTTOM", hero._titleKT, "TOP", 0, 6)
+    hero._subKT:SetPoint("TOP", hero._titleKT, "BOTTOM", 0, -7)
+
+    framePieces[hero] = "stars"
+    PaintStarHero(hero)
+    hero._clock, hero._intro = 0, 0
+    StepStarHero(hero, 0)
+    -- Stars drift for as long as the card is shown (OnUpdate stops while
+    -- it is hidden); the intro replays each time the page opens.
+    hero:SetScript("OnUpdate", StepStarHero)
+    hero:SetScript("OnShow", function(self) self._intro = 0 end)
+    return hero
+end
+
+function W:PageTabs(parent, tabs, selectedId, onSelect, opts)
+    opts = opts or {}
+    local localize = opts.localize or LText
+    local width = opts.width or FW(parent)
+    if not width or width <= 0 then width = 600 end
+    local height, gap = opts.height or 40, opts.gap or 10
+    local count = #(tabs or {})
+    if count == 0 then return nil, 0 end
+
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetSize(width, height)
+    bar._tabsKT = {}
+    bar.selectedId = selectedId
+
+    local function Refresh()
+        for _, tab in ipairs(bar._tabsKT) do
+            tab._selected = tab._tabId == bar.selectedId
+            PaintPageTab(tab)
+        end
+    end
+    bar.Refresh = Refresh
+
+    for _, def in ipairs(tabs) do
+        local tab = CreateFrame("Button", nil, bar)
+        AddSteamHalo(tab)
+        BuildPageTabRing(tab)
+        tab._faceKT = W:RoundRect(tab, "BACKGROUND", 2, 8)
+        tab._faceKT:SetAllPoints(tab)
+
+        local text = tab:CreateFontString(nil, "OVERLAY")
+        text:SetWordWrap(false)
+        local label = localize(def.label or def.id or "")
+        tab._labelKT = KT.NavTabs and KT.NavTabs.Upper and KT.NavTabs.Upper(label) or label
+        tab._textKT = text
+        if def.icon then
+            local icon = tab:CreateTexture(nil, "OVERLAY")
+            icon:SetSize(TAB_ICON, TAB_ICON)
+            icon:SetTexture(def.icon)
+            tab._iconKT = icon
+        end
+
+        tab._tabId, tab._tab = def.id, def
+        local function Animate(self) self:SetScript("OnUpdate", StepPageTab) end
+        tab:SetScript("OnEnter", function(self) self._hovered = true; Animate(self) end)
+        tab:SetScript("OnLeave", function(self) self._hovered = nil; self._pressed = nil; Animate(self) end)
+        tab:SetScript("OnMouseDown", function(self) self._pressed = true; Animate(self) end)
+        tab:SetScript("OnMouseUp", function(self) self._pressed = nil; Animate(self) end)
+        tab:SetScript("OnClick", function(self)
+            bar.selectedId = self._tabId
+            Refresh()
+            if onSelect then onSelect(self._tabId, self._tab) end
+        end)
+        bar._tabsKT[#bar._tabsKT + 1] = tab
+    end
+
+    -- Each tab needs its label, icon and padding (0 15px, gap 10px); a shared
+    -- font size shrinks until the row fits, then spare width is shared out.
+    local avail = width - gap * (count - 1)
+    local needs, total
+    local size = opts.fontSize or 12
+    while true do
+        needs, total = {}, 0
+        for i, tab in ipairs(bar._tabsKT) do
+            tab._textKT:SetFont(CurrentFont(), size, "OUTLINE")
+            tab._textKT:SetText(tab._labelKT)
+            local need = math.ceil(tab._textKT:GetStringWidth() or 0) + (tab._iconKT and (TAB_ICON + 10) or 0) + 30
+            needs[i] = need
+            total = total + need
+        end
+        if total <= avail or size <= 9 then break end
+        size = size - 0.5
+    end
+    if total > avail then
+        bar:Hide()
+        return nil, 0
+    end
+    local extra = math.floor((avail - total) / count)
+    local x = 0
+    for i, tab in ipairs(bar._tabsKT) do
+        local w = needs[i] + extra
+        if i == count then w = width - x end
+        tab:SetSize(w, height)
+        tab:SetPoint("TOPLEFT", bar, "TOPLEFT", x, 0)
+        LayoutPageTabRing(tab, w, height)
+        local textW = math.ceil(tab._textKT:GetStringWidth() or 0)
+        local iconW = tab._iconKT and (TAB_ICON + 10) or 0
+        local left = math.floor((w - (textW + iconW)) / 2)
+        if tab._iconKT then tab._iconKT:SetPoint("LEFT", tab, "LEFT", left, 0) end
+        tab._textKT:SetPoint("LEFT", tab, "LEFT", left + iconW, 0)
+        x = x + w + gap
+    end
+
+    framePieces[bar] = "pagetabs"
+    Refresh()
+    return bar, height
+end
+
+if KT.MenuSkins then
+    KT.MenuSkins:RegisterRepaint(function()
+        for piece, kind in pairs(framePieces) do
+            if kind == "pill" then W:PaintPillButton(piece)
+            elseif kind == "nav" then PaintNavChip(piece)
+            elseif kind == "tabs" then PaintSegments(piece)
+            elseif kind == "mcard" then PaintModuleCard(piece)
+            elseif kind == "stars" then PaintStarHero(piece)
+            elseif kind == "focus" then PaintFocusCard(piece)
+            elseif kind == "cutbtn" then StepCutButton(piece, 0)
+            elseif kind == "pagetabs" then
+                for _, tab in ipairs(piece._tabsKT) do PaintPageTab(tab) end
+            end
+        end
+    end)
+end
+
+-- Stretches the open card of `parent` down to the bottom of `row`.
+local function GrowCard(parent, row)
+    local card = parent._ktCard
+    if not card then return end
+    local _, _, _, rowX = row:GetPoint(1)
+    card:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", (card._ktLeft or 4) - (rowX or 0), -8)
+    card:Show()
+end
+
+-- Rows are open (no stripes); a transparent band is kept for callers that
+-- look for it. Halves of a dual row skip it.
+local function RowBg(frame, parent, left, right)
+    if parent._ktNoRowBg then return end
+    if not parent.rowCounter then parent.rowCounter = 0 end
+    parent.rowCounter = parent.rowCounter + 1
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    if left then
+        bg:SetPoint("TOPLEFT", frame, "TOPLEFT", left, 0)
+        bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(right or left), 0)
+    else
+        bg:SetAllPoints()
+    end
+    PaintSkinned(bg, (parent.rowCounter % 2 == 0) and "rowB" or "rowA")
+    frame._rowBgKT = bg
+    GrowCard(parent, frame)
+    return bg
+end
+
+-- Hover: a rounded pill lights up behind the row.
 local function MakeHoverFrame(f)
-    local t = f:CreateTexture(nil, "BACKGROUND", nil, 1)
-    t:SetAllPoints(); t:SetColorTexture(1, 1, 1, 0)
-    f.hoverKT = t
-    f:SetScript("OnEnter", function() t:SetColorTexture(1, 1, 1, 0.04) end)
-    f:SetScript("OnLeave", function() t:SetColorTexture(1, 1, 1, 0) end)
+    local pill = W:RoundRect(f, "BACKGROUND", 1, 8)
+    pill:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -1)
+    pill:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 1)
+    PaintSkinned(pill, "rowHover")
+    pill:Hide()
+    f.hoverKT = pill
+    f:SetScript("OnEnter", function() pill:Show() end)
+    f:SetScript("OnLeave", function() pill:Hide() end)
 end
 
 -- ============================================================================
 -- LOCALIZATION
 -- ============================================================================
-local function LText(text)
+function LText(text)
     if type(text) ~= "string" then return text end
     if KT and KT.GetLocale then
         local L = KT:GetLocale()
@@ -278,6 +2046,98 @@ end
 -- ============================================================================
 -- SCROLL FRAME
 -- ============================================================================
+-- Glow and relief for a scrollbar's thumb (W:ScrollFrame and the menu's own
+-- bars): a soft accent halo around the thumb, a light top half with a bright
+-- top edge and a dark bottom edge on it, and a sunken shade at both ends of
+-- the track. Safe to call again (recolors only). The halo brightens while the
+-- bar is hovered or dragged.
+local SCROLL_GLOW_TEX = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\NavButtonGlow.tga"
+local SCROLL_WHITE = "Interface\\Buttons\\WHITE8x8"
+local SCROLL_GLOW_SIZE = 6
+
+function W:DecorateScrollBar(bar, r, g, b)
+    if not bar then return end
+    local thumb = bar._thumb or (bar.GetThumbTexture and bar:GetThumbTexture())
+    if not thumb then return end
+    if not r then r, g, b = CurrentAccentColor() end
+    local deco = bar._ktScrollDeco
+    if not deco then
+        deco = { glow = {} }
+        local coords = {
+            { 0, 0.5, 0, 0.5 }, { 0.5, 1, 0, 0.5 }, { 0, 0.5, 0.5, 1 }, { 0.5, 1, 0.5, 1 },
+            { 0.49, 0.51, 0, 0.5 }, { 0.49, 0.51, 0.5, 1 }, { 0, 0.5, 0.49, 0.51 }, { 0.5, 1, 0.49, 0.51 },
+        }
+        for i = 1, 8 do
+            local t = bar:CreateTexture(nil, "ARTWORK", nil, -2)
+            t:SetTexture(SCROLL_GLOW_TEX)
+            t:SetTexCoord(unpack(coords[i]))
+            t:SetBlendMode("ADD")
+            deco.glow[i] = t
+        end
+        local s = SCROLL_GLOW_SIZE
+        local TL, TR, BL, BR, T, B, L, R = unpack(deco.glow)
+        TL:SetSize(s, s); TL:SetPoint("BOTTOMRIGHT", thumb, "TOPLEFT")
+        TR:SetSize(s, s); TR:SetPoint("BOTTOMLEFT", thumb, "TOPRIGHT")
+        BL:SetSize(s, s); BL:SetPoint("TOPRIGHT", thumb, "BOTTOMLEFT")
+        BR:SetSize(s, s); BR:SetPoint("TOPLEFT", thumb, "BOTTOMRIGHT")
+        T:SetPoint("BOTTOMLEFT", thumb, "TOPLEFT"); T:SetPoint("BOTTOMRIGHT", thumb, "TOPRIGHT"); T:SetHeight(s)
+        B:SetPoint("TOPLEFT", thumb, "BOTTOMLEFT"); B:SetPoint("TOPRIGHT", thumb, "BOTTOMRIGHT"); B:SetHeight(s)
+        L:SetPoint("TOPRIGHT", thumb, "TOPLEFT"); L:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMLEFT"); L:SetWidth(s)
+        R:SetPoint("TOPLEFT", thumb, "TOPRIGHT"); R:SetPoint("BOTTOMLEFT", thumb, "BOTTOMRIGHT"); R:SetWidth(s)
+
+        local function Gradient(tex, a1, a2, fallback)
+            if tex.SetGradient and CreateColor then
+                tex:SetGradient("VERTICAL", CreateColor(a1[1], a1[2], a1[3], a1[4]), CreateColor(a2[1], a2[2], a2[3], a2[4]))
+            else
+                tex:SetVertexColor(fallback[1], fallback[2], fallback[3], fallback[4])
+            end
+        end
+
+        -- Relief on the thumb.
+        deco.shine = bar:CreateTexture(nil, "OVERLAY", nil, 1)
+        deco.shine:SetTexture(SCROLL_WHITE)
+        deco.shine:SetPoint("TOPLEFT", thumb, "TOPLEFT")
+        deco.shine:SetPoint("BOTTOMRIGHT", thumb, "RIGHT")
+        Gradient(deco.shine, { 1, 1, 1, 0 }, { 1, 1, 1, 0.28 }, { 1, 1, 1, 0.14 })
+        deco.top = bar:CreateTexture(nil, "OVERLAY", nil, 2)
+        deco.top:SetColorTexture(1, 1, 1, 0.55)
+        deco.top:SetPoint("TOPLEFT", thumb, "TOPLEFT")
+        deco.top:SetPoint("TOPRIGHT", thumb, "TOPRIGHT")
+        deco.top:SetHeight(1)
+        deco.bottom = bar:CreateTexture(nil, "OVERLAY", nil, 2)
+        deco.bottom:SetColorTexture(0, 0, 0, 0.55)
+        deco.bottom:SetPoint("BOTTOMLEFT", thumb, "BOTTOMLEFT")
+        deco.bottom:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMRIGHT")
+        deco.bottom:SetHeight(1)
+
+        -- Sunken track: dark shade at both ends.
+        deco.trackTop = bar:CreateTexture(nil, "BACKGROUND", nil, 2)
+        deco.trackTop:SetTexture(SCROLL_WHITE)
+        deco.trackTop:SetPoint("TOPLEFT"); deco.trackTop:SetPoint("TOPRIGHT"); deco.trackTop:SetHeight(10)
+        Gradient(deco.trackTop, { 0, 0, 0, 0 }, { 0, 0, 0, 0.5 }, { 0, 0, 0, 0.25 })
+        deco.trackBottom = bar:CreateTexture(nil, "BACKGROUND", nil, 2)
+        deco.trackBottom:SetTexture(SCROLL_WHITE)
+        deco.trackBottom:SetPoint("BOTTOMLEFT"); deco.trackBottom:SetPoint("BOTTOMRIGHT"); deco.trackBottom:SetHeight(10)
+        Gradient(deco.trackBottom, { 0, 0, 0, 0.5 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0.25 })
+
+        local function SetHot(hot)
+            for _, t in ipairs(deco.glow) do t:SetAlpha(hot and 1 or 0.55) end
+        end
+        if bar.HookScript then
+            bar:HookScript("OnEnter", function() SetHot(true) end)
+            bar:HookScript("OnLeave", function() if not deco.dragging then SetHot(false) end end)
+            bar:HookScript("OnMouseDown", function() deco.dragging = true; SetHot(true) end)
+            bar:HookScript("OnMouseUp", function(self)
+                deco.dragging = nil
+                SetHot(self:IsMouseOver())
+            end)
+        end
+        SetHot(false)
+        bar._ktScrollDeco = deco
+    end
+    for _, t in ipairs(deco.glow) do t:SetVertexColor(r, g, b, 0.75) end
+end
+
 -- Shared scroll container for configuration panels. The scrollbar is parented
 -- beside the ScrollFrame so it remains visible when the viewport clips its
 -- scroll child. It appears only when the content is taller than the viewport.
@@ -336,6 +2196,7 @@ function W:ScrollFrame(parent, opts)
     bar._trackBg = track
     bar._trackL = left
     bar._trackR = right
+    W:DecorateScrollBar(bar, accentR, accentG, accentB)
     scroll.ScrollBar = bar
     scroll.scrollBar = bar
     scroll.scrollChild = child
@@ -427,20 +2288,8 @@ function W:SectionHeader(parent, text, yOffset)
     f:SetSize(FW(parent), 30)
     f:SetPoint("TOPLEFT", 10, yOffset)
 
-    local line = f:CreateTexture(nil, "ARTWORK")
-    line:SetHeight(1)
-    line:SetPoint("BOTTOMLEFT"); line:SetPoint("BOTTOMRIGHT")
-    do
-        local ar, ag, ab = CurrentAccentColor()
-        line:SetColorTexture(ar, ag, ab, 0.35)
-    end
-
     local t = f:CreateFontString(nil, "OVERLAY")
     t:SetFont(CurrentFont(), 10, "OUTLINE")
-    do
-        local ar, ag, ab = CurrentAccentColor()
-        t:SetTextColor(ar, ag, ab, 1)
-    end
     local header = LText(text) or ""
     if type(header) == "string" then
         header = header:upper()
@@ -449,6 +2298,31 @@ function W:SectionHeader(parent, text, yOffset)
     t:SetPoint("BOTTOMLEFT", 0, 5)
 
     parent.rowCounter = 0
+
+    if parent._ktBlockContent then
+        -- Inside an option block (already a card): a sub-header with a divider.
+        t:SetTextColor(SkinColor("sectionText"))
+        local line = f:CreateTexture(nil, "ARTWORK")
+        line:SetHeight(1)
+        line:SetPoint("BOTTOMLEFT"); line:SetPoint("BOTTOMRIGHT")
+        PaintSkinned(line, "divider")
+        f._dividerKT = line
+        return f, 36
+    end
+
+    -- On a plain page the header opens a card that holds the title and is
+    -- filled by the rows below; it stays hidden until the first row joins.
+    t:Hide()
+    local card = CreateFrame("Frame", nil, parent)
+    card:SetFrameLevel(math.max(0, (parent:GetFrameLevel() or 1)))
+    card._ktLeft = 4
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, yOffset + 2)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, yOffset + 2)
+    card:SetHeight(W.CARD_HEADER_H)
+    W:StyleCard(card, { title = text })
+    card:Hide()
+    parent._ktCard = card
+    f._cardKT = card
 
     return f, 36
 end
@@ -505,39 +2379,60 @@ function W:Toggle(parent, text, yOffset, get, set)
     label:SetText(LText(text))
     label:SetPoint("LEFT", 12, 0)
     label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
     label:SetWidth(w - 68)
 
-    local pill = CreateFrame("Frame", nil, btn)
-    pill:SetSize(38, 20)
-    pill:SetPoint("RIGHT", -12, 0)
+    -- Pill switch: the round knob slides between the two ends.
+    local TRACK_W, TRACK_H, KNOB = 34, 18, 14
+    local KNOB_TRAVEL = TRACK_W - KNOB - 4
+    local track = W:RoundRect(btn, "ARTWORK", 0, TRACK_H / 2)
+    track:SetSize(TRACK_W, TRACK_H)
+    track:SetPoint("RIGHT", btn, "RIGHT", -12, 0)
+    local knob = W:RoundRect(btn, "OVERLAY", 0, KNOB / 2)
+    knob:SetSize(KNOB, KNOB)
+    btn._trackKT = track
+    btn._knobKT = knob
 
-    local pillBg = pill:CreateTexture(nil, "BACKGROUND")
-    pillBg:SetAllPoints()
-
-    local knob = pill:CreateTexture(nil, "ARTWORK")
-    knob:SetSize(16, 16)
-    knob:SetColorTexture(1, 1, 1, 1)
-
-    local function Update()
-        local val = get and get() or false
+    local knobPos
+    local function PlaceKnob(pos)
+        knobPos = pos
         knob:ClearAllPoints()
+        knob:SetPoint("LEFT", track.box, "LEFT", 2 + KNOB_TRAVEL * pos, 0)
+    end
+
+    local function Update(animate)
+        local val = get and get() or false
+        local target = val and 1 or 0
         if val then
             local tr, tg, tb = CurrentTextColor()
             local ar, ag, ab = CurrentAccentColor()
-            knob:SetPoint("RIGHT", pill, "RIGHT", -2, 0)
-            pillBg:SetColorTexture(ar, ag, ab, 1)
+            skinned[track] = nil
+            track:SetColor(ar, ag, ab, 1)
+            knob:SetColor(1, 1, 1, 1)
             label:SetTextColor(tr, tg, tb, 1)
         else
             local mr, mg, mb = CurrentMutedColor()
-            knob:SetPoint("LEFT", pill, "LEFT", 2, 0)
-            pillBg:SetColorTexture(0.12, 0.12, 0.15, 1)
+            PaintSkinned(track, "controlOff")
+            knob:SetColor(0.55, 0.55, 0.6, 1)
             label:SetTextColor(mr * 0.72, mg * 0.72, mb * 0.72, 1)
         end
+        if not animate or knobPos == nil then
+            btn:SetScript("OnUpdate", nil)
+            PlaceKnob(target)
+            return
+        end
+        local from, elapsed = knobPos, 0
+        btn:SetScript("OnUpdate", function(self, dt)
+            elapsed = elapsed + dt
+            local t = math.min(1, elapsed / 0.12)
+            PlaceKnob(from + (target - from) * t)
+            if t >= 1 then self:SetScript("OnUpdate", nil) end
+        end)
     end
 
     btn:SetScript("OnClick", function()
         if set then set(not (get and get() or false)) end
-        Update()
+        Update(true)
     end)
 
     btn._baseWidth = w
@@ -601,11 +2496,17 @@ function W:Slider(parent, text, yOffset, get, set, minVal, maxVal, step, fmt, op
         valText:SetTextColor(ar, ag, ab, 1)
     end
     valText:SetPoint("TOPRIGHT", -12, -4)
-    KT:AddBackdrop(valText, 0.02, 0.02, 0.03, 0)
-    do
-        local ar, ag, ab = CurrentAccentColor()
-        KT:AddBorder(valText, ar, ag, ab, 0)
+    valText:SetWidth(46)
+    -- Value box: a rounded chip, so it reads as editable; it brightens while
+    -- focused.
+    local valueChip = W:RoundRect(valText, "BACKGROUND", 0, 5)
+    valueChip:SetPoint("TOPLEFT", valText, "TOPLEFT", -2, 1)
+    valueChip:SetPoint("BOTTOMRIGHT", valText, "BOTTOMRIGHT", 2, -1)
+    local function IdleValueBox()
+        PaintSkinned(valueChip, "controlBg")
     end
+    IdleValueBox()
+    f._valueBoxKT = valText
 
     local defaultText = f:CreateFontString(nil, "OVERLAY")
     defaultText:SetFont(CurrentFont(), 10)
@@ -625,11 +2526,29 @@ function W:Slider(parent, text, yOffset, get, set, minVal, maxVal, step, fmt, op
     label:ClearAllPoints()
     label:SetPoint("TOPLEFT", 12, -4)
 
-    local track = f:CreateTexture(nil, "ARTWORK")
-    track:SetHeight(3)
+    local track = W:RoundRect(f, "ARTWORK", 0, 2)
+    track:SetHeight(4)
     track:SetPoint("BOTTOMLEFT", 16, 14)
     track:SetPoint("BOTTOMRIGHT", -16, 14)
-    track:SetColorTexture(0.18, 0.18, 0.20, 1)
+    PaintSkinned(track, "controlTrack")
+    f._trackKT = track
+
+    -- Accent fill from the left end of the track to the thumb.
+    local fill = W:RoundRect(f, "ARTWORK", 1, 2)
+    fill:SetHeight(4)
+    fill:SetPoint("BOTTOMLEFT", track.box, "BOTTOMLEFT", 0, 0)
+    do
+        local ar, ag, ab = CurrentAccentColor()
+        fill:SetColor(ar, ag, ab, 1)
+    end
+    f._fillKT = fill
+    local function PaintFill(v)
+        local lo, hi = minVal or 0, maxVal or 1
+        local t = (hi > lo) and math.max(0, math.min(1, ((tonumber(v) or lo) - lo) / (hi - lo))) or 0
+        local width = track.box:GetWidth()
+        if not width or width <= 0 then width = w - 32 end
+        fill:SetWidth(math.max(4, width * t))
+    end
 
     local slider = CreateFrame("Slider", nil, f)
     slider:SetOrientation("HORIZONTAL")
@@ -642,11 +2561,13 @@ function W:Slider(parent, text, yOffset, get, set, minVal, maxVal, step, fmt, op
         slider:SetHitRectInsets(0, 0, -6, -6)
     end
 
-    slider:SetThumbTexture("Interface\\Buttons\\WHITE8x8")
+    slider:SetThumbTexture(PartPath("round_disc"))
     local thumb = slider:GetThumbTexture()
     if thumb then
-        thumb:SetSize(8, 16); thumb:SetVertexColor(1, 1, 1, 1)
+        thumb:SetTexture(PartPath("round_disc"))
+        thumb:SetSize(14, 14); thumb:SetVertexColor(1, 1, 1, 1)
     end
+    f._thumbKT = thumb
 
     for i = 1, slider:GetNumRegions() do
         local r = select(i, slider:GetRegions())
@@ -704,6 +2625,7 @@ function W:Slider(parent, text, yOffset, get, set, minVal, maxVal, step, fmt, op
     end
 
     slider:SetScript("OnValueChanged", function(self, v)
+        PaintFill(v)
         if self.isInitializing then return end
         if set then set(v) end
         if not valText:HasFocus() then
@@ -733,15 +2655,13 @@ function W:Slider(parent, text, yOffset, get, set, minVal, maxVal, step, fmt, op
     end)
 
     valText:SetScript("OnEditFocusGained", function(self)
-        local ar, ag, ab = CurrentAccentColor()
-        KT:AddBackdrop(self, 0.02, 0.02, 0.03, 0.94)
-        KT:AddBorder(self, ar, ag, ab, 0.85)
+        skinned[valueChip] = nil
+        local r, g, b, a = SkinColor("controlBg")
+        valueChip:SetColor(math.min(1, r + 0.08), math.min(1, g + 0.08), math.min(1, b + 0.08), a)
         self:HighlightText()
     end)
     valText:SetScript("OnEditFocusLost", function(self)
-        KT:AddBackdrop(self, 0.02, 0.02, 0.03, 0)
-        local ar, ag, ab = CurrentAccentColor()
-        KT:AddBorder(self, ar, ag, ab, 0)
+        IdleValueBox()
         if self._skipNextCommit then
             self._skipNextCommit = nil
         else
@@ -791,15 +2711,24 @@ function W:Dropdown(parent, text, yOffset, values, get, set, order, fontPreview)
         local mr, mg, mb = CurrentMutedColor()
         label:SetTextColor(mr, mg, mb, 1)
     end
-    label:SetPoint("TOPLEFT", 12, -4)
-    label:SetWidth(w - 24)
+    -- Label on the left, a 210px box on the right; each is one clipped line.
+    -- Narrow rows shrink the box so the label always keeps some room.
+    local DROPDOWN_BOX_W = math.min(210, math.floor(w * 0.55))
+    label:SetPoint("LEFT", 12, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    label:SetWidth(math.max(40, w - (DROPDOWN_BOX_W + 50)))
+    f._labelKT = label
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetHeight(24)
-    btn:SetPoint("BOTTOMLEFT", 12, 4)
-    btn:SetPoint("BOTTOMRIGHT", -12, 4)
-    KT:AddBackdrop(btn, 0.08, 0.08, 0.11, 1)
-    KT:AddBorder(btn, 0.20, 0.20, 0.25, 1)
+    btn:SetWidth(DROPDOWN_BOX_W)
+    btn:SetPoint("RIGHT", -12, 0)
+    local boxRound = W:RoundRect(btn, "BACKGROUND", 0, 6)
+    boxRound:SetAllPoints(btn)
+    PaintSkinned(boxRound, "controlBg")
+    f._boxKT = btn
+    f._boxRoundKT = boxRound
 
     local selText = btn:CreateFontString(nil, "OVERLAY")
     selText:SetFont(CurrentFont(), 11)
@@ -807,6 +2736,8 @@ function W:Dropdown(parent, text, yOffset, values, get, set, order, fontPreview)
     selText:SetPoint("LEFT", 8, 0)
     selText:SetPoint("RIGHT", -22, 0)
     selText:SetJustifyH("LEFT")
+    selText:SetWordWrap(false)
+    selText:SetMaxLines(1)
 
     local arrow = btn:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(16, 16)
@@ -1036,8 +2967,9 @@ function W:Dropdown(parent, text, yOffset, values, get, set, order, fontPreview)
     list:SetFrameLevel(1000)
     list:SetClampedToScreen(true)
     list:Hide()
-    KT:AddBackdrop(list, 0.04, 0.05, 0.07, 0.98)
     do
+        local cr, cg, cb = SkinColor("card")
+        KT:AddBackdrop(list, cr, cg, cb, 0.98)
         local ar, ag, ab = CurrentAccentColor()
         KT:AddBorder(list, ar, ag, ab, 0.6)
     end
@@ -1236,7 +3168,7 @@ function W:Dropdown(parent, text, yOffset, values, get, set, order, fontPreview)
         local newWidth = math.max(120, (self._baseWidth or w) - reserved)
         self:SetWidth(newWidth)
         if self._label then
-            self._label:SetWidth(math.max(60, newWidth - 24))
+            self._label:SetWidth(math.max(40, newWidth - (DROPDOWN_BOX_W + 50)))
         end
     end
     f:SetReservedRightSpace(0)
@@ -1270,17 +3202,17 @@ function W:ColorSwatch(parent, text, yOffset, get, set, hasAlpha)
     label:SetPoint("LEFT", 12, 0)
 
     local swatch = CreateFrame("Button", nil, f)
-    swatch:SetSize(24, 24)
+    swatch:SetSize(22, 22)
     swatch:SetPoint("RIGHT", -12, 0)
-    KT:AddBorder(swatch, 0.35, 0.35, 0.35, 1)
+    f._swatchKT = swatch
 
-    local swTex = swatch:CreateTexture(nil, "ARTWORK")
-    swTex:SetPoint("TOPLEFT", 1, -1)
-    swTex:SetPoint("BOTTOMRIGHT", -1, 1)
+    local swTex = W:RoundRect(swatch, "ARTWORK", 0, 5)
+    swTex:SetAllPoints(swatch)
+    f._swatchRoundKT = swTex
 
     local function UpdateSwatch()
         local ok, r, g, b, a = pcall(get)
-        if ok and r then swTex:SetColorTexture(r, g, b or 1, a or 1) end
+        if ok and r then swTex:SetColor(r, g, b or 1, a or 1) end
     end
     UpdateSwatch()
 
@@ -1501,6 +3433,95 @@ function W:Button(parent, text, yOffset, func, btnWidth, confirm, confirmText, a
     return f, 44
 end
 
+-- ============================================================================
+-- MODE + COLOUR ROW: "Accent | Custom" pill switch and a swatch on one line.
+-- The swatch is dimmed while the module follows the accent; picking a colour
+-- (or "Custom") makes it the module's own.
+-- ============================================================================
+function W:ModeColorRow(parent, text, yOffset, getMode, setMode, getColor, setColor)
+    local w = FW(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(w, 36)
+    f:SetPoint("TOPLEFT", 10, yOffset)
+    RowBg(f, parent)
+    MakeHoverFrame(f)
+
+    local label = f:CreateFontString(nil, "OVERLAY")
+    label:SetFont(CurrentFont(), 12)
+    label:SetText(LText(text))
+    label:SetPoint("LEFT", 12, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    label:SetWidth(math.max(40, w - 210))
+
+    local swatch = CreateFrame("Button", nil, f)
+    swatch:SetSize(22, 22)
+    swatch:SetPoint("RIGHT", -12, 0)
+    local swTex = W:RoundRect(swatch, "ARTWORK", 0, 5)
+    swTex:SetAllPoints(swatch)
+    f._swatchKT = swatch
+
+    local OPTION_W, OPTION_H = 60, 20
+    local track = W:RoundRect(f, "ARTWORK", 0, 8)
+    track:SetSize(OPTION_W * 2 + 4, OPTION_H + 4)
+    track:SetPoint("RIGHT", swatch, "LEFT", -10, 0)
+    PaintSkinned(track, "controlBg")
+
+    local options = {}
+    local Update
+    local function MakeOption(key, caption, index)
+        local opt = CreateFrame("Button", nil, f)
+        opt:SetSize(OPTION_W, OPTION_H)
+        opt:SetPoint("LEFT", track.box, "LEFT", 2 + (index - 1) * OPTION_W, 0)
+        opt._pillKT = W:RoundRect(opt, "OVERLAY", 0, 6)
+        opt._pillKT:SetAllPoints(opt)
+        opt._textKT = opt:CreateFontString(nil, "OVERLAY", nil, 1)
+        opt._textKT:SetFont(CurrentFont(), 11)
+        opt._textKT:SetPoint("CENTER", opt, "CENTER", 0, 0)
+        opt._textKT:SetText(LText(caption))
+        opt:SetScript("OnClick", function()
+            if setMode then setMode(key) end
+            Update()
+        end)
+        opt._key = key
+        options[#options + 1] = opt
+        return opt
+    end
+    f._modeAccentKT = MakeOption("accent", "Accent", 1)
+    f._modeCustomKT = MakeOption("custom", "Custom", 2)
+
+    Update = function()
+        local mode = getMode and getMode() or "accent"
+        local ar, ag, ab = CurrentAccentColor()
+        local mr, mg, mb = CurrentMutedColor()
+        for _, opt in ipairs(options) do
+            opt._selected = (opt._key == mode)
+            opt._pillKT:SetShown(opt._selected)
+            opt._pillKT:SetColor(ar * 0.3, ag * 0.3, ab * 0.3, 1)
+            if opt._selected then
+                opt._textKT:SetTextColor(ar, ag, ab, 1)
+            else
+                opt._textKT:SetTextColor(mr, mg, mb, 1)
+            end
+        end
+        swatch._dimmed = (mode ~= "custom")
+        swatch:SetAlpha(swatch._dimmed and 0.35 or 1)
+        local ok, r, g, b = pcall(getColor)
+        if ok and r then swTex:SetColor(r, g, b, 1) end
+        label:SetTextColor(swatch._dimmed and mr or 1, swatch._dimmed and mg or 1, swatch._dimmed and mb or 1, 1)
+    end
+
+    swatch:SetScript("OnClick", function()
+        OpenMultiColorPicker(getColor, function(r, g, b)
+            if setColor then setColor(r, g, b) end
+        end, false, Update)
+    end)
+
+    Update()
+    f.Refresh = Update
+    return f, 38
+end
+
 function W:SubTabBar(parent, yOffset, tabs, selectedId, onSelect)
     if KT and KT.AddOptionsSubTabBar then
         return KT.AddOptionsSubTabBar(parent, yOffset, tabs, selectedId, onSelect)
@@ -1541,9 +3562,12 @@ function W:Input(parent, text, yOffset, get, set, opts)
         box:SetTextColor(tr, tg, tb, 1)
     end
     box:SetAutoFocus(false)
-    KT:AddBackdrop(box, 0.06, 0.06, 0.08, 1)
-    KT:AddBorder(box, 0.20, 0.20, 0.25, 1)
+    local boxRound = W:RoundRect(box, "BACKGROUND", 0, 6)
+    boxRound:SetAllPoints(box)
+    PaintSkinned(boxRound, "controlBg")
+    f._boxRoundKT = boxRound
     box:SetTextInsets(4, 4, 2, 2)
+    f._boxKT = box
 
     local lastCommittedValue = get and get() or ""
     box:SetText(lastCommittedValue)
@@ -1574,12 +3598,13 @@ function W:Input(parent, text, yOffset, get, set, opts)
         self:ClearFocus()
     end)
     box:SetScript("OnEditFocusGained", function(self)
-        local ar, ag, ab = CurrentAccentColor()
-        KT:AddBorder(self, ar, ag, ab, 0.8)
+        skinned[boxRound] = nil
+        local r, g, b, a = SkinColor("controlBg")
+        boxRound:SetColor(math.min(1, r + 0.08), math.min(1, g + 0.08), math.min(1, b + 0.08), a)
     end)
     box:SetScript("OnEditFocusLost", function(self)
         CommitValue(self)
-        KT:AddBorder(self, 0.20, 0.20, 0.25, 1)
+        PaintSkinned(boxRound, "controlBg")
     end)
 
     f.Refresh = function()
@@ -1601,6 +3626,15 @@ function W:DualRow(parent, yOffset, leftData, rightData)
     row:SetSize(fullW, 40)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
 
+    -- One band across both halves, with a divider between them.
+    row._bandKT = RowBg(row, parent, 10, 10)
+    local divider = row:CreateTexture(nil, "ARTWORK")
+    divider:SetWidth(1)
+    divider:SetPoint("TOP", row, "TOPLEFT", itemW + 10 + gap / 2, -6)
+    divider:SetPoint("BOTTOM", row, "BOTTOMLEFT", itemW + 10 + gap / 2, 6)
+    PaintSkinned(divider, "divider")
+    row._dividerKT = divider
+
     local leftC = CreateFrame("Frame", nil, row)
     leftC:SetSize(itemW + 20, 40)
     leftC:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -1608,6 +3642,8 @@ function W:DualRow(parent, yOffset, leftData, rightData)
     local rightC = CreateFrame("Frame", nil, row)
     rightC:SetSize(itemW + 20, 40)
     rightC:SetPoint("TOPLEFT", row, "TOPLEFT", itemW + gap, 0)
+    leftC._ktNoRowBg = true
+    rightC._ktNoRowBg = true
 
     local function Create(p, d)
         if not d then return 0 end

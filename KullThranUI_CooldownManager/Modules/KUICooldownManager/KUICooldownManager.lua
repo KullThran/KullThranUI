@@ -96,6 +96,7 @@ CDM_SHAPES.borders = {
     shield   = CDM_SHAPE_MEDIA .. "shield_border.tga",
     square   = CDM_SHAPE_MEDIA .. "square_border.tga",
 }
+ns.CDM_SHAPES = CDM_SHAPES -- shape masks/borders for KUICdmGlowStyles.lua
 ns.CDM_SHAPE_INSETS                 = {
     circle = 17,
     csquare = 17,
@@ -1380,6 +1381,13 @@ ns.CDMGetActiveSyntheticItemCooldownState = function(group)
         return nil
     end
 
+    -- A click or key press only guesses that the item was used. If no cast or
+    -- bag change confirmed it shortly after, the press failed: no cooldown.
+    if state.pending and (now - state.startTime) > 1.5 then
+        _syntheticItemCooldownGroups[group] = nil
+        return nil
+    end
+
     return state
 end
 
@@ -1402,7 +1410,7 @@ local function GetActiveSyntheticItemCooldown(itemID)
     return state.startTime, state.duration
 end
 
-local function StartSyntheticItemCooldown(itemID, duration, startTime)
+local function StartSyntheticItemCooldown(itemID, duration, startTime, pending)
     local normalizedItemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
     local group = GetSyntheticItemCooldownGroup(normalizedItemID)
     if not group or not duration or duration <= 1.5 then
@@ -1416,25 +1424,58 @@ local function StartSyntheticItemCooldown(itemID, duration, startTime)
     local current = _syntheticItemCooldownGroups[group]
     if current and current.startTime and current.duration
         and (current.startTime + current.duration) > GetTime()
-        and current.itemID and current.itemID ~= normalizedItemID
     then
-        return false
+        -- A real cast confirms the click that is waiting for it. Keep the item
+        -- that was clicked: the cast may resolve to another rank of the potion.
+        if current.pending and not pending then
+            current.pending = nil
+            current.startTime = startTime or GetTime()
+            current.duration = duration
+            return true
+        end
+        if current.itemID and current.itemID ~= normalizedItemID then
+            return false
+        end
     end
 
     _syntheticItemCooldownGroups[group] = {
         startTime = startTime or GetTime(),
         duration = duration,
         itemID = normalizedItemID,
+        pending = pending and true or nil,
     }
     return true
 end
 
+-- The bag count of the clicked item changed: the item was really used.
+ns.CDMConfirmPendingSyntheticItemCooldown = function(itemID)
+    itemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
+    local group = itemID and GetSyntheticItemCooldownGroup(itemID)
+    local state = group and _syntheticItemCooldownGroups[group]
+    if state and state.pending and state.itemID == itemID then
+        state.pending = nil
+        state.startTime = GetTime()
+    end
+end
+
+-- The real item cooldown reads ready, so a leftover own timer is stale.
+ns.CDMDropSyntheticItemCooldown = function(itemID)
+    itemID = NormalizeItemID and ns.NormalizeItemID(itemID) or itemID
+    local group = itemID and GetSyntheticItemCooldownGroup(itemID)
+    local state = group and _syntheticItemCooldownGroups[group]
+    if state and state.itemID == itemID then
+        _syntheticItemCooldownGroups[group] = nil
+        return true
+    end
+    return false
+end
+
 -- Potion cooldowns end with the boss encounter (kill or wipe): drop the tracker's
 -- own timers so a reset does not leave the icon on cooldown. Healthstones keep theirs.
-ns.CDMResetSyntheticPotionCooldowns = function()
+ns.CDMResetSyntheticPotionCooldowns = function(includeHealthstone)
     local cleared = false
     for group in pairs(_syntheticItemCooldownGroups) do
-        if group ~= "healthstone" then
+        if includeHealthstone or group ~= "healthstone" then
             _syntheticItemCooldownGroups[group] = nil
             cleared = true
         end
@@ -1446,10 +1487,14 @@ end
 do
     local encounterFrame = CreateFrame("Frame")
     encounterFrame:RegisterEvent("ENCOUNTER_END")
-    encounterFrame:SetScript("OnEvent", function()
+    -- Starting a Mythic+ key resets every item cooldown, healthstones included.
+    pcall(encounterFrame.RegisterEvent, encounterFrame, "CHALLENGE_MODE_START")
+    encounterFrame:SetScript("OnEvent", function(_, event)
         -- The client resets the real cooldown a moment after the event.
         C_Timer.After(0.5, function()
-            if ns.CDMResetSyntheticPotionCooldowns then ns.CDMResetSyntheticPotionCooldowns() end
+            if ns.CDMResetSyntheticPotionCooldowns then
+                ns.CDMResetSyntheticPotionCooldowns(event == "CHALLENGE_MODE_START")
+            end
         end)
     end)
 end
@@ -1475,7 +1520,7 @@ ns.TriggerImmediateSyntheticItemCooldown = function(itemID)
         return false
     end
 
-    return StartSyntheticItemCooldown(normalizedItemID, duration)
+    return StartSyntheticItemCooldown(normalizedItemID, duration, nil, true)
 end
 
 local function RefreshSyntheticItemCooldownsFromBags()
@@ -1678,6 +1723,7 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
     end
 
     local start, dur, enable
+    local realReadable = false
     if C_Item and C_Item.GetItemCooldown then
         local rawCooldown, rawDuration, rawEnable = C_Item.GetItemCooldown(itemID)
         if type(rawCooldown) == "table" then
@@ -1693,6 +1739,10 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
     elseif GetItemCooldown then
         start, dur, enable = GetItemCooldown(itemID)
     end
+    -- Only a plain number is a reading. A secret or missing value is "unknown",
+    -- not "ready", and must never clear the tracker's own timer.
+    realReadable = type(start) == "number" and type(dur) == "number"
+        and not (issecretvalue and (issecretvalue(start) or issecretvalue(dur)))
     start = SafeCooldownNumber(start, 0)
     dur = SafeCooldownNumber(dur, 0)
     enable = SafeCooldownEnabled(enable, start, dur)
@@ -1713,11 +1763,27 @@ ns.CDMResolveItemCooldownInfo = function(itemID)
             if scdStart > 0 and scdDuration > 0.001 and (scdEnabled or scdIsNonGCD) then
                 return scdStart, scdDuration, 1
             end
+            if realReadable and (type(scd.startTime) ~= "number" or type(scd.duration) ~= "number"
+                or (issecretvalue and (issecretvalue(scd.startTime) or issecretvalue(scd.duration)))) then
+                realReadable = false
+            end
         end
     end
 
     local syntheticStart, syntheticDuration = GetActiveSyntheticItemCooldown(itemID)
     if syntheticStart and syntheticDuration then
+        -- Outside combat, encounters and keys the client reports item cooldowns
+        -- truthfully. If it says ready, a timer that survived (failed key press,
+        -- boss reset, missed event) is stale: drop it instead of showing a
+        -- cooldown for an item that was never used.
+        local restricted = (InCombatLockdown and InCombatLockdown())
+            or (IsEncounterInProgress and IsEncounterInProgress())
+            or (C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive
+                and C_ChallengeMode.IsChallengeModeActive())
+        if realReadable and not restricted and (GetTime() - syntheticStart) > 2
+            and ns.CDMDropSyntheticItemCooldown and ns.CDMDropSyntheticItemCooldown(itemID) then
+            return start, dur, 0
+        end
         return syntheticStart, syntheticDuration, 1
     end
 
@@ -2111,7 +2177,7 @@ local function ApplyActiveAnimation(icon, auraHandled, barData, barKey, activeAn
     if UnitIsDeadOrGhost and UnitIsDeadOrGhost('player') then
         skipActiveAnim = true
     end
-    if not ns.CDMHasUsableTarget() then
+    if icon._kuiActiveAuraUnit ~= "player" and not ns.CDMHasUsableTarget() then
         skipActiveAnim = true
     end
     if not skipActiveAnim and auraHandled and not icon._isActive then
@@ -3783,6 +3849,8 @@ function ns.CDMNormalizeNamedGlowStyle(style)
     if s == "pixel" then return "pixel" end
     if s == "button" then return "button" end
     if s == "blizzard" or s == "proc" then return "blizzard" end
+    -- KUICdmGlowStyles.lua
+    if s == "ants" or s == "gcd" or s == "classic" or s == "blackout" then return s end
     return nil
 end
 
@@ -4338,15 +4406,16 @@ function ns.CDMStartPixelBorderGlow(target, r, g, b)
     local glow = target._kuiPixelBorderGlow
     if not glow then
         glow = CreateFrame("Frame", nil, target)
-        glow:SetPoint("TOPLEFT", target, "TOPLEFT", -2, 2)
-        glow:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 2, -2)
+        glow:SetAllPoints(target) -- on the icon's own edge
         ApplyCDMGlowLayer(glow, target, 2)
         glow:EnableMouse(false)
         glow.edges = {}
         for index = 1, 4 do
-            glow.edges[index] = glow:CreateTexture(nil, "OVERLAY", nil, 20)
+            glow.edges[index] = glow:CreateTexture(nil, "OVERLAY", nil, 7)
             glow.edges[index]:SetTexture("Interface\\Buttons\\WHITE8x8")
-            glow.edges[index]:SetBlendMode("ADD")
+            -- Solid colour (not ADD): over the action button's own art an
+            -- additive border washed out and no longer matched the preview.
+            glow.edges[index]:SetBlendMode("BLEND")
         end
         glow.edges[1]:SetPoint("TOPLEFT"); glow.edges[1]:SetPoint("TOPRIGHT"); glow.edges[1]:SetHeight(2)
         glow.edges[2]:SetPoint("BOTTOMLEFT"); glow.edges[2]:SetPoint("BOTTOMRIGHT"); glow.edges[2]:SetHeight(2)
@@ -4355,9 +4424,10 @@ function ns.CDMStartPixelBorderGlow(target, r, g, b)
         glow.pulse = glow:CreateAnimationGroup()
         glow.pulse:SetLooping("REPEAT")
         local fadeOut = glow.pulse:CreateAnimation("Alpha")
-        fadeOut:SetOrder(1); fadeOut:SetFromAlpha(1); fadeOut:SetToAlpha(0.35); fadeOut:SetDuration(0.35)
+        -- Gentle pulse: dropping to 35% left the border barely visible half the time.
+        fadeOut:SetOrder(1); fadeOut:SetFromAlpha(1); fadeOut:SetToAlpha(0.65); fadeOut:SetDuration(0.45)
         local fadeIn = glow.pulse:CreateAnimation("Alpha")
-        fadeIn:SetOrder(2); fadeIn:SetFromAlpha(0.35); fadeIn:SetToAlpha(1); fadeIn:SetDuration(0.35)
+        fadeIn:SetOrder(2); fadeIn:SetFromAlpha(0.65); fadeIn:SetToAlpha(1); fadeIn:SetDuration(0.45)
         target._kuiPixelBorderGlow = glow
     end
     ApplyCDMGlowLayer(glow, target, 2)
@@ -4377,6 +4447,7 @@ end
 
 local function _StopAllGlowsOnOverlay(target)
     if not target then return end
+    if ns.CDMStopExtraGlows then ns.CDMStopExtraGlows(target) end
     if target._kuiShapeGlowActive then
         local icon = target._kuiShapeGlowIcon
         local ov = icon and icon._shapeGlowBorder
@@ -4428,7 +4499,7 @@ function ns.CDMEnsureShapeGlowOverlay(icon)
     if icon._shapeGlowBorder then return icon._shapeGlowBorder end
     local holder = icon._shapeBorderFrame or icon
     if not holder or not holder.CreateTexture then return nil end
-    local tex = holder:CreateTexture(nil, "OVERLAY", nil, 20)
+    local tex = holder:CreateTexture(nil, "OVERLAY", nil, 7)
     if holder ~= icon then ApplyCDMGlowLayer(holder, icon, 2) end
     tex:Hide()
     tex:SetBlendMode("ADD")
@@ -4450,7 +4521,7 @@ function ns.CDMEnsureShapeGlowOverlay(icon)
     -- Filled body of the glow: the shape's own mask drawn additively, a little
     -- larger than the icon and clipped back to the silhouette, so the glow
     -- reads as a lit shape and not only as a lit outline.
-    local fill = holder:CreateTexture(nil, "OVERLAY", nil, 19)
+    local fill = holder:CreateTexture(nil, "OVERLAY", nil, 6)
     fill:Hide()
     fill:SetBlendMode("ADD")
     local fillPulse = fill:CreateAnimationGroup()
@@ -4561,7 +4632,10 @@ StartNativeGlow = function(icon, style, cr, cg, cb)
     if namedStyle then
         local glowAPI = ns.CDMGetKTGlowAPI and ns.CDMGetKTGlowAPI()
         local glowSize = math.max(target:GetWidth() or 0, target:GetHeight() or 0, 26)
-        if namedStyle == "shape" then
+        if ns.CDMStartExtraGlow and ns.CDMStartExtraGlow(target, namedStyle, r, g, b) then
+            -- Pixel Glow, Action Button Glow, GCD, Classic WoW Glow, Blackout
+            -- (KUICdmGlowStyles.lua).
+        elseif namedStyle == "shape" then
             if not ns.CDMStartShapeGlow(target, r, g, b) then
                 ns.CDMStartFallbackOverlayGlow(target, r, g, b)
             end
@@ -5006,11 +5080,8 @@ end
 function ns.CDMGetConfiguredProcGlowStyle()
     local p = KUI_CDM and KUI_CDM.db and KUI_CDM.db.profile
     local style = p and p.barGlows and p.barGlows.procGlowStyle
-    style = (ns.CDMNormalizeNamedGlowStyle and ns.CDMNormalizeNamedGlowStyle(style)) or "blizzard"
-    if style == "button" then
-        return "blizzard"
-    end
-    return style
+    -- "button" is a real Action Button Glow now (KUICdmGlowStyles.lua).
+    return (ns.CDMNormalizeNamedGlowStyle and ns.CDMNormalizeNamedGlowStyle(style)) or "blizzard"
 end
 
 -- Reverse lookup: Blizzard CDM viewer frame name -> our bar key
@@ -7476,6 +7547,17 @@ local function SaveCDMBarPosition(barKey, frame)
     }
 end
 
+-- Forever / Retail cast bars wear Blizzard's frame art around the bar: a bar
+-- anchored on top of the cast bar needs a few more pixels or its icons sit on
+-- that frame.
+ns.CDM_CASTBAR_ART_CLEARANCE = { forever = 6, retail = 6 } -- in ns: main chunk is at the 200-local limit
+function ns.CDMCastBarTopClearance()
+    local styles = KT and KT.CastBarStyles
+    local db = KT and KT.db and KT.db.profile and KT.db.profile.castbar
+    local style = styles and styles.GetStyle and styles:GetStyle(db)
+    return ns.CDM_CASTBAR_ART_CLEARANCE[style] or 0
+end
+
 local function CDMFrameAnchorPoint(anchorSide, grow, centered)
     if centered then
         if anchorSide == "TOP" then return "BOTTOM" end
@@ -7828,7 +7910,7 @@ BuildCDMBar = function(barIndex)
             local fp = CDMFrameAnchorPoint(anchorPos:upper(), grow, centered)
             frame._anchorSide = anchorPos:upper()
             if anchorPos == "top" then
-                frame:SetPoint(fp, castBar, "TOP", oX, oY)
+                frame:SetPoint(fp, castBar, "TOP", oX, oY + ns.CDMCastBarTopClearance())
             elseif anchorPos == "bottom" then
                 frame:SetPoint(fp, castBar, "BOTTOM", oX, -math.abs(oY))
             elseif anchorPos == "left" then
@@ -9027,6 +9109,7 @@ local function UpdateCustomBarIcons(barKey)
                     -- a non-buff bar, skip aura display so the override's actual cooldown
                     -- is shown instead (e.g. a 2min ability that becomes a 24s kick).
                     local auraHandled = false
+                    local overrideAuraActive = false
                     local skipCDDisplay = false
                     local hasRuntimeOverride = resolvedID ~= spellID and not isBuffBarForOverride
                     local stackBlizzChild, stackAuraID, stackAuraUnit = nil, nil, "player"
@@ -9081,6 +9164,8 @@ local function UpdateCustomBarIcons(barKey)
                             -- cooldown is shown (e.g. 2min ability becomes 24s kick).
                             if hasRuntimeOverride then
                                 auraHandled = false
+                                -- The cooldown shown stays the override's; only the glow follows the aura.
+                                overrideAuraActive = (auraID ~= nil) or IsBlizzChildEffectLive(blizzChild)
                             else
                                 local chargeInfo = C_Spell.GetSpellCharges and C_Spell.GetSpellCharges(resolvedID)
                                 local isChargeSid = chargeInfo ~= nil
@@ -9168,7 +9253,8 @@ local function UpdateCustomBarIcons(barKey)
                         ourIcon._cooldown:SetUseAuraDisplayTime(auraHandled and skipCDDisplay)
                     end
 
-                    ApplyActiveAnimation(ourIcon, auraHandled, barData, barKey, activeAnim, animR, animG, animB, swAlpha)
+                    ourIcon._kuiActiveAuraUnit = stackAuraUnit
+                    ApplyActiveAnimation(ourIcon, auraHandled or overrideAuraActive, barData, barKey, activeAnim, animR, animG, animB, swAlpha)
                     ourIcon._blizzChild = stackBlizzChild
 
                     ns.SetCDMIconShown(ourIcon, true)
@@ -9460,6 +9546,7 @@ function ns.ApplyNativeCDMVisualState(frame)
         frame._isActive = false
     end
 
+    frame._kuiActiveAuraUnit = frame.auraDataUnit
     ApplyActiveAnimation(
         frame, active, barData, barKey, activeAnim,
         animR, animG, animB, barData.swipeAlpha or 0.7
@@ -12198,6 +12285,11 @@ local function SyncExternalDBBindings()
     KT.db.global = KT.db.global or {}
     KT.db.profile.cooldownManager = CopyDefaults(DEFAULTS.profile, KT.db.profile.cooldownManager)
     KT.db.global.cooldownManager = CopyDefaults(DEFAULTS.global, KT.db.global.cooldownManager)
+    -- The Visual Style owns the icon shape/borders: let its adapter restore and
+    -- repair them on load, as the other themed modules do.
+    if KT.VisualThemes and KT.VisualThemes.ApplyCurrentThemeToModule then
+        pcall(KT.VisualThemes.ApplyCurrentThemeToModule, KT.VisualThemes, "cooldownmanager")
+    end
 
     KUI_CDM.db = KUI_CDM.db or {}
     KUI_CDM.db.profile = KT.db.profile.cooldownManager
@@ -13391,7 +13483,7 @@ HookEditModeSuppressor()
 ns.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 pcall(ns.eventFrame.RegisterEvent, ns.eventFrame, "COOLDOWN_VIEWER_DATA_LOADED")
 pcall(ns.eventFrame.RegisterEvent, ns.eventFrame, "EDIT_MODE_LAYOUTS_UPDATED")
-ns.eventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+ns.eventFrame:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 ns.eventFrame:RegisterEvent("SPELLS_CHANGED")
 ns.eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 ns.eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
@@ -13401,13 +13493,13 @@ ns.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 ns.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ns.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 ns.eventFrame:RegisterUnitEvent("UNIT_AURA", "player")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_START")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
-ns.eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_UPDATE", "player")
 ns.eventFrame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
 ns.eventFrame:RegisterEvent("PLAYER_UPDATE_RESTING")
 ns.eventFrame:RegisterEvent("UPDATE_STEALTH")
@@ -13415,8 +13507,8 @@ ns.eventFrame:RegisterEvent("PLAYER_FLAGS_CHANGED")
 ns.eventFrame:RegisterEvent("PLAYER_DEAD")
 ns.eventFrame:RegisterEvent("PLAYER_ALIVE")
 ns.eventFrame:RegisterEvent("PLAYER_UNGHOST")
-ns.eventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
-ns.eventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+ns.eventFrame:RegisterUnitEvent("UNIT_ENTERED_VEHICLE", "player")
+ns.eventFrame:RegisterUnitEvent("UNIT_EXITED_VEHICLE", "player")
 ns.eventFrame:RegisterEvent("PET_BATTLE_OPENING_START")
 ns.eventFrame:RegisterEvent("PET_BATTLE_CLOSE")
 ns.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
@@ -13696,6 +13788,11 @@ ns.eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
         or event == "ITEM_PUSH"
     then
         if event == 'ITEM_COUNT_CHANGED' or event == 'ITEM_PUSH' then
+            if event == 'ITEM_COUNT_CHANGED' and type(unit) == 'number'
+                and not (issecretvalue and issecretvalue(unit))
+                and ns.CDMConfirmPendingSyntheticItemCooldown then
+                ns.CDMConfirmPendingSyntheticItemCooldown(unit)
+            end
             if ns.RequestPotionTrackerHealthstoneRefresh then
                 ns.RequestPotionTrackerHealthstoneRefresh()
             end

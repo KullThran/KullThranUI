@@ -1747,6 +1747,7 @@ local function UpdateDebuffExpiryGlow(slot, typeColor)
     glow.wrapper:SetAlpha(alpha)
     glow.wrapper:Show()
     trackedExpirySlots[slot] = true
+    if ns.ArmPandemicTick then ns.ArmPandemicTick() end
 end
 
 ns.StopDebuffExpiryGlow = StopDebuffExpiryGlow
@@ -1927,6 +1928,7 @@ local function ApplyPandemicGlow(slot)
         durObj:EvaluateRemainingPercent(pandemicCurve)
     ))
     activePandemicSlots[slot] = true
+    if ns.ArmPandemicTick then ns.ArmPandemicTick() end
 end
 ns.StopPandemicGlow = StopPandemicGlow
 ns.ApplyPandemicGlow = ApplyPandemicGlow
@@ -4102,7 +4104,7 @@ local function EnableClassPowerWatcher()
         end)
         classPowerWatcher:RegisterUnitEvent("UNIT_AURA", "player")
         classPowerWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
-        classPowerWatcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+        classPowerWatcher:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
         classPowerWatcher:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
         classPowerWatcher:RegisterEvent("PLAYER_DEAD")
         classPowerWatcher:RegisterEvent("PLAYER_ALIVE")
@@ -4179,7 +4181,7 @@ local function EnableClassPowerWatcher()
         classPowerWatcher:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
         classPowerWatcher:RegisterUnitEvent("UNIT_MAXPOWER", "player")
         classPowerWatcher:RegisterEvent("PLAYER_TARGET_CHANGED")
-        classPowerWatcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+        classPowerWatcher:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
         if classPowerFormReq then
             classPowerWatcher:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
         end
@@ -4779,10 +4781,19 @@ castFallbackFrame:SetScript("OnUpdate", function()
 end)
 castFallbackFrame:Hide()
 
--- Pandemic glow alpha-only tick: only iterates slots with active pandemic glows
+-- Pandemic glow alpha-only tick: only iterates slots with active pandemic glows.
+-- Self-disarming: the frame is shown only while a pandemic or expiry slot is
+-- tracked, so with no glows on screen no per-frame code runs at all.
 local pandemicTickFrame = CreateFrame("Frame")
+pandemicTickFrame:Hide()
 local pandemicTickAccum = 0
-pandemicTickFrame:SetScript("OnUpdate", function(_, elapsed)
+function ns.ArmPandemicTick()
+    if not pandemicTickFrame:IsShown() then
+        pandemicTickAccum = 0
+        pandemicTickFrame:Show()
+    end
+end
+pandemicTickFrame:SetScript("OnUpdate", function(self, elapsed)
     pandemicTickAccum = pandemicTickAccum + elapsed
     if pandemicTickAccum < 0.2 then return end
     pandemicTickAccum = 0
@@ -4805,6 +4816,10 @@ pandemicTickFrame:SetScript("OnUpdate", function(_, elapsed)
                 ns.StopDebuffExpiryGlow(slot)
             end
         end
+    end
+
+    if not next(ns.activePandemicSlots) and not (expirySlots and next(expirySlots)) then
+        self:Hide()
     end
 end)
 
@@ -6196,6 +6211,7 @@ function NameplateFrame:UpdateAuras(updateInfo)
                             slot._typeColor = ns.GetAuraTypeColor and ns.GetAuraTypeColor(unit, aura)
                             ns.trackedExpirySlots = ns.trackedExpirySlots or {}
                             ns.trackedExpirySlots[slot] = true
+                            if ns.ArmPandemicTick then ns.ArmPandemicTick() end
                         else
                             slot._durationObj = nil
                             slot._expirationTime = aura.expirationTime
@@ -7478,14 +7494,25 @@ do
             plate:RefreshPixelPerfectLayout()
         end
     end
-    manager:SetScript("OnUpdate", function(_, elapsed)
+    -- Self-disarming: the manager frame is hidden (it still receives events)
+    -- while no KUI plate exists or the module is off, so no per-frame code runs
+    -- then; the next NAME_PLATE_UNIT_ADDED shows it again.
+    manager:HookScript("OnEvent", function(self, event)
+        if event == "NAME_PLATE_UNIT_ADDED" and not self:IsShown() then
+            elapsedSinceRefresh = 0
+            self:Show()
+        end
+    end)
+    manager:SetScript("OnUpdate", function(self, elapsed)
         elapsedSinceRefresh = elapsedSinceRefresh + (elapsed or 0)
         if elapsedSinceRefresh < 0.1 then
             return
         end
         elapsedSinceRefresh = 0
 
-        if not IsNameplatesEnabled() then
+        if not IsNameplatesEnabled()
+            or (not next(ns.plates) and not (ns.friendlyPlates and next(ns.friendlyPlates))) then
+            self:Hide()
             return
         end
 
@@ -7647,7 +7674,7 @@ do
 
     -- Manejar cambios de spec que ocurren antes de abrir la UI
     local specLoginFrame = CreateFrame("Frame")
-    specLoginFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+    specLoginFrame:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
     specLoginFrame:SetScript("OnEvent", function(_, event, unit)
         if unit ~= "player" then return end
         RefreshThreatCache()

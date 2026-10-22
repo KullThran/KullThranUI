@@ -1404,6 +1404,41 @@ function Mod:ApplyNormalChatFrameLayout()
     frame:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", rightInset, bottomInset)
 end
 
+-- Colours of one whisper-strip button: pink for whispers, blue for Battle.net,
+-- brighter when its chat is the open one. A Visual Style chat skin
+-- (Chat_Styles.lua) draws its own button and border instead of the flat box.
+function Mod:PaintWhisperButton(button)
+    local isActive, isBNet = button.KT_WhisperActive, button.KT_WhisperBNet
+    if button.KT_Label then
+        if isBNet then
+            button.KT_Label:SetTextColor(0.92, 0.96, 1, isActive and 1 or 0.95)
+        else
+            button.KT_Label:SetTextColor(1, 0.78, 0.9, isActive and 1 or 0.95)
+        end
+    end
+    if button.KT_Icon then
+        if button.KT_Icon.SetDesaturated then
+            button.KT_Icon:SetDesaturated(true)
+        end
+        if isBNet then
+            button.KT_Icon:SetVertexColor(0.42, 0.78, 1, isActive and 1 or 0.9)
+        else
+            button.KT_Icon:SetVertexColor(1, 0.35, 0.67, isActive and 1 or 0.9)
+        end
+    end
+    button:SetAlpha(isActive and 1 or 0.9)
+    if self.Styles and self.Styles.PaintWhisperButton and self.Styles.PaintWhisperButton(button) then
+        return
+    end
+    if isBNet then
+        button:SetBackdropColor(isActive and 0.08 or 0.04, isActive and 0.20 or 0.12, isActive and 0.36 or 0.22, isActive and 0.95 or 0.82)
+        button:SetBackdropBorderColor(isActive and 0.25 or 0.12, isActive and 0.72 or 0.35, 1, isActive and 0.95 or 0.85)
+    else
+        button:SetBackdropColor(isActive and 0.22 or 0.12, isActive and 0.08 or 0.04, isActive and 0.18 or 0.1, isActive and 0.95 or 0.82)
+        button:SetBackdropBorderColor(isActive and 1 or 0.7, isActive and 0.45 or 0.28, isActive and 0.72 or 0.5, isActive and 0.95 or 0.85)
+    end
+end
+
 function Mod:RefreshWhisperStrip()
     local window = _G.KT_ChatWindow
     local strip = window and window.KT_WhisperStrip
@@ -1440,31 +1475,10 @@ function Mod:RefreshWhisperStrip()
             local isBNet = KT_IsBNetWhisperKind(data.chatType, data.bnetIDAccount)
             if button.KT_Label then
                 button.KT_Label:SetText(KT_GetWhisperTargetAbbrev(data.target))
-                if isBNet then
-                    button.KT_Label:SetTextColor(0.92, 0.96, 1, isActive and 1 or 0.95)
-                else
-                    button.KT_Label:SetTextColor(1, 0.78, 0.9, isActive and 1 or 0.95)
-                end
             end
-            if button.KT_Icon then
-                if button.KT_Icon.SetDesaturated then
-                    button.KT_Icon:SetDesaturated(true)
-                end
-                if isBNet then
-                    button.KT_Icon:SetVertexColor(0.42, 0.78, 1, isActive and 1 or 0.9)
-                else
-                    button.KT_Icon:SetVertexColor(1, 0.35, 0.67, isActive and 1 or 0.9)
-                end
-            end
-
-            if isBNet then
-                button:SetBackdropColor(isActive and 0.08 or 0.04, isActive and 0.20 or 0.12, isActive and 0.36 or 0.22, isActive and 0.95 or 0.82)
-                button:SetBackdropBorderColor(isActive and 0.25 or 0.12, isActive and 0.72 or 0.35, 1, isActive and 0.95 or 0.85)
-            else
-                button:SetBackdropColor(isActive and 0.22 or 0.12, isActive and 0.08 or 0.04, isActive and 0.18 or 0.1, isActive and 0.95 or 0.82)
-                button:SetBackdropBorderColor(isActive and 1 or 0.7, isActive and 0.45 or 0.28, isActive and 0.72 or 0.5, isActive and 0.95 or 0.85)
-            end
-            button:SetAlpha(isActive and 1 or 0.9)
+            button.KT_WhisperActive = isActive and true or false
+            button.KT_WhisperBNet = isBNet and true or false
+            self:PaintWhisperButton(button)
             if button.KT_Close then
                 button.KT_Close:Show()
             end
@@ -2387,6 +2401,18 @@ local function KT_OpenBlizzardChatSettings()
     if _G.ChatConfigFrame then
         local ok = pcall(ShowUIPanel, _G.ChatConfigFrame)
         if ok then
+            -- The config edits CURRENT_CHAT_FRAME_ID, which is whichever window
+            -- was last picked (often a hidden, empty one such as Chat 10): every
+            -- box showed unticked and Chat Defaults "turned everything off".
+            -- Select the General window through Blizzard's own tab manager,
+            -- which also refreshes the open category. The OnShow above already
+            -- wrote this same global from this call path, so no new taint.
+            local manager = _G.ChatConfigFrame.ChatTabManager
+            local id = chatFrame and chatFrame.GetID and chatFrame:GetID()
+            if manager and manager.UpdateSelection and id
+                and not (_G.FCF_GetCurrentChatFrameID and _G.FCF_GetCurrentChatFrameID() == id) then
+                pcall(manager.UpdateSelection, manager, id)
+            end
             return
         end
     end
@@ -2895,6 +2921,11 @@ function Mod:EnsureDB()
         fadeEnabled = true,
         fadeTimeVisible = 24,
         fadeDuration = 8,
+        fadeRestAlpha = 0.3,
+        -- Like Blizzard's chat: each message fades on its own once old;
+        -- the window fade above only dims the frame around the text.
+        fadeLines = true,
+        fadeLineTime = 120,
         window = {
             visible = true,
             width = KT_CHAT_WINDOW_WIDTH,
@@ -2948,6 +2979,9 @@ function Mod:EnsureDB()
     end
     KT.db.profile.chat.fadeTimeVisible = KT.db.profile.chat.fadeTimeVisible or 24
     KT.db.profile.chat.fadeDuration = KT.db.profile.chat.fadeDuration or 8
+    if KT.db.profile.chat.fadeRestAlpha == nil then
+        KT.db.profile.chat.fadeRestAlpha = 0.3
+    end
     if not KT.db.profile.chat.window.migratedLayoutV10 then
         KT.db.profile.chat.window.width = KT_CHAT_WINDOW_WIDTH
         KT.db.profile.chat.window.height = KT_CHAT_WINDOW_HEIGHT
@@ -3389,6 +3423,44 @@ function Mod:EnableChatFrameTextFontFallback(frame, baseFontPath)
     end
 end
 
+-- The chat font (Avant Garde, ...) has no Chinese, Korean or Cyrillic glyphs:
+-- WoW drew those with a client font at that font's own size, so such names
+-- came out bigger or smaller than the rest of the line. A font family picks a
+-- member per alphabet, each sized to match the chat font (scale: how much
+-- larger that face must be drawn to look the same size). A chat font that
+-- already covers a script (Noto, the Cyrillic font) is kept for it.
+local CHAT_ALPHABET_FONTS = {
+    { alphabet = "russian",            file = "Fonts\\FRIZQT___CYR.TTF", scale = 1.0 },
+    { alphabet = "korean",             file = "Fonts\\2002.TTF",         scale = 1.0 },
+    { alphabet = "simplifiedchinese",  file = "Fonts\\ARKai_T.ttf",      scale = 1.15 },
+    { alphabet = "traditionalchinese", file = "Fonts\\blei00d.TTF",      scale = 1.15 },
+}
+local chatFontFamilies, chatFontFamilyCount = {}, 0
+
+local function GetChatFontFamily(path, size, flags)
+    if type(_G.CreateFontFamily) ~= "function" or type(path) ~= "string" then return nil end
+    flags = (flags == "NONE") and "" or (flags or "")
+    local key = path .. "|" .. tostring(size) .. "|" .. flags
+    local cached = chatFontFamilies[key]
+    if cached ~= nil then return cached or nil end
+    local coversAll = path:find("Noto", 1, true) ~= nil
+    local coversCyrillic = coversAll or path == KT.CYRILLIC_FONT_PATH or path:find("CYR", 1, true) ~= nil
+    local members = { { alphabet = "roman", file = path, height = size, flags = flags } }
+    for _, def in ipairs(CHAT_ALPHABET_FONTS) do
+        local own = coversAll or (def.alphabet == "russian" and coversCyrillic)
+        members[#members + 1] = {
+            alphabet = def.alphabet,
+            file = own and path or def.file,
+            height = own and size or size * def.scale,
+            flags = flags,
+        }
+    end
+    chatFontFamilyCount = chatFontFamilyCount + 1
+    local ok, family = pcall(_G.CreateFontFamily, "KTChatFontFamily" .. chatFontFamilyCount, members)
+    chatFontFamilies[key] = (ok and family) or false
+    return ok and family or nil
+end
+
 function Mod:ApplyConfiguredFontToFrame(frame, fontPath, fontSize, fontOutline)
     if not frame then
         return
@@ -3417,6 +3489,10 @@ function Mod:ApplyConfiguredFontToFrame(frame, fontPath, fontSize, fontOutline)
 
     if frame.SetFont then
         pcall(frame.SetFont, frame, fontPath, fontSize, fontOutline)
+    end
+    local family = frame.SetFontObject and GetChatFontFamily(fontPath, fontSize, fontOutline)
+    if family then
+        pcall(frame.SetFontObject, frame, family)
     end
 
     self:EnableChatFrameTextFontFallback(frame, fontPath)
@@ -3472,13 +3548,35 @@ function Mod:GetTabTextColor(tabId)
 
     return 0.9, 0.9, 0.95
 end
+-- The General tab follows the General window's own message groups (Blizzard's
+-- chat settings for ChatFrame1), as Blizzard's chat does. An event whose
+-- group that window does not carry stays out of General: by Blizzard's default
+-- that is the Combat Log's share (Tradeskills such as "X creates Y", XP, pet
+-- info...). Entries without an event (prints, mirrored lines) always show.
+function Mod:GeneralShowsEvent(event)
+    if type(event) ~= "string" then return true end
+    local group = _G.ChatTypeGroupInverted and _G.ChatTypeGroupInverted[event]
+    local frame = _G.ChatFrame1
+    if not group or not frame then return true end
+    local ok, shows = pcall(function()
+        if frame.ContainsMessageGroup then
+            return frame:ContainsMessageGroup(group)
+        end
+        for _, messageGroup in pairs(frame.messageTypeList or {}) do
+            if messageGroup == group then return true end
+        end
+        return false
+    end)
+    return not ok or shows == true
+end
+
 function Mod:BuildTabFilter(config)
     local mode = strupper(tostring(config and config.filterMode or "ALL"))
     local channelMatch = strlower(strtrim(tostring(config and config.channelMatch or "")))
 
     if mode == "GENERAL" then
         return function(entry)
-            return entry ~= nil and entry.chatType ~= "COMBAT"
+            return entry ~= nil and entry.chatType ~= "COMBAT" and self:GeneralShowsEvent(entry.event)
         end
     elseif mode == "COMBAT" then
         return function(entry)
@@ -3579,10 +3677,22 @@ function Mod:ApplyFrameFading(frame)
         return
     end
 
-    local enabled = self.db and self.db.fadeEnabled ~= false
+    -- As in Blizzard's chat: the window fade dims only the
+    -- frame around the text (panel, tabs, buttons); the messages ignore it and
+    -- each line fades on its own after fadeLineTime seconds.
+    if frame.SetIgnoreParentAlpha then frame:SetIgnoreParentAlpha(true) end
+    local enabled = not self.db or self.db.fadeLines ~= false
     frame:SetFading(enabled)
-    if frame.SetTimeVisible then frame:SetTimeVisible((self.db and self.db.fadeTimeVisible) or 24) end
-    if frame.SetFadeDuration then frame:SetFadeDuration((self.db and self.db.fadeDuration) or 8) end
+    if frame.SetTimeVisible then frame:SetTimeVisible((self.db and self.db.fadeLineTime) or 120) end
+    if frame.SetFadeDuration then frame:SetFadeDuration(3) end
+end
+
+-- Opacity the window rests at once idle (0 hides it; 1 never fades).
+function Mod:GetFadeRestAlpha()
+    local alpha = tonumber(self.db and self.db.fadeRestAlpha) or 0.3
+    if alpha < 0 then return 0 end
+    if alpha > 1 then return 1 end
+    return alpha
 end
 
 function Mod:RecordChatActivity()
@@ -3678,7 +3788,7 @@ function Mod:ScheduleWindowFade()
             return
         end
 
-        self:StartWindowAlphaFade(liveWindow, 0, self.db.fadeDuration or 8)
+        self:StartWindowAlphaFade(liveWindow, self:GetFadeRestAlpha(), self.db.fadeDuration or 8)
     end)
 end
 function Mod:RegisterPopups()
@@ -4041,32 +4151,6 @@ function Mod:OnEnable()
     KT:RegisterChatCommand("ktchatdebug", function(input)
         self:HandlePositionDebugCommand(input)
     end)
-end
-
-function Mod:EnsureWindowFadeWake(window)
-    if not window or window.KT_FadeWakeWatcher then return end
-    local watcher = CreateFrame("Frame", nil, UIParent)
-    watcher.elapsed = 0
-    watcher.wasInside = false
-    watcher:SetScript("OnUpdate", function(self, elapsed)
-        self.elapsed = self.elapsed + elapsed
-        if self.elapsed < 0.08 then return end
-        self.elapsed = 0
-        if not window:IsShown() then return end
-        local scale = UIParent:GetEffectiveScale()
-        local x, y = GetCursorPosition()
-        x, y = x / scale, y / scale
-        local left, right, bottom, top = window:GetLeft(), window:GetRight(), window:GetBottom(), window:GetTop()
-        local inside = left and right and bottom and top and x >= left and x <= right and y >= bottom and y <= top
-        if inside and not self.wasInside then
-            Mod:ShowWindowForActivity(false)
-        elseif not inside and self.wasInside then
-            Mod:RecordChatActivity()
-            Mod:ScheduleWindowFade()
-        end
-        self.wasInside = inside and true or false
-    end)
-    window.KT_FadeWakeWatcher = watcher
 end
 
 function Mod:RestoreBlizzardBNWhispers()
@@ -4712,7 +4796,6 @@ function Mod:RecoverChatLayoutAfterWorldChange(trigger)
     self:UpdateSidebarLayout()
     self:UpdateSocialButton()
     self:UpdateScrollButtonVisibility()
-    self:EnsureWindowFadeWake(window)
     self:QueueChatLayoutReflow()
     self:RecordPositionDebug("RecoverChatLayout end: " .. tostring(trigger or "scheduled"))
 end
@@ -6683,6 +6766,21 @@ function Mod:HookBlizzardMessageMirror()
     end
 
     self.blizzardMessageMirrorHooked = true
+    -- Blizzard's chat settings add/remove ChatFrame1's message groups: redraw so
+    -- the General tab follows them at once (see GeneralShowsEvent).
+    local function queueGeneralRefresh()
+        if Mod._generalGroupsRefreshQueued then return end
+        Mod._generalGroupsRefreshQueued = true
+        C_Timer.After(0, function()
+            Mod._generalGroupsRefreshQueued = nil
+            if Mod.RenderAllFrames then Mod:RenderAllFrames() end
+        end)
+    end
+    for _, method in ipairs({ "AddMessageGroup", "RemoveMessageGroup", "AddSingleMessageType" }) do
+        if type(_G.ChatFrame1[method]) == "function" then
+            hooksecurefunc(_G.ChatFrame1, method, queueGeneralRefresh)
+        end
+    end
     hooksecurefunc(_G.ChatFrame1, "AddMessage", function(_, text, r, g, b)
         if not Mod then
             return
@@ -8262,6 +8360,8 @@ function Mod:CreateNativeWindow()
     window:SetFrameStrata("MEDIUM")
     window:SetFrameLevel(20)
     window:SetAlpha(1)
+    -- The only hover watcher for the window: it wakes the window and re-arms
+    -- the fade. A second cursor-rect watcher used to repeat this every 0.08 s.
     window.KT_HoverElapsed = 0
     window:SetScript("OnUpdate", function(chatWindow, elapsed)
         chatWindow.KT_HoverElapsed = (chatWindow.KT_HoverElapsed or 0) + elapsed
@@ -8548,11 +8648,10 @@ function Mod:CreateNativeWindow()
     self:UpdateSocialButton()
     self:PrimeDedicatedNativeTabFrames(window.KT_Content)
     self:UpdateScrollButtonVisibility()
-    self:EnsureWindowFadeWake(window)
 
     if self.db.fadeEnabled ~= false and not (_G.ChatFrame1EditBox and _G.ChatFrame1EditBox:IsShown()) then
         if #self.history == 0 then
-            window:SetAlpha(0)
+            window:SetAlpha(self:GetFadeRestAlpha())
         else
             self:ScheduleWindowFade()
         end

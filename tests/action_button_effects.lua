@@ -22,6 +22,18 @@ local function region(parent)
     function methods:IsEnabled()return true end
     function methods:Show()self.shown=true end
     function methods:Hide()self.shown=false end
+    function methods:SetShown(value)self.shown=value and true or false end
+    function methods:CreateMaskTexture()return region(self)end
+    function methods:AddMaskTexture(mask)self.mask=mask end
+    function methods:CreateAnimationGroup()
+        local group={playing=false,anims={}}
+        function group:CreateAnimation(kind)local a=region(self);a.kind=kind;self.anims[#self.anims+1]=a;return a end
+        function group:Play()self.playing=true end
+        function group:Stop()self.playing=false end
+        function group:IsPlaying()return self.playing end
+        function group:SetLooping(value)self.looping=value end
+        return group
+    end
     return setmetatable(r,{__index=function(_,key)
         if methods[key]then return methods[key]end
         if key:match("^Set") or key:match("^Clear") then return function()end end
@@ -72,16 +84,24 @@ load("Modules/VisualThemes/ThemeBrutalCard.lua")
 local card=region();local callback=function()clicked=clicked+1 end
 card:SetScript("OnClick",callback)
 local c=kt.BrutalCard.Style(card,{accent={0.9,0.4,0.1},inUse=false})
-assert(c.body.scale==1 and c.radius==19 and not c.shadow and not c.disc,"previous effects removed")
-kt.BrutalCard.SetHover(card,true);card.scripts.OnUpdate(card,0.125)
-assert(c.body.scale<1 and c.body.scale>0.98 and c.radius<19 and c.radius>18)
-card.scripts.OnUpdate(card,0.125)
-assert(c.body.scale==0.98 and c.radius==18 and not card.scripts.OnUpdate,"250ms package hover")
-assert(c.glow.color[1]==0.9 and c.glow.color[2]==0.4 and c.glow.color[4]==0.3,"halo retains existing theme accent")
+-- CSS card: rotating accent band behind a #151515 body, 160px x 160% band.
+assert(c.body and c.band and c.spin and #c.blobs==3,"card parts")
+assert(math.abs(c.band.w-140*0.84)<0.01 and math.abs(c.band.h-34*1.6)<0.01,"band sized like .back::before")
+assert(c.band.mask,"band clipped to the rounded card")
+assert(c.spin.looping=="REPEAT" and c.spin.anims[1].kind=="Rotation","5s linear rotation")
+assert(not c.band.shown and not c.spin.playing,"idle: no band")
+for _,b in ipairs(c.blobs)do assert(b.tex.color[4]==0)end
+kt.BrutalCard.SetHover(card,true)
+assert(c.band.shown and c.spin.playing,"hover runs the band")
+assert(c.band.color[1]==0.9 and c.band.color[2]==0.4,"band in the card's accent")
+for _,b in ipairs(c.blobs)do assert(b.tex.color[4]>0 and b.anim.playing,"hover circles float")end
 assert(card.scripts.OnClick==callback and card.w==140,"hover preserves layout and apply callback")
-kt.BrutalCard.SetHover(card,false);card.scripts.OnUpdate(card,0.25)
-assert(c.body.scale==1 and c.glow.color[4]==0)
-print("visual_style_cards: replacement package hover, rounded inner body, accent and callbacks passed")
+kt.BrutalCard.SetHover(card,false)
+assert(not c.band.shown and not c.spin.playing)
+kt.BrutalCard.SetInUse(card,true)
+assert(c.band.shown and c.spin.playing,"the card in use keeps its band running")
+for _,b in ipairs(c.blobs)do assert(b.tex.color[4]==0)end
+print("visual_style_cards: CSS card band, hover circles, accent and callbacks passed")
 
 local themeSource=assert(io.open(root.."/KullThranUI/Modules/VisualThemes/ThemePreview.lua")):read("*a")
 local cardStart=assert(themeSource:find("function KT.VisualThemes:CreateThemeCard",1,true))

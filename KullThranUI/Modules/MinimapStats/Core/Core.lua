@@ -136,3 +136,18 @@ function MinimapStats:OnEnable()
         MS:AssignTooltipScripts()
     end)
 end
+
+-- Fixed-rate refresh for the text stats. A C_Timer ticker sleeps in the engine
+-- between fires, where the old accumulator OnUpdate ran Lua every rendered frame.
+-- Calling it again replaces the ticker; without fn it only stops it.
+function MS:SetStatTicker(frame, interval, fn)
+    if frame._ktStatTicker then
+        frame._ktStatTicker:Cancel()
+        frame._ktStatTicker = nil
+    end
+    if not fn then return end
+    frame._ktStatTicker = C_Timer.NewTicker(math.max(tonumber(interval) or 1, 0.1), function()
+        -- An OnUpdate only ran while the frame was visible.
+        if frame:IsVisible() then fn(frame) end
+    end)
+end

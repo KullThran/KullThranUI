@@ -126,6 +126,9 @@ function oUF:DisableBlizzard(unit)
 		handleFrame(PetFrame)
 	elseif(unit == 'target') then
 		handleFrame(TargetFrame)
+		-- Retail parents the target combo points to UIParent (anchored to
+		-- TargetFrame), so they would keep drawing next to our own ring.
+		handleFrame('ComboFrame')
 	elseif(unit == 'focus') then
 		handleFrame(FocusFrame)
 	elseif(unit:match('boss%d?$')) then
