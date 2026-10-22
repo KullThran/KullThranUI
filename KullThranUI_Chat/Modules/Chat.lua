@@ -3457,6 +3457,12 @@ local function GetChatFontFamily(path, size, flags)
     end
     chatFontFamilyCount = chatFontFamilyCount + 1
     local ok, family = pcall(_G.CreateFontFamily, "KTChatFontFamily" .. chatFontFamilyCount, members)
+    if ok and family then
+        -- A font object carries its own justification (centred by default) and
+        -- hands it to the chat frame: keep the chat's left / top layout.
+        if family.SetJustifyH then family:SetJustifyH("LEFT") end
+        if family.SetJustifyV then family:SetJustifyV("TOP") end
+    end
     chatFontFamilies[key] = (ok and family) or false
     return ok and family or nil
 end
@@ -3493,6 +3499,7 @@ function Mod:ApplyConfiguredFontToFrame(frame, fontPath, fontSize, fontOutline)
     local family = frame.SetFontObject and GetChatFontFamily(fontPath, fontSize, fontOutline)
     if family then
         pcall(frame.SetFontObject, frame, family)
+        if frame.SetJustifyH then pcall(frame.SetJustifyH, frame, "LEFT") end
     end
 
     self:EnableChatFrameTextFontFallback(frame, fontPath)
