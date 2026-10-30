@@ -1,0 +1,12 @@
+local _, ns = ...
+local M = ns:NewModule('StanceBar')
+M.OnLoad = function()
+    C_Timer.After(1, function()
+        if not StanceButton1 then return end
+        local bar = ns.ButtonBar:New("Stance Bar")
+        for i = 1, 10 do
+            local btn = _G["StanceButton"..i]
+            if btn then bar:AddButton(btn) end
+        end
+    end)
+end

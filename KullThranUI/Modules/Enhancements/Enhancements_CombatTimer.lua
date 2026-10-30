@@ -1,0 +1,435 @@
+-- ============================================================================
+-- ENHANCEMENTS - COMBAT TIMER
+-- ============================================================================
+-- Cronometro de duracion del combate actual. Arranca en PLAYER_REGEN_DISABLED,
+-- detiene y muestra el total al salir de combate (PLAYER_REGEN_ENABLED),
+-- con un registro de mover para colocarlo en pantalla desde UnlockMode.
+-- ============================================================================
+local addonName, ns = ...
+local KT = (ns and ns.KT) or _G.KT
+if not KT then return end
+
+local Mod = ns.Enhancements or KT:GetModule("Enhancements", true)
+if not Mod then return end
+
+local GetTime = _G.GetTime
+local CreateFrame = _G.CreateFrame
+local format = _G.format
+local InCombatLockdown = _G.InCombatLockdown
+
+local issecretvalue = _G.issecretvalue
+local function IsSecretValue(value)
+    if value == nil or not issecretvalue then
+        return false
+    end
+    return issecretvalue(value) == true
+end
+
+local function LText(text)
+    if type(text) ~= "string" then
+        return text
+    end
+    local locale = KT.GetLocale and KT:GetLocale()
+    return locale and locale[text] or text
+end
+
+local function GetConfig()
+    local profile = KT.db.profile
+    profile.enhancements = profile.enhancements or {}
+    profile.enhancements.combatTimer = profile.enhancements.combatTimer or {}
+    return profile.enhancements.combatTimer
+end
+
+local function GetTimerPosition()
+    local unlock = KT:GetModule("UnlockMode", true)
+    local pending = unlock and unlock.isOpen and unlock.pendingPositions
+        and unlock.pendingPositions.ENH_COMBAT_TIMER
+    if pending and pending.point then return pending end
+
+    -- Unlock Mode owns the persisted position; module defaults must not replace it.
+    local editMode = KT.db.profile.editMode
+    local saved = editMode and editMode.frames and editMode.frames.ENH_COMBAT_TIMER
+    if saved and saved.point then return saved end
+    return GetConfig().position
+end
+
+local function FormatCombatTime(seconds)
+    seconds = math.max(0, tonumber(seconds) or 0)
+    local total = math.floor(seconds)
+    local m = math.floor(total / 60)
+    local s = total % 60
+    return format("%d:%02d", m, s)
+end
+
+local state = {
+    running = false,
+    startedAt = nil,
+    lastShown = nil,
+    showUntil = nil,
+}
+
+local function UpdateFrameWidth(frame)
+    local text = frame and frame.timerText
+    if not (text and text.GetStringWidth) then return end
+
+    -- The timer is text-only by default, so its frame (and Unlock Mode mover)
+    -- should follow the rendered value instead of reserving a fixed 120 px.
+    local width = tonumber(text:GetStringWidth())
+    if width and width > 0 then
+        frame:SetWidth(math.ceil(width))
+    end
+end
+
+local function BuildUI()
+    if Mod.combatTimerFrame then
+        return Mod.combatTimerFrame
+    end
+
+    local f = CreateFrame("Frame", "KullThranUICombatTimer", UIParent, "BackdropTemplate")
+    f:SetSize(1, 40)
+    f:SetFrameStrata("LOW")
+    f:SetFrameLevel(80)
+    if KT.AddBackdrop then KT:AddBackdrop(f, 0.01, 0.01, 0.015, 0.78) end
+    if KT.AddBorder then KT:AddBorder(f, 0.2, 0.2, 0.25, 0.9) end
+
+    f.timerText = f:CreateFontString(nil, "OVERLAY")
+    f.timerText:SetPoint("CENTER")
+    f.timerText:SetJustifyH("CENTER")
+    -- Always give the FontString a base font at creation: SetText before any
+    -- style application throws "FontString:SetText(): Font not set".
+    pcall(f.timerText.SetFont, f.timerText, "Fonts\\FRIZQT__.TTF", 22, "OUTLINE")
+    f.timerText:SetText("0:00")
+
+    -- Visible at 0:00 when idle so the element can always be found/moved in
+    -- Unlock Mode; the count starts on combat entry.
+    f:Show()
+    Mod.combatTimerFrame = f
+    return f
+end
+
+local function ApplyStyle()
+    local f = BuildUI()
+    local config = GetConfig()
+    local fs = f.timerText
+    local font = "Fonts\\FRIZQT__.TTF"
+    local size = tonumber(config.fontSize) or 22
+    local flags = config.outline or "OUTLINE"
+    local okFont = pcall(fs.SetFont, fs, font, size, flags)
+    if not okFont or not fs.GetFont then
+        pcall(fs.SetFont, fs, font, size, "OUTLINE")
+    end
+
+    UpdateFrameWidth(f)
+    local color = config.color or { r = 1, g = 1, b = 1, a = 1 }
+    fs:SetTextColor(color.r or 1, color.g or 1, color.b or 1, color.a or 1)
+    -- Fully remove the backdrop + border when the background toggle is off
+    -- (SetBackdropColor alpha 0 was the intended route but the backdrop is a
+    -- SetBackdrop texture, not f.backdrop).
+    local showBg = config.showBackground == true
+    local bg = config.backgroundColor or { r = 0.01, g = 0.01, b = 0.015, a = 0.78 }
+    if f.SetBackdropColor then
+        f:SetBackdropColor(bg.r or 0.01, bg.g or 0.01, bg.b or 0.015, showBg and (bg.a or 0.78) or 0)
+    end
+    if f._ktBackdropTexture then
+        f._ktBackdropTexture:SetColorTexture(bg.r or 0.01, bg.g or 0.01, bg.b or 0.015, showBg and (bg.a or 0.78) or 0)
+    end
+    if f._ktBorderFrame then
+        f._ktBorderFrame:SetShown(showBg)
+    end
+    local px = tonumber(config.scale) or 1
+    f:SetScale(px)
+end
+
+function Mod:UpdateCombatTimerText(seconds)
+    if IsSecretValue(seconds) then return end
+    local fs = self.combatTimerFrame and self.combatTimerFrame.timerText
+    if fs then
+        local value = FormatCombatTime(seconds)
+        if state.lastShown == value then return end
+        -- SetText requires the FontString to have a valid font set; guard so a
+        -- font never being applied cannot throw during refresh/init.
+        local ok = pcall(fs.SetText, fs, value)
+        if ok then
+            state.lastShown = value
+            UpdateFrameWidth(self.combatTimerFrame)
+        end
+    end
+end
+
+function Mod:ShowCombatTimer()
+    local config = GetConfig()
+    if config.enabled ~= true then return end
+    BuildUI()
+    ApplyStyle()
+    self:ApplyCombatTimerPosition()
+    self.combatTimerFrame:Show()
+end
+
+function Mod:HideCombatTimer()
+    if self.combatTimerFrame then
+        self.combatTimerFrame:Hide()
+    end
+end
+
+function Mod:StartCombatTimer()
+    BuildUI()
+    ApplyStyle()
+    self:ApplyCombatTimerPosition()
+    state.running = true
+    state.startedAt = GetTime()
+    state.showUntil = nil
+    self.combatTimerFrame:SetScript("OnUpdate", function()
+        local current = GetTime()
+        Mod:UpdateCombatTimerText(current - (state.startedAt or current))
+    end)
+    self.combatTimerFrame:Show()
+    self:UpdateCombatTimerText(0)
+end
+
+function Mod:StopCombatTimer(showTotal)
+    if not state.running then return end
+    local total = GetTime() - (state.startedAt or GetTime())
+    state.running = false
+    if self.combatTimerFrame then
+        self.combatTimerFrame:SetScript("OnUpdate", nil)
+    end
+    if showTotal ~= false then
+        -- Keep the final total visible for a few seconds, then return to 0:00.
+        self.combatTimerFrame:Show()
+        self:UpdateCombatTimerText(total)
+        state.showUntil = GetTime() + 3
+        if not state._heldTimer then
+            state._heldTimer = CreateFrame("Frame", nil, UIParent)
+        end
+        state._heldTimer:SetScript("OnUpdate", function(self, elapsed)
+            if state.showUntil and GetTime() >= state.showUntil then
+                if Mod.combatTimerFrame then
+                    Mod:UpdateCombatTimerText(0)
+                end
+                state.showUntil = nil
+                self:SetScript("OnUpdate", nil)
+            end
+        end)
+    else
+        self:UpdateCombatTimerText(0)
+    end
+end
+
+function Mod:RegisterCombatTimerMover()
+    if self.combatTimerMoverRegistered or not (KT and KT.RegisterMovableElements) then
+        return
+    end
+
+    KT:RegisterMovableElements({
+        {
+            key = "ENH_COMBAT_TIMER",
+            label = "Combat Timer",
+            group = "Enhancements",
+            getFrame = function() return Mod:GetCombatTimerFrame() end,
+            getSize = function()
+                local frame = Mod:GetCombatTimerFrame()
+                if frame and frame.GetWidth then
+                    return frame:GetWidth(), frame:GetHeight()
+                end
+                return 1, 40
+            end,
+            isHidden = function() return false end,
+            loadPosition = function()
+                local position = GetTimerPosition()
+                return {
+                    point = position and position.point or "CENTER",
+                    relativePoint = position and position.relativePoint or "CENTER",
+                    x = position and position.x or 0,
+                    y = position and position.y or 150,
+                }
+            end,
+            savePosition = function(_, point, relativePoint, x, y)
+                GetConfig().position = {
+                    point = point or "CENTER",
+                    relativePoint = relativePoint or point or "CENTER",
+                    x = x or 0,
+                    y = y or 150,
+                }
+                local profile = KT.db.profile
+                profile.editMode = profile.editMode or {}
+                profile.editMode.frames = profile.editMode.frames or {}
+                local saved = profile.editMode.frames.ENH_COMBAT_TIMER or {}
+                local position = GetConfig().position
+                saved.point, saved.relativePoint = position.point, position.relativePoint
+                saved.x, saved.y = position.x, position.y
+                profile.editMode.frames.ENH_COMBAT_TIMER = saved
+                if C_Timer then C_Timer.After(0, function() Mod:RememberCombatTimerOffset() end) end
+            end,
+            applyPosition = function()
+                Mod:ApplyCombatTimerPosition()
+            end,
+            applyPendingPosition = function(_, pos)
+                local frame = Mod:GetCombatTimerFrame()
+                frame:ClearAllPoints()
+                frame:SetPoint(
+                    pos and pos.point or "CENTER",
+                    UIParent,
+                    pos and pos.relativePoint or "CENTER",
+                    pos and pos.x or 0,
+                    pos and pos.y or 150
+                )
+            end,
+        },
+    })
+    self.combatTimerMoverRegistered = true
+end
+
+function Mod:GetCombatTimerFrame()
+    return BuildUI()
+end
+
+function Mod:ApplyCombatTimerPosition()
+    local f = self:GetCombatTimerFrame()
+    local position = GetTimerPosition() or { point = "CENTER", relativePoint = "CENTER", x = 0, y = 150 }
+    f:ClearAllPoints()
+    f:SetPoint(position.point or "CENTER", UIParent, position.relativePoint or "CENTER",
+        tonumber(position.x) or 0, tonumber(position.y) or 150)
+end
+
+function Mod:RefreshCombatTimer()
+    ApplyStyle()
+    if state.running then
+        if not self.combatTimerFrame then BuildUI() end
+        self.combatTimerFrame:Show()
+        self:UpdateCombatTimerText(GetTime() - (state.startedAt or GetTime()))
+    end
+end
+
+function Mod:InitCombatTimer()
+    BuildUI()
+    ApplyStyle()
+    self:ApplyCombatTimerPosition()
+    if _G.InCombatLockdown and _G.InCombatLockdown() then
+        state.running = true
+        state.startedAt = GetTime()
+        self.combatTimerFrame:SetScript("OnUpdate", function()
+            local current = GetTime()
+            Mod:UpdateCombatTimerText(current - (state.startedAt or current))
+        end)
+        self.combatTimerFrame:Show()
+    end
+end
+
+local function OnClickHandler(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        Mod:StartCombatTimer()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        Mod:StopCombatTimer()
+    end
+end
+
+local function InstallHooks()
+    if Mod._ktCombatTimerHooked then return end
+    Mod._ktCombatTimerHooked = true
+    local driver = CreateFrame("Frame", "KullThranUICombatTimerEvents", UIParent)
+    driver:RegisterEvent("PLAYER_REGEN_DISABLED")
+    driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+    driver:SetScript("OnEvent", OnClickHandler)
+end
+
+-- The timer is saved in screen coordinates, but players place it next to
+-- the player frame, and a Visual Style change resizes that frame (stock box,
+-- 132% Retail scale...), leaving the timer adrift. While it sits near the
+-- player frame it remembers where it is relative to the frame's visible art
+-- (centre and top edge, as measured by Unit Frames) and follows it.
+local FOLLOW_RANGE_X, FOLLOW_RANGE_Y = 260, 200
+
+local function PlayerArtAnchor()
+    local pf = _G.KullThranUI_UF_Player
+    if not (pf and pf:IsShown()) then return nil end
+    local left, right, top = pf:GetLeft(), pf:GetRight(), pf:GetTop()
+    if not (left and right and top) then return nil end
+    local footprint = _G.KullThranUI_GetPlayerFootprint
+    if footprint then
+        local ok, l, r, t = pcall(footprint)
+        if ok and l and r and t then left, right, top = left + l, left + r, top + t end
+    end
+    local k = pf:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return (left + right) * 0.5 * k, top * k
+end
+
+local function TimerCenter(frame)
+    local cx, cy = frame:GetCenter()
+    if not (cx and cy) then return nil end
+    local k = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return cx * k, cy * k
+end
+
+function Mod:RememberCombatTimerOffset()
+    local frame = self.combatTimerFrame
+    if not frame then return end
+    local ax, ay = PlayerArtAnchor()
+    local tx, ty = TimerCenter(frame)
+    if not (ax and tx) then return end
+    local dx, dy = tx - ax, ty - ay
+    if math.abs(dx) <= FOLLOW_RANGE_X and math.abs(dy) <= FOLLOW_RANGE_Y then
+        state.followOffset = { dx = dx, dy = dy }
+    else
+        state.followOffset = nil
+    end
+end
+
+function Mod:FollowPlayerFrame()
+    local frame, offset = self.combatTimerFrame, state.followOffset
+    if not (frame and offset) or (InCombatLockdown and InCombatLockdown()) then return end
+    local unlock = KT:GetModule("UnlockMode", true)
+    if unlock and unlock.isOpen then return end
+    local ax, ay = PlayerArtAnchor()
+    if not ax then return end
+    local tx, ty = ax + offset.dx, ay + offset.dy
+    local cx, cy = TimerCenter(frame)
+    if cx and math.abs(cx - tx) < 0.5 and math.abs(cy - ty) < 0.5 then return end
+    -- Saved as CENTER/CENTER, in the timer's own (scaled) units.
+    local ux, uy = UIParent:GetCenter()
+    local k = UIParent:GetEffectiveScale() / frame:GetEffectiveScale()
+    local position = { point = "CENTER", relativePoint = "CENTER", x = (tx - ux) * k, y = (ty - uy) * k }
+    GetConfig().position = position
+    local profile = KT.db.profile
+    profile.editMode = profile.editMode or {}
+    profile.editMode.frames = profile.editMode.frames or {}
+    local saved = profile.editMode.frames.ENH_COMBAT_TIMER
+    if saved and saved.point then
+        saved.point, saved.relativePoint, saved.x, saved.y = "CENTER", "CENTER", position.x, position.y
+    end
+    self:ApplyCombatTimerPosition()
+end
+
+local function HookFollowPlayerFrame()
+    local themes = KT.VisualThemes
+    if Mod._ktTimerFollowHooked or not (themes and hooksecurefunc) then return end
+    Mod._ktTimerFollowHooked = true
+    local pending
+    local function OnArt(_, frame)
+        if pending or not (frame and frame.GetName and frame:GetName() == "KullThranUI_UF_Player") then return end
+        pending = true
+        C_Timer.After(0.1, function()
+            pending = nil
+            Mod:FollowPlayerFrame()
+        end)
+    end
+    for _, method in ipairs({ "ApplyClassicUnitFrameArt", "ClearClassicUnitFrameArt",
+        "ApplyForeverUnitFrameArt", "ClearForeverUnitFrameArt" }) do
+        if type(themes[method]) == "function" then hooksecurefunc(themes, method, OnArt) end
+    end
+    if type(themes.ApplyAll) == "function" then
+        hooksecurefunc(themes, "ApplyAll", function()
+            C_Timer.After(0.3, function() Mod:FollowPlayerFrame() end)
+        end)
+    end
+    -- First measure once the unit frames have settled after login.
+    C_Timer.After(2, function() Mod:RememberCombatTimerOffset() end)
+end
+
+Mod._ktCombatTimerInit = function()
+    local config = GetConfig()
+    if config.enabled == true then
+        InstallHooks()
+        Mod:InitCombatTimer()
+        HookFollowPlayerFrame()
+    end
+end

@@ -1,0 +1,12 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Teleport Menu
+## Notes: KullThranUI module: Teleport Menu
+## Author: KullThran
+## Version: 6.0.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\TeleportMenu\TeleportAtlas.lua
+Modules\TeleportMenu\TeleportMenu.lua
+Modules\TeleportMenu\TeleportMenu_Options.lua

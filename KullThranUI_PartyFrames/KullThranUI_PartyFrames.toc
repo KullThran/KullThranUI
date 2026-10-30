@@ -1,0 +1,16 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Party Frames
+## Notes: KullThranUI module: Party Frames
+## Author: KullThran
+## Version: 6.0.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+KUI_PF_Debug.lua
+Modules\PartyFrames\ArenaDRData.lua
+Modules\PartyFrames\PartyFrames.lua
+Modules\PartyFrames\PartyFrames_Styles.lua
+Modules\PartyFrames\PartyFrames_AuraContainers.lua
+Modules\PartyFrames\PartyFrames_PortraitAuras.lua
+Modules\PartyFrames\PartyFrames_Options.lua

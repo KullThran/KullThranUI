@@ -1,0 +1,24 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Unit Frames
+## Notes: KullThranUI module: Unit Frames
+## Author: KullThran
+## Version: 6.0.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+..\KullThranUI\Modules\UnitFramesWidth.lua
+Modules\KUIUnitFrames\KUI_NativeClassResources.lua
+Modules\KUIUnitFrames\KUI_TargetAuraSync.lua
+Modules\KUIUnitFrames\KUIUnitFrames.lua
+Modules\KUIUnitFrames\KUI_PortraitAuras.lua
+Modules\KUIUnitFrames\KUI_ComboUnderFrame.lua
+Modules\KUIUnitFrames\KUI_ThemeOrnaments.lua
+Modules\KUIUnitFrames\KUI_AggroGlow.lua
+Modules\KUIUnitFrames\KUI_BarGloss.lua
+Modules\KUIUnitFrames\KUI_HitText.lua
+Modules\KUIUnitFrames\KUI_AltMana.lua
+Modules\KUIUnitFrames\KUI_PlayerFootprint.lua
+Modules\KUIUnitFrames\KUI_HealPrediction.lua
+Modules\KUIUnitFrames\KUI_BarFrameArt.lua
+Modules\KUIUnitFrames\KUI_UnitFrames_Options.lua

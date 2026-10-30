@@ -1,0 +1,12 @@
+
+# Copias locales y artefactos de release (no publicar)
+_backup_*/
+*.bak
+*.bak-*
+scratch/
+zz_*
+
+# Local development files
+/.vscode/
+/docs/
+/tests/

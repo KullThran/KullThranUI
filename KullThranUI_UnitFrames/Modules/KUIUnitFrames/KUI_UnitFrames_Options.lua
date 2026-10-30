@@ -1,0 +1,3240 @@
+local addonName, ns = ...
+local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+local W = KT.Widgets
+local LSM = LibStub("LibSharedMedia-3.0", true)
+
+local function LText(text)
+    if type(text) ~= "string" then return text end
+    if KT and KT.GetLocale then
+        local L = KT:GetLocale()
+        if L then return L[text] end
+    end
+    return text
+end
+
+local function GetDB()
+    if not (KT and KT.db and KT.db.profile) then return nil end
+    KT.db.profile.unitFrames = KT.db.profile.unitFrames or {}
+    if KT.db.profile.unitFrames.enable == nil then
+        KT.db.profile.unitFrames.enable = true
+    end
+    return KT.db.profile.unitFrames
+end
+
+local function GetModule()
+    return KT:GetModule("UnitFrames", true)
+end
+
+local previewRefresh
+local PREVIEW_DEFAULT_FONT = KT.FONT_PATH or KT.FALLBACK_FONT_PATH or "Fonts\\FRIZQT__.TTF"
+local PREVIEW_FONT = PREVIEW_DEFAULT_FONT
+local PREVIEW_FILL = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\CustomTextures\\MelliReforged.tga"
+local PREVIEW_BG = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\MelliDark.tga"
+local PREVIEW_CLASS_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
+local PREVIEW_PORTRAIT_MEDIA = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\portraits\\"
+local PREVIEW_CIRCLE_MASK = PREVIEW_PORTRAIT_MEDIA .. "circle_mask.tga"
+local PREVIEW_CIRCLE_BORDER = PREVIEW_PORTRAIT_MEDIA .. "circle_border.tga"
+local PREVIEW_ABSORB_VALUE = 22
+local PREVIEW_DYNAMIC_UNITS = { "pet", "focus", "target", "totPet", "focustarget" }
+
+-- The level the preview frames show: this client's own level cap (a hard-coded 70/80 made no
+-- sense on Forever). Same lookups the Experience Bar uses.
+local function PreviewMaxLevel()
+    local level
+    if _G.GetMaxPlayerLevel then level = _G.GetMaxPlayerLevel() end
+    if not level and _G.GetMaxLevelForPlayerExpansion then
+        local ok, value = pcall(_G.GetMaxLevelForPlayerExpansion)
+        level = ok and value or nil
+    end
+    level = tonumber(level) or tonumber(_G.MAX_PLAYER_LEVEL) or 60
+    return tostring(level)
+end
+
+-- Real stock geometry inside Blizzard's 232x100 unit-frame box. Mirrors
+-- FOREVER_FRAME_GEOMETRY in ThemeClientAssets.lua so the preview can seat the
+-- genuine stock artwork on the preview units. Only player and target have
+-- verified geometry, so only those two ever get stock art.
+-- Keyed by kit: Classic uses a completely different
+-- raw-texture-with-texcoord-fractions technique (see CLASSIC_FRAME_GEOMETRY
+-- in ThemeClientAssets.lua) and different portrait/health/power/name
+-- positions than Forever/Retail's atlas-based art, so reusing one table for
+-- every theme made the preview mismatch the active theme and sit
+-- misaligned.
+local PREVIEW_STOCK_GEOMETRY = {
+    forever = {
+        player = {
+            w = 232, h = 100,
+            art = "UI-HUD-UnitFrame-Player-PortraitOn",
+            mirror = nil,
+            portrait = { point = "TOPLEFT", x = 24, y = -19, size = 60 },
+            health = { x = 85, y = 40, w = 124, h = 20 },
+            power = { x = 85, y = 61, w = 124, h = 10 },
+            name = { x = 88, y = -27, w = 96, h = 14 },
+        },
+        target = {
+            w = 232, h = 100,
+            art = "UI-HUD-UnitFrame-Player-PortraitOn",
+            mirror = true,
+            portrait = { point = "TOPRIGHT", x = -24, y = -19, size = 60 },
+            health = { x = 23, y = 40, w = 124, h = 20 },
+            power = { x = 23, y = 61, w = 124, h = 10 },
+            name = { x = 48, y = -27, w = 96, h = 14 },
+        },
+        -- Pet: mini ToT atlas (mirrors PetArt.geom.forever in ThemeClientAssets.lua).
+        pet = {
+            w = 120, h = 49,
+            art = "UI-HUD-UnitFrame-TargetofTarget-PortraitOn",
+            portrait = { point = "TOPLEFT", x = 5, y = -5, size = 37 },
+            health = { x = 44, y = 17, w = 70, h = 10 },
+            power = { x = 40, y = 28, w = 74, h = 7 },
+            name = { x = 44, y = -5, w = 68 },
+        },
+    },
+    -- Classic's art is a raw fixed-path texture addressed by texcoord
+    -- fractions (l/r/t/b), not an atlas -- ApplyStockArtTexture can't
+    -- render it, so `rawTexture` + `texCoord` are handled separately in
+    -- ApplyStockLayoutToPreview.
+    classic = {
+        player = {
+            w = 232, h = 100,
+            rawTexture = [[Interface\TargetingFrame\UI-TargetingFrame]],
+            texCoord = { l = 1, r = 0.09375, t = 0, b = 0.78125 },
+            portrait = { point = "TOPLEFT", x = 42, y = -12, size = 64 },
+            health = { x = 106, y = 41, w = 119, h = 12 },
+            power = { x = 106, y = 52, w = 119, h = 12 },
+            -- CLASSIC_FRAME_GEOMETRY's own real name anchor is CENTER-based
+            -- (a different convention than Forever's TOPLEFT one this preview
+            -- code expects); approximated here as a TOPLEFT offset sitting
+            -- just above the health bar instead, close enough for a preview.
+            name = { x = 106, y = -30, w = 100, point = "CENTER", cx = 50, cy = 19 },
+        },
+        target = {
+            w = 232, h = 100,
+            rawTexture = [[Interface\TargetingFrame\UI-TargetingFrame]],
+            texCoord = { l = 0.09375, r = 1, t = 0, b = 0.78125 },
+            portrait = { point = "TOPRIGHT", x = -42, y = -12, size = 64 },
+            health = { x = 7, y = 41, w = 119, h = 12 },
+            power = { x = 7, y = 52, w = 119, h = 12 },
+            name = { x = 7, y = -30, w = 100, point = "CENTER", cx = -50, cy = 19 },
+        },
+        -- Pet: UI-SmallTargetingFrame (128x64 sheet in a 128x53 box); mirrors PetArt.geom.classic.
+        pet = {
+            w = 128, h = 53,
+            rawTexture = [[Interface\TargetingFrame\UI-SmallTargetingFrame]],
+            texCoord = { l = 0, r = 1, t = 0, b = 1 },
+            artW = 128, artH = 64, artX = 0, artY = -2,
+            portrait = { point = "TOPLEFT", x = 7, y = -6, size = 37 },
+            health = { x = 47, y = 22, w = 69, h = 8 },
+            power = { x = 47, y = 29, w = 69, h = 8 },
+            name = { x = 50, y = -9, w = 70 },
+        },
+    },
+}
+-- Focus uses Target's stock frame; ToT / Focus Target use the native mini
+-- frame. These aliases only select artwork, never a live unit or its settings.
+-- Retail keeps the geometry calibrated on Retail's art; Forever has its own,
+-- measured on the current Forever plate (same numbers as ThemeClientAssets).
+PREVIEW_STOCK_GEOMETRY.retail = PREVIEW_STOCK_GEOMETRY.forever
+PREVIEW_STOCK_GEOMETRY.forever = {
+    player = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        portrait = { point = "TOPLEFT", x = 24, y = -19, size = 60 },
+        health = { x = 91, y = 46.5, w = 120, h = 13 },
+        power = { x = 91, y = 62.5, w = 120, h = 8 },
+        name = { x = 93, y = -28.5, w = 114, h = 14 },
+        strip = { x = 91, y = 28.5, w = 120, h = 14 },
+    },
+    target = {
+        w = 232, h = 100,
+        art = "UI-HUD-UnitFrame-Player-PortraitOn",
+        mirror = true,
+        portrait = { point = "TOPRIGHT", x = -24, y = -19, size = 60 },
+        health = { x = 21, y = 46.5, w = 120, h = 13 },
+        power = { x = 21, y = 62.5, w = 120, h = 8 },
+        name = { x = 25, y = -28.5, w = 114, h = 14 },
+        strip = { x = 21, y = 28.5, w = 120, h = 14 },
+    },
+    pet = {
+        w = 120, h = 49,
+        art = "UI-HUD-UnitFrame-TargetofTarget-PortraitOn",
+        portrait = { point = "TOPLEFT", x = 6, y = -8, size = 33 },
+        health = { x = 47, y = 20, w = 67, h = 9 },
+        power = { x = 47, y = 31, w = 67, h = 6 },
+        name = { x = 48, y = -8, w = 65, h = 9 },
+    },
+}
+for _, kit in pairs(PREVIEW_STOCK_GEOMETRY) do
+    kit.focus = kit.target
+    kit.totPet, kit.focustarget = kit.pet, kit.pet
+end
+
+-- Forward declarations. ApplyStockPreviewColors (below) needs these two, but
+-- they are defined much further down this file. They MUST be declared local
+-- here, above every use: a `local` declared later would only scope from that
+-- point onward, so the earlier functions would resolve these names as globals
+-- (nil) and fail with "attempt to call a nil value".
+local GetPreviewClassColor
+local ResolvePreviewBarTexture
+
+-- Active visual theme, so the preview reflects what is actually applied
+-- instead of always drawing KUI's Melli look.
+local function ActiveVisualTheme()
+    local vt = KT and KT.VisualThemes
+    -- GetRenderedTheme is what the rest of the options already consult; it is
+    -- the authoritative "what is on screen right now". Fall back to the engine
+    -- state if that accessor is unavailable.
+    if type(vt) == "table" and type(vt.GetRenderedTheme) == "function" then
+        local ok, rendered = pcall(vt.GetRenderedTheme, vt)
+        if ok and type(rendered) == "string" and rendered ~= "" then
+            return rendered
+        end
+    end
+    local state = vt and vt.state
+    local active = type(state) == "table" and state.active or nil
+    if type(active) ~= "string" or active == "" then
+        return "kui"
+    end
+    return active
+end
+
+-- "kui" is the only theme that renders KUI's own attached/circular frames, so
+-- it is the only one whose options stay editable (see ApplyThemeOwnershipLock).
+local function ActiveThemeOwnsFrameArt()
+    return ActiveVisualTheme() ~= "kui"
+end
+
+--- Disables a widget and everything under it, so a locked control cannot be
+--- re-enabled by a child button/EditBox that still has its own mouse enabled.
+--- @param frame table
+local function DisableWidgetTree(frame)
+    if type(frame) ~= "table" then return end
+    if type(frame.SetEnabled) == "function" then frame:SetEnabled(false) end
+    if type(frame.EnableMouse) == "function" then frame:EnableMouse(false) end
+    local children = { "editBox", "input", "button", "btn", "slider", "track" }
+    for index = 1, #children do
+        local child = frame[children[index]]
+        if type(child) == "table" then
+            DisableWidgetTree(child)
+        end
+    end
+end
+
+--- Locks a widget when the active visual theme owns the setting it edits.
+--- Ownership is read from the adapter's own getOwnedPaths contract (see
+--- Adapters/UnitFrames.lua) rather than a duplicated list, so a setting the
+--- theme rewrites on every switch cannot be silently edited into a value that
+--- gets overwritten later. kui keeps everything editable.
+--- @param widget table|nil
+--- @param path string|nil db path, e.g. "player.frameScale"
+--- @return table|nil widget
+-- Color fields stay editable on every theme, not just kui -- seed() still
+-- sets Classic/Forever/Retail's own default color on an explicit theme
+-- switch (gold/bronze/class color), but the user can change it afterward
+-- regardless of which theme owns the rest of the frame art/geometry. Only
+-- the non-color fields in getOwnedPaths() (portraitStyle, frameArtKit,
+-- healthBarTexture, frameScale, showPlayerCastbar, showPvPCircle) still
+-- lock, since those genuinely are the theme's own real-asset
+-- geometry/behavior, not a color choice.
+local function IsColorOwnedPath(path)
+    return path:match("%.borderColor%.[rgb]$") ~= nil
+        or path:match("%.customFillColor%.[rgb]$") ~= nil
+        or path:match("%.healthClassColored$") ~= nil
+        -- Bar texture is a per-style user choice: the engine stores it in
+        -- each theme's own slot (SaveSlot on switch), so it never locks.
+        or path:match("%.healthBarTexture$") ~= nil
+end
+
+local function LockIfThemeOwned(widget, path)
+    if not (widget and path) then return widget end
+    if not ActiveThemeOwnsFrameArt() then return widget end
+    if IsColorOwnedPath(path) then return widget end
+
+    local vt = KT and KT.VisualThemes
+    local adapter = (type(vt) == "table" and type(vt.GetModuleAdapter) == "function")
+        and vt:GetModuleAdapter("unitframes") or nil
+    if not (adapter and type(adapter.getOwnedPaths) == "function") then return widget end
+
+    local owned = adapter.getOwnedPaths()
+    if type(owned) ~= "table" then return widget end
+
+    for index = 1, #owned do
+        if owned[index] == path then
+            DisableWidgetTree(widget)
+            widget._ktThemeOwned = true
+            break
+        end
+    end
+    return widget
+end
+
+--- Points a texture at a real stock atlas, preferring the Retail pixel sheet
+--- so the preview shows genuine Retail art even on a Forever client.
+--- @param tex Texture
+--- @param atlasName string
+--- @param mirror boolean|nil
+--- @return boolean applied
+-- KT.GetRetailAtlasPixels is a theme-agnostic lookup -- it only compares
+-- the CURRENT CLIENT's live atlas file against the known real-retail file,
+-- with no idea which theme is asking for it. Called unconditionally, it's
+-- exactly as likely to fire for Forever's own preview as for Retail's;
+-- whichever one it doesn't apply cleanly to falls through to the plain
+-- SetAtlas call, which always shows the client's own reskin regardless of
+-- which theme that was meant for (Retail's preview showed Forever's
+-- bronze art). The in-game renderer (ThemeClientAssets.lua) avoids this
+-- by going through KT.ResolveRetailAtlasOverride, which explicitly gates
+-- on GetRenderedTheme() == "retail" before ever attempting the override
+-- -- this uses that same function.
+local function ApplyStockArtTexture(tex, atlasName, mirror)
+    if not (tex and atlasName) then return false end
+
+    local vt = KT.VisualThemes
+    local foreverInfo = ActiveVisualTheme() == "forever" and vt and vt.GetForeverAtlasPixels
+        and vt:GetForeverAtlasPixels(atlasName)
+    local info = foreverInfo or (type(KT.ResolveRetailAtlasOverride) == "function" and KT.ResolveRetailAtlasOverride(atlasName)) or nil
+    if info and (info.file or info.filename) and info.leftTexCoord and info.rightTexCoord
+        and info.topTexCoord and info.bottomTexCoord then
+        tex:SetTexture(info.file or info.filename)
+        if mirror then
+            tex:SetTexCoord(info.rightTexCoord, info.leftTexCoord, info.topTexCoord, info.bottomTexCoord)
+        else
+            tex:SetTexCoord(info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord)
+        end
+        return true, info.width, info.height
+    end
+
+    if type(tex.SetAtlas) == "function" then
+        tex:SetAtlas(atlasName, false)
+        -- This fallback path (taken for Forever specifically, since
+        -- ResolveRetailAtlasOverride correctly gates to retail-only and
+        -- returns nil here) used to ignore `mirror` -- target's ring
+        -- rendered in the SAME orientation as player's instead of flipped
+        -- to match its portrait sitting on the opposite side of the frame,
+        -- so the portrait icon poked out past the ring in the Live
+        -- Preview. SetAtlas has no native mirror argument; flipping the
+        -- texcoords afterward achieves the same horizontal flip the
+        -- RetailPixels branch above already does correctly.
+        if mirror then
+            tex:SetTexCoord(1, 0, 0, 1)
+        else
+            tex:SetTexCoord(0, 1, 0, 1)
+        end
+        local atlasInfo = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlasName)
+        return true, atlasInfo and atlasInfo.width, atlasInfo and atlasInfo.height
+    end
+    return false
+end
+
+-- 3D portrait in the live preview. Stock-art styles draw their own ring, so only
+-- the model is seated there.
+function ns.ApplyPreview3D(frame, unitKey, settings, isCircular, size, show, stockArt)
+    -- Class Theme portrait mode: the class icon instead of the portrait
+    local classShown = false
+    if show and settings.portraitMode == "class" and frame.portraitFrame then
+        local token = (ns.PreviewClassToken and ns.PreviewClassToken(unitKey))
+            or (unitKey == "player" and select(2, UnitClass("player"))) or nil
+        local coords = token and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[token]
+        if coords then
+            -- its own host frame above the portrait fills / rings of every style
+            if not frame._ktClassIconHost then
+                frame._ktClassIconHost = CreateFrame("Frame", nil, frame.portraitFrame)
+                frame._ktClassIconHost:SetAllPoints(frame.portraitFrame)
+                frame._ktClassIcon = frame._ktClassIconHost:CreateTexture(nil, "OVERLAY", nil, 7)
+                frame._ktClassIcon:SetTexture([[Interface\Glues\CharacterCreate\UI-CharacterCreate-Classes]])
+            end
+            local host = frame._ktClassIconHost
+            host:SetFrameLevel((frame.portraitFrame:GetFrameLevel() or 1) + 2)
+            host:Show()
+            local icon = frame._ktClassIcon
+            -- round portraits get a round icon (the sheet's cells are square)
+            if not frame._ktClassIconMask then
+                frame._ktClassIconMask = host:CreateMaskTexture()
+                frame._ktClassIconMask:SetTexture([[Interface\CharacterFrame\TempPortraitAlphaMask]],
+                    "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            end
+            local pad = isCircular and 1 or 2
+            icon:ClearAllPoints()
+            icon:SetPoint("TOPLEFT", host, "TOPLEFT", pad, -pad)
+            icon:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -pad, pad)
+            local iu, iv = (coords[2] - coords[1]) * 0.09, (coords[4] - coords[3]) * 0.09
+            icon:SetTexCoord(coords[1] + iu, coords[2] - iu, coords[3] + iv, coords[4] - iv)
+            local mask = frame._ktClassIconMask
+            mask:ClearAllPoints()
+            mask:SetAllPoints(icon)
+            if isCircular then
+                if not frame._ktClassIconMasked then
+                    icon:AddMaskTexture(mask)
+                    frame._ktClassIconMasked = true
+                end
+                mask:Show()
+            elseif frame._ktClassIconMasked then
+                icon:RemoveMaskTexture(mask)
+                frame._ktClassIconMasked = nil
+            end
+            icon:Show()
+            classShown = true
+        end
+    end
+    if frame._ktClassIconHost and not classShown then frame._ktClassIconHost:Hide() end
+    -- the stock art's own portrait disc would sit behind / around the icon
+    if frame._ktForeverPortraitArtFill then frame._ktForeverPortraitArtFill:SetAlpha(classShown and 0 or 1) end
+    if frame.portrait then frame.portrait:SetAlpha(classShown and 0 or 1) end
+
+    if not (show and settings.portraitMode == "3d") then
+        if frame.model3D then
+            frame.model3D:Hide()
+            frame.ringFrame:Hide()
+        end
+        return false
+    end
+    if not frame.model3D then
+        frame.model3D = CreateFrame("PlayerModel", nil, frame.portraitFrame)
+        frame.ringFrame = CreateFrame("Frame", nil, frame.portraitFrame)
+        frame.ringFrame:SetAllPoints(frame.portraitFrame)
+        frame.ringTexture = frame.ringFrame:CreateTexture(nil, "OVERLAY")
+        frame.ringTexture:SetTexture(PREVIEW_CIRCLE_BORDER)
+        frame.ringTexture:SetPoint("TOPLEFT", frame.ringFrame, "TOPLEFT", -1, 1)
+        frame.ringTexture:SetPoint("BOTTOMRIGHT", frame.ringFrame, "BOTTOMRIGHT", 1, -1)
+        frame.model3D:SetScript("OnModelLoaded", function(self)
+            if self._apply then self._apply() end
+        end)
+        frame.model3D:RegisterEvent("UNIT_MODEL_CHANGED")
+        frame.model3D:RegisterEvent("UNIT_PORTRAIT_UPDATE")
+        frame.model3D:SetScript("OnEvent", function(self, _, changedUnit)
+            local previewUnit = self._previewUnit
+            if self:IsShown() and previewUnit and changedUnit
+                and UnitIsUnit(previewUnit, changedUnit) then
+                self:SetUnit(previewUnit)
+                if self._apply then self._apply() end
+            end
+        end)
+    end
+    local model = frame.model3D
+    local level = frame.portraitFrame:GetFrameLevel()
+    model:SetFrameLevel(level + 1)
+    frame.ringFrame:SetFrameLevel(level + 3)
+    local inset = (isCircular or stockArt) and math.floor(size * 0.18 + 0.5) or 0
+    model:ClearAllPoints()
+    model:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", inset, -inset)
+    model:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", -inset, inset)
+    local modelUnit = ({ pet = "pet", target = "target", focus = "focus",
+        totPet = "targettarget", focustarget = "focustarget" })[unitKey]
+    if not (modelUnit and UnitExists(modelUnit)) then modelUnit = "player" end
+    local function applyCamera()
+        local zoom = math.max(0.25, (tonumber(settings.portrait3DZoom) or 125) / 100)
+        -- The frame decides the facing from its own unit; the preview shows the
+        -- player model when there is no target, so state that facing explicitly.
+        local facingMode = settings.portraitFacingMode
+        if not facingMode then
+            if unitKey == "player" then facingMode = "normal"
+            elseif unitKey == "target" then facingMode = "flipped" end
+        end
+        local rot, formZoom, formShift, viewShift = KT.Portrait3DYaw(modelUnit,
+            settings.portraitSide or ((unitKey == "player" or unitKey == "pet") and "left" or "right"),
+            facingMode, false, settings.portrait3DRotation, model)
+        KT.ApplyPortrait3DCamera(model, rot, zoom * formZoom,
+            (tonumber(settings.portrait3DX) or 0) / 100 + formShift,
+            (tonumber(settings.portrait3DY) or 0) / 100, viewShift)
+    end
+    model._apply = applyCamera
+    if model._previewUnit ~= modelUnit then
+        model:SetUnit(modelUnit)
+        model._previewUnit = modelUnit
+    end
+    applyCamera()
+    model:Show()
+    frame.portrait:SetColorTexture(0.1, 0.1, 0.1, 1)
+    if not stockArt then
+        frame.portraitBorder:Hide()
+        if isCircular then
+            frame.ringTexture:SetVertexColor(frame.portraitBorder:GetVertexColor())
+            frame.ringFrame:Show()
+        else
+            frame.ringFrame:Hide()
+        end
+    else
+        frame.ringFrame:Hide()
+    end
+    return true
+end
+
+--- Reseats a preview unit onto the real stock 232x100 layout: genuine atlas
+--- artwork, the stock portrait cutout, and the stock bar rectangles. Returns
+--- false when the unit has no verified stock geometry, so the caller falls
+--- back to KUI's own layout.
+--- @param frame table preview unit
+--- @param unitKey string
+--- @param settings table
+--- @return boolean handled
+local function ApplyStockLayoutToPreview(frame, unitKey, settings)
+    local themeKey = ActiveVisualTheme()
+    local kit = PREVIEW_STOCK_GEOMETRY[themeKey] or PREVIEW_STOCK_GEOMETRY.forever
+    local geom = kit[unitKey]
+    if not geom then return false end
+
+    local scale = (settings.frameScale or 100) / 100
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        -- Same rule as the live mini art: frame width scales the stock box (101 = default).
+        scale = scale * math.max(0.5, math.min(3, (tonumber(settings.frameWidth) or 101) / 101))
+    end
+    if unitKey == "focus" then
+        scale = scale * math.max(0.5, math.min(3, (tonumber(settings.frameWidth) or geom.w) / geom.w))
+    end
+    frame:ClearAllPoints()
+    frame:SetSize(geom.w * scale, geom.h * scale)
+
+    local artApplied, nativeW, nativeH
+    if geom.rawTexture then
+        -- Classic's real art is a fixed-path texture cropped by texcoord
+        -- fractions, not an atlas -- ApplyStockArtTexture only knows atlases.
+        frame.stockArt:SetTexture(geom.rawTexture)
+        local tc = geom.texCoord
+        frame.stockArt:SetTexCoord(tc.l, tc.r, tc.t, tc.b)
+        artApplied = true
+    else
+        artApplied, nativeW, nativeH = ApplyStockArtTexture(frame.stockArt, geom.art, geom.mirror)
+    end
+    if artApplied then
+        frame.stockArt:ClearAllPoints()
+        if geom.rawTexture then
+            frame.stockArt:SetSize((geom.artW or geom.w) * scale, (geom.artH or geom.h) * scale)
+            frame.stockArt:SetPoint("TOPLEFT", frame, "TOPLEFT", (geom.artX or 0) * scale, (geom.artY or 0) * scale)
+        else
+            -- Like the real frame (ApplyForeverUnitFrameArt): the atlas is
+            -- the visible artwork at its NATIVE size, centred in the 232x100
+            -- box -- stretching it to the box (as this did) pushed the ring
+            -- and the bar tracks away from the bars seated on the box rects.
+            frame.stockArt:SetSize((nativeW or geom.w) * scale, (nativeH or geom.h) * scale)
+            frame.stockArt:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        end
+        frame.stockArt:Show()
+    else
+        frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+    end
+
+    local portraitGeom = geom.portrait
+    local portraitSize = portraitGeom.size * scale
+    frame.portraitFrame:ClearAllPoints()
+    frame.portraitFrame:SetSize(portraitSize, portraitSize)
+    frame.portraitFrame:SetPoint(
+        portraitGeom.point, frame, portraitGeom.point,
+        portraitGeom.x * scale, portraitGeom.y * scale)
+    frame.portraitFrame:Show()
+    if ns.ApplyGroupLeaderStyle and frame.leaderIcon then
+        ns.ApplyGroupLeaderStyle({Health = frame.health}, frame.leaderIcon, unitKey,
+            themeKey, frame.portraitFrame, scale, ns.SafeCall(HasLFGRestrictions))
+        frame.leaderIcon:SetShown(ns.SafeCall(UnitLeadsAnyGroup, unitKey) and true or false)
+    end
+
+    -- circle_mask.tga's own measured padding (1.23x) alone still leaves a
+    -- visible gap. This ring's own silhouette is NOT a plain circle (it
+    -- has a flat/pointed bottom corner, same dome shape as the real
+    -- in-game ornament), which defeats a simple horizontal pixel scan for
+    -- measuring it precisely, so the compensation is larger: this layer
+    -- sits ABOVE the ring (frame.portraitFrame's level is +20 over
+    -- frame's own), so overshoot would cover part of the ring's gold
+    -- edge, while undershoot leaves the background gap.
+    local MASK_PAD_RATIO = 1.55
+    -- Classic's real frame (ThemeClientAssets.lua ApplyClassicUnitFrameArt)
+    -- keeps the photo at exactly the stock 64px box, clipped to it, and only
+    -- expands the circular MASK around it. Scaling the photo itself by 1.55
+    -- here (as Forever/Retail's preview does) made Classic's preview portrait
+    -- spill outside the ring. Mirror the real frame for Classic instead.
+    local isClassicPreview = themeKey == "classic"
+    -- Forever/Retail too: the real frame keeps the photo at the stock size,
+    -- clipped to it, with the mask expanded 5 units around it
+    -- (SeatStockPortrait). Scaling the photo itself by MASK_PAD_RATIO made
+    -- the preview face spill past the ring.
+    local iconSize = portraitSize
+    frame.portraitFrame:SetClipsChildren(true)
+    frame.portrait:ClearAllPoints()
+    frame.portrait:SetSize(iconSize, iconSize)
+    frame.portrait:SetPoint("CENTER", frame.portraitFrame, "CENTER")
+
+    -- This whole function returns true to ApplyPreviewUnit's caller, which
+    -- then RETURNS EARLY (see the `if ... and ApplyStockLayoutToPreview(...)
+    -- then ... return end` gate) -- the generic layout path's own
+    -- applyPortraitTexture() call (which sets the real unit/class-icon
+    -- texture) never runs for the stock-art branch, so the player's
+    -- portrait showed as a flat gray circle. Set the real content here.
+    -- GetDefaultPortraitFacing itself is a forward-declared local further
+    -- down this file (its real `local` statement comes after this
+    -- function), so referencing it here would resolve to a nonexistent
+    -- global instead -- its logic is this one-liner, inlined directly
+    -- instead of restructuring the file's declaration order.
+    local applyPortraitTexture = ApplyPreviewPortraitTexture or _G.ApplyPreviewPortraitTexture
+    if applyPortraitTexture then
+        local facing = (KT.ResolvePortraitFacing and KT.ResolvePortraitFacing(unitKey))
+            or settings.portraitFacing or ((unitKey == "target" or unitKey == "focus") and "flipped" or "normal")
+        applyPortraitTexture(frame.portrait, unitKey, facing)
+    end
+    ns.ApplyPreview3D(frame, unitKey, settings, true, portraitSize, settings.showPortrait ~= false, true)
+
+    local function SeatBar(bar, rect)
+        bar:ClearAllPoints()
+        bar:SetSize(rect.w * scale, rect.h * scale)
+        bar:SetPoint("TOPLEFT", frame, "TOPLEFT", rect.x * scale, -rect.y * scale)
+        -- The power bar rendered under the stock atlas's own bar-track art
+        -- once that art moved to stockArtFrame (19). Elevate the bars above
+        -- it here, specifically for the stock-art path only (the
+        -- generic/kui path resets this below, so kui's own
+        -- circular-portrait-over-bar overlap stays exactly as it was).
+        bar:SetFrameLevel(frame:GetFrameLevel() + 20)
+    end
+    SeatBar(frame.health, geom.health)
+    SeatBar(frame.power, geom.power)
+
+    -- Name/value sit above the name tab, outside Health's own rectangle, so
+    -- Health's clipping hid them (same reason the real frame reparents its
+    -- name text). The level frame is above the art and never clipped.
+    if frame.levelFrame then
+        frame.name:SetParent(frame.levelFrame)
+        frame.value:SetParent(frame.levelFrame)
+    end
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        -- Blizzard's mini box has no reputation strip behind the name (the
+        -- live mini art never draws one); only Target / Focus get it.
+        frame._ktNameReactionActive = nil
+        if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+    elseif KT.VisualThemes.ConfigureUnitFrameNameReaction then
+        frame._ktNameReactionPreviewClassColor = { GetPreviewClassColor(unitKey) }
+        KT.VisualThemes:ConfigureUnitFrameNameReaction(frame, frame.stockArtFrame, unitKey, geom, scale, 0, 0, true)
+    end
+    frame.name:ClearAllPoints()
+    if geom.name.point == "CENTER" then
+        -- Classic: the live frame centres the name in the name window.
+        frame.name:SetPoint("CENTER", frame, "CENTER", geom.name.cx * scale, geom.name.cy * scale)
+        frame.name:SetWidth(geom.name.w * scale)
+        frame.name:SetJustifyH("CENTER")
+    else
+        frame.name:SetPoint("TOPLEFT", frame, "TOPLEFT", geom.name.x * scale, geom.name.y * scale)
+        if geom.name.justify then
+            frame.name:SetWidth(geom.name.w * scale)
+            frame.name:SetJustifyH(geom.name.justify)
+        else
+            frame.name:SetWidth(0)
+            frame.name:SetJustifyH("LEFT")
+        end
+    end
+    frame.value:ClearAllPoints()
+    frame.value:SetPoint("TOPRIGHT", frame, "TOPRIGHT",
+        -(geom.w - (geom.name.x + geom.name.w)) * scale, geom.name.y * scale)
+    frame.value:Show()
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        -- Small frame: value (when enabled) sits on the bar; no level badge.
+        frame.value:ClearAllPoints()
+        frame.value:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
+        frame.value:SetJustifyH("CENTER")
+        frame.value:SetShown((settings.rightTextContent or "none") ~= "none")
+    elseif themeKey == "retail" or themeKey == "forever" then
+        frame.value:ClearAllPoints()
+        frame.value:SetPoint("RIGHT", frame.health, "RIGHT", -3 * scale, 0)
+        frame.value:SetJustifyH("RIGHT")
+    elseif themeKey == "classic" then
+        -- Classic: the health percentage sits in the middle of the health bar, not beside the name.
+        frame.value:ClearAllPoints()
+        frame.value:SetPoint("CENTER", frame.health, "CENTER", 0, 0)
+        frame.value:SetJustifyH("CENTER")
+    end
+
+    -- The stock atlas carries its own decorative ring, so KUI's circle
+    -- BORDER outline must go -- but the portrait photo still needs the
+    -- circular MASK (the ring is a frame with a transparent hole, not a
+    -- crop by itself; the real in-game renderer applies this same mask to
+    -- the live 3D portrait via ThemeClientAssets.lua's _shapeMask). Without
+    -- it, the preview's placeholder portrait showed as a plain gray square
+    -- floating inside the ring instead of a circle matching its hole.
+    if not frame._portraitMaskApplied then
+        frame.portrait:AddMaskTexture(frame.portraitMask)
+        frame._portraitMaskApplied = true
+    end
+    frame.portraitMask:ClearAllPoints()
+    if isClassicPreview then
+        -- Same 0.275 expansion the real frame uses (PORTRAIT_MASK_EXPAND_RATIO).
+        local expand = portraitSize * 0.275
+        frame.portraitMask:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", -expand, expand)
+        frame.portraitMask:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", expand, -expand)
+    else
+        local expand = 5 * scale
+        frame.portraitMask:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", -expand, expand)
+        frame.portraitMask:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", expand, -expand)
+    end
+    frame.portraitMask:Show()
+    frame.portraitBorder:Hide()
+
+    -- Dark filler behind the Classic photo, same idea and same asymmetric
+    -- padding as the real frame's _ktClassicPortraitFill.
+    if isClassicPreview then
+        if not frame.portraitFill then
+            frame.portraitFill = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+            frame.portraitFill:SetColorTexture(0.1, 0.1, 0.1, 1)
+            frame.portraitFillMask = frame:CreateMaskTexture()
+            frame.portraitFillMask:SetTexture(PREVIEW_CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            frame.portraitFill:AddMaskTexture(frame.portraitFillMask)
+        end
+        local pad = 3 * scale
+        local inner = portraitGeom.point == "TOPRIGHT" and "left" or "right"
+        local padL = inner == "left" and pad or 0
+        local padR = inner == "right" and pad or 0
+        frame.portraitFill:ClearAllPoints()
+        frame.portraitFill:SetPoint("TOPLEFT", frame.portraitFrame, "TOPLEFT", -padL, 0)
+        frame.portraitFill:SetPoint("BOTTOMRIGHT", frame.portraitFrame, "BOTTOMRIGHT", padR, -pad)
+        local ex = (portraitSize + padL + padR) * (17 / 94)
+        local ey = (portraitSize + pad) * (17 / 94)
+        frame.portraitFillMask:ClearAllPoints()
+        frame.portraitFillMask:SetPoint("TOPLEFT", frame.portraitFill, "TOPLEFT", -ex, ey)
+        frame.portraitFillMask:SetPoint("BOTTOMRIGHT", frame.portraitFill, "BOTTOMRIGHT", ex, -ey)
+        frame.portraitFill:Show()
+    elseif frame.portraitFill then
+        frame.portraitFill:Hide()
+    end
+
+    if unitKey == "pet" or unitKey == "totPet" or unitKey == "focustarget" then
+        if frame.levelCircle then frame.levelCircle:Hide() end
+        if frame.levelText then frame.levelText:Hide() end
+        if frame._kuiLevelThemeCircle then frame._kuiLevelThemeCircle:Hide() end
+        return true
+    end
+
+    -- Same ox/oy pair as KUIUnitFrames.lua's usingClassicLevelOrnament
+    -- block: 36/30.5 for Forever/Retail, 60/33 for Classic, anchored to the
+    -- frame's own BOTTOMLEFT (mirrored to BOTTOMRIGHT for target, same as
+    -- the real frame).
+    local ox, oy = 36, 30.5
+    if themeKey == "classic" then
+        ox, oy = 60, 33
+    end
+    local levelTextXNudge = (themeKey == "classic" and 0 or 2) * scale
+    local levelXNudge = 4 * scale
+    local circleSize = 30 * scale
+    frame.levelFrame:ClearAllPoints()
+    frame.levelFrame:SetAllPoints(frame)
+    frame.levelCircle:ClearAllPoints()
+    frame.levelCircle:SetSize(circleSize, circleSize)
+    -- levelCircleMask must be sized/positioned: with an undefined/zero mask
+    -- shape the whole circle is masked fully invisible, leaving bare level
+    -- text with no dark circle behind it.
+    frame.levelCircleMask:ClearAllPoints()
+    frame.levelCircleMask:SetAllPoints(frame.levelCircle)
+    local ufDB = KT.db and KT.db.profile and KT.db.profile.unitFrames
+    if themeKey == "retail" or themeKey == "forever" or (ns.StockStyleToggle and ns.StockStyleToggle(ufDB, "levelBlizzardStyle")) then
+        local path, size, flags = ns.BlizzardFont("GameNormalNumberFont", PREVIEW_FONT, 10, "OUTLINE")
+        frame.levelText:SetFont(path, math.max(6, size * scale), flags)
+        frame.levelText:SetTextColor(ns.BlizzardLevelColor(unitKey, themeKey))
+    else
+        frame.levelText:SetFont(PREVIEW_FONT, math.max(7, math.floor(11 * scale)), "OUTLINE")
+    end
+    frame.levelText:ClearAllPoints()
+    frame.levelText:SetSize(18 * scale, 14 * scale)
+    if unitKey == "target" or unitKey == "focus" then
+        frame.levelCircle:SetPoint("CENTER", frame, "BOTTOMRIGHT", -ox * scale + levelXNudge, oy * scale)
+        frame.levelText:SetPoint("CENTER", frame, "BOTTOMRIGHT",
+            -ox * scale + levelTextXNudge + levelXNudge, oy * scale)
+    else
+        frame.levelCircle:SetPoint("CENTER", frame, "BOTTOMLEFT", ox * scale - levelXNudge, oy * scale)
+        frame.levelText:SetPoint("CENTER", frame, "BOTTOMLEFT",
+            ox * scale + levelTextXNudge - levelXNudge, oy * scale)
+    end
+    ns.CenterStockLevelText(frame.levelText, frame.levelCircle, themeKey)
+    -- The level number belongs on the level frame: on the unit frame itself
+    -- it sat under the circle and the art, leaving an empty circle.
+    frame.levelText:SetParent(frame.levelFrame)
+    frame.levelText:SetDrawLayer("OVERLAY", 7)
+    if themeKey == "classic" and not (ns.StockStyleToggle and ns.StockStyleToggle(ufDB, "levelBlizzardStyle")) then
+        frame.levelText:SetTextColor(1, 0.82, 0, 1)
+    end
+    frame.levelText:SetText(PreviewMaxLevel())
+    frame.levelCircle:Show()
+    frame.levelText:Show()
+    -- Same style badge as the real frame (Forever's small circle, Retail's gold ring,
+    -- Classic's backing): ApplyLevelCircle reads these two fields.
+    if ns.KUIOrnaments and ns.KUIOrnaments.ApplyLevelCircle then
+        frame._kuiLevelCircle = frame.levelCircle
+        frame._kuiLevelText = frame.levelText
+        pcall(ns.KUIOrnaments.ApplyLevelCircle, frame)
+    end
+    return true
+end
+
+--- Colour/text pass for the stock-art layout. Deliberately separate from the
+--- KUI tail of ApplyPreviewUnit so the stock branch never depends on KUI-only
+--- layout locals (circularOverlap, portraitSide, ...).
+--- @param frame table
+--- @param settings table
+--- @param globalDB table
+--- @param unitKey string
+--- @param nameText string|nil
+--- @param valueText string|nil
+-- Sample health text for the preview, in the format a Health Text choice shows.
+local function PreviewHealthText(display, cur, maxHP, pct)
+    if display == "none" then return nil end
+    local short = string.format("%.1fK", cur / 1000)
+    local full = BreakUpLargeNumbers and BreakUpLargeNumbers(cur) or tostring(cur)
+    if display == "curhpshort" then return short end
+    if display == "curhp" then return full end
+    if display == "perhp" then return string.format("%d%%", pct) end
+    if display == "curhp_perhp" then return string.format("%s | %d%%", full, pct) end
+    if display == "perhpnum" then return string.format("%d%% | %s", pct, short) end
+    if display == "deficit" then return cur < maxHP and ("-" .. (maxHP - cur)) or "" end
+    return string.format("%s | %d%%", short, pct)
+end
+
+-- The preview's power bar wears the colour of what the player really has: a feral druid shows
+-- energy (yellow), a mage mana (blue) ... Other units keep the mana blue.
+local function ApplyPreviewPowerColor(frame, unitKey)
+    if not (frame and frame.power) then return end
+    local r, g, b = 0.22, 0.45, 0.95
+    if unitKey == "player" and UnitPowerType and PowerBarColor then
+        local ok, powerType, token = pcall(UnitPowerType, "player")
+        if ok then
+            local c = (token and PowerBarColor[token]) or (powerType and PowerBarColor[powerType])
+            if c then r, g, b = c.r, c.g, c.b end
+        end
+    end
+    frame.power:SetStatusBarColor(r, g, b, 1)
+    if frame.power.SetMinMaxValues then
+        frame.power:SetMinMaxValues(0, 100)
+        frame.power:SetValue(100)
+    end
+end
+
+local function ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameText, valueText)
+    frame.health:SetMinMaxValues(0, 100)
+    local showAbsorbPreview = unitKey == "player" and settings.showPlayerAbsorb == true
+    local healthValue = showAbsorbPreview and (100 - PREVIEW_ABSORB_VALUE) or 100
+    frame.health:SetStatusBarTexture(ResolvePreviewBarTexture(settings.healthBarTexture, PREVIEW_FILL))
+    frame.health:SetValue(healthValue)
+
+    local fillR, fillG, fillB
+    local bgR, bgG, bgB
+    if globalDB.darkTheme == true then
+        fillR, fillG, fillB = 0x11 / 255, 0x11 / 255, 0x11 / 255
+        bgR, bgG, bgB = 0x4f / 255, 0x4f / 255, 0x4f / 255
+    elseif settings.healthClassColored ~= false then
+        fillR, fillG, fillB = GetPreviewClassColor(unitKey)
+        bgR, bgG, bgB = fillR * 0.2, fillG * 0.2, fillB * 0.2
+    elseif settings.customFillColor then
+        local c = settings.customFillColor
+        fillR, fillG, fillB = c.r or 1, c.g or 1, c.b or 1
+        if settings.customBgColor then
+            local bg = settings.customBgColor
+            bgR, bgG, bgB = bg.r or 0.08, bg.g or 0.08, bg.b or 0.08
+        else
+            bgR, bgG, bgB = fillR * 0.2, fillG * 0.2, fillB * 0.2
+        end
+    else
+        fillR, fillG, fillB = 0.95, 0.53, 0.02
+        bgR, bgG, bgB = 0.08, 0.08, 0.08
+    end
+
+    frame.health:SetStatusBarColor(fillR, fillG, fillB, 1)
+    frame.health.bg:SetTexture(PREVIEW_BG)
+    frame.health.bg:SetVertexColor(bgR, bgG, bgB, 1)
+    frame.power:SetStatusBarTexture(
+        ResolvePreviewBarTexture(settings.powerBarTexture or settings.healthBarTexture, PREVIEW_FILL))
+    frame.power.bg:SetTexture(PREVIEW_BG)
+    ApplyPreviewPowerColor(frame, unitKey)
+
+    local textSize = settings.textSize or 14
+    if globalDB.blizzardNameStyle ~= false and ns.BlizzardFont then
+        -- Blizzard name text: GameFontNormalSmall in yellow, sized with the frame art.
+        local path, size, flags = ns.BlizzardFont("GameFontNormalSmall", PREVIEW_FONT, 10, "")
+        frame.name:SetFont(path, math.max(6, size * (settings.frameScale or 100) / 100), flags)
+        frame.name:SetTextColor(1, 0.82, 0, 1)
+    else
+        frame.name:SetFont(PREVIEW_FONT, settings.leftTextSize or textSize, "OUTLINE")
+    end
+    frame.value:SetFont(PREVIEW_FONT, settings.rightTextSize or textSize, "OUTLINE")
+    frame.name:SetText(nameText or "")
+    local theme = KT.VisualThemes:GetRenderedTheme()
+    if (theme == "retail" or theme == "forever") and (unitKey == "player" or unitKey == "target") then
+        local scale = (settings.frameScale or 100) / 100
+        local vt = KT.VisualThemes
+        local textFactor = (tonumber(settings.textSize) or 14) / 14
+        vt:ApplyBlizzardBarText(frame.value, scale, frame.health:GetHeight(), nil, textFactor)
+        vt:ApplyBlizzardBarText(frame.healthPercent, scale, frame.health:GetHeight(), nil, textFactor)
+        vt:ApplyBlizzardBarText(frame.powerValue, scale, frame.power:GetHeight())
+        frame.healthPercent:SetText(string.format("%d%%", healthValue))
+        frame.healthPercent:Show()
+        frame.powerValue:SetText("100")
+        frame.powerValue:Show()
+        frame.value:SetText(BreakUpLargeNumbers and BreakUpLargeNumbers(1928 * healthValue / 100) or "1928")
+        return
+    end
+    if theme == "classic" and frame.stockArt:IsShown() then
+        local barH = frame.health:GetHeight() or 12
+        local textFactor = (tonumber(settings.textSize) or 14) / 14
+        local status = (unitKey == "player" or unitKey == "target" or unitKey == "pet")
+            and ns.StockStyleToggle and ns.StockStyleToggle(globalDB, "classicStatusText", "classic")
+        if status then
+            -- Classic Bar Text: "516/553 (93%)" centred in both bars
+            -- (pet: no percentage), following Health Text and Text Size.
+            local path, size, flags = ns.BlizzardFont("TextStatusBarText", PREVIEW_FONT, 10, "OUTLINE")
+            frame.value:SetFont(path, math.max(6, math.min(size, barH * 0.85) * textFactor), flags)
+            frame.powerValue:SetFont(path, math.max(6, math.min(size, (frame.power:GetHeight() or 12) * 0.85)), flags)
+            local maxHP = 1928
+            local cur = math.floor(maxHP * healthValue / 100 + 0.5)
+            local full = unitKey ~= "pet"
+            local display = settings.healthDisplay
+            local text
+            if display and display ~= "both" then
+                text = PreviewHealthText(display, cur, maxHP, healthValue)
+            elseif full then
+                text = string.format("%d/%d (%d%%)", cur, maxHP, healthValue)
+            else
+                text = string.format("%d/%d", cur, maxHP)
+            end
+            frame.value:SetText(text or "")
+            frame.value:SetShown(text ~= nil)
+            frame.powerValue:ClearAllPoints()
+            frame.powerValue:SetPoint("CENTER", frame.power, "CENTER", 0, 0)
+            frame.powerValue:SetJustifyH("CENTER")
+            frame.powerValue:SetText(full and "100/100 (100%)" or "100/100")
+            frame.powerValue:Show()
+            return
+        end
+        -- Profile text, scaled and capped to the bar like the live frame.
+        local scale = (settings.frameScale or 100) / 100
+        frame.value:SetFont(PREVIEW_FONT,
+            math.max(6, math.min((settings.rightTextSize or textSize) * scale, barH * 0.65)), "OUTLINE")
+    end
+    if showAbsorbPreview then
+        frame.value:SetText(string.format("%d%%", healthValue))
+    else
+        frame.value:SetText(valueText or "")
+    end
+end
+-- Famous WoW heroes (name + the class they play): the preview frames draw a random few of
+-- them each time the options open, so name, class colour and portrait icon always agree.
+local PREVIEW_HERO_POOL = {
+    -- WARRIOR
+    { "Varian", "WARRIOR" }, { "Garrosh", "WARRIOR" }, { "Grommash", "WARRIOR" }, { "Orgrim", "WARRIOR" },
+    { "Muradin", "WARRIOR" }, { "Saurfang", "WARRIOR" }, { "Cairne", "WARRIOR" }, { "Lothar", "WARRIOR" },
+    -- PALADIN
+    { "Uther", "PALADIN" }, { "Tirion", "PALADIN" }, { "Turalyon", "PALADIN" }, { "Liadrin", "PALADIN" },
+    { "Bolvar", "PALADIN" }, { "Alexandros", "PALADIN" }, { "Arator", "PALADIN" }, { "Saidan", "PALADIN" },
+    -- MAGE
+    { "Jaina", "MAGE" }, { "Khadgar", "MAGE" }, { "Medivh", "MAGE" }, { "Kael'thas", "MAGE" },
+    { "Rhonin", "MAGE" }, { "Antonidas", "MAGE" }, { "Aegwynn", "MAGE" }, { "Modera", "MAGE" },
+    -- WARLOCK
+    { "Gul'dan", "WARLOCK" }, { "Neeru", "WARLOCK" }, { "Kanrethad", "WARLOCK" }, { "Fizzlebang", "WARLOCK" },
+    { "Cho'gall", "WARLOCK" },
+    -- PRIEST
+    { "Anduin", "PRIEST" }, { "Tyrande", "PRIEST" }, { "Velen", "PRIEST" }, { "Moira", "PRIEST" },
+    { "Benedictus", "PRIEST" }, { "Faol", "PRIEST" }, { "Whitemane", "PRIEST" }, { "Alonsus", "PRIEST" },
+    -- ROGUE
+    { "Valeera", "ROGUE" }, { "Garona", "ROGUE" }, { "VanCleef", "ROGUE" }, { "Mathias", "ROGUE" },
+    { "Vanessa", "ROGUE" }, { "Maiev", "ROGUE" }, { "Shaw", "ROGUE" },
+    -- HUNTER
+    { "Sylvanas", "HUNTER" }, { "Rexxar", "HUNTER" }, { "Alleria", "HUNTER" }, { "Vereesa", "HUNTER" },
+    { "Halduron", "HUNTER" }, { "Hemet", "HUNTER" }, { "Nathanos", "HUNTER" },
+    -- SHAMAN
+    { "Thrall", "SHAMAN" }, { "Nobundo", "SHAMAN" }, { "Rehgar", "SHAMAN" }, { "Durotan", "SHAMAN" },
+    { "Drek'Thar", "SHAMAN" }, { "Baine", "SHAMAN" },
+    -- DRUID
+    { "Malfurion", "DRUID" }, { "Hamuul", "DRUID" }, { "Cenarius", "DRUID" }, { "Fandral", "DRUID" },
+    { "Broll", "DRUID" }, { "Naralex", "DRUID" }, { "Ysera", "DRUID" },
+    -- DEATHKNIGHT
+    { "Arthas", "DEATHKNIGHT" }, { "Darion", "DEATHKNIGHT" }, { "Thassarian", "DEATHKNIGHT" }, { "Koltira", "DEATHKNIGHT" },
+    -- DEMONHUNTER
+    { "Illidan", "DEMONHUNTER" }, { "Kayn", "DEMONHUNTER" }, { "Altruis", "DEMONHUNTER" }, { "Jace", "DEMONHUNTER" },
+    -- MONK
+    { "Chen", "MONK" }, { "Li Li", "MONK" }, { "Taran Zhu", "MONK" }, { "Aysa", "MONK" },
+    -- EVOKER
+    { "Alexstrasza", "EVOKER" }, { "Kalecgos", "EVOKER" }, { "Wrathion", "EVOKER" }, { "Vyranoth", "EVOKER" },
+}
+local previewClassAssignments = {}
+ns.PreviewClassToken = function(unitKey) return previewClassAssignments[unitKey] end
+local previewNameAssignments = {}
+local GetDefaultPortraitFacing
+local ApplyPreviewPortraitTexture
+
+local function RerollPreviewClassAssignments()
+    local pool = {}
+    for index, hero in ipairs(PREVIEW_HERO_POOL) do
+        pool[index] = hero
+    end
+    for index = #pool, 2, -1 do
+        local swapIndex = math.random(index)
+        pool[index], pool[swapIndex] = pool[swapIndex], pool[index]
+    end
+    for index, unitKey in ipairs(PREVIEW_DYNAMIC_UNITS) do
+        previewNameAssignments[unitKey] = pool[index][1]
+        previewClassAssignments[unitKey] = pool[index][2]
+    end
+end
+
+RerollPreviewClassAssignments()
+
+local function CurrentAccentColor()
+    local palette = (KT and KT.GetStylePalette and KT:GetStylePalette()) or KT.STYLE_PALETTE or nil
+    local accent = palette and palette.accent or nil
+    return (accent and accent.r) or KT.C_R or 1,
+        (accent and accent.g) or KT.C_G or 0,
+        (accent and accent.b) or KT.C_B or 0.3333333333
+end
+
+local ACCENT = setmetatable({}, {
+    __index = function(_, key)
+        local r, g, b = CurrentAccentColor()
+        if key == "r" then return r end
+        if key == "g" then return g end
+        if key == "b" then return b end
+        return nil
+    end,
+})
+
+local PAGE_BUTTON_TEXTURE = "Interface\\AddOns\\KullThranUI\\Libraries\\KUITextures\\Button.png"
+local TAB_H = 36
+local TAB_GAP = 2
+local _tabBarFrame
+local ufActiveTab = "general"
+
+local function GetSCSafeWidth(sc)
+    return sc:GetWidth() or 300
+end
+
+local function FindButtonLabel(button)
+    if not button then return nil end
+    for _, region in ipairs({ button:GetRegions() }) do
+        if region and region.IsObjectType and region:IsObjectType("FontString") then
+            return region
+        end
+    end
+end
+
+local MENU_BTN_TEX = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\MenuButton.png"
+local MENU_BTN_minX  = 12 / 601
+local MENU_BTN_maxX  = 586 / 601
+local MENU_BTN_minY  = 8 / 147
+local MENU_BTN_maxY  = 136 / 147
+local MENU_BTN_cx    = 8 / 601
+local MENU_BTN_cy    = 8 / 147
+local MENU_BTN_cs    = 4  -- cornerScreen pixels
+
+local function Apply9SliceTabButton(button, isActive)
+    if not button then return end
+    local ar, ag, ab = CurrentAccentColor()
+
+    if not button._kui9slices then
+        -- Build 9-slice the first time
+        local visual = CreateFrame("Frame", nil, button)
+        visual:SetAllPoints()
+        visual:SetFrameLevel(math.max(1, button:GetFrameLevel() - 1))
+        visual:SetClipsChildren(false)
+        button._kui9visual = visual
+
+        local slices = {}
+        for i = 1, 9 do
+            local t = visual:CreateTexture(nil, "BACKGROUND")
+            t:SetTexture(MENU_BTN_TEX)
+            slices[i] = t
+        end
+        local TL,TR,BL,BR,T,B,L,R,C = unpack(slices)
+
+        TL:SetSize(MENU_BTN_cs, MENU_BTN_cs); TR:SetSize(MENU_BTN_cs, MENU_BTN_cs)
+        BL:SetSize(MENU_BTN_cs, MENU_BTN_cs); BR:SetSize(MENU_BTN_cs, MENU_BTN_cs)
+        TL:SetPoint("TOPLEFT"); TR:SetPoint("TOPRIGHT")
+        BL:SetPoint("BOTTOMLEFT"); BR:SetPoint("BOTTOMRIGHT")
+        T:SetPoint("TOPLEFT",TL,"TOPRIGHT");  T:SetPoint("BOTTOMRIGHT",TR,"BOTTOMLEFT")
+        B:SetPoint("TOPLEFT",BL,"TOPRIGHT");  B:SetPoint("BOTTOMRIGHT",BR,"BOTTOMLEFT")
+        L:SetPoint("TOPLEFT",TL,"BOTTOMLEFT"); L:SetPoint("BOTTOMRIGHT",BL,"TOPRIGHT")
+        R:SetPoint("TOPLEFT",TR,"BOTTOMLEFT"); R:SetPoint("BOTTOMRIGHT",BR,"TOPRIGHT")
+        C:SetPoint("TOPLEFT",TL,"BOTTOMRIGHT"); C:SetPoint("BOTTOMRIGHT",BR,"TOPLEFT")
+
+        TL:SetTexCoord(MENU_BTN_minX, MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_minY, MENU_BTN_minY+MENU_BTN_cy)
+        TR:SetTexCoord(MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_maxX, MENU_BTN_minY, MENU_BTN_minY+MENU_BTN_cy)
+        BL:SetTexCoord(MENU_BTN_minX, MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_maxY-MENU_BTN_cy, MENU_BTN_maxY)
+        BR:SetTexCoord(MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_maxX, MENU_BTN_maxY-MENU_BTN_cy, MENU_BTN_maxY)
+        T:SetTexCoord(MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_minY, MENU_BTN_minY+MENU_BTN_cy)
+        B:SetTexCoord(MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_maxY-MENU_BTN_cy, MENU_BTN_maxY)
+        L:SetTexCoord(MENU_BTN_minX, MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_minY+MENU_BTN_cy, MENU_BTN_maxY-MENU_BTN_cy)
+        R:SetTexCoord(MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_maxX, MENU_BTN_minY+MENU_BTN_cy, MENU_BTN_maxY-MENU_BTN_cy)
+        C:SetTexCoord(MENU_BTN_minX+MENU_BTN_cx, MENU_BTN_maxX-MENU_BTN_cx, MENU_BTN_minY+MENU_BTN_cy, MENU_BTN_maxY-MENU_BTN_cy)
+
+        button._kui9slices = slices
+
+        button:HookScript("OnEnter", function(self)
+            local r,g,b = CurrentAccentColor()
+            for _, t in ipairs(self._kui9slices) do t:SetVertexColor(r,g,b,1) end
+            local lbl = self._kuiPageLabel or FindButtonLabel(self)
+            if lbl then lbl:SetTextColor(1,1,1,1) end
+        end)
+        button:HookScript("OnLeave", function(self)
+            local r,g,b = CurrentAccentColor()
+            local alpha = self._kuiIsActive and 1 or 0.4
+            for _, t in ipairs(self._kui9slices) do t:SetVertexColor(r,g,b,alpha) end
+            local lbl = self._kuiPageLabel or FindButtonLabel(self)
+            if lbl then lbl:SetTextColor(alpha == 1 and 1 or 0.7, alpha == 1 and 1 or 0.7, alpha == 1 and 1 or 0.7, 1) end
+        end)
+    end
+
+    button._kuiIsActive = isActive
+    local alpha = isActive and 1 or 0.4
+    for _, t in ipairs(button._kui9slices) do
+        t:SetVertexColor(ar, ag, ab, alpha)
+    end
+    local lbl = button._kuiPageLabel or FindButtonLabel(button)
+    if lbl then
+        lbl:SetTextColor(isActive and 1 or 0.7, isActive and 1 or 0.7, isActive and 1 or 0.7, 1)
+    end
+end
+
+-- Compatibility shims so existing call sites still work
+local function ApplyModernButtonVisual(button, mode, hovered)
+    Apply9SliceTabButton(button, mode == "active")
+end
+
+local function StyleModernPageButton(button, mode, fontSize)
+    if not button then return end
+    button._kuiPageLabel = button._kuiPageLabel or FindButtonLabel(button)
+    if button._kuiPageLabel and fontSize then
+        button._kuiPageLabel:SetFont(PREVIEW_DEFAULT_FONT, fontSize, "OUTLINE")
+    end
+    button._kuiPageMode = mode or "inactive"
+    Apply9SliceTabButton(button, mode == "active")
+end
+
+local function BuildTabBar(sc, yOff)
+    local tabs = {
+        { id = "general",     label = LText("General") },
+        { id = "player",      label = LText("Player & Pet") },
+        { id = "target",      label = LText("Targeting") },
+        { id = "boss",        label = LText("Boss") },
+        { id = "portraitauras", label = LText("Portrait Auras") },
+    }
+    local containerH = TAB_H + 6
+    local container
+    if _tabBarFrame and _tabBarFrame:GetParent() == sc then
+        container = _tabBarFrame
+    else
+        if _tabBarFrame then _tabBarFrame:Hide() end
+        container = CreateFrame("Frame", nil, sc)
+        _tabBarFrame = container
+    end
+    container:SetHeight(containerH)
+    container:ClearAllPoints()
+    container:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, yOff)
+    container:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -20, yOff)
+    container:Show()
+
+    -- Shared nav tabs (KullThranUI/NavTabs.lua), pixel-snapped.
+    local usedH = KT.NavTabs.Populate(container, tabs, {
+        selectedId = ufActiveTab,
+        width = math.max(1, GetSCSafeWidth(sc) - 30),
+        y = 3,
+        height = TAB_H - 4,
+        gap = 6,
+        fontSize = 11,
+        onSelect = function(tid)
+            ufActiveTab = tid
+            if tid ~= "portraitauras" and ns.PortraitAuras then ns.PortraitAuras.SetPreview(false) end
+            if KT.RefreshPage then KT:RefreshPage(true) end
+        end,
+    })
+    container:SetHeight(usedH + 6)
+    return container, usedH + 6 + 8
+end
+
+local function RefreshFrames()
+    local Mod = GetModule()
+    if Mod and Mod.Reload then
+        Mod:Reload()
+    elseif ns.ReloadFrames then
+        ns.ReloadFrames()
+    end
+    if previewRefresh then
+        previewRefresh()
+    end
+end
+
+local function SetAndRefresh(setter)
+    setter()
+    RefreshFrames()
+end
+
+local function ApplyHealthDisplayToText(settings)
+    if not settings then return end
+    local hd = settings.healthDisplay or "both"
+    local namePos = settings.namePosition or "left"
+    local hpPos = settings.healthTextPosition or "right"
+
+    if namePos == "left" then
+        settings.leftTextContent = "name"
+        settings.rightTextContent = (hpPos == "right") and hd or "none"
+    elseif namePos == "right" then
+        settings.rightTextContent = "name"
+        settings.leftTextContent = (hpPos == "left") and hd or "none"
+    else
+        settings.leftTextContent = (hpPos == "left") and hd or "none"
+        settings.rightTextContent = (hpPos == "right") and hd or "none"
+    end
+end
+
+local function CreatePreviewUnit(parent)
+    local frame = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    frame:RegisterForClicks("AnyUp")
+    frame:EnableMouse(true)
+    KT:AddBorder(frame, 0, 0, 0, 1)
+
+    -- The portrait goes underneath the ring art, matching
+    -- ThemeClientAssets.lua's own documented stacking order (SyncArtLayers:
+    -- "portrait -> frame art -> bars -> text"). Full level order below,
+    -- lowest to highest: portraitFrame (18) < stockArtFrame (19, created
+    -- further down) < health/power (20, explicitly elevated below) <
+    -- levelFrame (21, unchanged).
+    frame.portraitFrame = CreateFrame("Frame", nil, frame)
+    frame.portraitFrame:SetFrameLevel(frame:GetFrameLevel() + 18)
+    frame.portrait = frame.portraitFrame:CreateTexture(nil, "ARTWORK")
+    frame.portrait:SetAllPoints(frame.portraitFrame)
+    frame.portrait:SetColorTexture(0.35, 0.35, 0.35, 1)
+    frame.portraitMask = frame.portraitFrame:CreateMaskTexture()
+    frame.portraitMask:SetTexture(PREVIEW_CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    frame.portraitMask:Hide()
+    frame.portraitBorder = frame.portraitFrame:CreateTexture(nil, "OVERLAY")
+    frame.portraitBorder:SetTexture(PREVIEW_CIRCLE_BORDER)
+    frame.portraitBorder:Hide()
+
+    -- Level ornament for the stock-art themes in this preview. Same
+    -- technique as KUIUnitFrames.lua's own usingClassicLevelOrnament block:
+    -- a plain dark circle (not atlas art) with the gold level number on
+    -- top, on its own higher-level frame so it reliably draws above the
+    -- stock art regardless of either side's own layer/sublevel.
+    frame.levelFrame = CreateFrame("Frame", nil, frame)
+    frame.levelFrame:SetFrameLevel(frame:GetFrameLevel() + 21)
+    frame.leaderIcon = frame.levelFrame:CreateTexture(nil, "OVERLAY", nil, 7)
+    frame.leaderIcon:Hide()
+    frame.levelCircle = frame.levelFrame:CreateTexture(nil, "OVERLAY")
+    frame.levelCircle:SetTexture("Interface\\Buttons\\WHITE8X8")
+    frame.levelCircle:SetVertexColor(0.06, 0.06, 0.06, 1)
+    frame.levelCircleMask = frame.levelFrame:CreateMaskTexture()
+    frame.levelCircleMask:SetTexture(PREVIEW_CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    frame.levelCircle:AddMaskTexture(frame.levelCircleMask)
+    frame.levelCircle:Hide()
+    -- SetText() before any SetFont() call ever ran on this FontString
+    -- throws "Font not set" -- ApplyStockLayoutToPreview's own SetFont call
+    -- happens later (only when a stock theme is actually active), too late
+    -- for this creation-time SetText. Give it a safe font right here first.
+    frame.levelText = frame.levelFrame:CreateFontString(nil, "OVERLAY")
+    frame.levelText:SetFont(PREVIEW_FONT, 11, "OUTLINE")
+    frame.levelText:SetTextColor(1, 0.82, 0.20, 1)
+    frame.levelText:SetJustifyH("CENTER")
+    frame.levelText:SetText("60")
+    frame.levelText:Hide()
+
+    -- Real stock artwork (retail/forever/classic). Hidden for kui, which draws
+    -- its own border + circle instead. On its own frame, above portraitFrame
+    -- (18) but below the bars (20) -- see the stacking-order note above.
+    frame.stockArtFrame = CreateFrame("Frame", nil, frame)
+    frame.stockArtFrame:SetFrameLevel(frame:GetFrameLevel() + 19)
+    frame.stockArt = frame.stockArtFrame:CreateTexture(nil, "ARTWORK")
+    frame.stockArt:SetAllPoints(frame)
+    frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+
+    -- health/power's FrameLevel is left at its default here (unelevated,
+    -- matching this preview's original kui-style behavior, where the
+    -- circular portrait is meant to overlap the bar's own edge) -- only
+    -- ApplyStockLayoutToPreview elevates them above stockArtFrame (19),
+    -- and only while a stock theme is actually active, specifically so
+    -- this doesn't change anything about kui's own portrait/bar overlap.
+    frame.health = CreateFrame("StatusBar", nil, frame)
+    frame.health:SetStatusBarTexture(PREVIEW_FILL)
+    frame.health.bg = frame.health:CreateTexture(nil, "BACKGROUND")
+    frame.health.bg:SetTexture(PREVIEW_BG)
+    frame.health.bg:SetAllPoints()
+    frame.health.bg:SetVertexColor(0.1, 0.1, 0.1, 1)
+    frame.health:SetClipsChildren(true)
+
+    frame.absorb = CreateFrame("StatusBar", nil, frame.health)
+    frame.absorb:SetMinMaxValues(0, 100)
+    frame.absorb:SetReverseFill(true)
+    frame.absorb:SetFrameLevel(frame.health:GetFrameLevel() + 1)
+    frame.absorb:Hide()
+
+    frame.power = CreateFrame("StatusBar", nil, frame)
+    frame.power:SetStatusBarTexture(PREVIEW_FILL)
+    frame.power.bg = frame.power:CreateTexture(nil, "BACKGROUND")
+    frame.power.bg:SetTexture(PREVIEW_BG)
+    frame.power.bg:SetAllPoints()
+    frame.power.bg:SetVertexColor(0.08, 0.08, 0.08, 1)
+    frame.power:SetStatusBarColor(0.22, 0.45, 0.95, 1)
+
+    frame.name = frame.health:CreateFontString(nil, "OVERLAY")
+    frame.name:SetFont(PREVIEW_DEFAULT_FONT, 14, "OUTLINE")
+    frame.name:SetTextColor(1, 1, 1, 1)
+    frame.name:SetPoint("LEFT", 6, 0)
+    frame.name:SetJustifyH("LEFT")
+
+    frame.value = frame.health:CreateFontString(nil, "OVERLAY")
+    frame.value:SetFont(PREVIEW_DEFAULT_FONT, 14, "OUTLINE")
+    frame.value:SetTextColor(1, 1, 1, 1)
+    frame.value:SetPoint("RIGHT", -6, 0)
+    frame.value:SetJustifyH("RIGHT")
+
+    frame.levelText = frame:CreateFontString(nil, "OVERLAY")
+    frame.levelText:SetJustifyH("LEFT")
+    frame.levelText:SetWordWrap(false)
+    frame.levelText:SetWidth(38)
+    frame.levelText:SetHeight(14)
+    frame.levelText:Hide()
+    frame.pvpIcon = frame:CreateTexture(nil, "OVERLAY")
+    frame.pvpIcon:SetSize(16, 16)
+    frame.pvpIcon:Hide()
+
+    frame.healthPercent = frame.health:CreateFontString(nil, "OVERLAY")
+    frame.healthPercent:SetFont(PREVIEW_FONT, 10, "OUTLINE")
+    frame.healthPercent:SetTextColor(1, 1, 1, 1)
+    frame.healthPercent:SetPoint("LEFT", frame.health, "LEFT", 3, 0)
+    frame.healthPercent:Hide()
+    frame.powerValue = frame.power:CreateFontString(nil, "OVERLAY")
+    frame.powerValue:SetFont(PREVIEW_FONT, 9, "OUTLINE")
+    frame.powerValue:SetTextColor(1, 1, 1, 1)
+    frame.powerValue:SetPoint("RIGHT", frame.power, "RIGHT", -3, 0)
+    frame.powerValue:Hide()
+
+    frame.hover = frame:CreateTexture(nil, "HIGHLIGHT")
+    frame.hover:SetAllPoints()
+    KT:SetAccentTexture(frame.hover, 0.12)
+
+    return frame
+end
+
+local function ScrollToOptionBlock(block)
+    local menu = KT and KT.MenuPrincipal
+    local sf = menu and menu.scrollFrame
+    local sb = sf and sf.ScrollBar
+    local sc = menu and menu.scrollChild
+    if not (block and sf and sb and sc) then return end
+
+    local function ApplyScroll()
+        local scTop = sc:GetTop()
+        local blockTop = block:GetTop()
+        if not (scTop and blockTop) then return end
+
+        local minVal, maxVal = sb:GetMinMaxValues()
+        local target = math.floor((scTop - blockTop) + 8 + 0.5)
+        if minVal and target < minVal then
+            target = minVal
+        end
+        if maxVal and target > maxVal then
+            target = maxVal
+        end
+
+        if KT.SmoothScrollTo then
+            KT.SmoothScrollTo(target)
+        else
+            sb:SetValue(target)
+        end
+    end
+
+    ApplyScroll()
+    C_Timer.After(0.05, ApplyScroll)
+
+    if not block._previewHighlight then
+        local hl = block:CreateTexture(nil, "OVERLAY")
+        hl:SetAllPoints()
+        local r, g, b = CurrentAccentColor()
+        hl:SetColorTexture(r, g, b, 0.4)
+        hl:SetBlendMode("ADD")
+        hl:Hide()
+        block._previewHighlight = hl
+        
+        local ag = hl:CreateAnimationGroup()
+        local a1 = ag:CreateAnimation("Alpha")
+        a1:SetFromAlpha(0)
+        a1:SetToAlpha(1)
+        a1:SetDuration(0.15)
+        a1:SetOrder(1)
+        local a2 = ag:CreateAnimation("Alpha")
+        a2:SetFromAlpha(1)
+        a2:SetToAlpha(0)
+        a2:SetDuration(0.6)
+        a2:SetOrder(2)
+        ag:SetScript("OnFinished", function() hl:Hide() end)
+        ag:SetScript("OnPlay", function() hl:Show() end)
+        block._previewHighlightAnim = ag
+    end
+    
+    if block._previewHighlightAnim then
+        block._previewHighlightAnim:Stop()
+        block._previewHighlightAnim:Play()
+    end
+end
+
+local function BindPreviewClick(frame, label, targetTab, getTargetBlock)
+    if not frame then return end
+
+    frame:SetScript("OnClick", function()
+        local needsDelay = false
+        if targetTab and ufActiveTab ~= targetTab then
+            ufActiveTab = targetTab
+            needsDelay = true
+            if KT.RefreshPage then KT:RefreshPage(true) end
+        end
+        C_Timer.After(needsDelay and 0.15 or 0.05, function()
+            local target = getTargetBlock and getTargetBlock()
+            if target then
+                ScrollToOptionBlock(target)
+            end
+        end)
+    end)
+
+    frame:SetScript("OnEnter", function(self)
+        KT:AddAccentBorder(self, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(label and LText(label) or LText("Unit Frame Preview"), 1, 1, 1)
+            GameTooltip:AddLine(LText("Click to jump to its settings block."), 0.75, 0.82, 0.9, true)
+            GameTooltip:Show()
+        end
+    end)
+
+    frame:SetScript("OnLeave", function(self)
+        KT:AddBorder(self, 0, 0, 0, 1)
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+end
+
+function GetPreviewClassColor(unitKey)
+    local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {}
+
+    local function colorFor(classToken)
+        local c = classToken and colors[classToken]
+        if c then
+            return c.r, c.g, c.b
+        end
+        return nil
+    end
+
+    if unitKey == "player" then
+        local _, classToken = UnitClass("player")
+        local r, g, b = colorFor(classToken)
+        if r then
+            return r, g, b
+        end
+    end
+
+    local assignedClass = previewClassAssignments[unitKey]
+    if assignedClass then
+        local r, g, b = colorFor(assignedClass)
+        if r then
+            return r, g, b
+        end
+    end
+
+    local previewClasses = {
+        target = "MAGE",
+        focus = "PRIEST",
+        pet = "HUNTER",
+        totPet = "ROGUE",
+        focustarget = "DRUID",
+        boss = "WARRIOR",
+    }
+
+    local r, g, b = colorFor(previewClasses[unitKey])
+    if r then
+        return r, g, b
+    end
+
+    return 0.95, 0.53, 0.02
+end
+
+function ResolvePreviewBarTexture(textureKey, fallbackPath)
+    local textures = ns.healthBarTextures or {}
+    if textureKey and textures[textureKey] then
+        return textures[textureKey]
+    end
+    if textureKey and LSM then
+        local sharedPath = LSM:Fetch("statusbar", textureKey, true)
+        if sharedPath then return sharedPath end
+    end
+    return fallbackPath or PREVIEW_FILL
+end
+
+local function ResolvePreviewFont(fontName)
+    if KT and KT.ResolveFontPath then
+        local resolved = KT:ResolveFontPath(fontName, PREVIEW_DEFAULT_FONT)
+        if resolved and resolved ~= "" then
+            return resolved
+        end
+    end
+
+    if LSM and fontName then
+        local resolved = LSM:Fetch("font", fontName, true)
+        if resolved and resolved ~= "" then
+            return resolved
+        end
+    end
+
+    return PREVIEW_DEFAULT_FONT
+end
+
+local function ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText, valueText)
+    if frame.leaderIcon then frame.leaderIcon:Hide() end
+    frame.healthPercent:Hide()
+    frame.powerValue:Hide()
+    -- A stock-art theme (retail/forever/classic) renders Blizzard's own frames,
+    -- not KUI's. Seat the real artwork instead of the Melli layout, otherwise
+    -- the preview would lie about what the chosen theme actually looks like.
+    if ActiveThemeOwnsFrameArt() and ApplyStockLayoutToPreview(frame, unitKey, settings) then
+        ApplyStockPreviewColors(frame, settings, globalDB, unitKey, nameText, valueText)
+        return
+    end
+    frame.stockArt:Hide()
+    if frame._ktNameReaction then frame._ktNameReaction:Hide() end
+    if frame.name and frame.name:GetParent() ~= frame.health then frame.name:SetParent(frame.health) end
+    if frame.value and frame.value:GetParent() ~= frame.health then frame.value:SetParent(frame.health) end
+    -- Undo the Classic-only portrait treatment from the stock path.
+    if frame.portraitFill then frame.portraitFill:Hide() end
+    frame.portraitFrame:SetClipsChildren(false)
+    frame.portrait:ClearAllPoints()
+    frame.portrait:SetAllPoints(frame.portraitFrame)
+    -- The level badge only exists for the real-stock-art path above; hide
+    -- it here so it doesn't persist from an earlier run (e.g. switching
+    -- away from a stock theme, or a unit like pet/focus with no stock
+    -- geometry at all).
+    if frame.levelCircle then frame.levelCircle:Hide() end
+    if frame.levelText then frame.levelText:Hide() end
+    if frame._kuiLevelThemeCircle then frame._kuiLevelThemeCircle:Hide() end
+    -- Undo the stock-art path's bar elevation too, so kui's own circular-
+    -- portrait-over-bar overlap (which relies on the bars being at their
+    -- normal, unelevated level) isn't affected by a previous stock-theme run.
+    frame.health:SetFrameLevel(frame:GetFrameLevel())
+    frame.power:SetFrameLevel(frame:GetFrameLevel())
+
+    local showPortrait = globalDB.portraitStyle ~= "none" and settings.showPortrait ~= false
+    local powerHeight = ((settings.powerPosition or "below") ~= "none") and (settings.powerHeight or 6) or 0
+    local totalBarHeight = (settings.healthHeight or 20) + powerHeight
+    local isCircular = globalDB.portraitStyle == "circular"
+    local portraitWidth = showPortrait and (totalBarHeight + (isCircular and 10 or 0)) or 0
+    local circularOverlap = portraitWidth * 0.5
+    local totalWidth = (settings.frameWidth or 100)
+        + (isCircular and math.max(0, portraitWidth - circularOverlap) or portraitWidth)
+    local totalHeight = isCircular and math.max(totalBarHeight, portraitWidth) or totalBarHeight
+    local portraitSide = settings.portraitSide or "left"
+
+    frame:SetSize(totalWidth, totalHeight)
+    frame.health:ClearAllPoints()
+    frame.health:SetSize(settings.frameWidth or 100, settings.healthHeight or 20)
+    frame.power:ClearAllPoints()
+    frame.power:SetSize(settings.frameWidth or 100, powerHeight)
+    frame.portraitFrame:ClearAllPoints()
+    local applyPortraitTexture = ApplyPreviewPortraitTexture or _G.ApplyPreviewPortraitTexture
+    if applyPortraitTexture then
+        applyPortraitTexture(frame.portrait, unitKey,
+            (KT.ResolvePortraitFacing and KT.ResolvePortraitFacing(unitKey))
+            or settings.portraitFacing or GetDefaultPortraitFacing(unitKey))
+    end
+
+    if showPortrait then
+        frame.portraitFrame:Show()
+        frame.portraitFrame:SetSize(portraitWidth, portraitWidth)
+        if isCircular then
+            local verticalOffset = (totalHeight - totalBarHeight) * 0.5
+            if portraitSide == "right" then
+                frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -verticalOffset)
+                frame.portraitFrame:SetPoint("LEFT", frame.health, "RIGHT", -circularOverlap, 0)
+            else
+                frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", portraitWidth - circularOverlap, -verticalOffset)
+                frame.portraitFrame:SetPoint("RIGHT", frame.health, "LEFT", circularOverlap, 0)
+            end
+
+            if not frame._portraitMaskApplied then
+                frame.portrait:AddMaskTexture(frame.portraitMask)
+                frame._portraitMaskApplied = true
+            end
+            frame.portraitMask:ClearAllPoints()
+            frame.portraitMask:SetAllPoints(frame.portrait)
+            frame.portraitMask:Show()
+            frame.portraitBorder:ClearAllPoints()
+            frame.portraitBorder:SetPoint("TOPLEFT", frame.portrait, "TOPLEFT", -1, 1)
+            frame.portraitBorder:SetPoint("BOTTOMRIGHT", frame.portrait, "BOTTOMRIGHT", 1, -1)
+            frame.portraitBorder:Show()
+        elseif portraitSide == "right" then
+            frame.portraitFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+            frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        else
+            frame.portraitFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+            frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", portraitWidth, 0)
+        end
+    else
+        frame.portraitFrame:Hide()
+        frame.health:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    end
+
+    if not isCircular then
+        if frame._portraitMaskApplied then
+            frame.portrait:RemoveMaskTexture(frame.portraitMask)
+            frame._portraitMaskApplied = false
+        end
+        frame.portraitMask:Hide()
+        frame.portraitBorder:Hide()
+    end
+
+    if powerHeight > 0 then
+        frame.power:Show()
+        frame.power:SetPoint("TOPLEFT", frame.health, "BOTTOMLEFT", 0, 0)
+    else
+        frame.power:Hide()
+    end
+
+    frame.health:SetMinMaxValues(0, 100)
+    local previewHealthValue = 100
+    local showAbsorbPreview = unitKey == "player" and settings.showPlayerAbsorb == true
+    if showAbsorbPreview then
+        previewHealthValue = 100 - PREVIEW_ABSORB_VALUE
+    end
+    frame.health:SetStatusBarTexture(ResolvePreviewBarTexture(settings.healthBarTexture, PREVIEW_FILL))
+    frame.health:SetValue(previewHealthValue)
+
+    local fillR, fillG, fillB
+    local bgR, bgG, bgB
+    if globalDB.darkTheme == true then
+        fillR, fillG, fillB = 0x11 / 255, 0x11 / 255, 0x11 / 255
+        bgR, bgG, bgB = 0x4f / 255, 0x4f / 255, 0x4f / 255
+    elseif settings.healthClassColored ~= false then
+        fillR, fillG, fillB = GetPreviewClassColor(unitKey)
+        bgR, bgG, bgB = fillR * 0.2, fillG * 0.2, fillB * 0.2
+    elseif settings.customFillColor then
+        local c = settings.customFillColor
+        fillR, fillG, fillB = c.r or 1, c.g or 1, c.b or 1
+        if settings.customBgColor then
+            local bg = settings.customBgColor
+            bgR, bgG, bgB = bg.r or 0.08, bg.g or 0.08, bg.b or 0.08
+        else
+            bgR, bgG, bgB = fillR * 0.2, fillG * 0.2, fillB * 0.2
+        end
+    else
+        fillR, fillG, fillB = 0.95, 0.53, 0.02
+        bgR, bgG, bgB = 0.08, 0.08, 0.08
+    end
+
+    frame.health:SetStatusBarColor(fillR, fillG, fillB, 1)
+    if isCircular then
+        local borderColor = globalDB.circularPortraitBorderColor
+        if globalDB.circularPortraitBorderUseCustomColor == true and type(borderColor) == "table" then
+            frame.portraitBorder:SetVertexColor(borderColor.r or 1, borderColor.g or 1, borderColor.b or 1, borderColor.a or 1)
+        else
+            frame.portraitBorder:SetVertexColor(fillR, fillG, fillB, 1)
+        end
+    end
+
+    ns.ApplyPreview3D(frame, unitKey, settings, isCircular, portraitWidth, showPortrait, false)
+    frame.health.bg:SetTexture(PREVIEW_BG)
+    frame.health.bg:SetVertexColor(bgR, bgG, bgB, 1)
+    frame.power:SetStatusBarTexture(ResolvePreviewBarTexture(settings.powerBarTexture or settings.healthBarTexture, PREVIEW_FILL))
+    frame.power.bg:SetTexture(PREVIEW_BG)
+    ApplyPreviewPowerColor(frame, unitKey)
+    frame.name:ClearAllPoints()
+    frame.value:ClearAllPoints()
+    local nameInset = (isCircular and portraitSide ~= "right") and (circularOverlap + 5) or 6
+    local valueInset = (isCircular and portraitSide == "right") and (circularOverlap + 5) or 6
+    frame.name:SetPoint("LEFT", frame.health, "LEFT", nameInset, 0)
+    frame.value:SetPoint("RIGHT", frame.health, "RIGHT", -valueInset, 0)
+    local metadataAnchor = showPortrait and frame.portraitFrame or frame.health
+    if frame.levelText:GetParent() ~= frame then frame.levelText:SetParent(frame) end
+    frame.levelText:ClearAllPoints()
+    if unitKey == "target" then
+        frame.levelText:SetPoint("BOTTOMRIGHT", metadataAnchor, "TOPRIGHT", -(tonumber(globalDB.levelX) or 2), tonumber(globalDB.levelY) or 2)
+    else
+        frame.levelText:SetPoint("BOTTOMLEFT", metadataAnchor, "TOPLEFT", tonumber(globalDB.levelX) or 2, tonumber(globalDB.levelY) or 2)
+    end
+    local levelOutline = globalDB.levelFontOutline
+    if levelOutline == "NONE" then levelOutline = "" end
+    frame.levelText:SetFont(ResolvePreviewFont(globalDB.levelFont), tonumber(globalDB.levelFontSize) or 11, levelOutline or "OUTLINE")
+    local levelKey, levelDefault = ns.LevelColorKey()
+    local levelColor = globalDB[levelKey] or levelDefault
+    frame.levelText:SetTextColor(levelColor.r or 1, levelColor.g or 1, levelColor.b or 1, levelColor.a or 1)
+    frame.levelText:SetText(PreviewMaxLevel())
+    -- KUI Style shows the level only on the portrait, centred on its bottom
+    -- edge (same as the live frames); without a portrait it shows none.
+    local kuiStyle = ActiveVisualTheme() == "kui"
+    if kuiStyle and showPortrait then
+        -- Host above the portrait (and its 3D model) so the number draws over it.
+        local host = frame._kuiPreviewLevelHost
+        if not host then
+            host = CreateFrame("Frame", nil, frame.portraitFrame)
+            host:SetAllPoints(frame.portraitFrame)
+            frame._kuiPreviewLevelHost = host
+        end
+        host:SetFrameLevel(frame.portraitFrame:GetFrameLevel() + 20)
+        frame.levelText:SetParent(host)
+        frame.levelText:SetDrawLayer("OVERLAY", 7)
+        frame.levelText:ClearAllPoints()
+        frame.levelText:SetPoint("CENTER", frame.portraitFrame, "BOTTOM", 0, 4)
+        frame.levelText:SetJustifyH("CENTER")
+    else
+        frame.levelText:SetJustifyH("LEFT")
+    end
+    frame.levelText:SetShown((not kuiStyle or showPortrait) and globalDB.showCharacterLevel ~= false)
+    frame.pvpIcon:ClearAllPoints()
+    if unitKey == "target" then
+        frame.pvpIcon:SetPoint("LEFT", metadataAnchor, "RIGHT", 2, 1)
+        frame.pvpIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\Horde.png")
+    else
+        frame.pvpIcon:SetPoint("RIGHT", metadataAnchor, "LEFT", -2, 1)
+        frame.pvpIcon:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\Alliance.png")
+    end
+    frame.pvpIcon:SetShown(globalDB.showPvPIcon == true and (unitKey == "player" or unitKey == "target"))
+    frame.name:SetFont(PREVIEW_DEFAULT_FONT, settings.leftTextSize or settings.textSize or 14, "OUTLINE")
+    frame.value:SetFont(PREVIEW_DEFAULT_FONT, settings.rightTextSize or settings.textSize or 14, "OUTLINE")
+    frame.name:SetText(nameText)
+    if showAbsorbPreview then
+        frame.value:SetText(string.format("%d%%", previewHealthValue))
+    else
+        frame.value:SetText(valueText)
+    end
+
+    frame.absorb:ClearAllPoints()
+    frame.absorb:SetPoint("TOPRIGHT", frame.health:GetStatusBarTexture(), "TOPRIGHT", 0, 0)
+    frame.absorb:SetPoint("BOTTOMRIGHT", frame.health:GetStatusBarTexture(), "BOTTOMRIGHT", 0, 0)
+    frame.absorb:SetWidth(settings.frameWidth or 100)
+    frame.absorb:SetStatusBarTexture(ResolvePreviewBarTexture(settings.absorbBarTexture, PREVIEW_FILL))
+    if showAbsorbPreview then
+        local c = settings.absorbBarColor or { r = 0.11, g = 1.00, b = 0.62, a = 1.00 }
+        frame.absorb:SetStatusBarColor(c.r or 0.11, c.g or 1.00, c.b or 0.62, c.a or 1.00)
+        frame.absorb:SetValue(PREVIEW_ABSORB_VALUE)
+        frame.absorb:Show()
+    else
+        frame.absorb:Hide()
+    end
+end
+
+-- Rare/Elite ring in the live preview (Player only, every style). Lives on ns so
+-- this chunk does not take another file-level local.
+local RING_ICON_PATH = "Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\UnitFramesIcons\\"
+ns.RING_ICON_PATH = RING_ICON_PATH
+
+function ns.ApplyPreviewUnit(frame, unitKey, settings, globalDB, nameText, valueText)
+    -- Restore the ordinary preview before drawing the newly selected style.
+    if frame._ktPreviewNativeArtClip then
+        frame.stockArt:SetParent(frame.stockArtFrame)
+        frame._ktPreviewNativeArtClip:Hide()
+    end
+    frame.portraitFrame:SetFrameLevel(frame:GetFrameLevel() + 18)
+    if frame.levelFrame then frame.levelFrame:SetFrameLevel(frame:GetFrameLevel() + 22) end
+    ApplyPreviewUnitBase(frame, unitKey, settings, globalDB, nameText, valueText)
+
+    local ring = frame.classificationRing
+    -- The option lives at the profile root (not in db.player): read globalDB.
+    local choice = (unitKey == "player" and globalDB and globalDB.playerClassificationBorder) or "none"
+    local portraitShown = frame.portraitFrame
+        and (frame.portraitFrame:IsShown() or (frame.portrait and frame.portrait:IsShown()))
+    -- Retail/Forever native overlay: Blizzard's atlas drawn over the normal frame.
+    local nativeKind = (choice == "nativerare" and "rare") or (choice == "nativeelite" and "elite") or nil
+    frame.unit = unitKey
+    local nativeVisible = portraitShown and nativeKind and ns.HasNativeClassificationArt(nativeKind)
+    frame._ktNativeClassificationScale = 1
+    do
+        local previewTheme = ActiveVisualTheme and ActiveVisualTheme() or "kui"
+        frame._ktClassRingReach = ns.ClassificationRingReach(previewTheme)
+        frame._ktClassRingFit = ns.NativeRingFit(previewTheme)
+    end
+    if ns.ShowNativeClassificationRing then
+        ns.ShowNativeClassificationRing(frame, frame.portraitFrame,
+            nativeVisible and nativeKind or nil, true, frame.levelFrame)
+    end
+    if ns.KUIOrnaments then ns.KUIOrnaments.HideClassicDragon(ring) end
+    if (choice ~= "rare" and choice ~= "elite" and choice ~= "classicrare" and choice ~= "classicelite")
+        or not portraitShown then
+        if ring then ring:Hide() end
+        return
+    end
+    -- Portrait children are clipped to its aperture. Keep the full ornament
+    -- on an independent layer above the portrait but below the level badge.
+    local ringHost = frame._ktPreviewClassificationHost
+    if not ringHost then
+        ringHost = CreateFrame("Frame", nil, frame)
+        ringHost:SetAllPoints(frame)
+        ringHost:EnableMouse(false)
+        ringHost:SetClipsChildren(false)
+        frame._ktPreviewClassificationHost = ringHost
+    end
+    local above = frame.levelFrame or frame
+    ringHost:SetFrameStrata(above:GetFrameStrata())
+    ringHost:SetFrameLevel(math.max(1, above:GetFrameLevel() - 1))
+    if not ring then
+        ring = ringHost:CreateTexture(nil, "OVERLAY", nil, 7)
+        frame.classificationRing = ring
+    end
+    ring:SetParent(ringHost)
+    local theme = ActiveVisualTheme and ActiveVisualTheme() or nil
+    -- Classic's own Rare/Elite sheet: crop of the portrait side (same numbers as the live frame).
+    local CR = ns.ClassicRing
+    local classicKind = (choice == "classicrare" and "rare") or (choice == "classicelite" and "elite") or nil
+    if CR and classicKind then
+        if theme == "classic" and frame.stockArt then
+            -- Match the live Classic renderer: replace the whole stock sheet,
+            -- rather than placing a cropped dragon over the normal portrait rim.
+            frame.stockArt:SetTexture(CR.sheets[classicKind])
+            frame.stockArt:Show()
+            if frame.portraitBorder then frame.portraitBorder:Hide() end
+            ring:Hide()
+            return
+        end
+        ring:SetTexture(CR.dragons[classicKind] or CR.sheets[classicKind])
+        -- Same placement as the live frame: around the portrait's own border.
+        local sc = CR.ArtScale(frame.portraitFrame, ns.ClassificationRingReach(theme, false, true))
+        if ns.KUIOrnaments and ns.KUIOrnaments.FitClassicDragon(
+            ring, frame.portraitFrame, CR, classicKind, sc, theme) then return end
+        ring:SetTexCoord(CR.uLeft, CR.uRight, CR.vTop, CR.vBottom)
+        ring:ClearAllPoints()
+        ring:SetSize(CR.cropW * sc, CR.cropH * sc)
+        ring:SetPoint("TOPLEFT", frame.portraitFrame, "CENTER", -CR.portraitCX * sc, CR.portraitCY * sc)
+        -- Below the level text (OVERLAY) so the number stays readable over the sheet.
+        if ring.SetDrawLayer then ring:SetDrawLayer("ARTWORK", 7) end
+        ring:Show()
+        return
+    end
+    if ring.SetDrawLayer then ring:SetDrawLayer("OVERLAY", 7) end
+    local MR = ns.ModernClassificationRing
+    local size = math.max(24, (frame.portraitFrame:GetHeight() or 40)
+        * ns.ModernRingReach(theme) / MR.holeRadius)
+    ring:SetTexture(RING_ICON_PATH .. (choice == "rare" and "RARE.png" or "ELITE.png"))
+    -- Same rule as the live frame: the ring points the way the portrait looks.
+    local facing = KT.ResolvePortraitFacing and KT.ResolvePortraitFacing("player") or "normal"
+    -- Same rule as the live frame: shapeshift (2D form art) is baked the other way,
+    -- and the preview shows the live portrait (e.g. a druid's eagle form).
+    local shapeshifted = false
+    if type(GetShapeshiftForm) == "function" then
+        local okSS, formSS = pcall(GetShapeshiftForm)
+        shapeshifted = okSS and type(formSS) == "number" and formSS > 0
+    end
+    local looksRight = (facing == "normal") ~= shapeshifted
+    ring:SetTexCoord(looksRight and 1 or 0, looksRight and 0 or 1, 0, 1)
+    ring:ClearAllPoints()
+    ring:SetSize(size, size)
+    -- The art's opening is not centred in the PNG (measured ~0.44, 0.52): re-centre it.
+    local nudgeX, nudgeY = ns.ModernRingNudge(theme)
+    ring:SetPoint("CENTER", frame.portraitFrame, "CENTER",
+        (looksRight and -(MR.centerX + nudgeX) or (MR.centerX + nudgeX)) * size, (MR.centerY + nudgeY) * size)
+    ring:Show()
+end
+
+-- Combo points under the frame (Player preview), drawn after the
+-- Rare/Elite ring logic so its early returns do not skip it.
+do
+    local rawApplyPreviewUnit = ns.ApplyPreviewUnit
+    ns.ApplyPreviewUnit = function(frame, unitKey, ...)
+        rawApplyPreviewUnit(frame, unitKey, ...)
+        if ns.AltMana and ns.AltMana.ApplyPreview then ns.AltMana.ApplyPreview(frame, unitKey) end
+        if ns.ComboUnderFrame then ns.ComboUnderFrame.ApplyPreview(frame, unitKey) end
+        if ns.PortraitAuras and ns.PortraitAuras.ApplyPreview then ns.PortraitAuras.ApplyPreview(frame, unitKey) end
+    end
+end
+
+-- Combo point style picker (tiles) for Player / Target.  Player: Off, Modern,
+-- Classic.  Target: Off, Ring (circle around the portrait), Ring + Pips,
+-- Modern, Classic.
+-- PvP icon style picker (graphic tiles): Modern = ours, Classic = stock banner.
+-- Independent for Player (pvpIconStyle) and Target (pvpIconStyleTarget).
+function ns.BuildPvPPicker(container, W, by, unitKey)
+    local db = GetDB()
+    local isTarget = unitKey == 'target'
+    local dbKey = isTarget and 'pvpIconStyleTarget' or 'pvpIconStyle'
+        local _, lh = W:Label(container, isTarget and 'PvP Icon Style (Target)' or 'PvP Icon Style (Player)', -by, 12)
+        by = by + lh
+        local holder = CreateFrame("Frame", nil, container)
+        holder:SetPoint("TOPLEFT", 10, -by)
+        holder:SetSize(200, 96)
+        local buttons = {}
+        local faction = (UnitFactionGroup and UnitFactionGroup("player")) or "Horde"
+        if faction ~= "Alliance" then faction = "Horde" end
+        local function Current()
+            if db[dbKey] == 'modern' or db[dbKey] == 'classic' then return db[dbKey] end
+            -- Same render-time default as KUIUnitFrames.lua: Classic theme -> classic.
+            local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+                and KT.VisualThemes:GetRenderedTheme()
+            return renderedTheme == 'classic' and 'classic' or 'modern'
+        end
+        -- Glow tiles (ThemeWindowFrame.lua) in the accent colour.
+        local VT = KT and KT.VisualThemes
+        local function PaintButtons()
+            local current = Current()
+            local ar, ag, ab = CurrentAccentColor()
+            for key, btn in pairs(buttons) do
+                local on = current == key
+                if VT and VT.PaintGlowTile then
+                    VT:PaintGlowTile(btn, { ar, ag, ab }, nil, on)
+                else
+                    btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
+                    btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
+                end
+            end
+        end
+        local defs = { { key = 'modern', label = 'Modern' }, { key = 'classic', label = 'Classic' } }
+        for index, def in ipairs(defs) do
+            local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+            btn:SetSize(92, 96)
+            btn:SetPoint("TOPLEFT", (index - 1) * 100, 0)
+            btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            local tex = btn:CreateTexture(nil, "ARTWORK")
+            tex:SetSize(56, 56)
+            tex:SetPoint("TOP", 0, -8)
+            if def.key == 'classic' then
+                tex:SetTexture("Interface\\TargetingFrame\\UI-PVP-" .. faction)
+                tex:SetTexCoord(0, 0.65625, 0, 0.65625)
+            else
+                tex:SetTexture("Interface\\AddOns\\KullThranUI\\Libraries\\texture\\media\\icons\\EnhancedFriendList\\" .. faction .. ".png")
+            end
+            local fs = btn:CreateFontString(nil, "OVERLAY")
+            fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+            fs:SetPoint("BOTTOM", 0, 8)
+            fs:SetText(LText(def.label))
+            if VT and VT.SkinGlowTile then VT:SkinGlowTile(btn, fs) end
+            btn:SetScript("OnClick", function()
+                SetAndRefresh(function() db[dbKey] = def.key end)
+                PaintButtons()
+            end)
+            buttons[def.key] = btn
+        end
+        PaintButtons()
+        by = by + 112 -- room for the tile glow (ThemeWindowFrame.lua)
+    return by
+end
+
+function ns.BuildComboPicker(container, W, by, unitKey)
+    local CUF = ns.ComboUnderFrame
+    local db = GetDB()
+    local isTarget = unitKey == 'target'
+    local _, lh = W:Label(container, isTarget and 'Combo Points (Target)' or 'Combo Points Under Player Frame', -by, 12)
+    by = by + lh
+    local _, hintHeight = W:Label(container, "Click each display to enable or disable it. Multiple displays can be active together.", -by, 10)
+    by = by + hintHeight
+    local holder = CreateFrame("Frame", nil, container)
+    holder:SetPoint("TOPLEFT", 10, -by)
+    holder:SetSize(310, 96)
+    local buttons = {}
+    local function Current()
+        return CUF and CUF.GetDisplays(unitKey) or {}
+    end
+    -- Glow tiles (ThemeWindowFrame.lua) in the accent colour.
+    local VT = KT and KT.VisualThemes
+    local function PaintButtons()
+        local current = Current()
+        local ar, ag, ab = CurrentAccentColor()
+        for key, btn in pairs(buttons) do
+            local on = current[key] == true
+            if VT and VT.PaintGlowTile then
+                VT:PaintGlowTile(btn, { ar, ag, ab }, nil, on)
+            else
+                btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
+                btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
+            end
+        end
+    end
+    local defs = {}
+    if isTarget then defs[#defs + 1] = { key = 'ring', label = 'Ring' } end
+    defs[#defs + 1] = { key = 'modern', label = 'Modern' }
+    defs[#defs + 1] = { key = 'classic', label = 'Classic' }
+    local count = #defs
+    local tileW = (count > 4) and 62 or (count > 3) and 72 or 92
+    local step = tileW + 6
+    for index, def in ipairs(defs) do
+        local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+        btn:SetSize(tileW, 96)
+        btn:SetPoint("TOPLEFT", (index - 1) * step, 0)
+        btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        local function Pip(atlas, fallback, x, y, size)
+            local t = btn:CreateTexture(nil, "ARTWORK")
+            t:SetSize(size, size)
+            t:SetPoint("TOP", x, y)
+            if CUF and CUF.HasAtlas(atlas) then t:SetAtlas(atlas, false) else t:SetTexture(fallback) end
+            return t
+        end
+        if def.key == 'modern' and CUF then
+            Pip(CUF.ATLAS.modernFill, "Interface\\COMMON\\Indicator-Red", -12, -16, 22)
+            Pip(CUF.ATLAS.modernEmpty, "Interface\\COMMON\\Indicator-Gray", 12, -16, 22)
+        elseif def.key == 'classic' and CUF then
+            local plate = btn:CreateTexture(nil, "ARTWORK")
+            plate:SetSize(tileW - 12, 13)
+            plate:SetPoint("TOP", 0, -20)
+            if CUF.HasAtlas(CUF.ATLAS.plate) then plate:SetAtlas(CUF.ATLAS.plate, false)
+            else plate:SetColorTexture(0.05, 0.05, 0.05, 1) end
+        elseif def.key == 'ring' or def.key == 'both' then
+            local ringY = (def.key == 'both') and -28 or -34
+            for k = 1, 4 do
+                local a = math.rad(100 - (k - 1) * 28)
+                local t = btn:CreateTexture(nil, "ARTWORK")
+                t:SetSize(11, 11)
+                t:SetPoint("CENTER", btn, "TOP", math.cos(a) * 22 - 6, ringY + math.sin(a) * 16)
+                t:SetTexture(k <= 2 and "Interface\\COMMON\\Indicator-Red" or "Interface\\COMMON\\Indicator-Gray")
+                if k > 2 then t:SetVertexColor(0.1, 0.1, 0.1, 1) end
+            end
+            if def.key == 'both' and CUF then
+                Pip(CUF.ATLAS.modernFill, "Interface\\COMMON\\Indicator-Red", -10, -54, 12)
+                Pip(CUF.ATLAS.modernFill, "Interface\\COMMON\\Indicator-Red", 2, -54, 12)
+                Pip(CUF.ATLAS.modernEmpty, "Interface\\COMMON\\Indicator-Gray", 14, -54, 12)
+            end
+        else
+            local hint = btn:CreateFontString(nil, "OVERLAY")
+            hint:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            hint:SetPoint("TOP", 0, -24)
+            hint:SetWidth(tileW - 8)
+            hint:SetText(LText(def.hint))
+        end
+        local fs = btn:CreateFontString(nil, "OVERLAY")
+        fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", (#def.label > 8) and 10 or 12, "OUTLINE")
+        fs:SetPoint("BOTTOM", 0, 8)
+        fs:SetText(LText(def.label))
+        if VT and VT.SkinGlowTile then VT:SkinGlowTile(btn, fs) end
+        btn:SetScript("OnClick", function()
+            SetAndRefresh(function()
+                if CUF then CUF.SetDisplay(unitKey, def.key, not Current()[def.key]) end
+            end)
+            PaintButtons()
+        end)
+        buttons[def.key] = btn
+    end
+    PaintButtons()
+    by = by + 112 -- room for the tile glow (ThemeWindowFrame.lua)
+    -- Position preset (below / above the frame) and fine X / Y offsets.
+    local suffix = isTarget and 'Target' or 'Player'
+    local _, ph = W:Dropdown(container, 'Combo Points Position', -by,
+        { below = 'Below Frame', above = 'Above Frame' },
+        function() return db['comboPos' .. suffix] == 'above' and 'above' or 'below' end,
+        function(v) SetAndRefresh(function() db['comboPos' .. suffix] = v end) end)
+    by = by + ph
+    if isTarget then
+        -- Art of the ring around the target portrait: the visual style's own
+        -- by default, or Classic / Retail-Forever points on any style.
+        local _, rh = W:Dropdown(container, 'Ring Combo Point Art', -by,
+            { auto = 'Visual Style Default', classic = 'Classic', modern = 'Retail / Forever' },
+            function() return db.comboRingArt or 'auto' end,
+            function(v) SetAndRefresh(function() db.comboRingArt = (v ~= 'auto') and v or nil end) end)
+        by = by + rh
+    end
+    local _, xh = W:Slider(container, 'Combo Points X', -by,
+        function() return db['comboX' .. suffix] or 0 end,
+        function(v) SetAndRefresh(function() db['comboX' .. suffix] = v end) end,
+        -150, 150, 1, '%d')
+    by = by + xh
+    local _, yh = W:Slider(container, 'Combo Points Y', -by,
+        function() return db['comboY' .. suffix] or 0 end,
+        function(v) SetAndRefresh(function() db['comboY' .. suffix] = v end) end,
+        -150, 150, 1, '%d')
+    return by + yh
+end
+
+local function FontValues()
+    local vals = {}
+    local compat = ns.KUIUFCompat
+    local paths = compat and compat.fontPaths or {}
+    for name in pairs(paths) do
+        if not KT or not KT.IsFontOptionVisible or KT:IsFontOptionVisible(name) then
+            vals[name] = name
+        end
+    end
+    if LSM then
+        local sharedFonts = LSM:List("font")
+        for i = 1, #(sharedFonts or {}) do
+            local name = sharedFonts[i]
+            if not KT or not KT.IsFontOptionVisible or KT:IsFontOptionVisible(name) then
+                vals[name] = name
+            end
+        end
+    end
+    if not next(vals) then
+        local def = (KT and KT.GetDefaultFontName and KT:GetDefaultFontName()) or "AAA_ITC_Avant_Garde"
+        vals[def] = def
+    end
+    vals._menuOpts = {
+        kind = "font",
+        sharedMedia = true,
+        resolve = function(name)
+            return paths[name] or (LSM and LSM:Fetch("font", name, true))
+        end,
+    }
+    return vals
+end
+
+local function TextureValues(includeNone)
+    local values = {}
+    local order = ns.healthBarTextureOrder or {}
+    local names = ns.healthBarTextureNames or {}
+
+    for _, key in ipairs(order) do
+        if includeNone or key ~= "none" then
+            values[key] = names[key] or key
+        end
+    end
+
+    if next(values) == nil then
+        values["Melli Reforged"] = "Melli Reforged"
+    end
+
+    values._menuOpts = {
+        kind = "texture",
+        sharedMedia = true,
+        itemHeight = 28,
+        background = function(key)
+            return (ns.healthBarTextures and ns.healthBarTextures[key])
+                or (LSM and LSM:Fetch("statusbar", key, true))
+        end,
+    }
+
+    return values
+end
+
+local PREVIEW_LIVE_UNITS = {
+    player = "player",
+    pet = "pet",
+    target = "target",
+    focus = "focus",
+    totPet = "targettarget",
+    focustarget = "focustarget",
+}
+
+local PREVIEW_CLASS_FALLBACKS = {
+    target = "MAGE",
+    focus = "PRIEST",
+    totPet = "ROGUE",
+    focustarget = "DRUID",
+    boss = "WARRIOR",
+}
+
+local PREVIEW_ICON_FALLBACKS = {
+    pet = "Interface\\Icons\\Ability_Hunter_BeastCall",
+}
+
+ApplyPreviewPortraitTexture = function(texture, unitKey, portraitFacing)
+    if not texture then
+        return
+    end
+
+    texture:SetTexCoord(0, 1, 0, 1)
+
+    local liveUnit = PREVIEW_LIVE_UNITS[unitKey]
+    if liveUnit and UnitExists(liveUnit) then
+        SetPortraitTexture(texture, liveUnit)
+        if portraitFacing == "flipped" then
+            texture:SetTexCoord(1, 0, 0, 1)
+        end
+        return
+    end
+
+    local classToken = previewClassAssignments[unitKey] or PREVIEW_CLASS_FALLBACKS[unitKey]
+    if classToken and _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[classToken] then
+        texture:SetTexture(PREVIEW_CLASS_TEXTURE)
+        texture:SetTexCoord(unpack(_G.CLASS_ICON_TCOORDS[classToken]))
+        return
+    end
+
+    texture:SetTexture(PREVIEW_ICON_FALLBACKS[unitKey] or "Interface\\Icons\\INV_Misc_QuestionMark")
+end
+_G.ApplyPreviewPortraitTexture = ApplyPreviewPortraitTexture
+
+local PORTRAIT_STYLES = {
+    none = "Hidden",
+    attached = "Attached",
+    detached = "Detached",
+    circular = "Circular",
+}
+
+local CLASSIFICATION_NO_PORTRAIT_STYLES = {
+    nameplate = "Nameplate Dragon",
+    unitframes = "Unit Frames Elite/Rare",
+}
+
+local CLASSIFICATION_ANCHORS = {
+    TOPLEFT = "Top Left",
+    TOP = "Top",
+    TOPRIGHT = "Top Right",
+    LEFT = "Left",
+    CENTER = "Center",
+    RIGHT = "Right",
+    BOTTOMLEFT = "Bottom Left",
+    BOTTOM = "Bottom",
+    BOTTOMRIGHT = "Bottom Right",
+}
+
+local PORTRAIT_MODES = {
+    ["2d"] = "2D Portrait",
+    ["3d"] = "3D Portrait",
+    ["class"] = "Class Theme",
+}
+
+local PORTRAIT_FACING = {
+    normal = "Normal",
+    flipped = "Flipped",
+}
+
+local PORTRAIT_SIDES = {
+    left = "Left",
+    right = "Right",
+}
+
+local POWER_POSITIONS = {
+    none = "Hidden",
+    above = "Above",
+    below = "Below",
+}
+
+local HEALTH_TEXT = {
+    none = "None",
+    curhpshort = "Current (Abbrev)",
+    curhp = "Current (Full)",
+    perhp = "Percent",
+    both = "Current (Abbrev) + Percent",
+    curhp_perhp = "Current (Full) + Percent",
+    deficit = "Deficit",
+}
+
+local CLASS_POWER_STYLES = {
+    none = "Disabled",
+    blizzard = "Blizzard",
+    modern = "Modern",
+}
+
+local COMBAT_INDICATOR_STYLES = {
+    none = "Disabled",
+    standard = "Blizzard",
+}
+
+local function NormalizeCombatIndicatorStyle(style)
+    if style == "none" then
+        return "none"
+    end
+
+    return "standard"
+end
+
+local function AddVisibilityControls(sc, unitKey, y)
+    local db = GetDB()
+    local s = db[unitKey]
+    local h
+    _, h = W:Toggle(sc, "Show Solo", -y, function() return s.showSolo ~= false end, function(v) SetAndRefresh(function() s.showSolo = v end) end); y = y + h
+    _, h = W:Toggle(sc, "Show In Party", -y, function() return s.showInParty ~= false end, function(v) SetAndRefresh(function() s.showInParty = v end) end); y = y + h
+    _, h = W:Toggle(sc, "Show In Raid", -y, function() return s.showInRaid ~= false end, function(v) SetAndRefresh(function() s.showInRaid = v end) end); y = y + h
+    return y
+end
+
+GetDefaultPortraitFacing = function(unitKey)
+    if unitKey == "target" then
+        return "flipped"
+    end
+    return "normal"
+end
+
+local function AddCommonUnitControls(sc, unitKey, label, y, opts)
+    local db = GetDB()
+    local s = db[unitKey]
+    local enabledKey = opts.enabledKey or unitKey
+    local h
+
+    if opts.showHeader ~= false then
+        _, h = W:SectionHeader(sc, label, -y); y = y + h
+    else
+        sc.rowCounter = 0
+    end
+    _, h = W:Toggle(sc, "Enable Frame", -y,
+        function()
+            if opts.enabledGet then return opts.enabledGet(db) end
+            return db.enabledFrames[enabledKey] ~= false
+        end,
+        function(v)
+            SetAndRefresh(function()
+                if opts.enabledSet then
+                    opts.enabledSet(db, v)
+                else
+                    db.enabledFrames[enabledKey] = v
+                end
+            end)
+        end); y = y + h
+    _, h = W:Slider(sc, "Frame Width", -y,
+        function() return s.frameWidth or 100 end,
+        function(v) SetAndRefresh(function() s.frameWidth = v end) end, 60, 320, 1); y = y + h
+    _, h = W:Slider(sc, "Health Height", -y,
+        function() return s.healthHeight or 20 end,
+        function(v) SetAndRefresh(function() s.healthHeight = v end) end, 12, 80, 1); y = y + h
+    if opts.showFrameScale then
+        -- Size control for this specific frame. frameScale is an overall
+        -- percentage multiplier on top of Frame Width/Health Height,
+        -- clamped 25-300 elsewhere. Scoped to player/target only (opts
+        -- flag).
+        local scaleWidget
+        scaleWidget, h = W:Slider(sc, "Frame Size", -y,
+            function() return s.frameScale or 100 end,
+            function(v) SetAndRefresh(function() s.frameScale = v end) end, 25, 300, 1)
+        LockIfThemeOwned(scaleWidget, unitKey .. ".frameScale")
+        y = y + h
+    end
+    local widget
+    widget, h = W:Toggle(sc, "Class Colored Health", -y,
+        function() return s.healthClassColored ~= false end,
+        function(v) SetAndRefresh(function() s.healthClassColored = v end) end)
+    LockIfThemeOwned(widget, unitKey .. ".healthClassColored")
+    y = y + h
+    _, h = W:ColorSwatch(sc, "Health Fill Color", -y,
+        function()
+            local c = s.customFillColor or { r = 0.22, g = 0.55, b = 0.95, a = 1 }
+            return c.r, c.g, c.b, c.a
+        end,
+        function(r, g, b, a)
+            SetAndRefresh(function()
+                s.customFillColor = { r = r, g = g, b = b, a = a }
+            end)
+        end, true); y = y + h
+    _, h = W:ColorSwatch(sc, "Health Background Color", -y,
+        function()
+            local c = s.customBgColor or { r = 0.08, g = 0.08, b = 0.08, a = 1 }
+            return c.r, c.g, c.b, c.a
+        end,
+        function(r, g, b, a)
+            SetAndRefresh(function()
+                s.customBgColor = { r = r, g = g, b = b, a = a }
+            end)
+        end, true); y = y + h
+
+    if opts.hasPower then
+        _, h = W:Dropdown(sc, "Power Bar Position", -y, POWER_POSITIONS,
+            function() return s.powerPosition or "below" end,
+            function(v) SetAndRefresh(function() s.powerPosition = v end) end); y = y + h
+        _, h = W:Slider(sc, "Power Height", -y,
+            function() return s.powerHeight or 6 end,
+            function(v) SetAndRefresh(function() s.powerHeight = v end) end, 0, 24, 1); y = y + h
+    end
+
+    local widget
+    widget, h = W:Toggle(sc, "Show Portrait", -y,
+        function() return s.showPortrait ~= false end,
+        function(v) SetAndRefresh(function() s.showPortrait = v end) end)
+    LockIfThemeOwned(widget, unitKey .. ".showPortrait")
+    y = y + h
+    widget, h = W:Dropdown(sc, "Portrait Style", -y, PORTRAIT_STYLES,
+        function() return db.portraitStyle or "attached" end,
+        function(v) SetAndRefresh(function() db.portraitStyle = v end) end)
+    LockIfThemeOwned(widget, "portraitStyle")
+    y = y + h
+    if ActiveVisualTheme() == "forever" then
+        -- Forever's portrait frame: KUI's bronze ornament (with the corner) or the
+        -- client's own plain ring.
+        _, h = W:Dropdown(sc, "Forever Portrait Frame", -y,
+            { ornament = "Bronze ornament (with corner)", ring = "Forever original (plain ring)" },
+            function() return db.foreverPortraitFrame or "ornament" end,
+            function(v) SetAndRefresh(function() db.foreverPortraitFrame = (v == "ring") and "ring" or nil end) end,
+            { "ornament", "ring" })
+        y = y + h
+    end
+    _, h = W:Dropdown(sc, "Portrait Mode", -y, PORTRAIT_MODES,
+        function() local live = GetDB(); return live[unitKey].portraitMode or "2d" end,
+        function(v) SetAndRefresh(function()
+            local live = GetDB()
+            live[unitKey].portraitMode = v
+            if unitKey == "target" then live._ktTarget3DInitialized = true end
+        end) end); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Zoom", -y,
+        function() return s.portrait3DZoom or 125 end,
+        function(v) SetAndRefresh(function() s.portrait3DZoom = v end) end, 50, 250, 1, "%d%%"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Rotation", -y,
+        function() return s.portrait3DRotation or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DRotation = v end) end, -90, 90, 1, "%d"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait X Offset", -y,
+        function() return s.portrait3DX or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DX = v end) end, -50, 50, 1, "%d"); y = y + h
+    _, h = W:Slider(sc, "3D Portrait Y Offset", -y,
+        function() return s.portrait3DY or 0 end,
+        function(v) SetAndRefresh(function() s.portrait3DY = v end) end, -50, 50, 1, "%d"); y = y + h
+    
+    -- Portrait Side (for attached and circular portraits)
+    if db.portraitStyle ~= "none" then
+        widget, h = W:Dropdown(sc, "Portrait Side", -y, PORTRAIT_SIDES,
+            function()
+                local defaultSide = (unitKey == "player" or unitKey == "pet") and "left" or "right"
+                return s.portraitSide or defaultSide 
+            end,
+            function(v) SetAndRefresh(function() s.portraitSide = v end) end)
+        LockIfThemeOwned(widget, "target.portraitSide")
+        y = y + h
+    end
+    
+    if opts.allowPortraitFacing then
+        _, h = W:Dropdown(sc, "Portrait Facing", -y,
+            { auto = "Auto", normal = "Normal", flipped = "Flipped" },
+            function() return s.portraitFacingMode or "auto" end,
+            function(v) SetAndRefresh(function()
+                s.portraitFacingMode = (v ~= "auto") and v or nil
+            end) end,
+            { "auto", "normal", "flipped" }); y = y + h
+    end
+    
+    -- Portrait position and size controls (always shown when portrait options exist)
+    _, h = W:Slider(sc, "Portrait Size Adjustment", -y,
+        function() return s.portraitSize or 0 end,
+        function(v) SetAndRefresh(function() s.portraitSize = v end) end, -40, 300, 1); y = y + h
+    _, h = W:Slider(sc, "Portrait X Offset", -y,
+        function() return s.portraitX or 0 end,
+        function(v) SetAndRefresh(function() s.portraitX = v end) end, -250, 250, 1); y = y + h
+    _, h = W:Slider(sc, "Portrait Y Offset", -y,
+        function() return s.portraitY or 0 end,
+        function(v) SetAndRefresh(function() s.portraitY = v end) end, -250, 250, 1); y = y + h
+
+    if opts.hasCastbar then
+        local castToggleKey = opts.castToggleKey or "showCastbar"
+        widget, h = W:Toggle(sc, "Show Castbar", -y,
+            function() return s[castToggleKey] ~= false end,
+            function(v) SetAndRefresh(function() s[castToggleKey] = v end) end)
+        -- Player's cast bar visibility is seeded ON by the stock-art themes, but the user can
+        -- switch it off in every style (the choice is stored per theme slot), so it is not locked.
+        y = y + h
+    end
+
+    if opts.showBuffsKey then
+        _, h = W:Toggle(sc, opts.showBuffsLabel or "Show Buffs", -y,
+            function() return s[opts.showBuffsKey] ~= false end,
+            function(v) SetAndRefresh(function() s[opts.showBuffsKey] = v end) end); y = y + h
+    end
+
+    if opts.showDebuffsKey then
+        _, h = W:Toggle(sc, opts.showDebuffsLabel or "Show Debuffs", -y,
+            function() return s[opts.showDebuffsKey] ~= false end,
+            function(v) SetAndRefresh(function() s[opts.showDebuffsKey] = v end) end); y = y + h
+    end
+
+    if opts.showDispelOverlayKey then
+        _, h = W:Toggle(sc, opts.showDispelOverlayLabel or "Dispel Overlay", -y,
+            function()
+                if opts.showDispelOverlayKey == 'dispelOverlay' and ns.IsDispelOverlayOn then
+                    return ns.IsDispelOverlayOn(s)
+                end
+                return s[opts.showDispelOverlayKey] ~= false
+            end,
+            function(v) SetAndRefresh(function() s[opts.showDispelOverlayKey] = v end) end); y = y + h
+            
+        local function AddColorSwatch(key, label, defR, defG, defB)
+            _, h = W:ColorSwatch(sc, label, -y,
+                function()
+                    local c = s[key]
+                    if c then return c.r, c.g, c.b, 1 else return defR, defG, defB, 1 end
+                end,
+                function(r, g, b)
+                    SetAndRefresh(function() s[key] = {r=r, g=g, b=b} end)
+                end, false); y = y + h
+        end
+        AddColorSwatch("dispelColorMagic", "Magic Color", 0.349, 0.475, 1.0)
+        AddColorSwatch("dispelColorCurse", "Curse Color", 0.636, 0.0, 0.640)
+        AddColorSwatch("dispelColorDisease", "Disease Color", 0.671, 0.384, 0.098)
+        AddColorSwatch("dispelColorPoison", "Poison Color", 0.0, 0.706, 0.286)
+        AddColorSwatch("dispelColorBleed", "Bleed Color", 0.750, 0.150, 0.150)
+    end
+
+
+    _, h = W:Dropdown(sc, "Health Text", -y, HEALTH_TEXT,
+        function() return s.healthDisplay or "both" end,
+        function(v) SetAndRefresh(function()
+            s.healthDisplay = v
+            ApplyHealthDisplayToText(s)
+        end) end); y = y + h
+    _, h = W:Slider(sc, "Text Size", -y,
+        function() return s.textSize or s.leftTextSize or 12 end,
+        function(v) SetAndRefresh(function() s.textSize = v; s.leftTextSize = v; s.rightTextSize = v; s.centerTextSize = v end) end, 8, 24, 1); y = y + h
+
+    if opts.hasVisibility then
+        y = AddVisibilityControls(sc, unitKey, y)
+    end
+
+    return y
+end
+
+local function CreateOptionBlock(parent, title, x, y, width)
+    -- The core block (skinned card) when the core is loaded; this copy is the fallback.
+    if KT.Options and KT.Options.CreateOptionBlock then
+        return KT.Options.CreateOptionBlock(parent, title, x, y, width)
+    end
+    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    frame:SetSize(width, 40)
+    frame:SetPoint("TOPLEFT", x, y)
+    KT:AddBackdrop(frame, 0.04, 0.04, 0.05, 0.95)
+    KT:AddBorder(frame, 0.18, 0.18, 0.22, 1)
+
+    local titleText = frame:CreateFontString(nil, "OVERLAY")
+    titleText:SetFont(KT.FONT_PATH, 10, "OUTLINE")
+    KT:SetAccentTextColor(titleText, 1)
+    titleText:SetPoint("TOPLEFT", 10, -8)
+    titleText:SetText(string.upper(LText(title)))
+
+    local content = CreateFrame("Frame", nil, frame)
+    content:SetPoint("TOPLEFT", 0, -24)
+    content:SetWidth(width)
+    content:SetHeight(1)
+    content.rowCounter = 0
+
+    return frame, content
+end
+
+local function FinalizeOptionBlock(frame, content, contentHeight)
+    local headerH = 24
+    local bottomPad = 10
+    local total = headerH + contentHeight + bottomPad
+    content:SetHeight(contentHeight)
+    frame:SetHeight(total)
+    return total
+end
+
+local function CreateUnitFramesLivePreview(parent, options)
+    options = options or {}
+    local db = GetDB()
+    if not db then return nil end
+
+    local preview = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    preview:SetSize(options.width or (parent:GetWidth() - 20), options.height or 180)
+    preview:SetPoint("TOPLEFT", options.x or 10, -(options.y or 10))
+    KT:AddBackdrop(preview, 0.04, 0.04, 0.05, 0.95)
+    KT:AddBorder(preview, 0.18, 0.18, 0.22, 1)
+    if options.attachSticky ~= false and KT.AttachStickyPreview then
+        KT:AttachStickyPreview(preview, { point = "TOPLEFT", relativePoint = "TOPLEFT", x = 10, y = -10 })
+    end
+
+    local previewTitle = preview:CreateFontString(nil, "OVERLAY")
+    previewTitle:SetFont(PREVIEW_DEFAULT_FONT, 10, "OUTLINE")
+    KT:SetAccentTextColor(previewTitle, 1)
+    previewTitle:SetPoint("TOPLEFT", 10, -8)
+    previewTitle:SetText(LText("LIVE PREVIEW"))
+    -- Glass card border (Widgets.lua W:PreviewCard).
+    if KT.Widgets and KT.Widgets.PreviewCard then KT.Widgets:PreviewCard(preview) end
+
+    local playerPreview = CreatePreviewUnit(preview)
+    local targetPreview = CreatePreviewUnit(preview)
+    local focusPreview = CreatePreviewUnit(preview)
+    local petPreview = CreatePreviewUnit(preview)
+    local targetTargetPreview = CreatePreviewUnit(preview)
+    local focusTargetPreview = CreatePreviewUnit(preview)
+
+    preview.Refresh = function()
+        -- Read the settings again: an installer preview of another style swaps
+        -- them in for each refresh (VisualThemes:WithPreviewProfile).
+        db = GetDB() or db
+        local previewWidth = preview:GetWidth()
+        ns.ApplyPreviewUnit(playerPreview, "player", db.player, db, LText("Player"), "100%")
+        ns.ApplyPreviewUnit(targetPreview, "target", db.target, db, previewNameAssignments.target or LText("Target"), "100%")
+        ns.ApplyPreviewUnit(focusPreview, "focus", db.focus, db, previewNameAssignments.focus or LText("Focus"), "100%")
+        ns.ApplyPreviewUnit(petPreview, "pet", db.pet, db, previewNameAssignments.pet or LText("Pet"), "100%")
+        ns.ApplyPreviewUnit(targetTargetPreview, "totPet", db.totPet, db, previewNameAssignments.totPet or LText("ToT"), "100%")
+        ns.ApplyPreviewUnit(focusTargetPreview, "focustarget", db.totPet, db, previewNameAssignments.focustarget or LText("Focus Target"), "100%")
+
+        -- Compact layout: Player/Target on top; the small frames share one
+        -- row below them (Pet + Focus left, ToT + Focus Target right).
+        -- The stock-art styles size their boxes by the real frame scale (132%),
+        -- which is wider than the preview: shrink every frame by one common
+        -- factor so no two boxes overlap and nothing leaves the panel.
+        local top, rowGap, sideGap, edge = 26, 8, 10, 14
+        local frames = { playerPreview, targetPreview, focusPreview, petPreview,
+            targetTargetPreview, focusTargetPreview }
+        for _, unitFrame in ipairs(frames) do unitFrame:SetScale(1) end
+        local availW = previewWidth - edge * 2
+        local topNeed = (playerPreview:GetWidth() or 0) + (targetPreview:GetWidth() or 0) + sideGap
+        local rowNeed = (petPreview:GetWidth() or 0) + (focusPreview:GetWidth() or 0)
+            + (targetTargetPreview:GetWidth() or 0) + (focusTargetPreview:GetWidth() or 0) + sideGap * 3
+        local fit = 1
+        if availW > 0 then
+            if topNeed > availW then fit = math.min(fit, availW / topNeed) end
+            if rowNeed > availW then fit = math.min(fit, availW / rowNeed) end
+        end
+        for _, unitFrame in ipairs(frames) do unitFrame:SetScale(fit) end
+        local function at(x) return x / fit end   -- offsets are in the frame's own scale
+
+        playerPreview:ClearAllPoints()
+        playerPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", at(edge), -at(top))
+        targetPreview:ClearAllPoints()
+        targetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -at(edge), -at(top))
+        local mainH = math.max(playerPreview:GetHeight() or 0, targetPreview:GetHeight() or 0) * fit
+        local rowY = -at(top + mainH + rowGap)
+        petPreview:ClearAllPoints()
+        petPreview:SetPoint("TOPLEFT", preview, "TOPLEFT", at(edge), rowY)
+        focusPreview:ClearAllPoints()
+        focusPreview:SetPoint("TOPLEFT", petPreview, "TOPRIGHT", sideGap, 0)
+        focusTargetPreview:ClearAllPoints()
+        focusTargetPreview:SetPoint("TOPRIGHT", preview, "TOPRIGHT", -at(edge), rowY)
+        targetTargetPreview:ClearAllPoints()
+        targetTargetPreview:SetPoint("TOPRIGHT", focusTargetPreview, "TOPLEFT", -sideGap, 0)
+
+        if previewWidth > 0 then
+            local rowH = math.max(petPreview:GetHeight() or 0, focusPreview:GetHeight() or 0,
+                targetTargetPreview:GetHeight() or 0, focusTargetPreview:GetHeight() or 0) * fit
+            preview:SetHeight(top + mainH + rowGap + rowH + 12)
+        end
+    end
+    preview:Refresh()
+    
+    -- Store preview frames for external access
+    preview.playerPreview = playerPreview
+    preview.targetPreview = targetPreview
+    preview.focusPreview = focusPreview
+    preview.petPreview = petPreview
+    preview.targetTargetPreview = targetTargetPreview
+    preview.focusTargetPreview = focusTargetPreview
+    
+    return preview
+end
+
+_G.KullThranUI_UnitFramesOptions = _G.KullThranUI_UnitFramesOptions or {}
+_G.KullThranUI_UnitFramesOptions.CreateLivePreview = CreateUnitFramesLivePreview
+-- A single player frame drawn exactly like the Unit Frames preview (native
+-- art per Visual Style included), for pages that build around it.
+_G.KullThranUI_UnitFramesOptions.CreatePlayerPreview = function(parent)
+    local db = GetDB()
+    if not db then return nil end
+    local unit = CreatePreviewUnit(parent)
+    ns.ApplyPreviewUnit(unit, "player", db.player, db, UnitName("player") or LText("Player"), "100%")
+    unit:EnableMouse(false)
+    return unit
+end
+KT:RegisterPage("unitframes", "Unit Frames", 11, function(sc, W)
+    W = W or (KT and KT.Widgets)
+    if not W then return 0 end
+    local db = GetDB()
+    if not db then return 0 end
+    local y, h = 0, 0
+
+    local optionsFrame = KT.MenuPrincipal
+    if optionsFrame and not optionsFrame._kuiUFPreviewClassHooked then
+        optionsFrame._kuiUFPreviewClassHooked = true
+        optionsFrame:HookScript("OnShow", function()
+            RerollPreviewClassAssignments()
+            C_Timer.After(0, function()
+                if previewRefresh then previewRefresh() end
+            end)
+        end)
+    end
+
+    local preview = CreateUnitFramesLivePreview(sc)
+    previewRefresh = function() preview:Refresh() end    previewRefresh()
+    local previewBottomGap = 24
+    y = y + preview:GetHeight() + previewBottomGap
+
+    local gap = 12
+    local columnGap = 14
+    local fullW = sc:GetWidth()
+    local blockW = math.floor((fullW - 20 - columnGap) / 2)
+    local leftX = 10
+    local rightX = leftX + blockW + columnGap
+    local leftUsed = 0
+    local rightUsed = 0
+
+    for _, child in ipairs({ sc:GetChildren() }) do
+        if child ~= _tabBarFrame and child ~= preview then child:Hide() end
+    end
+    local tabContainer, tabH = BuildTabBar(sc, -y)
+    y = y + tabH + 6
+
+    local optionBlocks = {}
+
+    local function AddBlock(column, title, buildFn, key)
+        local x = (column == 'right') and rightX or leftX
+        local yOff = -(y + ((column == 'right') and rightUsed or leftUsed))
+        local frame, content = CreateOptionBlock(sc, title, x, yOff, blockW)
+        local contentH = buildFn(content)
+        local totalH = FinalizeOptionBlock(frame, content, contentH)
+        optionBlocks[key or title] = frame
+        if column == 'right' then
+            rightUsed = rightUsed + totalH + gap
+        else
+            leftUsed = leftUsed + totalH + gap
+        end
+        return frame
+    end
+
+    if ufActiveTab == 'general' then
+        AddBlock('left', 'Global', function(container)
+            local by = 0
+            _, h = W:Toggle(container, 'Enable Module', -by,
+                function() return db.enable ~= false end,
+                function(v)
+                    db.enable = v
+                    StaticPopup_Show("KULLTHRANUI_RELOAD")
+                end); by = by + h
+            _, h = W:Toggle(container, 'Show Character Level', -by,
+                function() return db.showCharacterLevel ~= false end,
+                function(v) SetAndRefresh(function() db.showCharacterLevel = v and true or false end) end); by = by + h
+            -- Classic / Forever / Retail only (KUI Style keeps its own text).
+            _, h = W:Toggle(container, 'Blizzard Level Text and Colors (Classic / Forever / Retail)', -by,
+                function() return ns.StockStyleToggle(db, 'levelBlizzardStyle') end,
+                function(v) SetAndRefresh(function() db.levelBlizzardStyle = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Combat Icon in the Level Circle (Classic / Forever / Retail)', -by,
+                function() return ns.StockStyleToggle(db, 'levelCombatIcon') end,
+                function(v) SetAndRefresh(function() db.levelCombatIcon = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Blizzard Name Text (Classic / Forever / Retail)', -by,
+                function() return ns.StockStyleToggle(db, 'blizzardNameStyle') end,
+                function(v) SetAndRefresh(function() db.blizzardNameStyle = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Classic Bar Text: 516/553 93% (Classic)', -by,
+                function() return ns.StockStyleToggle(db, 'classicStatusText', 'classic') end,
+                function(v) SetAndRefresh(function() db.classicStatusText = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Show PvP Faction Icon', -by,
+                function() return db.showPvPIcon == true end,
+                function(v) SetAndRefresh(function() db.showPvPIcon = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Show Elite/Rare Indicator', -by,
+                function() return db.showClassification ~= false end,
+                function(v) SetAndRefresh(function() db.showClassification = v and true or false end) end); by = by + h
+            _, h = W:Dropdown(container, 'Target Rare / Elite Overlay', -by,
+                { auto = 'Visual Style Default', native = 'Retail / Forever (Blizzard)' },
+                function() return db.targetClassificationArt == 'native' and 'native' or 'auto' end,
+                function(v) SetAndRefresh(function() db.targetClassificationArt = (v == 'native') and 'native' or nil end) end); by = by + h
+            _, h = W:Dropdown(container, 'No-Portrait Indicator Style', -by, CLASSIFICATION_NO_PORTRAIT_STYLES,
+                function() return db.classificationNoPortraitStyle or 'nameplate' end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitStyle = v end) end); by = by + h
+            _, h = W:Slider(container, 'Indicator Size', -by,
+                function() return tonumber(db.classificationNoPortraitSize) or 52 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitSize = v end) end, 8, 128, 1); by = by + h
+            _, h = W:Dropdown(container, 'Indicator Anchor', -by, CLASSIFICATION_ANCHORS,
+                function() return db.classificationNoPortraitAnchor or 'TOPRIGHT' end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitAnchor = v end) end); by = by + h
+            _, h = W:Slider(container, 'Indicator X Offset', -by,
+                function() return tonumber(db.classificationNoPortraitX) or -8 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitX = v end) end, -300, 300, 1); by = by + h
+            _, h = W:Slider(container, 'Indicator Y Offset', -by,
+                function() return tonumber(db.classificationNoPortraitY) or 0 end,
+                function(v) SetAndRefresh(function() db.classificationNoPortraitY = v end) end, -300, 300, 1); by = by + h
+            local levelOutlineValues = { NONE = 'None', OUTLINE = 'Outline', THICKOUTLINE = 'Thick Outline', MONOCHROME = 'Monochrome', OUTLINEMONOCHROME = 'Monochrome Outline' }
+            do
+                local _, lh = W:Label(container, 'Player Rare / Elite Border', -by, 12)
+                by = by + lh
+                local holder = CreateFrame("Frame", nil, container)
+                holder:SetPoint("TOPLEFT", 10, -by)
+                holder:SetSize(300, 308)
+                local buttons = {}
+                -- Glow tiles (ThemeWindowFrame.lua) in the accent colour.
+                local VT = KT and KT.VisualThemes
+                local function PaintButtons()
+                    local current = db.playerClassificationBorder or 'none'
+                    local ar, ag, ab = CurrentAccentColor()
+                    for key, btn in pairs(buttons) do
+                        local on = current == key
+                        if VT and VT.PaintGlowTile then
+                            VT:PaintGlowTile(btn, { ar, ag, ab }, nil, on)
+                        else
+                            btn:SetBackdropColor(on and ar * 0.25 or 0.06, on and ag * 0.25 or 0.06, on and ab * 0.25 or 0.08, 1)
+                            btn:SetBackdropBorderColor(on and ar or 0.22, on and ag or 0.22, on and ab or 0.26, 1)
+                        end
+                    end
+                end
+                local defs = { { key = 'none', label = 'Default', hint = 'Theme portrait' },
+                               { key = 'rare', file = 'RARE.png', label = 'Rare' },
+                               { key = 'elite', file = 'ELITE.png', label = 'Elite' },
+                               { key = 'classicrare', sheet = 'rare', label = 'Classic Rare' },
+                               { key = 'classicelite', sheet = 'elite', label = 'Classic Elite' },
+                               { key = 'nativerare', native = 'rare', label = 'Retail Rare', hint = 'Retail art' },
+                               { key = 'nativeelite', native = 'elite', label = 'Retail Elite', hint = 'Retail art' } }
+                for index, def in ipairs(defs) do
+                    local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+                    btn:SetSize(92, 96)
+                    btn:SetPoint("TOPLEFT", ((index - 1) % 3) * 100, -math.floor((index - 1) / 3) * 104)
+                    btn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+                        edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+                    local tex = btn:CreateTexture(nil, "ARTWORK")
+                    tex:SetSize(64, 64)
+                    tex:SetPoint("TOP", 0, -8)
+                    if def.file then
+                        tex:SetTexture(ns.RING_ICON_PATH .. def.file)
+                    elseif def.sheet and ns.ClassicRing then
+                        local CR = ns.ClassicRing
+                        tex:SetTexture(CR.dragons[def.sheet] or CR.sheets[def.sheet])
+                        tex:SetTexCoord(CR.uLeft, CR.uRight, CR.vTop, CR.vBottom)
+                        tex:SetSize(68, 50)
+                    elseif def.native and ns.HasNativeClassificationArt
+                        and ns.HasNativeClassificationArt(def.native) then
+                        local info = C_Texture.GetAtlasInfo(ns.NATIVE_CLASSIFICATION[def.native].atlas)
+                        tex:SetAtlas(ns.NATIVE_CLASSIFICATION[def.native].atlas, false)
+                        local w, hh = info.width or 64, info.height or 64
+                        local k = 64 / math.max(w, hh)
+                        tex:SetSize(w * k, hh * k)
+                    else
+                        local hint = btn:CreateFontString(nil, "OVERLAY")
+                        hint:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+                        hint:SetPoint("CENTER", tex, "CENTER", 0, 0)
+                        hint:SetWidth(80)
+                        hint:SetText(LText(def.hint))
+                    end
+                    local fs = btn:CreateFontString(nil, "OVERLAY")
+                    fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+                    fs:SetPoint("BOTTOM", 0, 8)
+                    fs:SetText(LText(def.label))
+                    if VT and VT.SkinGlowTile then VT:SkinGlowTile(btn, fs) end
+                    btn:SetScript("OnClick", function()
+                        SetAndRefresh(function() db.playerClassificationBorder = def.key end)
+                        PaintButtons()
+                    end)
+                    buttons[def.key] = btn
+                end
+                PaintButtons()
+                -- Greyed out (and not clickable) while the Player portrait is off.
+                local function UpdateEnabled()
+                    local portraitOn = (db.portraitStyle or "attached") ~= "none"
+                        and not (db.player and db.player.showPortrait == false)
+                    holder:SetAlpha(portraitOn and 1 or 0.35)
+                    for _, btn in pairs(buttons) do
+                        btn:SetEnabled(portraitOn)
+                    end
+                end
+                holder._acc = 0
+                holder:SetScript("OnUpdate", function(self, elapsed)
+                    self._acc = self._acc + elapsed
+                    if self._acc > 0.25 then
+                        self._acc = 0
+                        UpdateEnabled()
+                    end
+                end)
+                UpdateEnabled()
+                by = by + 324 -- room for the tile glow (ThemeWindowFrame.lua)
+            end
+            _, h = W:Toggle(container, 'Alternate Mana Bar under the Player Frame (Druid)', -by,
+                function()
+                    if db.altMana ~= nil then return db.altMana == true end
+                    return ns.AltMana and ns.AltMana.DefaultEnabled and ns.AltMana.DefaultEnabled() or false
+                end,
+                function(v)
+                    SetAndRefresh(function() db.altMana = v and true or false end)
+                    if ns.AltMana and ns.AltMana.Update then pcall(ns.AltMana.Update) end
+                end); by = by + h
+            _, h = W:Toggle(container, 'Smooth Health/Power Bars', -by,
+                function() return db.smoothBars ~= false end,
+                function(v) SetAndRefresh(function() db.smoothBars = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Combat Text on Portrait (Dodge / Miss / damage)', -by,
+                function()
+                    if db.hitText ~= nil then return db.hitText ~= false end
+                    local th = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme and KT.VisualThemes:GetRenderedTheme()
+                    return th == "classic"
+                end,
+                function(v) SetAndRefresh(function() db.hitText = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, '    Numbers in White (damage and healing)', -by,
+                function() return db.hitTextWhiteNumbers == true end,
+                function(v) SetAndRefresh(function() db.hitTextWhiteNumbers = v and true or false end) end); by = by + h
+            _, h = W:Toggle(container, 'Aggro Glow (red pulse on player frame)', -by,
+                function() return db.aggroGlow ~= false end,
+                function(v)
+                    SetAndRefresh(function() db.aggroGlow = v and true or false end)
+                    if ns.AggroGlow and ns.AggroGlow.Update then pcall(ns.AggroGlow.Update, ns.AggroGlow) end
+                end); by = by + h
+            local widget
+            widget, h = W:Toggle(container, 'Show PvP Icon Backdrop Circle', -by,
+                function()
+                    if db.showPvPCircle ~= nil then return db.showPvPCircle end
+                    -- Matches KUIUnitFrames.lua's own render-time default:
+                    -- off for kui until the user explicitly picks a value.
+                    local renderedTheme = KT.VisualThemes and KT.VisualThemes.GetRenderedTheme
+                        and KT.VisualThemes:GetRenderedTheme()
+                    return renderedTheme ~= "kui"
+                end,
+                function(v) SetAndRefresh(function() db.showPvPCircle = v and true or false end) end)
+            LockIfThemeOwned(widget, "showPvPCircle")
+            by = by + h
+            _, h = W:Dropdown(container, 'Level Font', -by, FontValues,
+                function() return db.levelFont or 'AAA_ITC_Avant_Garde' end,
+                function(v) SetAndRefresh(function() db.levelFont = v end) end); by = by + h
+            _, h = W:Slider(container, 'Level Font Size', -by,
+                function() return tonumber(db.levelFontSize) or 11 end,
+                function(v) SetAndRefresh(function() db.levelFontSize = v end) end, 6, 48, 1); by = by + h
+            _, h = W:Dropdown(container, 'Level Text Outline', -by, levelOutlineValues,
+                function() return db.levelFontOutline or 'OUTLINE' end,
+                function(v) SetAndRefresh(function() db.levelFontOutline = v end) end); by = by + h
+            _, h = W:ColorSwatch(container, 'Level Text Color', -by,
+                function() local key, default = ns.LevelColorKey(); local c = db[key] or default; return c.r, c.g, c.b, c.a end,
+                function(r, g, b, a) SetAndRefresh(function() db[ns.LevelColorKey()] = { r = r, g = g, b = b, a = a or 1 } end) end, true); by = by + h
+            _, h = W:Slider(container, 'Level X Offset', -by,
+                function() return tonumber(db.levelX) or 2 end,
+                function(v) SetAndRefresh(function() db.levelX = v end) end, -200, 200, 1); by = by + h
+            _, h = W:Slider(container, 'Level Y Offset', -by,
+                function() return tonumber(db.levelY) or 2 end,
+                function(v) SetAndRefresh(function() db.levelY = v end) end, -100, 200, 1); by = by + h
+            local widget
+            widget, h = W:Dropdown(container, 'Portrait Style', -by, PORTRAIT_STYLES,
+                function() return db.portraitStyle or 'attached' end,
+                function(v) SetAndRefresh(function() db.portraitStyle = v end) end)
+            LockIfThemeOwned(widget, "portraitStyle")
+            by = by + h
+            _, h = W:Toggle(container, 'Custom Circular Portrait Border', -by,
+                function() return db.circularPortraitBorderUseCustomColor == true end,
+                function(v) SetAndRefresh(function() db.circularPortraitBorderUseCustomColor = v and true or false end) end); by = by + h
+            _, h = W:ColorSwatch(container, 'Circular Portrait Border Color', -by,
+                function()
+                    local c = db.circularPortraitBorderColor
+                    if c then return c.r, c.g, c.b, c.a end
+                    local r, g, b = CurrentAccentColor()
+                    return r, g, b, 1
+                end,
+                function(r, g, b, a)
+                    SetAndRefresh(function()
+                        db.circularPortraitBorderColor = { r = r, g = g, b = b, a = a or 1 }
+                    end)
+                end, false); by = by + h
+            widget, h = W:Toggle(container, 'Dark Theme', -by,
+                function() return db.darkTheme == true end,
+                function(v) SetAndRefresh(function() db.darkTheme = v end) end)
+            LockIfThemeOwned(widget, "darkTheme")
+            by = by + h
+            _, h = W:Slider(container, 'Castbar Opacity', -by,
+                function() return math.floor((db.castbarOpacity or 1) * 100 + 0.5) end,
+                function(v) SetAndRefresh(function() db.castbarOpacity = v / 100 end) end, 0, 100, 1); by = by + h
+            _, h = W:ColorSwatch(container, 'Castbar Color', -by,
+                function()
+                    local c = db.castbarColor
+                    if c then return c.r, c.g, c.b, c.a end
+                    local r, g, b = CurrentAccentColor()
+                    return r, g, b, 1
+                end,
+                function(r, g, b, a) SetAndRefresh(function() db.castbarColor = { r = r, g = g, b = b, a = a } end) end, true); by = by + h
+            _, h = W:Dropdown(container, 'Default Font', -by, FontValues,
+                function() return db.player and db.player.selectedFont or 'AAA_ITC_Avant_Garde' end,
+                function(v) SetAndRefresh(function()
+                    for _, key in ipairs({ 'player', 'target', 'focus', 'boss', 'pet', 'totPet' }) do
+                        if db[key] then db[key].selectedFont = v end
+                    end
+                end) end); by = by + h
+            local widget
+            widget, h = W:Dropdown(container, 'Default Texture', -by, TextureValues(false),
+                function() return db.player and db.player.healthBarTexture or 'Melli Reforged' end,
+                function(v) SetAndRefresh(function()
+                    for _, key in ipairs({ 'player', 'target', 'focus', 'boss', 'pet', 'totPet' }) do
+                        if db[key] then db[key].healthBarTexture = v end
+                    end
+                end) end)
+            -- Texture is independent per Visual Style (stored in the theme slot).
+            by = by + h
+            return by
+        end, 'global')
+
+        AddBlock('right', 'Positions', function(container)
+            local by = 0
+            _, h = W:Label(container, 'Use Unlock Mode to drag Unit Frames registered by KullThranUI.', -by, 11); by = by + h
+            _, h = W:Button(container, 'Open Unlock Mode', -by, function()
+                local UM = KT and KT.GetModule and KT:GetModule('UnlockMode', true)
+                if UM and not UM.isOpen and UM.OpenUnlockMode then
+                    UM:OpenUnlockMode()
+                elseif UM and UM.isOpen and UM.RefreshMovers then
+                    UM:RefreshMovers()
+                end
+            end); by = by + h
+            _, h = W:Button(container, 'Reset Unit Frames Defaults', -by, function()
+                StaticPopup_Show('KULLTHRANUI_UF_RESET_DEFAULTS')
+            end); by = by + h
+            return by
+        end, 'positions')
+    end
+
+    if ufActiveTab == 'player' then
+        AddBlock('left', 'Player', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'player', 'Player', by, {
+                hasPower = true,
+                hasCastbar = true,
+                allowPortraitFacing = true,
+                castToggleKey = 'showPlayerCastbar',
+                showBuffsKey = 'showBuffs',
+                showBuffsLabel = 'Show Buffs',
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = true,
+                showHeader = false,
+                showFrameScale = true,
+            })
+
+            _, h = W:Toggle(container, 'Show Absorb Bar', -by,
+                function() return db.player.showPlayerAbsorb == true end,
+                function(v) SetAndRefresh(function() db.player.showPlayerAbsorb = v end) end); by = by + h
+            _, h = W:Dropdown(container, 'Absorb Texture', -by, TextureValues(true),
+                function() return db.player.absorbBarTexture or 'glass' end,
+                function(v) SetAndRefresh(function() db.player.absorbBarTexture = v end) end); by = by + h
+            _, h = W:ColorSwatch(container, 'Absorb Color', -by,
+                function()
+                    local c = db.player.absorbBarColor or { r = 0.74, g = 0.92, b = 1, a = 0.82 }
+                    return c.r, c.g, c.b, c.a
+                end,
+                function(r, g, b, a)
+                    SetAndRefresh(function()
+                        db.player.absorbBarColor = { r = r, g = g, b = b, a = a }
+                    end)
+                end, true); by = by + h
+            _, h = W:Toggle(container, 'Show Class Power', -by,
+                function() return db.player.showClassPowerBar == true end,
+                function(v) SetAndRefresh(function() db.player.showClassPowerBar = v end) end); by = by + h
+            _, h = W:Dropdown(container, 'Class Power Style', -by, CLASS_POWER_STYLES,
+                function() return db.player.classPowerStyle or 'none' end,
+                function(v) SetAndRefresh(function() db.player.classPowerStyle = v; db.player.showClassPowerBar = (v ~= 'none') end) end); by = by + h
+            by = ns.BuildComboPicker(container, W, by, 'player')
+            by = ns.BuildPvPPicker(container, W, by, 'player')
+            _, h = W:Dropdown(container, 'Combat Indicator', -by, COMBAT_INDICATOR_STYLES,
+                function() return NormalizeCombatIndicatorStyle(db.player.combatIndicatorStyle) end,
+                function(v) SetAndRefresh(function() db.player.combatIndicatorStyle = v end) end); by = by + h
+            return by
+        end, 'player')
+
+        AddBlock('right', 'Pet', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'pet', 'Pet', by, {
+                hasPower = false,
+                hasCastbar = false,
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = false,
+                showHeader = false,
+            })
+            return by
+        end, 'pet')
+    end
+
+    if ufActiveTab == 'target' then
+        AddBlock('left', 'Target', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'target', 'Target', by, {
+                hasPower = true,
+                hasCastbar = true,
+                allowPortraitFacing = true,
+                -- Target buffs are always shown above the frame.
+                showDebuffsKey = 'onlyPlayerDebuffs',
+                showDebuffsLabel = 'Only Player Debuffs',
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = true,
+                showHeader = false,
+                showFrameScale = true,
+            })
+            by = ns.BuildComboPicker(container, W, by, 'target')
+            by = ns.BuildPvPPicker(container, W, by, 'target')
+            return by
+        end, 'target')
+
+        AddBlock('right', 'Focus', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'focus', 'Focus', by, {
+                hasPower = true,
+                hasCastbar = true,
+                showDebuffsKey = 'onlyPlayerDebuffs',
+                showDebuffsLabel = 'Only Player Debuffs',
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = true,
+                showHeader = false,
+            })
+            return by
+        end, 'focus')
+
+        AddBlock('left', 'Target Of Target / Focus Target', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'totPet', 'Target Of Target / Focus Target', by, {
+                enabledGet = function(dbRef)
+                    return dbRef.enabledFrames.targettarget ~= false or dbRef.enabledFrames.focustarget ~= false
+                end,
+                enabledSet = function(dbRef, v)
+                    dbRef.enabledFrames.targettarget = v
+                    dbRef.enabledFrames.focustarget = v
+                end,
+                hasPower = false,
+                hasCastbar = false,
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = false,
+                showHeader = false,
+            })
+            return by
+        end, 'totPet')
+    end
+
+    if ufActiveTab == 'boss' then
+        AddBlock('left', 'Boss', function(container)
+            local by = 0
+            by = AddCommonUnitControls(container, 'boss', 'Boss', by, {
+                enabledKey = 'boss',
+                hasPower = true,
+                hasCastbar = false,
+                showDispelOverlayKey = 'dispelOverlay',
+                hasVisibility = false,
+                showHeader = false,
+            })
+            _, h = W:Slider(container, 'Boss Spacing', -by,
+                function() return db.bossSpacing or 60 end,
+                function(v) SetAndRefresh(function() db.bossSpacing = v end) end, 20, 120, 1); by = by + h
+            return by
+        end, 'boss')
+    end
+
+    if ufActiveTab == 'portraitauras' then
+        local PA = ns.PortraitAuras
+        local function ApplyPA()
+            if PA then
+                PA.RefreshAll()
+                if PA.IsPreviewOn() then PA.SetPreview(true) end
+            end
+            if previewRefresh then previewRefresh() end
+        end
+        AddBlock('left', 'Portrait Auras', function(container)
+            local by = 0
+            _, h = W:Label(container, 'Shows crowd control, defensives and other important auras on the portrait. One icon is shown, the highest priority one: Crowd Control, Disarm, Big Defensive, External Defensive, Important.', -by, 11); by = by + h
+            _, h = W:Toggle(container, 'Enabled', -by,
+                function() return PA and PA.IsEnabled() end,
+                function(v) if PA then PA.SetOption('enabled', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Toggle(container, 'Preview on the portraits', -by,
+                function() return PA and PA.IsPreviewOn() end,
+                function(v)
+                    if PA then PA.SetPreview(v and true or false) end
+                    if previewRefresh then previewRefresh() end
+                end); by = by + h
+            _, h = W:Toggle(container, 'Reverse swipe', -by,
+                function() return not PA or PA.GetOption('reverseSwipe') ~= false end,
+                function(v) if PA then PA.SetOption('reverseSwipe', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Toggle(container, 'Show numbers', -by,
+                function() return not PA or PA.GetOption('showNumbers') ~= false end,
+                function(v) if PA then PA.SetOption('showNumbers', v and true or false); ApplyPA() end end); by = by + h
+            _, h = W:Slider(container, 'Font Scale', -by,
+                function() return PA and PA.GetOption('fontScale') or 1 end,
+                function(v) if PA then PA.SetOption('fontScale', v); ApplyPA() end end, 0.5, 2, 0.05, '%.2f'); by = by + h
+            return by
+        end, 'portraitAurasMain')
+        AddBlock('left', 'CC Catalog', function(container)
+            local by = 0
+            local C = PA and PA.Catalog
+            if not (C and C.GetClasses and C.GetClassEntries) then return by end
+            local function ClassLabel(token)
+                if token == 'OTHER' then return LText('Other') end
+                return (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[token]) or token
+            end
+            -- kind of crowd control: one dropdown (legible, and it scales to any number of kinds)
+            local kinds = C.GetKinds()
+            if #kinds == 0 then return by end
+            local group = ns.PA_catalogGroup
+            local valid = false
+            for _, k in ipairs(kinds) do if k == group then valid = true end end
+            if not valid then group = kinds[1] end
+            ns.PA_catalogGroup = group
+            local labels = {}
+            for _, k in ipairs(kinds) do labels[k] = C.KIND_LABELS[k] end
+            _, h = W:Dropdown(container, 'Type of crowd control', -by, labels,
+                function() return ns.PA_catalogGroup end,
+                function(v)
+                    ns.PA_catalogGroup = v
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end, kinds); by = by + h
+            _, h = W:Input(container, 'Search spells', -by,
+                function() return ns.PA_catalogSearch or '' end,
+                function(v)
+                    ns.PA_catalogSearch = v or ''
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end); by = by + h
+            local search = ns.PA_catalogSearch or ''
+            local searching = search ~= ''
+            local entries = searching and C.Search(search) or C.GetEntries(group)
+            -- Enable all / Disable all: two compact buttons on one row
+            local bar = CreateFrame('Frame', nil, container)
+            bar:SetPoint('TOPLEFT', 10, -by)
+            bar:SetPoint('TOPRIGHT', -10, -by)
+            bar:SetHeight(34)
+            local half = math.floor(((container:GetWidth() or 400) - 20 - 8) / 2)
+            for idx, spec in ipairs({ { 'Enable all', true }, { 'Disable all', false } }) do
+                local btn = CreateFrame('Button', nil, bar)
+                btn:SetSize(half, 26)
+                btn:SetPoint('LEFT', (idx - 1) * (half + 8), 0)
+                if KT.NavTabs and KT.NavTabs.StyleButton then
+                    KT.NavTabs.StyleButton(btn, { label = LText(spec[1]), fontSize = 12, variant = 'short' })
+                end
+                btn:SetScript('OnClick', function()
+                    if PA then PA.SetEntriesEnabled(entries, spec[2]); ApplyPA() end
+                    if KT.RefreshPage then KT:RefreshPage(true) end
+                end)
+            end
+            by = by + 38
+            if #entries == 0 then
+                _, h = W:Label(container, 'No spells match.', -by, 11); by = by + h
+                return by
+            end
+            local rowH = 24
+            local function Paint(row, entry)
+                local on = PA.IsEntryEnabled(entry)
+                row.icon:SetDesaturated(not on)
+                row.icon:SetAlpha(on and 1 or 0.35)
+                row.name:SetAlpha(on and 1 or 0.45)
+                if on then row.check:SetColorTexture(0.25, 0.75, 0.35, 1) else row.check:SetColorTexture(0.55, 0.15, 0.15, 1) end
+            end
+            for i, entry in ipairs(entries) do
+                local row = CreateFrame('Button', nil, container)
+                row:SetHeight(rowH)
+                row:SetPoint('TOPLEFT', 10, -(by + (i - 1) * rowH))
+                row:SetPoint('TOPRIGHT', -10, -(by + (i - 1) * rowH))
+                row.bg = row:CreateTexture(nil, 'BACKGROUND')
+                row.bg:SetAllPoints(row)
+                row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.05 or 0)
+                row.icon = row:CreateTexture(nil, 'ARTWORK')
+                row.icon:SetSize(20, 20)
+                row.icon:SetPoint('LEFT', 4, 0)
+                row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                row.icon:SetTexture(entry.icon)
+                row.check = row:CreateTexture(nil, 'OVERLAY')
+                row.check:SetSize(12, 12)
+                row.check:SetPoint('RIGHT', -8, 0)
+                row.kind = row:CreateFontString(nil, 'OVERLAY')
+                row.kind:SetFont(KT.FONT_PATH, 10, '')
+                row.kind:SetPoint('RIGHT', row.check, 'LEFT', -10, 0)
+                row.kind:SetJustifyH('RIGHT')
+                row.kind:SetTextColor(0.62, 0.62, 0.68, 1)
+                -- the class when the game data names one, the kind while searching
+                local kindText = entry.class ~= 'OTHER' and ClassLabel(entry.class) or ''
+                if searching then kindText = LText(C.KIND_LABELS[entry.kind] or 'Other') end
+                row.kind:SetText(kindText)
+                row.name = row:CreateFontString(nil, 'OVERLAY')
+                row.name:SetFont(KT.FONT_PATH, 11, '')
+                row.name:SetPoint('LEFT', row.icon, 'RIGHT', 8, 0)
+                row.name:SetPoint('RIGHT', row.kind, 'LEFT', -8, 0)
+                row.name:SetJustifyH('LEFT')
+                row.name:SetWordWrap(false)
+                row.name:SetText(entry.name)
+                Paint(row, entry)
+                row:SetScript('OnClick', function()
+                    PA.SetEntryEnabled(entry, not PA.IsEntryEnabled(entry))
+                    Paint(row, entry)
+                    ApplyPA()
+                end)
+                row:SetScript('OnEnter', function(self)
+                    self.bg:SetColorTexture(1, 1, 1, 0.12)
+                    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+                    GameTooltip:SetText(entry.name)
+                    GameTooltip:AddLine((entry.class ~= 'OTHER' and (ClassLabel(entry.class) .. ' - ') or '') .. LText(C.KIND_LABELS[entry.kind] or 'Other'), 0.8, 0.8, 0.85)
+                    GameTooltip:AddLine(LText('Spell IDs') .. ': ' .. table.concat(entry.ids, ', '), 0.7, 0.7, 0.7)
+                    GameTooltip:AddLine(LText(PA.IsEntryEnabled(entry) and 'Click to switch this spell off.' or 'Click to switch this spell on.'), 1, 0.82, 0)
+                    GameTooltip:Show()
+                end)
+                row:SetScript('OnLeave', function(self)
+                    self.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.05 or 0)
+                    GameTooltip:Hide()
+                end)
+            end
+            by = by + #entries * rowH + 6
+            return by
+        end, 'portraitAurasCatalog')
+        AddBlock('right', 'Units', function(container)
+            local by = 0
+            for _, entry in ipairs({ { 'player', 'Player' }, { 'target', 'Target' }, { 'focus', 'Focus' }, { 'pet', 'Pet' },
+                { 'targettarget', 'Target of Target' }, { 'focustarget', 'Focus Target' } }) do
+                _, h = W:Toggle(container, entry[2], -by,
+                    function() return PA and PA.GetSub('units', entry[1]) == true end,
+                    function(v) if PA then PA.SetSub('units', entry[1], v and true or false); ApplyPA() end end); by = by + h
+            end
+            return by
+        end, 'portraitAurasUnits')
+        AddBlock('right', 'Categories', function(container)
+            local by = 0
+            for _, entry in ipairs({
+                { 'crowdControl', 'Crowd Control' }, { 'disarm', 'Disarms' },
+                { 'bigDefensive', 'Big Defensives' }, { 'externalDefensive', 'External Defensives' },
+                { 'important', 'Important Spells' } }) do
+                _, h = W:Toggle(container, entry[2], -by,
+                    function() return PA and PA.GetSub('categories', entry[1]) == true end,
+                    function(v) if PA then PA.SetSub('categories', entry[1], v and true or false); ApplyPA() end end); by = by + h
+            end
+            _, h = W:Input(container, 'Extra crowd control spell IDs', -by,
+                function() return PA and PA.GetOption('customSpells') or '' end,
+                function(v) if PA then PA.SetOption('customSpells', v or ''); ApplyPA() end end); by = by + h
+            _, h = W:Label(container, 'Spell IDs separated by commas. They only show on enemies.', -by, 10); by = by + h
+            _, h = W:Label(container, 'Disarms only show on enemies. Categories use the flags the game puts on each aura, so they keep working in instances.', -by, 10); by = by + h
+            return by
+        end, 'portraitAurasCategories')
+    end
+
+    BindPreviewClick(preview.playerPreview, 'Player Preview', 'player', function() return optionBlocks.player end)
+    BindPreviewClick(preview.targetPreview, 'Target Preview', 'target', function() return optionBlocks.target end)
+    BindPreviewClick(preview.focusPreview, 'Focus Preview', 'target', function() return optionBlocks.focus end)
+    BindPreviewClick(preview.petPreview, 'Pet Preview', 'player', function() return optionBlocks.pet end)
+    BindPreviewClick(preview.targetTargetPreview, 'Target Of Target / Focus Target Preview', 'target', function() return optionBlocks.totPet end)
+    BindPreviewClick(preview.focusTargetPreview, 'Target Of Target / Focus Target Preview', 'target', function() return optionBlocks.totPet end)
+
+    y = y + math.max(leftUsed, rightUsed)
+
+    return y
+end)

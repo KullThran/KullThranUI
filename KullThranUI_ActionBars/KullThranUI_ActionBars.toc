@@ -1,0 +1,14 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Action Bars
+## Notes: KullThranUI module: Action Bars
+## Author: KullThran
+## Version: 6.0.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\ActionBars\Actionbuttonenhancements.lua
+Modules\ActionBars\ActionBars.lua
+Modules\ActionBars\ActionBars_Glows.lua
+Modules\ActionBars\ActionBars_GlowsOptions.lua
+Modules\ActionBars\ActionBars_Options.lua

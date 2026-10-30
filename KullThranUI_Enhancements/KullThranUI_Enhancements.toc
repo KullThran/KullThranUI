@@ -1,0 +1,40 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Enhancements
+## Notes: KullThranUI module: Enhancements
+## Author: KullThran
+## Version: 6.0.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+
+# Runtime ownership lives in this addon. The source remains centralized in the
+# core folder so releases cannot ship two divergent copies.
+..\KullThranUI\Modules\BlizzardFrames.lua
+..\KullThranUI\Modules\DurabilityMovable.lua
+..\KullThranUI\Modules\EscapeMenu.lua
+..\KullThranUI\Modules\StackCountFix.lua
+..\KullThranUI\Modules\Interrupts\Interrupts.lua
+..\KullThranUI\Modules\Interrupts\InterruptsGlow.lua
+
+..\KullThranUI\Modules\Enhancements\Enhancements.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_LootDebug.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_DamageMeter.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_DamageMeterControls.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_QOL.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_BulkBuy.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_RaidCheck.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_LFGBar.lua
+..\KullThranUI\Modules\Enhancements\EnhancedFriendList.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusCombatTimer.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistory.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_MythicPlusHistoryUI.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_ArenaHistory.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_ArenaHistoryUI.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_CombatTimer.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_AFK.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_KickTracker.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_KickTrackerUI.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_SpellHistory.lua
+..\KullThranUI\Modules\Enhancements\Enhancements_Options.lua
+
