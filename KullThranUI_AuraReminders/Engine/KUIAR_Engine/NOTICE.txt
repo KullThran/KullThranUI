@@ -1,0 +1,20 @@
+This directory and the other KUIAR_Engine* directories next to it contain an
+embedded adaptation of M33kAuras 5.20.7-rg4-m101, which is derived from
+WeakAuras.
+
+Original projects and contributors:
+  WeakAuras contributors: https://github.com/WeakAuras/WeakAuras2
+  m33shoq and M33kAuras contributors: https://github.com/m33shoq/M33kAuras
+
+This adaptation is not an official release of, or endorsed by, either project.
+The addon code and the KullThranUI changes are distributed under the GNU
+General Public License version 2; see LICENSE. Existing copyright notices
+and warranty disclaimers remain applicable. There is no warranty.
+
+Bundled libraries, fonts, sounds and other media retain their respective
+licences. See their source headers, accompanying licence files, and
+Media/Provided by.txt. The main addon licence does not replace those terms.
+Some bundled libraries are the copies shipped with ForeverAuras 1.3.8, a
+fork of M33kAuras, and keep its change notices.
+
+The changes made for KullThranUI are described in ../UPSTREAM.md.

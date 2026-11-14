@@ -1,0 +1,13 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Tooltip
+## Notes: KullThranUI module: Tooltip
+## Author: KullThran
+## Version: 6.1.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+
+Init.lua
+Modules\Tooltip\TooltipInfo.lua
+Modules\Tooltip\Tooltip.lua
+Modules\Tooltip\TooltipPreview.lua
+Modules\Tooltip\Tooltip_Options.lua

@@ -1,0 +1,23 @@
+{
+    "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
+    "runtime": {
+        "version": "Lua 5.1"
+    },
+    "diagnostics": {
+        "globals": [
+            "Wait",
+            "C_Timer",
+            "UnitName",
+            "PlayerFrame",
+            "TargetFrame",
+            "LibStub"
+        ]
+    },
+    "workspace": {
+        "checkThirdParty": false,
+        "library": [
+            "${3rd}/Love2D/library",
+            "${3rd}/standard/library"
+        ]
+    }
+}

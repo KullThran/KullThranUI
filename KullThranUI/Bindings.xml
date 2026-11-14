@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="KULLTHRANUI_TOGGLE_CHAT" category="KullThranUI">
+        KT_ToggleChatWindow()
+    </Binding>
+    <Binding name="KULLTHRANUI_TOGGLE_BAGS" category="KullThranUI">
+        KT_ToggleBagsWindow()
+    </Binding>
+</Bindings>

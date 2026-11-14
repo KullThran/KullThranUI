@@ -1,0 +1,3 @@
+local _, ns = ...
+ns.KT = _G.KT
+ns.KT_NS = _G.KT_NS

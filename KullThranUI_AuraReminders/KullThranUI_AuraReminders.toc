@@ -1,0 +1,42 @@
+## Interface: 120105, 120100, 120007, 120005, 120001, 120000
+## Title: KullThranUI - Aura Reminders
+## Notes: KullThranUI module: Aura Reminders
+## Author: KullThran
+## Version: 6.1.2
+## IconTexture: Interface\AddOns\KullThranUI\Libraries\KUITextures\KUILogoCuadrado.PNG
+## Dependencies: KullThranUI
+## SavedVariables: KUIAR_EngineSaved, KUIAR_EngineOptionsSaved, KUIAR_EngineArchive
+
+Init.lua
+Engine\Loader.lua
+Engine\Modules.lua
+Engine\Engine.xml
+Modules\KUIAuraReminders\KUIAuraReminders_Items.lua
+Modules\KUIAuraReminders\KUIAuraReminders_AuraRead.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Beacons.lua
+Modules\KUIAuraReminders\KUIAuraReminders.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Widgets.lua
+Modules\KUIAuraReminders\KUIAuraReminders_OptionsPreview.lua
+Modules\KUIAuraReminders\KUIAuraReminders_PageReminders.lua
+Modules\KUIAuraReminders\KUIAuraReminders_PageTalents.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EmbeddedSkin.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EmbeddedUI.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Embedded.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EmbeddedMovers.lua
+Modules\KUIAuraReminders\KUIAuraReminders_PageCustom.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Cards.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Options.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineSchema.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineLoad.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineSources.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineTriggers.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineStacks.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineConditions.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineIcon.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineAnim.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineSound.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineGroup.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineMovers.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineCodec.lua
+Modules\KUIAuraReminders\KUIAuraReminders_EngineEditor.lua
+Modules\KUIAuraReminders\KUIAuraReminders_Custom.lua

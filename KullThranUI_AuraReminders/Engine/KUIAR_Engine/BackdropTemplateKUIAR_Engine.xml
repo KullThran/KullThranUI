@@ -1,0 +1,12 @@
+<!-- Embedded adaptation of M33kAuras 5.20.7-rg4-m101; GPL-2.0. See Engine/UPSTREAM.md. -->
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+UI.xsd">
+	<Script file="BackdropTemplateKUIAR_Engine.lua"/>
+
+	<Frame name="BackdropTemplateKUIAR_Runtime" mixin="BackdropTemplateKUIAR_RuntimeMixin" virtual="true">
+		<Scripts>
+			<OnLoad method="OnBackdropLoaded"/>
+			<OnSizeChanged method="OnBackdropSizeChanged"/>
+		</Scripts>
+	</Frame>
+</Ui>
