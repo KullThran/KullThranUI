@@ -1,0 +1,18 @@
+-- GameMenuFrame is deliberately not skinned from KullThranUI_Skins.
+--
+-- The frame belongs to UIParent's protected panel path. Even apparently
+-- cosmetic writes (a custom field, HookScript, SetAlpha on its regions or
+-- changing its button FontStrings) can make a later Blizzard ActionButton
+-- update execute in a tainted context. In Midnight that reaches
+-- ActionButton_UpdatePressAndHoldAction(), whose SetAttribute call is
+-- protected, and produces ADDON_ACTION_BLOCKED on MultiBar buttons.
+--
+-- KullThranUI's EscapeMenu module owns this presentation already and contains
+-- the combat/secure-state handling for it. Keeping a second skin here was both
+-- redundant and unsafe. This file remains in the TOC as an intentional no-op
+-- so older installations cannot reintroduce the duplicate GameMenu hook.
+
+-- The switch itself stays: EscapeMenu reads it.
+local KT = LibStub("AceAddon-3.0"):GetAddon("KullThranUI")
+local S = KT:GetModule("Skins")
+S:RegisterWindow("gamemenu", { label = "Game Menu (Esc)" })

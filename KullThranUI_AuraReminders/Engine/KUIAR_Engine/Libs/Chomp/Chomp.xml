@@ -1,0 +1,7 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Include file="Internal.lua"/>
+	<Include file="Public.lua"/>
+	<Include file="StringManip.lua"/>
+
+	<Include file="Loaded.lua"/>
+</Ui>
