@@ -1,0 +1,12 @@
+<!-- Embedded adaptation of M33kAuras 5.20.7-rg4-m101; GPL-2.0. See Engine/UPSTREAM.md. -->
+<Bindings>
+  <Binding name="KUIAR_EngineTOGGLE" Category="BINDING_HEADER_KUIAR_Runtime">
+    KUIAR_Runtime.OpenOptions()
+  </Binding>
+  <Binding name="KUIAR_EnginePROFILINGTOGGLE" Category="BINDING_HEADER_KUIAR_Runtime">
+    KUIAR_RuntimeProfilingFrame:Toggle()
+  </Binding>
+  <Binding name="KUIAR_EnginePRINTPROFILING" Category="BINDING_HEADER_KUIAR_Runtime">
+    KUIAR_Runtime.PrintProfile()
+  </Binding>
+</Bindings>

@@ -1,0 +1,32 @@
+-- Embedded adaptation of M33kAuras 5.20.7-rg4-m101; GPL-2.0. See Engine/UPSTREAM.md.
+local _, host = ...
+host.EmbeddedAuraEngine.Register("KUIAR_Engine", function(...)
+if not KUIAR_Runtime.IsLibsOK() then return end
+---@type string
+local AddonName = ...
+---@class Private
+local Private = select(2, ...)
+
+local LibAdvFlight = LibStub("LibAdvFlight-1.1")
+local Events = LibAdvFlight.Events;
+
+local function HandleEvent(self, event, arg1)
+  Private.callbacks:Fire("WA_DRAGONRIDING_UPDATE")
+  if event == "PLAYER_ENTERING_WORLD" and arg1 == true then
+    C_Timer.After(2, HandleEvent)
+  end
+end
+
+local frame = CreateFrame("Frame")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:SetScript("OnEvent", HandleEvent)
+
+LibAdvFlight.RegisterCallback(Events.ADV_FLYING_ENABLED, HandleEvent);
+LibAdvFlight.RegisterCallback(Events.ADV_FLYING_DISABLED, HandleEvent);
+
+Private.IsDragonriding = function ()
+  return LibAdvFlight.IsAdvFlyEnabled()
+end
+
+
+end)
